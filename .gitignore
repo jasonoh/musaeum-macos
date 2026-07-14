@@ -8,3 +8,4 @@ sidecar/**/__pycache__/
 sidecar/.venv/
 .env
 .env.local
+.claude

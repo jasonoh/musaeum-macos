@@ -32,7 +32,7 @@ def read_calibre_db(calibre_path: str) -> dict:
                       JOIN books_publishers_link l ON l.publisher = p.id
                       WHERE l.book = b.id) AS publisher,
                    (SELECT text FROM comments c WHERE c.book = b.id) AS description,
-                   (SELECT lang_code FROM languages lg
+                   (SELECT lg.lang_code FROM languages lg
                       JOIN books_languages_link l ON l.lang_code = lg.id
                       WHERE l.book = b.id) AS language,
                    (SELECT r.rating FROM ratings r
