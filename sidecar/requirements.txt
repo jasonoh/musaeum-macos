@@ -1,0 +1,5 @@
+isbnlib>=3.10
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=4.9
+Pillow>=10.0

@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-ink-950 font-body text-parchment antialiased;
+  }
+
+  ::selection {
+    @apply bg-gold-500/40;
+  }
+
+  /* Understated scrollbars that suit the dark surfaces */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-600;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-500;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  button,
+  input,
+  select {
+    @apply focus:outline-none focus-visible:ring-1 focus-visible:ring-gold-400/70;
+  }
+}
+
+@layer utilities {
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+}

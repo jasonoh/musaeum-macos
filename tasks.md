@@ -1,0 +1,89 @@
+# Musaeum — Task Tracker
+
+Working backlog for future development. Keep statuses current: `[ ]` open,
+`[x]` done, `[~]` in progress. Add discoveries here rather than letting them
+live only in conversation.
+
+## Phase 1 — shipped 2026-07-12
+
+Full MVP scope from CLAUDE.md: scaffold, NAS offline mode, drag-drop import,
+hydration pipeline, conflict review UI, grid/list/detail views, FTS5 search +
+facet filters, Kindle transfer with auto-conversion, Apple Books export,
+Calibre migration wizard, Python sidecar. Verified end-to-end against live
+metadata APIs (see CHANGELOG.md).
+
+## Phase 1.5 — polish before real-library use
+
+Blockers before pointing the app at the full 7000-book NAS library:
+
+- [ ] **Virtualize the grid and list views** — currently all book cards render
+      at once; 7000 DOM nodes will blow the <2s load / 500MB memory targets.
+      (react-window or hand-rolled intersection observer.)
+- [ ] **Settings UI** — there is currently *no way to change the library root
+      after first configuration*, nor to set `smb_url`, `python_path`,
+      `ebook_convert_path`, or the Google Books API key from the UI. A small
+      settings modal writing through to `app_config` covers all five.
+- [ ] **Google Books API key** — obtain and export `GOOGLE_BOOKS_API_KEY`
+      before bulk migration; consider storing in `app_config` via Settings
+      instead of env.
+- [ ] **Migration dry run** — migrate a ~50-book subset of the real Calibre
+      library to a scratch target first; review hydration quality and the
+      needs-review rate before the full run (hydrating 7000 books at the
+      0.6s rate limit ≈ 90+ minutes on top of copy time).
+
+## Phase 1.5 — quality
+
+- [ ] **Tests** — none exist yet. Highest value first:
+      - sidecar: `pipeline/conflict.py` merge policy, `extractors/epub_metadata.py`
+        against fixture EPUBs (pytest)
+      - main: `db.ts` query/filter builder, `importer.sanitizeTitle`,
+        conflict resolution IPC (vitest; better-sqlite3 works in plain node)
+- [ ] Persist cover `source`/`width`/`height` into metadata.json (sidecar
+      returns them; `importer.writeMetadataJson` currently drops them —
+      the iOS contract documents them)
+- [ ] Import progress: `duplicate_check` step currently invisible in the
+      overlay step list (works, just not rendered as its own row)
+- [ ] Keyboard navigation: arrows to move selection in grid/list, Esc to
+      close detail panel, Enter to open
+- [ ] Empty-state + skeleton loading polish for slow NAS cover loads
+- [ ] `exports/` staging dir is created but unused — either stage transfers
+      through it (per spec) and clear post-transfer, or drop it from the spec
+
+## Packaging & distribution
+
+- [ ] App icon (dark-library mark) → `assets/icons/`
+- [ ] electron-builder config: DMG, hardened runtime, notarization; bundle
+      `sidecar/` into Resources (sidecar.ts already resolves
+      `process.resourcesPath` when packaged; venv strategy TBD — likely
+      require system Python + first-run `pip install`, or ship a pex/zipapp)
+- [ ] Decide update mechanism (spec question #5): manual download vs
+      electron-updater — leaning manual for a personal tool
+- [ ] `npm audit` — 6 high-severity findings in the dev-dependency chain to
+      review (dev-only impact, but check before distributing)
+
+## Known issues / risks
+
+- **Goodreads scraper fragility**: `fetchers/goodreads.py` parses
+  `__NEXT_DATA__` with an HTML fallback; markup drift silently disables
+  series data (by design). Revisit if series coverage drops.
+- **Edition mismatch on hydration**: embedded/Calibre identifiers now always
+  win (fixed 2026-07-12), but fetched publisher/date can still describe a
+  different edition than the file. Acceptable for now; watch during dry run.
+- **Kindle path untested on hardware** — detection + transfer logic verified
+  by code review only; test with a real Kindle over USB.
+- **NAS behavior untested against real SMB** — offline mode was verified with
+  a local folder; test mount-loss/reconnect against `//ohnas.smb`, especially
+  mid-import and mid-transfer.
+- **FTS tags matching**: `books_fts.tags` indexes the raw JSON string; quoted
+  punctuation is tokenized away in practice, but verify tag search feels right
+  with real data.
+
+## Post-MVP (unchanged from spec — do not implement yet)
+
+- [ ] Boox Palma WiFi transfer (feature-flagged stub only)
+- [ ] In-app reader / annotations
+- [ ] iOS companion app (REST API activation; contract already staged)
+- [ ] Goodreads account sync
+- [ ] Collections UI (schema present, UI deferred)
+- [ ] REST API (stub present at `electron/main/api/rest.ts`, disabled)
+- [ ] Auto-updater (pending distribution decision above)

@@ -1,0 +1,72 @@
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { MusaeumAPI, IPCResult, Unsubscribe } from '@shared/api.types'
+import { EVENT_CHANNELS } from '@shared/api.types'
+
+/** Unwrap the IPCResult envelope — rejects with the handler's error message. */
+async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+  const result = (await ipcRenderer.invoke(channel, ...args)) as IPCResult<T>
+  if (!result.success) throw new Error(result.error)
+  return result.data
+}
+
+function listen<T>(channel: string, cb: (payload: T) => void): Unsubscribe {
+  const handler = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.removeListener(channel, handler)
+}
+
+const api: MusaeumAPI = {
+  library: {
+    getBooks: (filters) => invoke('library:getBooks', filters),
+    getBook: (id) => invoke('library:getBook', id),
+    searchBooks: (query) => invoke('library:searchBooks', query),
+    updateBook: (id, updates) => invoke('library:updateBook', id, updates),
+    deleteBook: (id) => invoke('library:deleteBook', id),
+    getFacets: () => invoke('library:getFacets')
+  },
+  import: {
+    addFiles: (filePaths) => invoke('import:addFiles', filePaths),
+    getImportProgress: (jobId) => invoke('import:getImportProgress', jobId)
+  },
+  metadata: {
+    getConflictQueue: () => invoke('metadata:getConflictQueue'),
+    resolveConflict: (conflictId, choices) =>
+      invoke('metadata:resolveConflict', conflictId, choices),
+    rehydrateBook: (bookId) => invoke('metadata:rehydrateBook', bookId)
+  },
+  devices: {
+    getConnectedDevices: () => invoke('devices:getConnectedDevices'),
+    sendToDevice: (bookId, deviceId) => invoke('devices:sendToDevice', bookId, deviceId),
+    getTransferProgress: (jobId) => invoke('devices:getTransferProgress', jobId),
+    exportToAppleBooks: (bookId) => invoke('devices:exportToAppleBooks', bookId)
+  },
+  nas: {
+    getStatus: () => invoke('nas:getStatus'),
+    reconnect: () => invoke('nas:reconnect'),
+    setLibraryRoot: (path) => invoke('nas:setLibraryRoot', path),
+    chooseLibraryRoot: () => invoke('nas:chooseLibraryRoot')
+  },
+  migration: {
+    scanCalibreLibrary: (path) => invoke('migration:scanCalibreLibrary', path),
+    startMigration: (options) => invoke('migration:startMigration', options),
+    getMigrationProgress: (jobId) => invoke('migration:getMigrationProgress', jobId),
+    confirmCutover: () => invoke('migration:confirmCutover'),
+    chooseCalibrePath: () => invoke('migration:chooseCalibrePath')
+  },
+  files: {
+    // File.path was removed from Electron's renderer; resolving paths from
+    // dropped File objects must happen here in the preload
+    getPathForFile: (file) => webUtils.getPathForFile(file)
+  },
+  on: {
+    nasStatusChanged: (cb) => listen(EVENT_CHANNELS.nasStatusChanged, cb),
+    deviceConnected: (cb) => listen(EVENT_CHANNELS.deviceConnected, cb),
+    deviceDisconnected: (cb) => listen(EVENT_CHANNELS.deviceDisconnected, cb),
+    importProgress: (cb) => listen(EVENT_CHANNELS.importProgress, cb),
+    conflictQueueUpdated: (cb) => listen(EVENT_CHANNELS.conflictQueueUpdated, cb),
+    transferProgress: (cb) => listen(EVENT_CHANNELS.transferProgress, cb),
+    libraryChanged: (cb) => listen(EVENT_CHANNELS.libraryChanged, () => cb())
+  }
+}
+
+contextBridge.exposeInMainWorld('Musaeum', api)

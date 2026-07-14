@@ -1,0 +1,112 @@
+import { app, BrowserWindow, net, protocol, shell } from 'electron'
+import { join } from 'path'
+import { pathToFileURL } from 'url'
+import { startRestApiIfEnabled } from './api/rest'
+import { registerDeviceHandlers } from './ipc/device'
+import { registerLibraryHandlers } from './ipc/library'
+import { registerMetadataHandlers } from './ipc/metadata'
+import { registerMigrationHandlers } from './ipc/migration'
+import { registerNASHandlers } from './ipc/nas'
+import { closeDb, getBook } from './services/db'
+import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
+import { setMainWindow } from './services/events'
+import { bindToNAS, startWatcher, stopWatcher } from './services/file-watcher'
+import * as nas from './services/nas-manager'
+import * as sidecar from './services/sidecar'
+
+// musaeum://cover/{bookId}/{thumb|full} — serves cover images from the
+// library without exposing arbitrary file:// access to the renderer
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'musaeum', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+])
+
+function registerCoverProtocol(): void {
+  protocol.handle('musaeum', (request) => {
+    const url = new URL(request.url)
+    const [bookId, size] = url.pathname.replace(/^\//, '').split('/')
+    if (url.host !== 'cover' || !bookId) return new Response(null, { status: 400 })
+
+    const root = nas.getLibraryRoot()
+    const book = getBook(bookId)
+    const file = size === 'thumb' ? book?.coverThumbPath : book?.coverFullPath
+    if (!root || !book?.nasPath || !file) return new Response(null, { status: 404 })
+
+    // Cover paths are stored relative to the book dir; reject traversal
+    if (file.includes('..') || file.includes('/')) return new Response(null, { status: 400 })
+    return net.fetch(pathToFileURL(join(root, book.nasPath, file)).toString())
+  })
+}
+
+function createWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 700,
+    show: false,
+    backgroundColor: '#0d0b09',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 20, y: 18 },
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  })
+
+  win.on('ready-to-show', () => win.show())
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    void win.loadURL(process.env.ELECTRON_RENDERER_URL)
+  } else {
+    void win.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+
+  return win
+}
+
+app.whenReady().then(() => {
+  registerCoverProtocol()
+
+  registerLibraryHandlers()
+  registerMetadataHandlers()
+  registerDeviceHandlers()
+  registerNASHandlers()
+  registerMigrationHandlers()
+
+  const win = createWindow()
+  setMainWindow(win)
+
+  sidecar.start()
+  nas.startHealthChecks()
+  bindToNAS()
+  if (nas.isOnline()) startWatcher()
+  startDeviceDetection()
+  startRestApiIfEnabled()
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const w = createWindow()
+      setMainWindow(w)
+    }
+  })
+})
+
+app.on('window-all-closed', () => {
+  // Standard macOS behavior: stay alive until explicit quit
+  if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  stopWatcher()
+  stopDeviceDetection()
+  nas.stopHealthChecks()
+  sidecar.stop()
+  closeDb()
+})

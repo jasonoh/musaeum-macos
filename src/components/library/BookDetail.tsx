@@ -1,0 +1,240 @@
+import { useMemo, useState } from 'react'
+import type { ReadStatus } from '@shared/book.types'
+import { seriesDisplay } from '@shared/book.types'
+import { useDeviceStore } from '@/stores/device.store'
+import { useLibraryStore } from '@/stores/library.store'
+import { useNASStore } from '@/stores/nas.store'
+import { useUIStore } from '@/stores/ui.store'
+import { CoverFallback, coverUrl } from './BookCard'
+import {
+  CloseIcon,
+  RefreshIcon,
+  SendIcon,
+  StarIcon,
+  TrashIcon
+} from '@/components/shared/icons'
+
+const READ_STATUS_OPTIONS: { value: ReadStatus; label: string }[] = [
+  { value: 'unread', label: 'Unread' },
+  { value: 'reading', label: 'Reading' },
+  { value: 'read', label: 'Read' }
+]
+
+export function BookDetail() {
+  const selectedBookId = useUIStore((s) => s.selectedBookId)
+  const selectBook = useUIStore((s) => s.selectBook)
+  const books = useLibraryStore((s) => s.books)
+  const load = useLibraryStore((s) => s.load)
+  const devices = useDeviceStore((s) => s.devices)
+  const sendToDevice = useDeviceStore((s) => s.sendToDevice)
+  const online = useNASStore((s) => s.status?.state === 'connected')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const book = useMemo(
+    () => books.find((b) => b.id === selectedBookId) ?? null,
+    [books, selectedBookId]
+  )
+  if (!book) return null
+  const full = coverUrl(book, 'full')
+
+  const run = async (label: string, fn: () => Promise<unknown>) => {
+    setBusy(label)
+    try {
+      await fn()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <aside className="flex w-[360px] shrink-0 animate-slide-in-right flex-col border-l border-ink-800 bg-ink-900 shadow-panel">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-ink-800 px-4">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-parchment-faint">
+          Details
+        </span>
+        <button
+          onClick={() => selectBook(null)}
+          className="rounded p-1 text-parchment-faint hover:bg-ink-800 hover:text-parchment"
+          aria-label="Close details"
+        >
+          <CloseIcon className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="mx-auto aspect-[2/3] w-44 overflow-hidden rounded-md shadow-cover ring-1 ring-white/5">
+          {full ? (
+            <img src={full} alt="" className="h-full w-full object-cover" draggable={false} />
+          ) : (
+            <CoverFallback book={book} large />
+          )}
+        </div>
+
+        <h2 className="mt-4 text-center font-display text-xl leading-snug text-parchment">
+          {book.title}
+        </h2>
+        {book.author && (
+          <p className="mt-1 text-center text-sm text-parchment-dim">{book.author}</p>
+        )}
+        {book.seriesName && (
+          <p className="mt-1 text-center text-[13px] italic text-gold-400">
+            {seriesDisplay(book.seriesName, book.seriesIndex)}
+            {book.seriesTotal ? ` of ${book.seriesTotal}` : ''}
+          </p>
+        )}
+
+        {/* Rating */}
+        <div className="mt-3 flex justify-center gap-1">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              onClick={() =>
+                void window.Musaeum.library
+                  .updateBook(book.id, { rating: book.rating === n ? null : n })
+                  .then(load)
+              }
+              className={`transition-colors ${
+                book.rating && n <= book.rating
+                  ? 'text-gold-400'
+                  : 'text-ink-600 hover:text-gold-500/60'
+              }`}
+              aria-label={`Rate ${n} star${n > 1 ? 's' : ''}`}
+            >
+              <StarIcon className="h-5 w-5" filled={!!book.rating && n <= book.rating} />
+            </button>
+          ))}
+        </div>
+
+        {/* Formats + status */}
+        <div className="mt-4 flex items-center justify-center gap-2">
+          {book.formats.map((f) => (
+            <span
+              key={f}
+              className="rounded border border-ink-600 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-parchment-faint"
+            >
+              {f}
+            </span>
+          ))}
+          <select
+            value={book.readStatus}
+            onChange={(e) =>
+              void window.Musaeum.library
+                .updateBook(book.id, { readStatus: e.target.value as ReadStatus })
+                .then(load)
+            }
+            className="rounded border border-ink-600 bg-ink-850 px-1.5 py-0.5 text-[11px] text-parchment-dim"
+          >
+            {READ_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {book.description && (
+          <p className="mt-5 whitespace-pre-line text-[13px] leading-relaxed text-parchment-dim">
+            {book.description}
+          </p>
+        )}
+
+        {book.tags.length > 0 && (
+          <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+            {book.tags.map((t) => (
+              <span
+                key={t}
+                className="rounded-full bg-ink-800 px-2 py-0.5 text-[11px] text-parchment-faint"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <dl className="mt-5 space-y-1 border-t border-ink-800 pt-4 text-[12px]">
+          {book.publisher && <Meta label="Publisher" value={book.publisher} />}
+          {book.publishedDate && <Meta label="Published" value={book.publishedDate} />}
+          {book.isbn13 && <Meta label="ISBN-13" value={book.isbn13} />}
+          {book.language && <Meta label="Language" value={book.language.toUpperCase()} />}
+          {book.fileSizeBytes != null && (
+            <Meta label="Size" value={`${(book.fileSizeBytes / 1_048_576).toFixed(1)} MB`} />
+          )}
+          {book.dateAdded && <Meta label="Added" value={book.dateAdded.slice(0, 10)} />}
+        </dl>
+      </div>
+
+      {/* Actions */}
+      <div className="shrink-0 space-y-2 border-t border-ink-800 p-4">
+        {devices.map((d) => (
+          <button
+            key={d.id}
+            disabled={!online || busy !== null}
+            onClick={() => void run('send', () => sendToDevice(book.id, d.id))}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-gold-500 px-3 py-2 text-[13px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40"
+          >
+            <SendIcon className="h-4 w-4" />
+            Send to {d.name}
+          </button>
+        ))}
+        <div className="flex gap-2">
+          <button
+            disabled={!online || busy !== null || !book.formats.includes('epub')}
+            onClick={() =>
+              void run('books', () => window.Musaeum.devices.exportToAppleBooks(book.id))
+            }
+            className="flex-1 rounded-md border border-ink-600 px-3 py-1.5 text-[12px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
+          >
+            Apple Books
+          </button>
+          <button
+            disabled={!online || busy !== null}
+            onClick={() => void run('rehydrate', () => window.Musaeum.metadata.rehydrateBook(book.id))}
+            title="Re-fetch metadata"
+            className="rounded-md border border-ink-600 px-2.5 py-1.5 text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
+          >
+            <RefreshIcon className="h-4 w-4" />
+          </button>
+          <button
+            disabled={!online || busy !== null}
+            onClick={() => {
+              if (!confirmDelete) {
+                setConfirmDelete(true)
+                setTimeout(() => setConfirmDelete(false), 3_000)
+                return
+              }
+              void run('delete', async () => {
+                await window.Musaeum.library.deleteBook(book.id)
+                selectBook(null)
+              })
+            }}
+            title={confirmDelete ? 'Click again to permanently delete' : 'Delete book'}
+            className={`rounded-md border px-2.5 py-1.5 disabled:opacity-40 ${
+              confirmDelete
+                ? 'border-red-500 bg-red-500/20 text-red-400'
+                : 'border-ink-600 text-parchment-dim hover:bg-ink-800 hover:text-red-400'
+            }`}
+          >
+            <TrashIcon className="h-4 w-4" />
+          </button>
+        </div>
+        {confirmDelete && (
+          <p className="text-center text-[11px] text-red-400">
+            Click delete again to remove the book and its files
+          </p>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="shrink-0 text-parchment-faint">{label}</dt>
+      <dd className="truncate text-parchment-dim">{value}</dd>
+    </div>
+  )
+}

@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+*.log
+.DS_Store
+sidecar/__pycache__/
+sidecar/**/__pycache__/
+sidecar/.venv/
+.env
+.env.local
