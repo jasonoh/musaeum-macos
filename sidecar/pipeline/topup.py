@@ -9,11 +9,16 @@ library-index matches never create duplicates.
 
 import json
 import os
+import shutil
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from extractors.calibre_db import read_calibre_db
 from pipeline.migrate import _migrate_one, _sanitize
+
+# Sentinel returned by the matcher when a title (or title+author) key maps to
+# more than one library entry — the caller must skip rather than guess.
+AMBIGUOUS = object()
 
 
 def _normalize(s: str) -> str:
@@ -27,15 +32,24 @@ def _build_matcher(library_index: list) -> Callable[[dict], Optional[dict]]:
     by_isbn = {e["isbn_13"]: e for e in library_index if e.get("isbn_13")}
     by_title_author = {}
     by_title_only = {}
+
+    def _put(table: dict, key, entry: dict) -> None:
+        existing = table.get(key)
+        if existing is None:
+            table[key] = entry
+        elif existing is not entry:
+            table[key] = AMBIGUOUS
+
     for e in library_index:
         key = _normalize(e.get("title") or "")
         if not key:
             continue
-        by_title_only.setdefault(key, e)
+        _put(by_title_only, key, e)
         if e.get("author"):
-            by_title_author.setdefault((key, _normalize(e["author"])), e)
+            _put(by_title_author, (key, _normalize(e["author"])), e)
 
-    def match(record: dict) -> Optional[dict]:
+    def match(record: dict):
+        """Returns a library entry, the AMBIGUOUS sentinel, or None."""
         ids = record.get("identifiers") or {}
         if ids.get("goodreads") and ids["goodreads"] in by_goodreads:
             return by_goodreads[ids["goodreads"]]
@@ -64,8 +78,6 @@ def _find_pdf(source_dir: str) -> Optional[str]:
 def _attach_pdf(pdf_path: str, entry: dict, target_root: str) -> Optional[int]:
     """Copy the PDF into an existing book folder and update metadata.json.
     Returns copied byte size, or None when the folder already has a PDF."""
-    import shutil
-
     book_dir = os.path.join(target_root, entry["nas_path"])
     if not os.path.isdir(book_dir):
         return None
@@ -126,7 +138,12 @@ def topup_pdfs(
                  currentTitle=record.get("title"), **stats)
         try:
             entry = match(record)
-            if entry is not None:
+            if entry is AMBIGUOUS:
+                # Multiple library entries share this title — attaching would
+                # risk the wrong book, importing would risk a duplicate.
+                stats["skipped"] += 1
+                print(f"topup: ambiguous match for '{record.get('title')}', skipped", flush=True)
+            elif entry is not None:
                 size = _attach_pdf(pdf_path, entry, target_root)
                 if size is None:
                     stats["skipped"] += 1

@@ -116,6 +116,63 @@ def test_topup_attaches_and_adds(calibre_and_target):
     assert any(m == "migration_progress" for m, _ in notifications)
 
 
+def _ambiguous_setup(tmp_path, monkeypatch, record_author):
+    """Two library entries share the normalized title 'Collected Stories';
+    one Calibre record with that title (author per record_author) has a PDF."""
+    calibre_root = make_calibre_library(
+        tmp_path,
+        [{"path": "Unknown/Collected Stories (9)", "files": ["Collected Stories.pdf"]}],
+    )
+    records = [
+        {"calibre_id": 9, "title": "Collected Stories", "author": record_author,
+         "path": "Unknown/Collected Stories (9)", "identifiers": {}, "tags": [],
+         "sort_title": None, "author_sort": None, "publisher": None,
+         "published_date": None, "description": None, "language": None,
+         "rating": None, "series": None},
+    ]
+    import pipeline.topup as topup_mod
+    monkeypatch.setattr(topup_mod, "read_calibre_db", lambda p: {"books": records})
+
+    target = tmp_path / "musaeum"
+    index = []
+    for uid, author in (("uuid-cs-1", "Author One"), ("uuid-cs-2", "Author Two")):
+        book_dir = target / "books" / uid
+        os.makedirs(book_dir)
+        (book_dir / "metadata.json").write_text(json.dumps({
+            "id": uid, "title": "Collected Stories", "formats": ["epub"],
+        }))
+        index.append({"id": uid, "goodreads": None, "isbn_13": None,
+                      "title": "Collected Stories", "author": author,
+                      "nas_path": f"books/{uid}"})
+    return calibre_root, str(target), index
+
+
+def test_topup_ambiguous_title_without_author_is_skipped(tmp_path, monkeypatch):
+    calibre_root, target, index = _ambiguous_setup(tmp_path, monkeypatch, None)
+    result = topup_pdfs(job_id="j-amb", calibre_path=calibre_root,
+                        target_root=target, library_index=index,
+                        notify=lambda m, p: None)
+    assert result["stats"] == {"attached": 0, "added": 0, "skipped": 1}
+    assert result["attached"] == []
+    assert result["new_books"] == []
+    for uid in ("uuid-cs-1", "uuid-cs-2"):
+        folder = os.path.join(target, "books", uid)
+        assert not any(f.endswith(".pdf") for f in os.listdir(folder))
+
+
+def test_topup_title_author_disambiguates_shared_title(tmp_path, monkeypatch):
+    calibre_root, target, index = _ambiguous_setup(tmp_path, monkeypatch, "Author Two")
+    result = topup_pdfs(job_id="j-dis", calibre_path=calibre_root,
+                        target_root=target, library_index=index,
+                        notify=lambda m, p: None)
+    assert result["stats"] == {"attached": 1, "added": 0, "skipped": 0}
+    assert result["attached"][0]["book_id"] == "uuid-cs-2"
+    dir_two = os.path.join(target, "books", "uuid-cs-2")
+    assert any(f.endswith(".pdf") for f in os.listdir(dir_two))
+    dir_one = os.path.join(target, "books", "uuid-cs-1")
+    assert not any(f.endswith(".pdf") for f in os.listdir(dir_one))
+
+
 def test_topup_is_idempotent(calibre_and_target):
     calibre_root, target, index = calibre_and_target
     first = topup_pdfs(job_id="j1", calibre_path=calibre_root,
