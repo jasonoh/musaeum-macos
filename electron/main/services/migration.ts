@@ -164,6 +164,93 @@ export function startMigration(options: MigrationOptions): MigrationJob {
   return { jobId }
 }
 
+interface TopUpResult {
+  attached: { book_id: string; file_size_bytes: number }[]
+  new_books: MigratedBookRecord[]
+  stats: { attached: number; added: number; skipped: number }
+}
+
+/**
+ * Re-runnable Calibre PDF top-up: attaches skipped PDFs to matched existing
+ * books and imports PDF-only Calibre books as new entries. Matching happens
+ * in the sidecar against an index of the current library.
+ */
+export function startPdfTopUp(calibrePath: string): MigrationJob {
+  const libraryRoot = nasManager.getLibraryRoot()
+  if (!libraryRoot) throw new Error('No library folder is configured')
+
+  const jobId = randomUUID()
+  const progress: MigrationProgress = {
+    jobId,
+    phase: 'scanning',
+    total: 0,
+    completed: 0,
+    migrated: 0,
+    needsReview: 0,
+    noMetadata: 0,
+    duplicates: 0,
+    attached: 0,
+    added: 0,
+    skipped: 0,
+    currentTitle: null
+  }
+  jobs.set(jobId, progress)
+
+  sidecar.onNotification('migration_progress', (params) => {
+    const p = params as Partial<MigrationProgress> & { job_id?: string }
+    if (p.job_id !== jobId) return
+    Object.assign(progress, {
+      phase: p.phase ?? progress.phase,
+      total: p.total ?? progress.total,
+      completed: p.completed ?? progress.completed,
+      attached: p.attached ?? progress.attached,
+      added: p.added ?? progress.added,
+      skipped: p.skipped ?? progress.skipped,
+      currentTitle: p.currentTitle ?? progress.currentTitle
+    })
+  })
+
+  void (async () => {
+    try {
+      const libraryIndex = db.getBooks().map((b) => ({
+        id: b.id,
+        goodreads: b.goodreadsId,
+        isbn_13: b.isbn13,
+        title: b.title,
+        author: b.author,
+        nas_path: b.nasPath ?? join('books', b.id)
+      }))
+      const result = await sidecar.call<TopUpResult>(
+        'topup_pdfs',
+        {
+          job_id: jobId,
+          calibre_path: calibrePath,
+          target_root: libraryRoot,
+          library_index: libraryIndex
+        },
+        // Copying ~2k PDFs over SMB takes a while
+        1000 * 60 * 60 * 12
+      )
+      for (const a of result.attached) {
+        const book = db.getBook(a.book_id)
+        if (!book) continue
+        db.updateBook(a.book_id, {
+          formats: [...new Set<BookFormat>([...book.formats, 'pdf'])],
+          fileSizeBytes: (book.fileSizeBytes ?? 0) + a.file_size_bytes
+        })
+      }
+      insertMigratedBooks(result.new_books)
+      progress.phase = 'done'
+      broadcast('libraryChanged')
+    } catch (err) {
+      progress.phase = 'error'
+      progress.error = err instanceof Error ? err.message : String(err)
+    }
+  })()
+
+  return { jobId }
+}
+
 function insertMigratedBooks(records: MigratedBookRecord[]): void {
   const now = new Date().toISOString()
   for (const r of records) {

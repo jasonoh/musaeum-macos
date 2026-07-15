@@ -65,5 +65,9 @@ export interface MigrationProgress {
   noMetadata: number
   duplicates: number
   currentTitle: string | null
+  /** PDF top-up runs only */
+  attached?: number
+  added?: number
+  skipped?: number
   error?: string
 }
