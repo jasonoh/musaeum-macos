@@ -63,6 +63,8 @@ export interface MusaeumAPI {
   migration: {
     scanCalibreLibrary(path: string): Promise<MigrationScan>
     startMigration(options: MigrationOptions): Promise<MigrationJob>
+    /** Re-runnable: attach Calibre PDFs to existing books + import PDF-only books. */
+    startPdfTopUp(calibrePath: string): Promise<MigrationJob>
     getMigrationProgress(jobId: string): Promise<MigrationProgress | null>
     confirmCutover(): Promise<void>
     chooseCalibrePath(): Promise<string | null>

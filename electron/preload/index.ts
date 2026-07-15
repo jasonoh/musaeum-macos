@@ -49,6 +49,7 @@ const api: MusaeumAPI = {
   migration: {
     scanCalibreLibrary: (path) => invoke('migration:scanCalibreLibrary', path),
     startMigration: (options) => invoke('migration:startMigration', options),
+    startPdfTopUp: (calibrePath) => invoke('migration:startPdfTopUp', calibrePath),
     getMigrationProgress: (jobId) => invoke('migration:getMigrationProgress', jobId),
     confirmCutover: () => invoke('migration:confirmCutover'),
     chooseCalibrePath: () => invoke('migration:chooseCalibrePath')

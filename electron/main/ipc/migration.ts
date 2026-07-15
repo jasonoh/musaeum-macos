@@ -8,6 +8,9 @@ export function registerMigrationHandlers(): void {
   handle('migration:startMigration', (options: MigrationOptions) =>
     migration.startMigration(options)
   )
+  handle('migration:startPdfTopUp', (calibrePath: string) =>
+    migration.startPdfTopUp(calibrePath)
+  )
   handle('migration:getMigrationProgress', (jobId: string) =>
     migration.getMigrationProgress(jobId)
   )

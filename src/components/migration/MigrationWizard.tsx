@@ -4,7 +4,7 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
 import { CheckIcon, CloseIcon, SpinnerIcon, WarningIcon } from '@/components/shared/icons'
 
-type Step = 'source' | 'confirm' | 'running' | 'done'
+type Step = 'source' | 'confirm' | 'running' | 'done' | 'topup-running' | 'topup-done'
 
 function gb(bytes: number): string {
   return `${(bytes / 1_073_741_824).toFixed(1)} GB`
@@ -65,6 +65,33 @@ export function MigrationWizard() {
     }
   }
 
+  const startTopUp = async () => {
+    setError(null)
+    setProgress(null)
+    const path = await window.Musaeum.migration.chooseCalibrePath()
+    if (!path) return
+    try {
+      const { jobId } = await window.Musaeum.migration.startPdfTopUp(path)
+      setStep('topup-running')
+      pollRef.current = setInterval(async () => {
+        const p = await window.Musaeum.migration.getMigrationProgress(jobId)
+        if (!p) return
+        setProgress(p)
+        if (p.phase === 'done' || p.phase === 'error') {
+          clearInterval(pollRef.current)
+          if (p.phase === 'done') {
+            setStep('topup-done')
+            void load()
+          } else {
+            setError(p.error ?? 'PDF import failed')
+          }
+        }
+      }, 1_000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   const cutover = async () => {
     setError(null)
     try {
@@ -76,7 +103,8 @@ export function MigrationWizard() {
     }
   }
 
-  const running = step === 'running' && (!progress || progress.phase !== 'error')
+  const running =
+    (step === 'running' || step === 'topup-running') && (!progress || progress.phase !== 'error')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 p-8 backdrop-blur-sm animate-fade-in">
@@ -109,6 +137,17 @@ export function MigrationWizard() {
                 {scanning && <SpinnerIcon className="h-4 w-4" />}
                 {scanning ? 'Scanning…' : 'Locate Calibre Library…'}
               </button>
+              <button
+                onClick={() => void startTopUp()}
+                className="w-full rounded-md border border-ink-600 px-4 py-2 text-sm text-parchment-dim hover:bg-ink-800 hover:text-parchment"
+              >
+                Import PDFs from Calibre…
+              </button>
+              <p className="text-[11px] leading-relaxed text-parchment-faint">
+                Already migrated? This re-reads your Calibre library and brings over the
+                PDFs the migration skipped — attaching them to books you already have and
+                importing PDF-only books as new entries. Safe to run more than once.
+              </p>
             </div>
           )}
 
@@ -178,33 +217,20 @@ export function MigrationWizard() {
             </div>
           )}
 
-          {step === 'running' && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                {!error && <SpinnerIcon className="h-5 w-5 text-gold-400" />}
-                <p className="text-sm text-parchment-dim">
-                  {progress?.phase === 'hydrating' ? 'Hydrating metadata' : 'Copying books'} —{' '}
-                  <span className="tabular-nums">
-                    {progress?.completed ?? 0} of {progress?.total ?? '…'}
-                  </span>
-                </p>
-              </div>
-              {progress?.currentTitle && (
-                <p className="truncate font-display text-[13px] italic text-parchment-faint">
-                  {progress.currentTitle}
-                </p>
-              )}
-              <div className="h-1.5 overflow-hidden rounded-full bg-ink-700">
-                <div
-                  className="h-full rounded-full bg-gold-400 transition-[width] duration-500"
-                  style={{
-                    width: progress?.total
-                      ? `${Math.round((progress.completed / progress.total) * 100)}%`
-                      : '2%'
-                  }}
-                />
-              </div>
-            </div>
+          {(step === 'running' || step === 'topup-running') && (
+            <RunningPanel
+              label={
+                step === 'topup-running'
+                  ? progress?.phase === 'scanning'
+                    ? 'Reading Calibre library'
+                    : 'Copying PDFs'
+                  : progress?.phase === 'hydrating'
+                    ? 'Hydrating metadata'
+                    : 'Copying books'
+              }
+              progress={progress}
+              error={error}
+            />
           )}
 
           {step === 'done' && progress && (
@@ -232,6 +258,34 @@ export function MigrationWizard() {
             </div>
           )}
 
+          {step === 'topup-done' && progress && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-gold-300">
+                <CheckIcon className="h-5 w-5" />
+                <p className="font-display text-lg">PDF import complete</p>
+              </div>
+              <dl className="space-y-1.5 rounded-md bg-ink-850 p-4 text-[13px]">
+                <Stat label="Attached to existing books" value={progress.attached ?? 0} />
+                <Stat label="New books added" value={progress.added ?? 0} highlight />
+                <Stat label="Skipped" value={progress.skipped ?? 0} />
+                {(progress.errors ?? 0) > 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-parchment-faint">Errors</dt>
+                    <dd className="tabular-nums text-red-400">
+                      {(progress.errors ?? 0).toLocaleString()}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              <button
+                onClick={() => openModal(null)}
+                className="w-full rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 hover:bg-gold-400"
+              >
+                Done
+              </button>
+            </div>
+          )}
+
           {error && (
             <p className="mt-3 flex items-start gap-1.5 text-[13px] text-red-400">
               <WarningIcon className="mt-px h-4 w-4 shrink-0" />
@@ -239,6 +293,45 @@ export function MigrationWizard() {
             </p>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function RunningPanel({
+  label,
+  progress,
+  error
+}: {
+  label: string
+  progress: MigrationProgress | null
+  error: string | null
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        {!error && <SpinnerIcon className="h-5 w-5 text-gold-400" />}
+        <p className="text-sm text-parchment-dim">
+          {label} —{' '}
+          <span className="tabular-nums">
+            {progress?.completed ?? 0} of {progress?.total ?? '…'}
+          </span>
+        </p>
+      </div>
+      {progress?.currentTitle && (
+        <p className="truncate font-display text-[13px] italic text-parchment-faint">
+          {progress.currentTitle}
+        </p>
+      )}
+      <div className="h-1.5 overflow-hidden rounded-full bg-ink-700">
+        <div
+          className="h-full rounded-full bg-gold-400 transition-[width] duration-500"
+          style={{
+            width: progress?.total
+              ? `${Math.round((progress.completed / progress.total) * 100)}%`
+              : '2%'
+          }}
+        />
       </div>
     </div>
   )

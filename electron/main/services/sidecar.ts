@@ -23,10 +23,19 @@ let proc: ChildProcessWithoutNullStreams | null = null
 let nextId = 1
 let restartCount = 0
 const pending = new Map<string, PendingCall>()
-const notificationHandlers = new Map<string, (params: unknown) => void>()
+const notificationHandlers = new Map<string, Set<(params: unknown) => void>>()
 
-export function onNotification(method: string, handler: (params: unknown) => void): void {
-  notificationHandlers.set(method, handler)
+/** Subscribe to sidecar notifications for a method. Returns an unsubscribe fn. */
+export function onNotification(method: string, handler: (params: unknown) => void): () => void {
+  let handlers = notificationHandlers.get(method)
+  if (!handlers) {
+    handlers = new Set()
+    notificationHandlers.set(method, handlers)
+  }
+  handlers.add(handler)
+  return () => {
+    handlers.delete(handler)
+  }
 }
 
 function sidecarDir(): string {
@@ -113,7 +122,11 @@ function handleMessage(line: string): void {
   }
 
   if (!msg.id && msg.method) {
-    notificationHandlers.get(msg.method)?.(msg.params)
+    const handlers = notificationHandlers.get(msg.method)
+    if (handlers) {
+      // Iterate a copy so handlers can unsubscribe safely mid-dispatch
+      for (const handler of [...handlers]) handler(msg.params)
+    }
     return
   }
 

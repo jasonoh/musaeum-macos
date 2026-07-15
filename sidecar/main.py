@@ -18,9 +18,11 @@ from concurrent.futures import ThreadPoolExecutor
 from conversion.converter import convert_format
 from extractors.calibre_db import read_calibre_db
 from extractors.epub_metadata import extract_epub_metadata
+from extractors.pdf_metadata import extract_pdf_metadata
 from pipeline.cover import fetch_cover
 from pipeline.hydration import hydrate_metadata
 from pipeline.migrate import migrate_library
+from pipeline.topup import topup_pdfs
 
 _stdout_lock = threading.Lock()
 
@@ -37,6 +39,7 @@ def notify(method: str, params: dict) -> None:
 
 METHODS = {
     "extract_epub_metadata": lambda p: extract_epub_metadata(p["file_path"]),
+    "extract_pdf_metadata": lambda p: extract_pdf_metadata(p["file_path"]),
     "read_calibre_db": lambda p: read_calibre_db(p["calibre_path"]),
     "hydrate_metadata": lambda p: hydrate_metadata(
         book_id=p["book_id"],
@@ -58,6 +61,13 @@ METHODS = {
         calibre_path=p["calibre_path"],
         target_root=p["target_root"],
         hydrate=p.get("hydrate", False),
+        notify=notify,
+    ),
+    "topup_pdfs": lambda p: topup_pdfs(
+        job_id=p["job_id"],
+        calibre_path=p["calibre_path"],
+        target_root=p["target_root"],
+        library_index=p.get("library_index") or [],
         notify=notify,
     ),
 }

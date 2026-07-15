@@ -14,10 +14,11 @@ import uuid
 from datetime import datetime, timezone
 
 from extractors.calibre_db import read_calibre_db
+from extractors.pdf_metadata import render_pdf_cover
 from pipeline.cover import _write_cover
 from pipeline.hydration import hydrate_metadata
 
-BOOK_EXTENSIONS = (".epub", ".mobi", ".azw3")
+BOOK_EXTENSIONS = (".epub", ".mobi", ".azw3", ".pdf")
 HYDRATION_DELAY_S = 0.6  # rate-limit online fetches during bulk migration
 
 
@@ -25,6 +26,24 @@ def _sanitize(title: str) -> str:
     clean = re.sub(r'[/\\:*?"<>|\x00-\x1f]', "", title or "")
     clean = re.sub(r"\s+", " ", clean).strip()
     return (clean or "untitled")[:80]
+
+
+def _copy_atomic(src: str, dst: str) -> None:
+    """Copy src to dst via a temporary '.part' sibling, then atomically
+    rename into place. A NAS drop or crash mid-copy therefore never leaves a
+    truncated file at `dst` — presence-based idempotency checks elsewhere
+    (e.g. topup._attach_pdf) rely on this. On any failure the partial file is
+    removed on a best-effort basis before the exception propagates."""
+    part = dst + ".part"
+    try:
+        shutil.copy2(src, part)
+        os.replace(part, dst)
+    except Exception:
+        try:
+            os.remove(part)
+        except OSError:
+            pass
+        raise
 
 
 def migrate_library(job_id: str, calibre_path: str, target_root: str, hydrate: bool, notify) -> dict:
@@ -97,7 +116,7 @@ def _migrate_one(record: dict, calibre_path: str, target_root: str, seen_isbns: 
         if fmt in formats:
             continue
         target = os.path.join(book_dir, f"{sanitized}{ext}")
-        shutil.copy2(os.path.join(source_dir, f), target)
+        _copy_atomic(os.path.join(source_dir, f), target)
         formats.append(fmt)
         size_bytes += os.path.getsize(target)
 
@@ -109,6 +128,15 @@ def _migrate_one(record: dict, calibre_path: str, target_root: str, seen_isbns: 
                 cover = _write_cover(fh.read(), book_dir)
         except Exception:
             cover = None
+    if cover is None and formats == ["pdf"]:
+        # PDF-only book without a Calibre cover: render page 1
+        pdf_file = os.path.join(book_dir, f"{sanitized}.pdf")
+        data = render_pdf_cover(pdf_file)
+        if data:
+            try:
+                cover = _write_cover(data, book_dir)
+            except Exception:
+                cover = None
 
     now = datetime.now(timezone.utc).isoformat()
     book = {

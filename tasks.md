@@ -12,6 +12,19 @@ facet filters, Kindle transfer with auto-conversion, Apple Books export,
 Calibre migration wizard, Python sidecar. Verified end-to-end against live
 metadata APIs (see CHANGELOG.md).
 
+## Phase 1.5 — PDF support
+
+- [x] **PDF format support shipped** — pdf is a first-class format: import,
+      hydration (PDF Info dict extraction + page-1 render as an 'embedded'
+      cover candidate), Kindle transfer (direct copy, never converted).
+      Calibre PDF top-up (`topup_pdfs`): re-runnable, matches by Goodreads ID
+      → ISBN-13 → normalized title+author (ambiguous matches skipped),
+      attaches PDFs to existing book folders (idempotent) or imports
+      PDF-only books as new. Migration wizard: "Import PDFs from Calibre…"
+      action with progress + attached/added/skipped summary.
+- [ ] Run the PDF top-up against the real Calibre library (after verifying
+      on a scratch subset)
+
 ## Phase 1.5 — polish before real-library use
 
 Blockers before pointing the app at the full 7000-book NAS library:
@@ -33,7 +46,10 @@ Blockers before pointing the app at the full 7000-book NAS library:
 
 ## Phase 1.5 — quality
 
-- [ ] **Tests** — none exist yet. Highest value first:
+- [~] **Tests** — sidecar pytest suite now exists (`sidecar/tests/`, 14 tests:
+      `pdf_metadata`, `hydration_pdf`, `topup`; dev deps in
+      `requirements-dev.txt`, run via `sidecar/.venv/bin/python -m pytest
+      sidecar/tests`). Still missing, highest value first:
       - sidecar: `pipeline/conflict.py` merge policy, `extractors/epub_metadata.py`
         against fixture EPUBs (pytest)
       - main: `db.ts` query/filter builder, `importer.sanitizeTitle`,
@@ -41,6 +57,29 @@ Blockers before pointing the app at the full 7000-book NAS library:
 - [ ] Persist cover `source`/`width`/`height` into metadata.json (sidecar
       returns them; `importer.writeMetadataJson` currently drops them —
       the iOS contract documents them)
+- [ ] `render_pdf_cover` should log on `ImportError` (silent today — a
+      missing/broken PDF rendering dependency degrades invisibly)
+- [ ] Test: zero-page PDF (extraction/cover-render behavior on an empty doc)
+- [ ] Fix stale "EPUB" wording in `hydration.py` docstring/comments now that
+      PDF is a first-class hydration input too
+- [ ] Regression test: mobi/azw3 fall-through in `transfer-queue.ts`'s Kindle
+      format preference logic
+- [ ] Review `transfer-queue.ts` error message wording (found while auditing
+      the "No source file available for conversion" / PDF-passthrough path)
+- [ ] Handle multiple PDFs in one Calibre folder — `topup._find_pdf` and
+      `migrate._migrate_one` currently take only the first (sorted) match;
+      decide whether to warn, queue a conflict, or document the limitation
+- [ ] Migration wizard PDF top-up: an error currently dead-ends the modal —
+      wire "return to source" step, and disable the "Import PDFs from
+      Calibre…" button while the folder picker is open
+- [ ] Test fixture: encrypted/password-protected PDF (extraction + cover
+      render should fail gracefully, not crash the sidecar)
+- [ ] Scratch-subset dry-run gate: also kill the sidecar process mid-run and
+      re-run against the same target to validate crash recovery (attaches
+      retry as a no-op via idempotency + `.part` atomic copy; new-book
+      imports from the interrupted run WILL duplicate under fresh UUIDs and
+      need manual cleanup — check for duplicate folders until Section B /
+      incremental inserts land)
 - [ ] Import progress: `duplicate_check` step currently invisible in the
       overlay step list (works, just not rendered as its own row)
 - [ ] Keyboard navigation: arrows to move selection in grid/list, Esc to
