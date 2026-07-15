@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 
 from extractors.calibre_db import read_calibre_db
+from extractors.pdf_metadata import render_pdf_cover
 from pipeline.cover import _write_cover
 from pipeline.hydration import hydrate_metadata
 
@@ -109,6 +110,15 @@ def _migrate_one(record: dict, calibre_path: str, target_root: str, seen_isbns: 
                 cover = _write_cover(fh.read(), book_dir)
         except Exception:
             cover = None
+    if cover is None and formats == ["pdf"]:
+        # PDF-only book without a Calibre cover: render page 1
+        pdf_file = os.path.join(book_dir, f"{sanitized}.pdf")
+        data = render_pdf_cover(pdf_file)
+        if data:
+            try:
+                cover = _write_cover(data, book_dir)
+            except Exception:
+                cover = None
 
     now = datetime.now(timezone.utc).isoformat()
     book = {

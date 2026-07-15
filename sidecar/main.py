@@ -22,6 +22,7 @@ from extractors.pdf_metadata import extract_pdf_metadata
 from pipeline.cover import fetch_cover
 from pipeline.hydration import hydrate_metadata
 from pipeline.migrate import migrate_library
+from pipeline.topup import topup_pdfs
 
 _stdout_lock = threading.Lock()
 
@@ -60,6 +61,13 @@ METHODS = {
         calibre_path=p["calibre_path"],
         target_root=p["target_root"],
         hydrate=p.get("hydrate", False),
+        notify=notify,
+    ),
+    "topup_pdfs": lambda p: topup_pdfs(
+        job_id=p["job_id"],
+        calibre_path=p["calibre_path"],
+        target_root=p["target_root"],
+        library_index=p.get("library_index") or [],
         notify=notify,
     ),
 }
