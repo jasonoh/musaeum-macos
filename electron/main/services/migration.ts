@@ -122,7 +122,7 @@ export function startMigration(options: MigrationOptions): MigrationJob {
   }
   jobs.set(jobId, progress)
 
-  sidecar.onNotification('migration_progress', (params) => {
+  const unsubscribe = sidecar.onNotification('migration_progress', (params) => {
     const p = params as Partial<MigrationProgress> & { job_id?: string }
     if (p.job_id !== jobId) return
     Object.assign(progress, {
@@ -158,6 +158,8 @@ export function startMigration(options: MigrationOptions): MigrationJob {
     } catch (err) {
       progress.phase = 'error'
       progress.error = err instanceof Error ? err.message : String(err)
+    } finally {
+      unsubscribe()
     }
   })()
 
@@ -196,7 +198,7 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
   }
   jobs.set(jobId, progress)
 
-  sidecar.onNotification('migration_progress', (params) => {
+  const unsubscribe = sidecar.onNotification('migration_progress', (params) => {
     const p = params as Partial<MigrationProgress> & { job_id?: string }
     if (p.job_id !== jobId) return
     Object.assign(progress, {
@@ -245,6 +247,8 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
     } catch (err) {
       progress.phase = 'error'
       progress.error = err instanceof Error ? err.message : String(err)
+    } finally {
+      unsubscribe()
     }
   })()
 
