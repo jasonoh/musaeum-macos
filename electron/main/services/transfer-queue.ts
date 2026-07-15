@@ -88,25 +88,33 @@ async function runTransfer(job: TransferJob): Promise<void> {
 
     if (!sourceFile) {
       const epub = await findFormatFile(bookDir, 'epub')
-      if (!epub) throw new Error('No source file available for conversion')
-      const convertPath = sidecar.ebookConvertPath()
-      if (!convertPath) {
-        throw new Error(
-          'Calibre not found — install Calibre or set the ebook-convert path in Settings'
+      if (epub) {
+        const convertPath = sidecar.ebookConvertPath()
+        if (!convertPath) {
+          throw new Error(
+            'Calibre not found — install Calibre or set the ebook-convert path in Settings'
+          )
+        }
+        format = 'azw3'
+        emit(job, { status: 'converting', format })
+        const target = epub.replace(/\.epub$/i, '.azw3')
+        await sidecar.call(
+          'convert_format',
+          { input_path: epub, output_path: target, ebook_convert_path: convertPath },
+          300_000
         )
+        sourceFile = target
+        const formats = [...new Set([...book.formats, format])]
+        db.updateBook(book.id, { formats })
+        broadcast('libraryChanged')
+      } else {
+        // PDF-only book: Kindles render PDF natively; conversion output is
+        // unacceptable, so PDFs always transfer as-is
+        const pdf = await findFormatFile(bookDir, 'pdf')
+        if (!pdf) throw new Error('No source file available for conversion')
+        sourceFile = pdf
+        format = 'pdf'
       }
-      format = 'azw3'
-      emit(job, { status: 'converting', format })
-      const target = epub.replace(/\.epub$/i, '.azw3')
-      await sidecar.call(
-        'convert_format',
-        { input_path: epub, output_path: target, ebook_convert_path: convertPath },
-        300_000
-      )
-      sourceFile = target
-      const formats = [...new Set([...book.formats, format])]
-      db.updateBook(book.id, { formats })
-      broadcast('libraryChanged')
     }
 
     emit(job, { status: 'copying', format })

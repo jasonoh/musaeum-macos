@@ -13,7 +13,7 @@ import { broadcast } from './events'
 import * as nasManager from './nas-manager'
 import * as sidecar from './sidecar'
 
-const BOOK_EXTENSIONS = new Set(['.epub', '.mobi', '.azw3'])
+const BOOK_EXTENSIONS = new Set(['.epub', '.mobi', '.azw3', '.pdf'])
 
 const jobs = new Map<string, MigrationProgress>()
 let pendingCutoverRoot: string | null = null

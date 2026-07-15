@@ -1,4 +1,4 @@
-export type BookFormat = 'epub' | 'mobi' | 'azw3'
+export type BookFormat = 'epub' | 'mobi' | 'azw3' | 'pdf'
 
 export type ReadStatus = 'unread' | 'reading' | 'read'
 

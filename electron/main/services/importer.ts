@@ -8,7 +8,7 @@ import { broadcast } from './events'
 import * as nas from './nas-manager'
 import * as sidecar from './sidecar'
 
-const SUPPORTED_FORMATS = new Set(['.epub', '.mobi', '.azw3'])
+const SUPPORTED_FORMATS = new Set(['.epub', '.mobi', '.azw3', '.pdf'])
 
 const jobs = new Map<string, ImportProgress>()
 
@@ -89,13 +89,15 @@ async function importOne(filePath: string): Promise<ImportResult> {
     const libraryRoot = nas.getLibraryRoot()!
     const stat = await fs.stat(filePath)
 
-    // 1. Extract embedded metadata (EPUB only; other formats fall back to filename)
+    // 1. Extract embedded metadata (EPUB/PDF; other formats fall back to filename)
     emit(job, 'extracting')
     let extracted: ExtractedMetadata = {}
-    if (format === 'epub' && sidecar.isAvailable()) {
+    const extractMethod =
+      format === 'epub' ? 'extract_epub_metadata' : format === 'pdf' ? 'extract_pdf_metadata' : null
+    if (extractMethod && sidecar.isAvailable()) {
       try {
         extracted = await sidecar.call<ExtractedMetadata>(
-          'extract_epub_metadata',
+          extractMethod,
           { file_path: filePath },
           30_000
         )

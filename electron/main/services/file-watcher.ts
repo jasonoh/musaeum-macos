@@ -4,7 +4,7 @@ import { extname, join } from 'path'
 import * as importer from './importer'
 import * as nas from './nas-manager'
 
-const WATCHED_EXTENSIONS = new Set(['.epub', '.mobi', '.azw3'])
+const WATCHED_EXTENSIONS = new Set(['.epub', '.mobi', '.azw3', '.pdf'])
 
 let watcher: FSWatcher | null = null
 

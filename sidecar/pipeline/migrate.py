@@ -17,7 +17,7 @@ from extractors.calibre_db import read_calibre_db
 from pipeline.cover import _write_cover
 from pipeline.hydration import hydrate_metadata
 
-BOOK_EXTENSIONS = (".epub", ".mobi", ".azw3")
+BOOK_EXTENSIONS = (".epub", ".mobi", ".azw3", ".pdf")
 HYDRATION_DELAY_S = 0.6  # rate-limit online fetches during bulk migration
 
 
