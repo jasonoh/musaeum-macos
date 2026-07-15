@@ -311,7 +311,7 @@ progress event and result.
     "width": 800,
     "height": 1200
   },
-  "formats": ["epub", "mobi"],
+  "formats": ["epub", "mobi", "pdf"],
   "rating": null,
   "read_status": "unread",
   "date_added": "2025-01-15T10:30:00Z",
@@ -443,7 +443,7 @@ thread pool in Python so long calls don't serialize.
 | Method                  | Description                                      |
 |-------------------------|--------------------------------------------------|
 | `extract_epub_metadata` | Parse OPF from EPUB file                         |
-| `extract_pdf_metadata`  | Parse Info dict + render page-1 cover from PDF   |
+| `extract_pdf_metadata`  | Parse PDF Info dict (title/author)               |
 | `read_calibre_db`       | Extract records from Calibre metadata.db (read-only, immutable open) |
 | `hydrate_metadata`      | Full pipeline: fetch, merge, score, write covers |
 | `fetch_cover`           | Download a specific cover URL (conflict resolution path) |
