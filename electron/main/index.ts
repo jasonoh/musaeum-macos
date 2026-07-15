@@ -14,6 +14,12 @@ import { bindToNAS, startWatcher, stopWatcher } from './services/file-watcher'
 import * as nas from './services/nas-manager'
 import * as sidecar from './services/sidecar'
 
+// Isolated profile for verification/e2e runs — macOS Electron resolves the
+// default userData via the account's home, so a $HOME override is ignored
+if (process.env.MUSAEUM_USER_DATA) {
+  app.setPath('userData', process.env.MUSAEUM_USER_DATA)
+}
+
 // musaeum://cover/{bookId}/{thumb|full} — serves cover images from the
 // library without exposing arbitrary file:// access to the renderer
 protocol.registerSchemesAsPrivileged([
