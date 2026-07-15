@@ -133,11 +133,14 @@ Musaeum/
 │
 └── sidecar/                      # Python sidecar (venv at sidecar/.venv)
     ├── requirements.txt
+    ├── requirements-dev.txt      # pytest, for `sidecar/tests/`
     ├── main.py                   # JSON-RPC over stdio, thread pool dispatch
-    ├── extractors/               # epub_metadata.py, calibre_db.py
+    ├── extractors/               # epub_metadata.py, pdf_metadata.py, calibre_db.py
     ├── fetchers/                 # google_books.py, openlibrary.py, goodreads.py
-    ├── pipeline/                 # hydration.py, conflict.py, cover.py, migrate.py
-    └── conversion/               # converter.py (ebook-convert wrapper)
+    ├── pipeline/                 # hydration.py, conflict.py, cover.py, migrate.py,
+    │                             # topup.py (Calibre PDF top-up)
+    ├── conversion/               # converter.py (ebook-convert wrapper)
+    └── tests/                    # pytest — pdf_metadata, hydration_pdf, topup
 ```
 
 Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*`
@@ -174,6 +177,7 @@ Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*`
       {sanitized-title}.epub
       {sanitized-title}.mobi       # cached, generated on demand
       {sanitized-title}.azw3       # cached, generated on demand
+      {sanitized-title}.pdf        # original import or Calibre top-up; never converted
       cover_full.jpg               # 600px
       cover_thumb.jpg              # 200px
       metadata.json
@@ -188,7 +192,8 @@ inserted into the library immediately after copy; hydration continues async
 (`importer.hydrate` is fire-and-forget).
 
 ```
-1. Extract embedded EPUB metadata (OPF)
+1. Extract embedded metadata (EPUB OPF, or PDF Info dict + page-1 render as
+   an 'embedded' cover candidate)
 2. Known identifiers (from Calibre during migration) merged in
 3. Parallel fetch: Google Books API + OpenLibrary API
 4. Series data: Goodreads scrape when a Goodreads ID is known (any source)
@@ -252,7 +257,9 @@ variable (optional for normal use; required before bulk migration).
 - Detect Kindle by polling `/Volumes` every 5s (name contains "kindle", or
   volume has both `documents/` and `system/` dirs)
 - Format preference: azw3 → mobi; converts to azw3 via `ebook-convert` when
-  neither is cached, and caches the result on the NAS
+  neither is cached, and caches the result on the NAS. PDF-only books
+  transfer as PDF — never converted (Kindles render PDF natively;
+  `ebook-convert` is never invoked for PDFs)
 - Copy to `/documents/` on Kindle volume with streamed progress events
 - Log to `device_history` table (including failures, with error text)
 - Transfers run serially through `transfer-queue.ts`
@@ -436,11 +443,13 @@ thread pool in Python so long calls don't serialize.
 | Method                  | Description                                      |
 |-------------------------|--------------------------------------------------|
 | `extract_epub_metadata` | Parse OPF from EPUB file                         |
+| `extract_pdf_metadata`  | Parse Info dict + render page-1 cover from PDF   |
 | `read_calibre_db`       | Extract records from Calibre metadata.db (read-only, immutable open) |
 | `hydrate_metadata`      | Full pipeline: fetch, merge, score, write covers |
 | `fetch_cover`           | Download a specific cover URL (conflict resolution path) |
 | `convert_format`        | Wrap ebook-convert for format conversion         |
 | `migrate_library`       | Full Calibre migration; streams `migration_progress` notifications |
+| `topup_pdfs`            | Re-runnable Calibre PDF top-up; streams `migration_progress` |
 
 Python resolution order: `app_config.python_path` → `sidecar/.venv/bin/python`
 → `python3.12` → `python3.11` → `python3`. The sidecar auto-restarts on crash
@@ -491,6 +500,7 @@ interface MusaeumAPI {
     scanCalibreLibrary(path: string): Promise<MigrationScan>
     startMigration(options: MigrationOptions): Promise<MigrationJob>
     getMigrationProgress(jobId: string): Promise<MigrationProgress | null>
+    startPdfTopUp(calibrePath: string): Promise<MigrationJob>  // re-runnable PDF attach/import
     confirmCutover(): Promise<void>
     chooseCalibrePath(): Promise<string | null>  // native folder picker
   }
@@ -534,7 +544,8 @@ app at the full 7000-book library (tasks.md).
   `/Applications/calibre.app/Contents/MacOS/ebook-convert`, overridable via
   `app_config.ebook_convert_path`. No Calibre GUI is launched.
 - **Python 3.11+** — sidecar venv at `sidecar/.venv` (see README).
-- Sidecar deps: `sidecar/requirements.txt` (isbnlib, requests, bs4, lxml, Pillow).
+- Sidecar deps: `sidecar/requirements.txt` (isbnlib, requests, bs4, lxml, Pillow,
+  pypdf, pypdfium2). Dev deps: `sidecar/requirements-dev.txt` (pytest).
 - Node deps: see `package.json`.
 
 ---

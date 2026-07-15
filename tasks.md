@@ -12,6 +12,19 @@ facet filters, Kindle transfer with auto-conversion, Apple Books export,
 Calibre migration wizard, Python sidecar. Verified end-to-end against live
 metadata APIs (see CHANGELOG.md).
 
+## Phase 1.5 — PDF support
+
+- [x] **PDF format support shipped** — pdf is a first-class format: import,
+      hydration (PDF Info dict extraction + page-1 render as an 'embedded'
+      cover candidate), Kindle transfer (direct copy, never converted).
+      Calibre PDF top-up (`topup_pdfs`): re-runnable, matches by Goodreads ID
+      → ISBN-13 → normalized title+author (ambiguous matches skipped),
+      attaches PDFs to existing book folders (idempotent) or imports
+      PDF-only books as new. Migration wizard: "Import PDFs from Calibre…"
+      action with progress + attached/added/skipped summary.
+- [ ] Run the PDF top-up against the real Calibre library (after verifying
+      on a scratch subset)
+
 ## Phase 1.5 — polish before real-library use
 
 Blockers before pointing the app at the full 7000-book NAS library:
@@ -33,7 +46,10 @@ Blockers before pointing the app at the full 7000-book NAS library:
 
 ## Phase 1.5 — quality
 
-- [ ] **Tests** — none exist yet. Highest value first:
+- [~] **Tests** — sidecar pytest suite now exists (`sidecar/tests/`, 12 tests:
+      `pdf_metadata`, `hydration_pdf`, `topup`; dev deps in
+      `requirements-dev.txt`, run via `sidecar/.venv/bin/python -m pytest
+      sidecar/tests`). Still missing, highest value first:
       - sidecar: `pipeline/conflict.py` merge policy, `extractors/epub_metadata.py`
         against fixture EPUBs (pytest)
       - main: `db.ts` query/filter builder, `importer.sanitizeTitle`,

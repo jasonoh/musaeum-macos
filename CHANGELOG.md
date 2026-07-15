@@ -4,6 +4,31 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
+## [Unreleased] — 2026-07-14
+
+### Added
+- PDF as a first-class book format alongside epub/mobi/azw3: import,
+  file-watcher, and Calibre migration scan all recognize `.pdf`
+- PDF metadata extraction (`sidecar/extractors/pdf_metadata.py`, via pypdf)
+  and page-1 cover rendering (via pypdfium2), wired into the hydration
+  pipeline as embedded metadata / an 'embedded' cover candidate
+- Kindle transfer: PDF-only books copy directly (Kindles render PDF
+  natively) — `ebook-convert` is never invoked for PDFs
+- Calibre PDF top-up (`sidecar/pipeline/topup.py`, RPC `topup_pdfs`):
+  re-runnable tool that attaches PDFs from a Calibre library to existing
+  book folders (idempotent — skips folders that already hold a PDF) or
+  imports PDF-only books as new; matches by Goodreads ID → ISBN-13 →
+  normalized title+author, skipping ambiguous matches rather than guessing
+- Migration wizard: "Import PDFs from Calibre…" action with progress and an
+  attached/added/skipped summary
+- First tests in the repo: pytest suite (`sidecar/tests/`, 12 tests) covering
+  PDF metadata extraction, PDF hydration, and top-up matching; dev deps in
+  `sidecar/requirements-dev.txt`
+
+### Changed
+- `sidecar.onNotification` supports multiple subscribers per method and
+  returns an unsubscribe function
+
 ## [0.1.0] — 2026-07-12
 
 Initial Phase 1 (MVP) implementation.
