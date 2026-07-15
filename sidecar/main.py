@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from conversion.converter import convert_format
 from extractors.calibre_db import read_calibre_db
 from extractors.epub_metadata import extract_epub_metadata
+from extractors.pdf_metadata import extract_pdf_metadata
 from pipeline.cover import fetch_cover
 from pipeline.hydration import hydrate_metadata
 from pipeline.migrate import migrate_library
@@ -37,6 +38,7 @@ def notify(method: str, params: dict) -> None:
 
 METHODS = {
     "extract_epub_metadata": lambda p: extract_epub_metadata(p["file_path"]),
+    "extract_pdf_metadata": lambda p: extract_pdf_metadata(p["file_path"]),
     "read_calibre_db": lambda p: read_calibre_db(p["calibre_path"]),
     "hydrate_metadata": lambda p: hydrate_metadata(
         book_id=p["book_id"],

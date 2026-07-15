@@ -14,6 +14,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 from extractors.epub_metadata import extract_embedded_cover, extract_epub_metadata
+from extractors.pdf_metadata import extract_pdf_metadata, render_pdf_cover
 from fetchers.goodreads import fetch_series
 from fetchers.google_books import fetch_google_books
 from fetchers.openlibrary import fetch_openlibrary
@@ -32,9 +33,13 @@ def hydrate_metadata(
 
     # 1. Embedded metadata
     embedded = {}
-    if file_path.lower().endswith(".epub") and os.path.exists(file_path):
+    lower = file_path.lower()
+    if os.path.exists(file_path):
         try:
-            embedded = extract_epub_metadata(file_path) or {}
+            if lower.endswith(".epub"):
+                embedded = extract_epub_metadata(file_path) or {}
+            elif lower.endswith(".pdf"):
+                embedded = extract_pdf_metadata(file_path) or {}
         except Exception:
             embedded = {}
     if embedded:
@@ -89,7 +94,12 @@ def hydrate_metadata(
         candidates.append({"source": "google_books", "url": google["cover_url"]})
     if openlib and openlib.get("cover_url"):
         candidates.append({"source": "openlibrary", "url": openlib["cover_url"]})
-    embedded_cover = extract_embedded_cover(file_path) if file_path.lower().endswith(".epub") else None
+    if lower.endswith(".epub"):
+        embedded_cover = extract_embedded_cover(file_path)
+    elif lower.endswith(".pdf"):
+        embedded_cover = render_pdf_cover(file_path)
+    else:
+        embedded_cover = None
     if embedded_cover:
         candidates.append({"source": "embedded", "data": embedded_cover})
 
