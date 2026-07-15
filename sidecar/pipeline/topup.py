@@ -3,21 +3,23 @@
 Attaches PDFs skipped by the initial migration to their already-migrated
 books (matched Goodreads ID → ISBN-13 → normalized title+author), and
 imports PDF-only Calibre books as new entries via migrate._migrate_one.
-Idempotent: a target folder that already contains a .pdf is skipped, and
-library-index matches never create duplicates.
+Idempotent: a target folder that already contains a .pdf is skipped (and
+reported separately via `already_present` so the caller can self-heal any
+formats/SQLite divergence), and library-index matches never create
+duplicates.
 """
 
 import json
 import os
-import shutil
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from extractors.calibre_db import read_calibre_db
-from pipeline.migrate import _migrate_one, _sanitize
+from pipeline.migrate import _copy_atomic, _migrate_one, _sanitize
 
-# Sentinel returned by the matcher when a title (or title+author) key maps to
-# more than one library entry — the caller must skip rather than guess.
+# Sentinel returned by the matcher when a lookup key (identifier or title)
+# maps to more than one library entry — the caller must skip rather than
+# guess which book a PDF belongs to.
 AMBIGUOUS = object()
 
 
@@ -27,11 +29,19 @@ def _normalize(s: str) -> str:
     return " ".join(out.split())
 
 
-def _build_matcher(library_index: list) -> Callable[[dict], Optional[dict]]:
-    by_goodreads = {e["goodreads"]: e for e in library_index if e.get("goodreads")}
-    by_isbn = {e["isbn_13"]: e for e in library_index if e.get("isbn_13")}
-    by_title_author = {}
-    by_title_only = {}
+def _build_matcher(library_index: list) -> Callable:
+    """Builds a `record -> library entry | AMBIGUOUS | None` matcher.
+
+    Every lookup table (goodreads, isbn_13, title+author, title-only) is
+    built through `_put` so a duplicate key in any of them degrades to the
+    AMBIGUOUS sentinel instead of silently last-wins overwriting an earlier
+    entry — an identifier collision is exactly as untrustworthy as a title
+    collision and must be skipped the same way.
+    """
+    by_goodreads: dict = {}
+    by_isbn: dict = {}
+    by_title_author: dict = {}
+    by_title_only: dict = {}
 
     def _put(table: dict, key, entry: dict) -> None:
         existing = table.get(key)
@@ -41,6 +51,10 @@ def _build_matcher(library_index: list) -> Callable[[dict], Optional[dict]]:
             table[key] = AMBIGUOUS
 
     for e in library_index:
+        if e.get("goodreads"):
+            _put(by_goodreads, e["goodreads"], e)
+        if e.get("isbn_13"):
+            _put(by_isbn, e["isbn_13"], e)
         key = _normalize(e.get("title") or "")
         if not key:
             continue
@@ -75,25 +89,30 @@ def _find_pdf(source_dir: str) -> Optional[str]:
     return None
 
 
-def _attach_pdf(pdf_path: str, entry: dict, target_root: str) -> Optional[int]:
+def _attach_pdf(pdf_path: str, entry: dict, target_root: str) -> tuple:
     """Copy the PDF into an existing book folder and update metadata.json.
-    Returns copied byte size, or None when the folder already has a PDF."""
+
+    Returns (status, size): status is "attached", "already_present", or
+    "missing_dir"; size is the copied byte size only when status ==
+    "attached". A metadata.json read failure is NOT caught here — it
+    propagates to the caller (topup_pdfs), which counts it as an error and
+    leaves the file untouched, rather than silently rewriting it from a
+    blank `{}` and destroying the canonical title/authors/identifiers/
+    series/cover/read_status.
+    """
     book_dir = os.path.join(target_root, entry["nas_path"])
     if not os.path.isdir(book_dir):
-        return None
+        return "missing_dir", None
     if any(f.lower().endswith(".pdf") for f in os.listdir(book_dir)):
-        return None
+        return "already_present", None
 
     meta_path = os.path.join(book_dir, "metadata.json")
-    try:
-        with open(meta_path, encoding="utf-8") as fh:
-            meta = json.load(fh)
-    except Exception:
-        meta = {}
+    with open(meta_path, encoding="utf-8") as fh:
+        meta = json.load(fh)
 
     title = meta.get("title") or entry.get("title") or "untitled"
     target = os.path.join(book_dir, f"{_sanitize(title)}.pdf")
-    shutil.copy2(pdf_path, target)
+    _copy_atomic(pdf_path, target)
 
     formats = meta.get("formats") or []
     if "pdf" not in formats:
@@ -103,7 +122,7 @@ def _attach_pdf(pdf_path: str, entry: dict, target_root: str) -> Optional[int]:
     with open(meta_path, "w", encoding="utf-8") as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=2)
 
-    return os.path.getsize(target)
+    return "attached", os.path.getsize(target)
 
 
 def topup_pdfs(
@@ -126,8 +145,9 @@ def topup_pdfs(
             with_pdf.append((record, pdf_path))
 
     match = _build_matcher(library_index)
-    stats = {"attached": 0, "added": 0, "skipped": 0}
+    stats = {"attached": 0, "added": 0, "skipped": 0, "errors": 0}
     attached = []
+    already_present = []
     new_books = []
     migrate_stats = {"migrated": 0, "needsReview": 0, "noMetadata": 0, "duplicates": 0}
     seen_isbns = {e["isbn_13"] for e in library_index if e.get("isbn_13")}
@@ -139,17 +159,20 @@ def topup_pdfs(
         try:
             entry = match(record)
             if entry is AMBIGUOUS:
-                # Multiple library entries share this title — attaching would
+                # Multiple library entries share this key — attaching would
                 # risk the wrong book, importing would risk a duplicate.
                 stats["skipped"] += 1
                 print(f"topup: ambiguous match for '{record.get('title')}', skipped", flush=True)
             elif entry is not None:
-                size = _attach_pdf(pdf_path, entry, target_root)
-                if size is None:
-                    stats["skipped"] += 1
-                else:
+                status, size = _attach_pdf(pdf_path, entry, target_root)
+                if status == "attached":
                     stats["attached"] += 1
                     attached.append({"book_id": entry["id"], "file_size_bytes": size})
+                elif status == "already_present":
+                    stats["skipped"] += 1
+                    already_present.append({"book_id": entry["id"]})
+                else:  # missing_dir
+                    stats["skipped"] += 1
             else:
                 book = _migrate_one(record, calibre_path, target_root,
                                     seen_isbns, migrate_stats)
@@ -159,8 +182,13 @@ def topup_pdfs(
                 else:
                     stats["skipped"] += 1
         except Exception as exc:
-            stats["skipped"] += 1
+            stats["errors"] += 1
             print(f"topup: failed on '{record.get('title')}': {exc}", flush=True)
 
     progress(phase="done", total=total, completed=total, currentTitle=None, **stats)
-    return {"attached": attached, "new_books": new_books, "stats": stats}
+    return {
+        "attached": attached,
+        "already_present": already_present,
+        "new_books": new_books,
+        "stats": stats,
+    }

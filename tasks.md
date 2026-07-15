@@ -46,7 +46,7 @@ Blockers before pointing the app at the full 7000-book NAS library:
 
 ## Phase 1.5 — quality
 
-- [~] **Tests** — sidecar pytest suite now exists (`sidecar/tests/`, 12 tests:
+- [~] **Tests** — sidecar pytest suite now exists (`sidecar/tests/`, 14 tests:
       `pdf_metadata`, `hydration_pdf`, `topup`; dev deps in
       `requirements-dev.txt`, run via `sidecar/.venv/bin/python -m pytest
       sidecar/tests`). Still missing, highest value first:
@@ -57,6 +57,26 @@ Blockers before pointing the app at the full 7000-book NAS library:
 - [ ] Persist cover `source`/`width`/`height` into metadata.json (sidecar
       returns them; `importer.writeMetadataJson` currently drops them —
       the iOS contract documents them)
+- [ ] `render_pdf_cover` should log on `ImportError` (silent today — a
+      missing/broken PDF rendering dependency degrades invisibly)
+- [ ] Test: zero-page PDF (extraction/cover-render behavior on an empty doc)
+- [ ] Fix stale "EPUB" wording in `hydration.py` docstring/comments now that
+      PDF is a first-class hydration input too
+- [ ] Regression test: mobi/azw3 fall-through in `transfer-queue.ts`'s Kindle
+      format preference logic
+- [ ] Review `transfer-queue.ts` error message wording (found while auditing
+      the "No source file available for conversion" / PDF-passthrough path)
+- [ ] Handle multiple PDFs in one Calibre folder — `topup._find_pdf` and
+      `migrate._migrate_one` currently take only the first (sorted) match;
+      decide whether to warn, queue a conflict, or document the limitation
+- [ ] Migration wizard PDF top-up: an error currently dead-ends the modal —
+      wire "return to source" step, and disable the "Import PDFs from
+      Calibre…" button while the folder picker is open
+- [ ] Test fixture: encrypted/password-protected PDF (extraction + cover
+      render should fail gracefully, not crash the sidecar)
+- [ ] Scratch-subset dry-run gate: also kill the sidecar process mid-run and
+      re-run against the same target to validate crash recovery (topup's
+      idempotency + `.part`-file atomic copy should make this a no-op retry)
 - [ ] Import progress: `duplicate_check` step currently invisible in the
       overlay step list (works, just not rendered as its own row)
 - [ ] Keyboard navigation: arrows to move selection in grid/list, Esc to

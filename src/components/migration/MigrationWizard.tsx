@@ -267,7 +267,10 @@ export function MigrationWizard() {
               <dl className="space-y-1.5 rounded-md bg-ink-850 p-4 text-[13px]">
                 <Stat label="Attached to existing books" value={progress.attached ?? 0} />
                 <Stat label="New books added" value={progress.added ?? 0} highlight />
-                <Stat label="Skipped (already present)" value={progress.skipped ?? 0} />
+                <Stat label="Skipped" value={progress.skipped ?? 0} />
+                {(progress.errors ?? 0) > 0 && (
+                  <Stat label="Errors" value={progress.errors ?? 0} highlight />
+                )}
               </dl>
               <button
                 onClick={() => openModal(null)}

@@ -69,5 +69,6 @@ export interface MigrationProgress {
   attached?: number
   added?: number
   skipped?: number
+  errors?: number
   error?: string
 }

@@ -168,8 +168,9 @@ export function startMigration(options: MigrationOptions): MigrationJob {
 
 interface TopUpResult {
   attached: { book_id: string; file_size_bytes: number }[]
+  already_present: { book_id: string }[]
   new_books: MigratedBookRecord[]
-  stats: { attached: number; added: number; skipped: number }
+  stats: { attached: number; added: number; skipped: number; errors: number }
 }
 
 /**
@@ -180,6 +181,7 @@ interface TopUpResult {
 export function startPdfTopUp(calibrePath: string): MigrationJob {
   const libraryRoot = nasManager.getLibraryRoot()
   if (!libraryRoot) throw new Error('No library folder is configured')
+  nasManager.assertOnline()
 
   const jobId = randomUUID()
   const progress: MigrationProgress = {
@@ -194,6 +196,7 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
     attached: 0,
     added: 0,
     skipped: 0,
+    errors: 0,
     currentTitle: null
   }
   jobs.set(jobId, progress)
@@ -208,6 +211,7 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
       attached: p.attached ?? progress.attached,
       added: p.added ?? progress.added,
       skipped: p.skipped ?? progress.skipped,
+      errors: p.errors ?? progress.errors,
       currentTitle: p.currentTitle ?? progress.currentTitle
     })
   })
@@ -235,11 +239,29 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
       )
       for (const a of result.attached) {
         const book = db.getBook(a.book_id)
-        if (!book) continue
+        if (!book) {
+          console.error(`[migration] topup attached book ${a.book_id} not found in cache`)
+          continue
+        }
         db.updateBook(a.book_id, {
           formats: [...new Set<BookFormat>([...book.formats, 'pdf'])],
           fileSizeBytes: (book.fileSizeBytes ?? 0) + a.file_size_bytes
         })
+      }
+      // Self-heal: a folder that already had a PDF (e.g. from a crash-
+      // interrupted earlier run) may not have its 'pdf' format recorded in
+      // SQLite yet — ensure it idempotently, without touching file size.
+      for (const p of result.already_present) {
+        const book = db.getBook(p.book_id)
+        if (!book) {
+          console.error(`[migration] topup already-present book ${p.book_id} not found in cache`)
+          continue
+        }
+        if (!book.formats.includes('pdf')) {
+          db.updateBook(p.book_id, {
+            formats: [...new Set<BookFormat>([...book.formats, 'pdf'])]
+          })
+        }
       }
       insertMigratedBooks(result.new_books)
       progress.phase = 'done'

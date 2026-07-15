@@ -28,6 +28,24 @@ def _sanitize(title: str) -> str:
     return (clean or "untitled")[:80]
 
 
+def _copy_atomic(src: str, dst: str) -> None:
+    """Copy src to dst via a temporary '.part' sibling, then atomically
+    rename into place. A NAS drop or crash mid-copy therefore never leaves a
+    truncated file at `dst` — presence-based idempotency checks elsewhere
+    (e.g. topup._attach_pdf) rely on this. On any failure the partial file is
+    removed on a best-effort basis before the exception propagates."""
+    part = dst + ".part"
+    try:
+        shutil.copy2(src, part)
+        os.replace(part, dst)
+    except Exception:
+        try:
+            os.remove(part)
+        except OSError:
+            pass
+        raise
+
+
 def migrate_library(job_id: str, calibre_path: str, target_root: str, hydrate: bool, notify) -> dict:
     def progress(**kwargs):
         notify("migration_progress", {"job_id": job_id, **kwargs})
@@ -98,7 +116,7 @@ def _migrate_one(record: dict, calibre_path: str, target_root: str, seen_isbns: 
         if fmt in formats:
             continue
         target = os.path.join(book_dir, f"{sanitized}{ext}")
-        shutil.copy2(os.path.join(source_dir, f), target)
+        _copy_atomic(os.path.join(source_dir, f), target)
         formats.append(fmt)
         size_bytes += os.path.getsize(target)
 

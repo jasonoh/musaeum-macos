@@ -103,7 +103,7 @@ def test_topup_attaches_and_adds(calibre_and_target):
     )
 
     # Attached to the existing Deep Work folder
-    assert result["stats"] == {"attached": 1, "added": 1, "skipped": 0}
+    assert result["stats"] == {"attached": 1, "added": 1, "skipped": 0, "errors": 0}
     attached_dir = os.path.join(target, "books", "uuid-deep-work")
     assert any(f.endswith(".pdf") for f in os.listdir(attached_dir))
     meta = json.loads(open(os.path.join(attached_dir, "metadata.json")).read())
@@ -152,7 +152,7 @@ def test_topup_ambiguous_title_without_author_is_skipped(tmp_path, monkeypatch):
     result = topup_pdfs(job_id="j-amb", calibre_path=calibre_root,
                         target_root=target, library_index=index,
                         notify=lambda m, p: None)
-    assert result["stats"] == {"attached": 0, "added": 0, "skipped": 1}
+    assert result["stats"] == {"attached": 0, "added": 0, "skipped": 1, "errors": 0}
     assert result["attached"] == []
     assert result["new_books"] == []
     for uid in ("uuid-cs-1", "uuid-cs-2"):
@@ -165,7 +165,7 @@ def test_topup_title_author_disambiguates_shared_title(tmp_path, monkeypatch):
     result = topup_pdfs(job_id="j-dis", calibre_path=calibre_root,
                         target_root=target, library_index=index,
                         notify=lambda m, p: None)
-    assert result["stats"] == {"attached": 1, "added": 0, "skipped": 0}
+    assert result["stats"] == {"attached": 1, "added": 0, "skipped": 0, "errors": 0}
     assert result["attached"][0]["book_id"] == "uuid-cs-2"
     dir_two = os.path.join(target, "books", "uuid-cs-2")
     assert any(f.endswith(".pdf") for f in os.listdir(dir_two))
@@ -191,3 +191,75 @@ def test_topup_is_idempotent(calibre_and_target):
     assert second["stats"]["added"] == 0
     assert second["stats"]["attached"] == 0
     assert second["stats"]["skipped"] == 2
+    assert second["stats"]["errors"] == 0
+    # Both targets already had a PDF on disk — reported distinctly so the
+    # caller can self-heal SQLite's `formats` after a crash-interrupted run.
+    assert {p["book_id"] for p in second["already_present"]} == {
+        "uuid-deep-work",
+        first["new_books"][0]["id"],
+    }
+
+
+def test_attach_corrupt_metadata_json_is_counted_as_error_and_file_is_untouched(calibre_and_target):
+    """A transient/corrupt metadata.json read must never be papered over with
+    a blank {} rewrite — that would destroy the canonical title/authors/
+    identifiers/series/cover/read_status. It must surface as an error and
+    leave the file exactly as it was, so a re-run can retry."""
+    calibre_root, target, index = calibre_and_target
+    meta_path = os.path.join(target, "books", "uuid-deep-work", "metadata.json")
+    corrupt_content = "{not valid json at all"
+    with open(meta_path, "w", encoding="utf-8") as fh:
+        fh.write(corrupt_content)
+
+    result = topup_pdfs(job_id="j-corrupt", calibre_path=calibre_root,
+                        target_root=target, library_index=index,
+                        notify=lambda m, p: None)
+
+    assert result["stats"]["errors"] == 1
+    assert result["stats"]["attached"] == 0
+    assert result["attached"] == []
+
+    with open(meta_path, encoding="utf-8") as fh:
+        assert fh.read() == corrupt_content
+
+    book_dir = os.path.join(target, "books", "uuid-deep-work")
+    assert not any(f.lower().endswith(".pdf") for f in os.listdir(book_dir))
+
+
+def test_duplicate_isbn_across_library_entries_is_ambiguous_and_skipped(tmp_path, monkeypatch):
+    calibre_root = make_calibre_library(
+        tmp_path,
+        [{"path": "Unknown/Some Book (5)", "files": ["Some Book.pdf"]}],
+    )
+    records = [
+        {"calibre_id": 5, "title": "Some Book", "author": "Someone",
+         "path": "Unknown/Some Book (5)", "identifiers": {"isbn_13": "9781111111111"},
+         "tags": [], "sort_title": None, "author_sort": None, "publisher": None,
+         "published_date": None, "description": None, "language": None,
+         "rating": None, "series": None},
+    ]
+    import pipeline.topup as topup_mod
+    monkeypatch.setattr(topup_mod, "read_calibre_db", lambda p: {"books": records})
+
+    target = tmp_path / "musaeum"
+    index = []
+    for uid in ("uuid-x", "uuid-y"):
+        book_dir = target / "books" / uid
+        os.makedirs(book_dir)
+        (book_dir / "metadata.json").write_text(json.dumps({
+            "id": uid, "title": f"Different Title {uid}", "formats": ["epub"],
+        }))
+        # Both entries share an ISBN-13 (a bad data situation, but one the
+        # matcher must not guess through) despite differing titles/authors.
+        index.append({"id": uid, "goodreads": None, "isbn_13": "9781111111111",
+                      "title": f"Different Title {uid}", "author": "Nobody",
+                      "nas_path": f"books/{uid}"})
+
+    result = topup_pdfs(job_id="j-dupisbn", calibre_path=calibre_root,
+                        target_root=str(target), library_index=index,
+                        notify=lambda m, p: None)
+
+    assert result["stats"] == {"attached": 0, "added": 0, "skipped": 1, "errors": 0}
+    for uid in ("uuid-x", "uuid-y"):
+        folder = os.path.join(str(target), "books", uid)
+        assert not any(f.endswith(".pdf") for f in os.listdir(folder))
