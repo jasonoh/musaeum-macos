@@ -269,7 +269,12 @@ export function MigrationWizard() {
                 <Stat label="New books added" value={progress.added ?? 0} highlight />
                 <Stat label="Skipped" value={progress.skipped ?? 0} />
                 {(progress.errors ?? 0) > 0 && (
-                  <Stat label="Errors" value={progress.errors ?? 0} highlight />
+                  <div className="flex justify-between">
+                    <dt className="text-parchment-faint">Errors</dt>
+                    <dd className="tabular-nums text-red-400">
+                      {(progress.errors ?? 0).toLocaleString()}
+                    </dd>
+                  </div>
                 )}
               </dl>
               <button

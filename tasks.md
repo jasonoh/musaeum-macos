@@ -75,8 +75,11 @@ Blockers before pointing the app at the full 7000-book NAS library:
 - [ ] Test fixture: encrypted/password-protected PDF (extraction + cover
       render should fail gracefully, not crash the sidecar)
 - [ ] Scratch-subset dry-run gate: also kill the sidecar process mid-run and
-      re-run against the same target to validate crash recovery (topup's
-      idempotency + `.part`-file atomic copy should make this a no-op retry)
+      re-run against the same target to validate crash recovery (attaches
+      retry as a no-op via idempotency + `.part` atomic copy; new-book
+      imports from the interrupted run WILL duplicate under fresh UUIDs and
+      need manual cleanup — check for duplicate folders until Section B /
+      incremental inserts land)
 - [ ] Import progress: `duplicate_check` step currently invisible in the
       overlay step list (works, just not rendered as its own row)
 - [ ] Keyboard navigation: arrows to move selection in grid/list, Esc to

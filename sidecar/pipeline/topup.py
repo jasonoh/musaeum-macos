@@ -171,7 +171,12 @@ def topup_pdfs(
                 elif status == "already_present":
                     stats["skipped"] += 1
                     already_present.append({"book_id": entry["id"]})
-                else:  # missing_dir
+                else:  # missing_dir — cache and NAS disagree; worth a trace
+                    print(
+                        f"topup: book dir missing for '{record.get('title')}' "
+                        f"({entry['nas_path']}), skipped",
+                        flush=True,
+                    )
                     stats["skipped"] += 1
             else:
                 book = _migrate_one(record, calibre_path, target_root,
