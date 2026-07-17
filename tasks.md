@@ -82,11 +82,42 @@ Blockers before pointing the app at the full 7000-book NAS library:
       incremental inserts land)
 - [ ] Import progress: `duplicate_check` step currently invisible in the
       overlay step list (works, just not rendered as its own row)
+- [ ] **Open the stored book file from the app** (confirmed missing
+      2026-07-17) — the renderer has no `onDoubleClick`/`onContextMenu`
+      handlers and no IPC action opens a book file. Covered by the approved
+      design (`docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md`,
+      Section C): double-click / detail panel opens the native ReaderView
+      (foliate-js for epub, pdf.js for PDF, `musaeum://book/{id}/{format}`).
+      Builds after Section B. The "Enter to open" keyboard-nav item below
+      should reuse the same action.
 - [ ] Keyboard navigation: arrows to move selection in grid/list, Esc to
       close detail panel, Enter to open
 - [ ] Empty-state + skeleton loading polish for slow NAS cover loads
 - [ ] `exports/` staging dir is created but unused — either stage transfers
       through it (per spec) and clear post-transfer, or drop it from the spec
+
+## Multi-machine (Section B of the 2026-07-14 design — next up)
+
+Approved design: `docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md`.
+Today the SQLite cache is per-machine and nothing reads `metadata.json` back
+from the NAS, so a second machine pointed at a populated library root sees an
+empty library (confirmed 2026-07-17).
+
+- [ ] **`catalog.json` at library root** — flattened array of all book
+      records + `version`/`generated_at`; derived cache of the canonical
+      per-book `metadata.json` (regenerable, drift is never data loss). The
+      per-launch `metadata.json` walk was rejected (minutes over SMB); it
+      survives only as the "Rebuild catalog" recovery action.
+- [ ] Every `metadata.json` write path (import, edit, conflict resolution,
+      rehydrate, top-up, migration) also upserts the catalog; bulk operations
+      batch one catalog write at the end, off the critical path.
+- [ ] Launch + manual "Refresh library": read catalog, transactionally
+      replace the local `books` table (FTS synced via existing triggers).
+- [ ] First run on a new machine: choose root → catalog detected →
+      "Found a Musaeum library with N books — use it?" → populate cache.
+- [ ] "Rebuild catalog" recovery: walk `books/*/metadata.json` with progress.
+- [ ] Concurrency stays last-write-wins (single-user, one machine at a time);
+      at ~50k+ books revisit with a per-book journal (YAGNI now).
 
 ## Packaging & distribution
 
