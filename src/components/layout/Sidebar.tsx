@@ -3,13 +3,18 @@ import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { DevicePanel } from '@/components/device/DevicePanel'
 import { FilterSidebar } from '@/components/shared/FilterSidebar'
-import { WarningIcon } from '@/components/shared/icons'
+import { SpinnerIcon, WarningIcon } from '@/components/shared/icons'
 
 export function Sidebar() {
   const conflictCount = useUIStore((s) => s.conflictCount)
   const openModal = useUIStore((s) => s.openModal)
   const nasStatus = useNASStore((s) => s.status)
   const bookCount = useLibraryStore((s) => s.books.length)
+  const refreshing = useLibraryStore((s) => s.refreshing)
+  const rebuildProgress = useLibraryStore((s) => s.rebuildProgress)
+  const refreshLibrary = useLibraryStore((s) => s.refreshLibrary)
+  const rebuildCatalog = useLibraryStore((s) => s.rebuildCatalog)
+  const connected = nasStatus?.state === 'connected'
 
   const nasDot =
     nasStatus?.state === 'connected'
@@ -54,6 +59,25 @@ export function Sidebar() {
             className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment"
           >
             Migrate from Calibre…
+          </button>
+
+          <button
+            onClick={() => void refreshLibrary()}
+            disabled={!connected || refreshing}
+            className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            {refreshing && !rebuildProgress && <SpinnerIcon className="h-3.5 w-3.5" />}
+            Refresh Library
+          </button>
+
+          <button
+            onClick={() => void rebuildCatalog()}
+            disabled={!connected || refreshing}
+            className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            {rebuildProgress
+              ? `Rebuilding ${rebuildProgress.completed}/${rebuildProgress.total}…`
+              : 'Rebuild Catalog…'}
           </button>
         </nav>
 
