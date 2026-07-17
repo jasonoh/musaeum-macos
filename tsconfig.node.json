@@ -19,5 +19,10 @@
       "@shared/*": ["./src/types/*"]
     }
   },
-  "include": ["electron/**/*.ts", "src/types/**/*.ts", "electron.vite.config.ts"]
+  "include": [
+    "electron/**/*.ts",
+    "src/types/**/*.ts",
+    "electron.vite.config.ts",
+    "test/**/*.ts"
+  ]
 }
