@@ -8,11 +8,14 @@ import {
   CATALOG_VERSION,
   catalogPath,
   mergeBooks,
+  metadataJsonToBook,
   readCatalog,
+  rebuildFromBookDirs,
   removeFromCatalog,
   replaceCatalog,
   upsertIntoCatalog,
-  writeCatalog
+  writeCatalog,
+  type MetadataJson
 } from './catalog'
 
 let root: string
@@ -99,5 +102,97 @@ describe('replaceCatalog', () => {
     await replaceCatalog(root, [makeBook('x'), makeBook('y')])
     const cat = await readCatalog(root)
     expect(cat?.books.map((b) => b.id)).toEqual(['x', 'y'])
+  })
+})
+
+function makeMetadataJson(id: string, title = `Book ${id}`): MetadataJson {
+  return {
+    id,
+    title,
+    sort_title: title,
+    authors: [{ name: 'Jane Author', sort: 'Author, Jane' }],
+    publisher: 'Orbit',
+    published_date: '2011-06-02',
+    language: 'en',
+    description: 'desc',
+    identifiers: { isbn_13: '9780316129084' },
+    series: { name: 'The Expanse', index: 1, total: 9 },
+    tags: ['sf'],
+    cover: { full: 'cover_full.jpg', thumb: 'cover_thumb.jpg' },
+    formats: ['epub', 'pdf'],
+    rating: null,
+    read_status: 'unread',
+    date_added: '2025-01-15T10:30:00Z',
+    last_modified: '2025-01-15T10:31:00Z'
+  }
+}
+
+async function writeBookDir(id: string, json: MetadataJson | string): Promise<string> {
+  const dir = join(root, 'books', id)
+  await fs.mkdir(dir, { recursive: true })
+  await fs.writeFile(
+    join(dir, 'metadata.json'),
+    typeof json === 'string' ? json : JSON.stringify(json),
+    'utf8'
+  )
+  return dir
+}
+
+describe('metadataJsonToBook', () => {
+  it('maps the canonical metadata.json shape onto Book', async () => {
+    const dir = await writeBookDir('uuid-1', makeMetadataJson('uuid-1', 'Leviathan Wakes'))
+    await fs.writeFile(join(dir, 'Leviathan Wakes.epub'), 'x'.repeat(100))
+    await fs.writeFile(join(dir, 'Leviathan Wakes.pdf'), 'y'.repeat(50))
+    const book = await metadataJsonToBook(makeMetadataJson('uuid-1', 'Leviathan Wakes'), 'uuid-1', dir)
+    expect(book).toMatchObject({
+      id: 'uuid-1',
+      title: 'Leviathan Wakes',
+      author: 'Jane Author',
+      authorSort: 'Author, Jane',
+      isbn13: '9780316129084',
+      seriesName: 'The Expanse',
+      seriesIndex: 1,
+      seriesTotal: 9,
+      coverFullPath: 'cover_full.jpg',
+      coverThumbPath: 'cover_thumb.jpg',
+      formats: ['epub', 'pdf'],
+      tags: ['sf'],
+      readStatus: 'unread',
+      nasPath: join('books', 'uuid-1'),
+      fileSizeBytes: 150
+    })
+  })
+
+  it('tolerates minimal metadata and unknown formats', async () => {
+    const dir = await writeBookDir('uuid-2', { id: 'uuid-2', title: 'Bare' })
+    const book = await metadataJsonToBook(
+      { id: 'uuid-2', title: 'Bare', formats: ['epub', 'cbz'] },
+      'uuid-2',
+      dir
+    )
+    expect(book.author).toBeNull()
+    expect(book.formats).toEqual(['epub'])
+    expect(book.readStatus).toBe('unread')
+    expect(book.fileSizeBytes).toBeNull()
+  })
+})
+
+describe('rebuildFromBookDirs', () => {
+  it('walks book dirs, writes the catalog, reports progress, skips broken folders', async () => {
+    await writeBookDir('uuid-1', makeMetadataJson('uuid-1'))
+    await writeBookDir('uuid-2', makeMetadataJson('uuid-2'))
+    await writeBookDir('uuid-broken', '{not json')
+    const seen: number[] = []
+    const books = await rebuildFromBookDirs(root, (p) => seen.push(p.completed))
+    expect(books.map((b) => b.id).sort()).toEqual(['uuid-1', 'uuid-2'])
+    expect(seen).toEqual([1, 2, 3])
+    const cat = await readCatalog(root)
+    expect(cat?.books.map((b) => b.id).sort()).toEqual(['uuid-1', 'uuid-2'])
+  })
+
+  it('returns an empty catalog for a root with no books dir', async () => {
+    const books = await rebuildFromBookDirs(root)
+    expect(books).toEqual([])
+    expect((await readCatalog(root))?.books).toEqual([])
   })
 })
