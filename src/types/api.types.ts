@@ -33,6 +33,10 @@ export interface MusaeumAPI {
     updateBook(id: string, updates: Partial<Book>): Promise<void>
     deleteBook(id: string): Promise<void>
     getFacets(): Promise<LibraryFacets>
+    /** Re-read catalog.json into the local cache; rebuilds when missing. */
+    refreshLibrary(): Promise<{ books: number }>
+    /** Recovery: walk books/&#42;/metadata.json, rewrite catalog.json, reload. */
+    rebuildCatalog(): Promise<{ books: number }>
   }
 
   import: {
@@ -83,6 +87,7 @@ export interface MusaeumAPI {
     conflictQueueUpdated(cb: (count: number) => void): Unsubscribe
     transferProgress(cb: (progress: TransferProgress) => void): Unsubscribe
     libraryChanged(cb: () => void): Unsubscribe
+    catalogRebuildProgress(cb: (p: { completed: number; total: number }) => void): Unsubscribe
   }
 }
 
@@ -94,5 +99,6 @@ export const EVENT_CHANNELS = {
   importProgress: 'event:import-progress',
   conflictQueueUpdated: 'event:conflict-queue-updated',
   transferProgress: 'event:transfer-progress',
-  libraryChanged: 'event:library-changed'
+  libraryChanged: 'event:library-changed',
+  catalogRebuildProgress: 'event:catalog-rebuild-progress'
 } as const

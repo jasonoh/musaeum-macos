@@ -4,6 +4,7 @@ import type { Book, BookFilters } from '@shared/book.types'
 import * as db from '../services/db'
 import { broadcast } from '../services/events'
 import * as importer from '../services/importer'
+import * as librarySync from '../services/library-sync'
 import * as nas from '../services/nas-manager'
 import { handle } from './handle'
 
@@ -19,6 +20,9 @@ export function registerLibraryHandlers(): void {
   handle('library:searchBooks', (query: string) => db.searchBooks(query))
 
   handle('library:getFacets', () => db.getFacets())
+
+  handle('library:refreshLibrary', () => librarySync.refreshLibrary())
+  handle('library:rebuildCatalog', () => librarySync.rebuildCatalog())
 
   handle('library:updateBook', async (id: string, updates: Partial<Book>) => {
     db.updateBook(id, updates)
