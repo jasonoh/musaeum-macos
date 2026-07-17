@@ -31,6 +31,7 @@ export function registerLibraryHandlers(): void {
     const book = db.getBook(id)
     if (book?.nasPath && nas.isOnline()) {
       await importer.writeMetadataJson(join(nas.getLibraryRoot()!, book.nasPath), book)
+      librarySync.upsertCatalog([book])
     }
     broadcast('libraryChanged')
   })
@@ -42,6 +43,7 @@ export function registerLibraryHandlers(): void {
       await fs.rm(join(nas.getLibraryRoot()!, book.nasPath), { recursive: true, force: true })
     }
     db.deleteBook(id)
+    librarySync.removeBookFromCatalog(id)
     broadcast('libraryChanged')
   })
 

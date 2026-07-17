@@ -5,6 +5,7 @@ import type { Book, BookFormat, ImportProgress, ImportResult, ImportStep } from 
 import type { ConflictCandidate } from '@shared/metadata.types'
 import * as db from './db'
 import { broadcast } from './events'
+import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import * as sidecar from './sidecar'
 
@@ -164,6 +165,7 @@ async function importOne(filePath: string): Promise<ImportResult> {
     db.insertBook(book)
     await writeMetadataJson(bookDir, book)
     broadcast('libraryChanged')
+    librarySync.upsertCatalog([book])
 
     emit(job, 'hydrating', { bookId })
     void hydrate(bookId, targetFile, bookDir, job)
@@ -212,7 +214,10 @@ export async function hydrate(
     applyHydration(bookId, result)
 
     const updated = db.getBook(bookId)
-    if (updated) await writeMetadataJson(bookDir, updated, result.metadata.metadata_sources)
+    if (updated) {
+      await writeMetadataJson(bookDir, updated, result.metadata.metadata_sources)
+      librarySync.upsertCatalog([updated])
+    }
 
     if (result.conflicts.length) {
       broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
