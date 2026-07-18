@@ -96,26 +96,26 @@ Blockers before pointing the app at the full 7000-book NAS library:
 - [ ] `exports/` staging dir is created but unused — either stage transfers
       through it (per spec) and clear post-transfer, or drop it from the spec
 
-## Multi-machine (Section B of the 2026-07-14 design — next up)
+## Multi-machine (Section B of the 2026-07-14 design — shipped 2026-07-18)
 
 Approved design: `docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md`.
-Today the SQLite cache is per-machine and nothing reads `metadata.json` back
-from the NAS, so a second machine pointed at a populated library root sees an
-empty library (confirmed 2026-07-17).
+Shipped: a second machine pointed at a populated library root now adopts the
+`catalog.json` cache on connect and shows the full library without re-import
+(verified end-to-end 2026-07-18).
 
-- [ ] **`catalog.json` at library root** — flattened array of all book
+- [x] **`catalog.json` at library root** — flattened array of all book
       records + `version`/`generated_at`; derived cache of the canonical
       per-book `metadata.json` (regenerable, drift is never data loss). The
       per-launch `metadata.json` walk was rejected (minutes over SMB); it
       survives only as the "Rebuild catalog" recovery action.
-- [ ] Every `metadata.json` write path (import, edit, conflict resolution,
+- [x] Every `metadata.json` write path (import, edit, conflict resolution,
       rehydrate, top-up, migration) also upserts the catalog; bulk operations
       batch one catalog write at the end, off the critical path.
-- [ ] Launch + manual "Refresh library": read catalog, transactionally
+- [x] Launch + manual "Refresh library": read catalog, transactionally
       replace the local `books` table (FTS synced via existing triggers).
-- [ ] First run on a new machine: choose root → catalog detected →
+- [x] First run on a new machine: choose root → catalog detected →
       "Found a Musaeum library with N books — use it?" → populate cache.
-- [ ] "Rebuild catalog" recovery: walk `books/*/metadata.json` with progress.
+- [x] "Rebuild catalog" recovery: walk `books/*/metadata.json` with progress.
 - [ ] Concurrency stays last-write-wins (single-user, one machine at a time);
       at ~50k+ books revisit with a per-book journal (YAGNI now).
 
@@ -147,6 +147,9 @@ empty library (confirmed 2026-07-17).
 - **FTS tags matching**: `books_fts.tags` indexes the raw JSON string; quoted
   punctuation is tokenized away in practice, but verify tag search feels right
   with real data.
+- **`deleteBook` FK restriction (pre-existing)**: deleting a book that has
+  `device_history` rows throws (FK has no ON DELETE and `deleteBook` doesn't
+  handle history). Found while building `replaceAllBooks` (2026-07-17).
 
 ## Post-MVP (unchanged from spec — do not implement yet)
 

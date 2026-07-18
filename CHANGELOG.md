@@ -4,9 +4,14 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
-## [Unreleased] — 2026-07-14
+## [Unreleased] — 2026-07-18
 
 ### Added
+- Multi-machine library access (Section B): `catalog.json` derived cache at
+  the library root; every metadata write upserts it; cache adopted on
+  connect/first-run ("Found a Musaeum library with N books"); sidebar
+  "Refresh Library" and "Rebuild Catalog" actions; vitest main-process test
+  suite (catalog, cache swap, sync flows).
 - PDF as a first-class book format alongside epub/mobi/azw3: import,
   file-watcher, and Calibre migration scan all recognize `.pdf`
 - PDF metadata extraction (`sidecar/extractors/pdf_metadata.py`, via pypdf)

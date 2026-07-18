@@ -26,6 +26,10 @@ npm install                                  # postinstall rebuilds better-sqlit
 python3.12 -m venv sidecar/.venv && sidecar/.venv/bin/pip install -r sidecar/requirements.txt
 npm run dev                                  # launch with hot reload
 npm run typecheck && npm run lint            # keep clean; both pass on main
+npm test                                     # vitest main-process suite —
+                                             # runs Electron-as-Node so the
+                                             # better-sqlite3 native ABI matches;
+                                             # invoke only via this script
 ```
 
 Dev database: `~/Library/Application Support/Musaeum/musaeum.db` (WAL — safe
@@ -85,6 +89,8 @@ Musaeum/
 ├── CLAUDE.md / README.md / tasks.md / CHANGELOG.md
 ├── package.json / tsconfig*.json / electron.vite.config.ts
 ├── tailwind.config.js / postcss.config.js / eslint.config.mjs
+├── vitest.config.ts              # main-process test config (@shared/electron aliases)
+├── test/                         # vitest suite + mocks/ (electron stub, helpers)
 ├── index.html                    # renderer entry (CSP: only self + musaeum:)
 │
 ├── electron/
@@ -110,6 +116,8 @@ Musaeum/
 │   │   │   ├── transfer-queue.ts # serial queue, conversion, copy progress
 │   │   │   ├── sidecar.ts        # python spawn, JSON-RPC, notifications
 │   │   │   ├── migration.ts      # migration orchestration (node side)
+│   │   │   ├── catalog.ts        # catalog.json read/write/upsert + rebuild walk
+│   │   │   ├── library-sync.ts   # catalog ⇄ SQLite cache (adopt, refresh, rebuild)
 │   │   │   └── apple-books.ts    # open -a Books
 │   │   └── schema/migrations/
 │   │       └── 001_initial.sql   # includes FTS5 sync triggers + indices
@@ -167,11 +175,18 @@ Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*`
 - Cover images are served to the renderer via the custom
   **`musaeum://cover/{bookId}/{thumb|full}`** protocol — the renderer never
   gets raw `file://` access (CSP enforces this)
+- **Multi-machine**: `catalog.json` at the library root is a derived cache of
+  every book's `metadata.json` (which stays canonical). Every metadata write
+  upserts it (bulk ops batch one write); on connect and on "Refresh Library"
+  the local SQLite cache is transactionally replaced from it; "Rebuild
+  Catalog" re-walks `books/*/metadata.json` as recovery. Last-write-wins,
+  one machine at a time. (`services/catalog.ts`, `services/library-sync.ts`)
 
 ### Book Storage Structure (NAS)
 
 ```
 {library_root}/
+  catalog.json                     # derived cache of all metadata.json (multi-machine)
   books/
     {uuid}/
       {sanitized-title}.epub
@@ -474,6 +489,8 @@ interface MusaeumAPI {
     updateBook(id: string, updates: Partial<Book>): Promise<void>
     deleteBook(id: string): Promise<void>
     getFacets(): Promise<LibraryFacets>          // filter sidebar counts
+    refreshLibrary(): Promise<{ books: number }>   // re-read catalog.json into cache
+    rebuildCatalog(): Promise<{ books: number }>   // recovery: walk metadata.json files
   }
   import: {
     addFiles(filePaths: string[]): Promise<ImportResult[]>
@@ -515,6 +532,7 @@ interface MusaeumAPI {
     conflictQueueUpdated(cb): Unsubscribe        // payload: unresolved count
     transferProgress(cb): Unsubscribe
     libraryChanged(cb): Unsubscribe              // any book data changed → reload
+    catalogRebuildProgress(cb): Unsubscribe      // {completed, total} during rebuild
   }
 }
 ```
