@@ -25,6 +25,7 @@ export function registerLibraryHandlers(): void {
   handle('library:rebuildCatalog', () => librarySync.rebuildCatalog())
 
   handle('library:updateBook', async (id: string, updates: Partial<Book>) => {
+    nas.assertOnline()
     db.updateBook(id, updates)
     // Persist to the NAS metadata.json when reachable; cache-only edits would
     // otherwise drift from the canonical file

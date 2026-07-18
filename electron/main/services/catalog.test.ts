@@ -10,6 +10,7 @@ import {
   mergeBooks,
   metadataJsonToBook,
   readCatalog,
+  readCatalogDetailed,
   rebuildFromBookDirs,
   removeFromCatalog,
   replaceCatalog,
@@ -52,6 +53,42 @@ describe('readCatalog', () => {
   it('leaves no .part file behind after writing', async () => {
     await writeCatalog(root, [makeBook('a')])
     await expect(fs.access(`${catalogPath(root)}.part`)).rejects.toThrow()
+  })
+})
+
+describe('readCatalogDetailed', () => {
+  it('returns missing when no file exists', async () => {
+    expect(await readCatalogDetailed(root)).toEqual({ state: 'missing' })
+  })
+
+  it('returns invalid for corrupt JSON', async () => {
+    await fs.writeFile(catalogPath(root), 'not json{', 'utf8')
+    expect(await readCatalogDetailed(root)).toEqual({ state: 'invalid' })
+  })
+
+  it('returns invalid for an unknown version', async () => {
+    await fs.writeFile(catalogPath(root), JSON.stringify({ version: 99, books: [] }), 'utf8')
+    expect(await readCatalogDetailed(root)).toEqual({ state: 'invalid' })
+  })
+
+  it('returns ok with the file after writeCatalog', async () => {
+    await writeCatalog(root, [makeBook('a')])
+    const result = await readCatalogDetailed(root)
+    expect(result.state).toBe('ok')
+    if (result.state === 'ok') {
+      expect(result.file.books.map((b) => b.id)).toEqual(['a'])
+    }
+  })
+
+  it('throws on a non-ENOENT read error', async () => {
+    if (process.getuid?.() === 0) return // root ignores file modes
+    await writeCatalog(root, [makeBook('a')])
+    await fs.chmod(catalogPath(root), 0o000)
+    try {
+      await expect(readCatalogDetailed(root)).rejects.toThrow()
+    } finally {
+      await fs.chmod(catalogPath(root), 0o644)
+    }
   })
 })
 
@@ -194,5 +231,20 @@ describe('rebuildFromBookDirs', () => {
     const books = await rebuildFromBookDirs(root)
     expect(books).toEqual([])
     expect((await readCatalog(root))?.books).toEqual([])
+  })
+
+  it('rejects when books/ exists but is a file (ENOTDIR, not ENOENT)', async () => {
+    await fs.writeFile(join(root, 'books'), 'not a directory', 'utf8')
+    await expect(rebuildFromBookDirs(root)).rejects.toThrow()
+  })
+
+  it('dedupes two folders whose metadata.json share one id, keeping the later folder', async () => {
+    await writeBookDir('uuid-aaa', makeMetadataJson('shared-id', 'First'))
+    await writeBookDir('uuid-bbb', { ...makeMetadataJson('shared-id', 'Second') })
+    const books = await rebuildFromBookDirs(root)
+    expect(books.map((b) => b.id)).toEqual(['shared-id'])
+    expect(books[0].title).toBe('Second')
+    const cat = await readCatalog(root)
+    expect(cat?.books.length).toBe(1)
   })
 })

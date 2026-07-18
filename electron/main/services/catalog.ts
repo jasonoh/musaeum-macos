@@ -22,20 +22,33 @@ export function catalogPath(root: string): string {
   return join(root, CATALOG_FILENAME)
 }
 
-export async function readCatalog(root: string): Promise<CatalogFile | null> {
+export type CatalogReadState =
+  | { state: 'ok'; file: CatalogFile }
+  | { state: 'missing' } // ENOENT — no catalog has ever been written
+  | { state: 'invalid' } // exists but unparsable / wrong version / wrong shape
+
+export async function readCatalogDetailed(root: string): Promise<CatalogReadState> {
   let raw: string
   try {
     raw = await fs.readFile(catalogPath(root), 'utf8')
-  } catch {
-    return null
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { state: 'missing' }
+    throw err // transient I/O (SMB blip, permissions) must NOT look like "no catalog"
   }
   try {
     const parsed = JSON.parse(raw) as CatalogFile
-    if (parsed.version !== CATALOG_VERSION || !Array.isArray(parsed.books)) return null
-    return parsed
+    if (parsed.version !== CATALOG_VERSION || !Array.isArray(parsed.books)) {
+      return { state: 'invalid' }
+    }
+    return { state: 'ok', file: parsed }
   } catch {
-    return null
+    return { state: 'invalid' }
   }
+}
+
+export async function readCatalog(root: string): Promise<CatalogFile | null> {
+  const result = await readCatalogDetailed(root)
+  return result.state === 'ok' ? result.file : null
 }
 
 /** Atomic write: .part then rename, so a crash never leaves a torn catalog. */
@@ -194,24 +207,32 @@ export async function rebuildFromBookDirs(
   let entries: Dirent[]
   try {
     entries = await fs.readdir(join(root, 'books'), { withFileTypes: true })
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
     entries = []
   }
-  const dirs = entries.filter((e) => e.isDirectory())
-  const books: Book[] = []
+  const dirs = entries.filter((e) => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))
+  const byId = new Map<string, Book>()
   let completed = 0
   for (const dir of dirs) {
     const bookDir = join(root, 'books', dir.name)
     try {
       const raw = await fs.readFile(join(bookDir, 'metadata.json'), 'utf8')
       const json = JSON.parse(raw) as MetadataJson
-      books.push(await metadataJsonToBook(json, dir.name, bookDir))
+      const book = await metadataJsonToBook(json, dir.name, bookDir)
+      if (byId.has(book.id)) {
+        console.error(
+          `[catalog] rebuild: duplicate book id ${book.id} in ${dir.name} — keeping the later folder`
+        )
+      }
+      byId.set(book.id, book)
     } catch (err) {
       console.error(`[catalog] rebuild: skipping ${dir.name}:`, err)
     }
     completed++
     onProgress?.({ completed, total: dirs.length })
   }
+  const books = [...byId.values()]
   await replaceCatalog(root, books)
   return books
 }

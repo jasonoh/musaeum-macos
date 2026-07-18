@@ -55,6 +55,16 @@ describe('syncOnConnect', () => {
     await librarySync.syncOnConnect()
     expect(getBooks()).toEqual([])
   })
+
+  it('never bootstraps over a corrupt catalog, and never replaces the local cache', async () => {
+    await fs.writeFile(join(root, 'catalog.json'), 'not json{', 'utf8')
+    const before = await fs.readFile(join(root, 'catalog.json'), 'utf8')
+    insertBook(makeBook('local-1'))
+    await librarySync.syncOnConnect()
+    const after = await fs.readFile(join(root, 'catalog.json'), 'utf8')
+    expect(after).toBe(before)
+    expect(getBooks().map((b) => b.id)).toEqual(['local-1'])
+  })
 })
 
 describe('applyCatalog', () => {

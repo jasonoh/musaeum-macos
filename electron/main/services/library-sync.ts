@@ -75,15 +75,23 @@ export async function syncOnConnect(): Promise<void> {
   if (!root || !nas.isOnline() || handledRoots.has(root)) return
   handledRoots.add(root)
   try {
-    const cat = await catalog.readCatalog(root)
-    if (cat) {
-      db.replaceAllBooks(cat.books)
+    const result = await catalog.readCatalogDetailed(root)
+    if (result.state === 'ok') {
+      db.replaceAllBooks(result.file.books)
       broadcast('libraryChanged')
-    } else if (db.getBooks().length > 0) {
+    } else if (result.state === 'missing' && db.getBooks().length > 0) {
+      // Pre-catalog library on this machine: bootstrap the catalog from cache
       await catalog.replaceCatalog(root, db.getBooks())
+    } else if (result.state === 'invalid') {
+      // Never bootstrap over a catalog that exists but can't be read — this
+      // machine's cache may be stale; recovery is the manual rebuild action
+      console.error('[catalog] catalog.json exists but is unreadable — skipping sync; use Rebuild Catalog')
     }
   } catch (err) {
+    // Transient read failure: log and delete from handledRoots so a later
+    // reconnect retries the sync instead of being permanently skipped
     console.error('[catalog] on-connect sync failed:', err)
+    handledRoots.delete(root)
   }
 }
 
@@ -91,12 +99,12 @@ export async function syncOnConnect(): Promise<void> {
 export async function refreshLibrary(): Promise<{ books: number }> {
   nas.assertOnline()
   const root = nas.getLibraryRoot()!
-  const cat = await catalog.readCatalog(root)
-  if (!cat) return rebuildCatalog()
-  db.replaceAllBooks(cat.books)
+  const result = await catalog.readCatalogDetailed(root)
+  if (result.state !== 'ok') return rebuildCatalog()
+  db.replaceAllBooks(result.file.books)
   handledRoots.add(root)
   broadcast('libraryChanged')
-  return { books: cat.books.length }
+  return { books: result.file.books.length }
 }
 
 /** Recovery: walk books/<uuid>/metadata.json, rewrite the catalog, reload the cache. */

@@ -53,7 +53,7 @@ Blockers before pointing the app at the full 7000-book NAS library:
       - sidecar: `pipeline/conflict.py` merge policy, `extractors/epub_metadata.py`
         against fixture EPUBs (pytest)
       - main: `db.ts` query/filter builder, `importer.sanitizeTitle`,
-        conflict resolution IPC (vitest; better-sqlite3 works in plain node)
+        conflict resolution IPC (vitest via npm test — runs through Electron-as-Node for the better-sqlite3 ABI; harness landed with Section B)
 - [ ] Persist cover `source`/`width`/`height` into metadata.json (sidecar
       returns them; `importer.writeMetadataJson` currently drops them —
       the iOS contract documents them)
