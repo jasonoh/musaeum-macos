@@ -119,6 +119,25 @@ Shipped: a second machine pointed at a populated library root now adopts the
 - [ ] Concurrency stays last-write-wins (single-user, one machine at a time);
       at ~50k+ books revisit with a per-book journal (YAGNI now).
 
+Post-merge backlog (from the 2026-07-18 whole-branch review):
+
+- [ ] `BookDetail.tsx` rating/read-status controls: add `.catch` or disable
+      when offline — with `updateBook` now asserting online, an offline click
+      is a silent no-op + unhandled rejection (strictly better than the
+      silent-revert it replaced, still worth polish)
+- [ ] Coalesce/debounce catalog upserts during multi-file drag-drop imports
+      (each book currently costs two O(catalog) read-modify-writes over SMB;
+      serialized and off the critical path, so it works — just wasteful)
+- [ ] Tag the SQLite cache with the root it mirrors (`cache_root` config) —
+      switching roots can seed a fresh root's catalog with the old root's
+      records (bootstrap branch); only matters if a second library ever exists
+- [ ] Atomic `writeMetadataJson` (.part + rename) — the rebuild walk gave torn
+      metadata.json files a new consumer (skipped + logged today)
+- [ ] Rebuild walk conflates a per-folder SMB blip with a broken folder —
+      could yield a reduced (never empty) catalog; re-runnable + logged, fold
+      into the "NAS behavior untested against real SMB" pass, along with
+      catalog.json rename-replace semantics across SMB servers
+
 ## Packaging & distribution
 
 - [ ] App icon (dark-library mark) → `assets/icons/`
