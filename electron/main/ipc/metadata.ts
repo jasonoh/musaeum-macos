@@ -5,6 +5,7 @@ import type { ConflictChoices } from '@shared/metadata.types'
 import * as db from '../services/db'
 import { broadcast } from '../services/events'
 import * as importer from '../services/importer'
+import * as librarySync from '../services/library-sync'
 import * as nas from '../services/nas-manager'
 import * as sidecar from '../services/sidecar'
 import { handle } from './handle'
@@ -63,6 +64,7 @@ export function registerMetadataHandlers(): void {
     const book = db.getBook(conflict.bookId)
     if (book?.nasPath && nas.isOnline()) {
       await importer.writeMetadataJson(join(nas.getLibraryRoot()!, book.nasPath), book)
+      librarySync.upsertCatalog([book])
     }
 
     broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())

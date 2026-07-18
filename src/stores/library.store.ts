@@ -19,6 +19,8 @@ interface LibraryState {
   filters: BookFilters
   sort: BookSort
   importJobs: Record<string, ImportProgress>
+  refreshing: boolean
+  rebuildProgress: { completed: number; total: number } | null
 
   load(): Promise<void>
   setQuery(query: string): void
@@ -27,6 +29,9 @@ interface LibraryState {
   setSort(sort: BookSort): void
   upsertImportJob(progress: ImportProgress): void
   removeImportJob(jobId: string): void
+  refreshLibrary(): Promise<void>
+  rebuildCatalog(): Promise<void>
+  setRebuildProgress(p: { completed: number; total: number } | null): void
 }
 
 const EMPTY_FILTERS: BookFilters = {}
@@ -39,6 +44,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   filters: EMPTY_FILTERS,
   sort: { field: 'title', direction: 'asc' },
   importJobs: {},
+  refreshing: false,
+  rebuildProgress: null,
 
   async load() {
     const { query, filters, sort } = get()
@@ -93,5 +100,31 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       delete jobs[jobId]
       return { importJobs: jobs }
     })
+  },
+
+  async refreshLibrary() {
+    set({ refreshing: true })
+    try {
+      await window.Musaeum.library.refreshLibrary()
+    } catch (err) {
+      console.error('library refresh failed:', err)
+    } finally {
+      set({ refreshing: false, rebuildProgress: null })
+    }
+  },
+
+  async rebuildCatalog() {
+    set({ refreshing: true })
+    try {
+      await window.Musaeum.library.rebuildCatalog()
+    } catch (err) {
+      console.error('catalog rebuild failed:', err)
+    } finally {
+      set({ refreshing: false, rebuildProgress: null })
+    }
+  },
+
+  setRebuildProgress(p) {
+    set({ rebuildProgress: p })
   }
 }))

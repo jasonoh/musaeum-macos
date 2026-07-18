@@ -309,6 +309,32 @@ export function findByTitleAuthor(title: string, author: string | null): Book | 
   return null
 }
 
+/**
+ * Replace the entire local cache with the catalog's view of the library.
+ * device_history may reference books that no longer exist (they were sent
+ * from this machine, then deleted elsewhere) — history is kept, so FKs are
+ * disabled for the swap. Conflict/collection rows for vanished books are
+ * pruned; FTS follows via the existing triggers.
+ */
+export function replaceAllBooks(books: Book[]): void {
+  const d = getDb()
+  d.pragma('foreign_keys = OFF')
+  try {
+    d.transaction(() => {
+      d.prepare('DELETE FROM books').run()
+      for (const b of books) insertBook(b)
+      d.prepare(
+        'DELETE FROM metadata_conflicts WHERE book_id NOT IN (SELECT id FROM books)'
+      ).run()
+      d.prepare(
+        'DELETE FROM book_collections WHERE book_id NOT IN (SELECT id FROM books)'
+      ).run()
+    })()
+  } finally {
+    d.pragma('foreign_keys = ON')
+  }
+}
+
 export function getFacets(): LibraryFacets {
   const d = getDb()
   const authors = d

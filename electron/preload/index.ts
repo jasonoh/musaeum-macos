@@ -22,7 +22,9 @@ const api: MusaeumAPI = {
     searchBooks: (query) => invoke('library:searchBooks', query),
     updateBook: (id, updates) => invoke('library:updateBook', id, updates),
     deleteBook: (id) => invoke('library:deleteBook', id),
-    getFacets: () => invoke('library:getFacets')
+    getFacets: () => invoke('library:getFacets'),
+    refreshLibrary: () => invoke('library:refreshLibrary'),
+    rebuildCatalog: () => invoke('library:rebuildCatalog')
   },
   import: {
     addFiles: (filePaths) => invoke('import:addFiles', filePaths),
@@ -66,7 +68,8 @@ const api: MusaeumAPI = {
     importProgress: (cb) => listen(EVENT_CHANNELS.importProgress, cb),
     conflictQueueUpdated: (cb) => listen(EVENT_CHANNELS.conflictQueueUpdated, cb),
     transferProgress: (cb) => listen(EVENT_CHANNELS.transferProgress, cb),
-    libraryChanged: (cb) => listen(EVENT_CHANNELS.libraryChanged, () => cb())
+    libraryChanged: (cb) => listen(EVENT_CHANNELS.libraryChanged, () => cb()),
+    catalogRebuildProgress: (cb) => listen(EVENT_CHANNELS.catalogRebuildProgress, cb)
   }
 }
 

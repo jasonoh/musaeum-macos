@@ -53,7 +53,7 @@ Blockers before pointing the app at the full 7000-book NAS library:
       - sidecar: `pipeline/conflict.py` merge policy, `extractors/epub_metadata.py`
         against fixture EPUBs (pytest)
       - main: `db.ts` query/filter builder, `importer.sanitizeTitle`,
-        conflict resolution IPC (vitest; better-sqlite3 works in plain node)
+        conflict resolution IPC (vitest via npm test — runs through Electron-as-Node for the better-sqlite3 ABI; harness landed with Section B)
 - [ ] Persist cover `source`/`width`/`height` into metadata.json (sidecar
       returns them; `importer.writeMetadataJson` currently drops them —
       the iOS contract documents them)
@@ -82,11 +82,61 @@ Blockers before pointing the app at the full 7000-book NAS library:
       incremental inserts land)
 - [ ] Import progress: `duplicate_check` step currently invisible in the
       overlay step list (works, just not rendered as its own row)
+- [ ] **Open the stored book file from the app** (confirmed missing
+      2026-07-17) — the renderer has no `onDoubleClick`/`onContextMenu`
+      handlers and no IPC action opens a book file. Covered by the approved
+      design (`docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md`,
+      Section C): double-click / detail panel opens the native ReaderView
+      (foliate-js for epub, pdf.js for PDF, `musaeum://book/{id}/{format}`).
+      Builds after Section B. The "Enter to open" keyboard-nav item below
+      should reuse the same action.
 - [ ] Keyboard navigation: arrows to move selection in grid/list, Esc to
       close detail panel, Enter to open
 - [ ] Empty-state + skeleton loading polish for slow NAS cover loads
 - [ ] `exports/` staging dir is created but unused — either stage transfers
       through it (per spec) and clear post-transfer, or drop it from the spec
+
+## Multi-machine (Section B of the 2026-07-14 design — shipped 2026-07-18)
+
+Approved design: `docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md`.
+Shipped: a second machine pointed at a populated library root now adopts the
+`catalog.json` cache on connect and shows the full library without re-import
+(verified end-to-end 2026-07-18).
+
+- [x] **`catalog.json` at library root** — flattened array of all book
+      records + `version`/`generated_at`; derived cache of the canonical
+      per-book `metadata.json` (regenerable, drift is never data loss). The
+      per-launch `metadata.json` walk was rejected (minutes over SMB); it
+      survives only as the "Rebuild catalog" recovery action.
+- [x] Every `metadata.json` write path (import, edit, conflict resolution,
+      rehydrate, top-up, migration) also upserts the catalog; bulk operations
+      batch one catalog write at the end, off the critical path.
+- [x] Launch + manual "Refresh library": read catalog, transactionally
+      replace the local `books` table (FTS synced via existing triggers).
+- [x] First run on a new machine: choose root → catalog detected →
+      "Found a Musaeum library with N books — use it?" → populate cache.
+- [x] "Rebuild catalog" recovery: walk `books/*/metadata.json` with progress.
+- [ ] Concurrency stays last-write-wins (single-user, one machine at a time);
+      at ~50k+ books revisit with a per-book journal (YAGNI now).
+
+Post-merge backlog (from the 2026-07-18 whole-branch review):
+
+- [ ] `BookDetail.tsx` rating/read-status controls: add `.catch` or disable
+      when offline — with `updateBook` now asserting online, an offline click
+      is a silent no-op + unhandled rejection (strictly better than the
+      silent-revert it replaced, still worth polish)
+- [ ] Coalesce/debounce catalog upserts during multi-file drag-drop imports
+      (each book currently costs two O(catalog) read-modify-writes over SMB;
+      serialized and off the critical path, so it works — just wasteful)
+- [ ] Tag the SQLite cache with the root it mirrors (`cache_root` config) —
+      switching roots can seed a fresh root's catalog with the old root's
+      records (bootstrap branch); only matters if a second library ever exists
+- [ ] Atomic `writeMetadataJson` (.part + rename) — the rebuild walk gave torn
+      metadata.json files a new consumer (skipped + logged today)
+- [ ] Rebuild walk conflates a per-folder SMB blip with a broken folder —
+      could yield a reduced (never empty) catalog; re-runnable + logged, fold
+      into the "NAS behavior untested against real SMB" pass, along with
+      catalog.json rename-replace semantics across SMB servers
 
 ## Packaging & distribution
 
@@ -116,6 +166,9 @@ Blockers before pointing the app at the full 7000-book NAS library:
 - **FTS tags matching**: `books_fts.tags` indexes the raw JSON string; quoted
   punctuation is tokenized away in practice, but verify tag search feels right
   with real data.
+- **`deleteBook` FK restriction (pre-existing)**: deleting a book that has
+  `device_history` rows throws (FK has no ON DELETE and `deleteBook` doesn't
+  handle history). Found while building `replaceAllBooks` (2026-07-17).
 
 ## Post-MVP (unchanged from spec — do not implement yet)
 

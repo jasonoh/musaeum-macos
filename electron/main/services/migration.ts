@@ -10,6 +10,7 @@ import type {
 } from '@shared/metadata.types'
 import * as db from './db'
 import { broadcast } from './events'
+import * as librarySync from './library-sync'
 import * as nasManager from './nas-manager'
 import * as sidecar from './sidecar'
 
@@ -152,6 +153,7 @@ export function startMigration(options: MigrationOptions): MigrationJob {
         1000 * 60 * 60 * 12
       )
       insertMigratedBooks(result.books)
+      librarySync.writeFullCatalog(options.targetLibraryRoot)
       pendingCutoverRoot = options.targetLibraryRoot
       progress.phase = 'done'
       broadcast('libraryChanged')
@@ -264,6 +266,7 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
         }
       }
       insertMigratedBooks(result.new_books)
+      librarySync.writeFullCatalog()
       progress.phase = 'done'
       broadcast('libraryChanged')
     } catch (err) {

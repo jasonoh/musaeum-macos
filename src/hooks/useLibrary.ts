@@ -7,6 +7,7 @@ export function useLibrary(): void {
   const load = useLibraryStore((s) => s.load)
   const upsertImportJob = useLibraryStore((s) => s.upsertImportJob)
   const removeImportJob = useLibraryStore((s) => s.removeImportJob)
+  const setRebuildProgress = useLibraryStore((s) => s.setRebuildProgress)
   const setConflictCount = useUIStore((s) => s.setConflictCount)
 
   useEffect(() => {
@@ -19,6 +20,7 @@ export function useLibrary(): void {
     const unsubs = [
       window.Musaeum.on.libraryChanged(() => void load()),
       window.Musaeum.on.conflictQueueUpdated((count) => setConflictCount(count)),
+      window.Musaeum.on.catalogRebuildProgress((p) => setRebuildProgress(p)),
       window.Musaeum.on.importProgress((progress) => {
         upsertImportJob(progress)
         if (progress.step === 'done' || progress.step === 'error') {
@@ -28,5 +30,5 @@ export function useLibrary(): void {
       })
     ]
     return () => unsubs.forEach((u) => u())
-  }, [load, upsertImportJob, removeImportJob, setConflictCount])
+  }, [load, upsertImportJob, removeImportJob, setRebuildProgress, setConflictCount])
 }

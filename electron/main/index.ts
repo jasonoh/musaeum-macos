@@ -11,6 +11,7 @@ import { closeDb, getBook } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
 import { setMainWindow } from './services/events'
 import { bindToNAS, startWatcher, stopWatcher } from './services/file-watcher'
+import * as librarySync from './services/library-sync'
 import * as nas from './services/nas-manager'
 import * as sidecar from './services/sidecar'
 
@@ -90,6 +91,9 @@ app.whenReady().then(() => {
   setMainWindow(win)
 
   sidecar.start()
+  nas.onStatusChange((status) => {
+    if (status.state === 'connected') void librarySync.syncOnConnect()
+  })
   nas.startHealthChecks()
   bindToNAS()
   if (nas.isOnline()) startWatcher()
