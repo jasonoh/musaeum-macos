@@ -7,6 +7,7 @@ import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { CoverFallback, coverUrl } from './BookCard'
 import {
+  CheckIcon,
   CloseIcon,
   RefreshIcon,
   SendIcon,
@@ -26,6 +27,7 @@ export function BookDetail() {
   const books = useLibraryStore((s) => s.books)
   const load = useLibraryStore((s) => s.load)
   const devices = useDeviceStore((s) => s.devices)
+  const onDevice = useDeviceStore((s) => s.onDevice)
   const sendToDevice = useDeviceStore((s) => s.sendToDevice)
   const online = useNASStore((s) => s.status?.state === 'connected')
   const [busy, setBusy] = useState<string | null>(null)
@@ -168,17 +170,24 @@ export function BookDetail() {
 
       {/* Actions */}
       <div className="shrink-0 space-y-2 border-t border-ink-800 p-4">
-        {devices.map((d) => (
-          <button
-            key={d.id}
-            disabled={!online || busy !== null}
-            onClick={() => void run('send', () => sendToDevice(book.id, d.id))}
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-gold-500 px-3 py-2 text-[13px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40"
-          >
-            <SendIcon className="h-4 w-4" />
-            Send to {d.name}
-          </button>
-        ))}
+        {devices.map((d) => {
+          const present = onDevice[d.id]?.includes(book.id) ?? false
+          return (
+            <button
+              key={d.id}
+              disabled={!online || busy !== null}
+              onClick={() => void run('send', () => sendToDevice(book.id, d.id))}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-gold-500 px-3 py-2 text-[13px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40"
+            >
+              {present ? (
+                <CheckIcon className="h-4 w-4" />
+              ) : (
+                <SendIcon className="h-4 w-4" />
+              )}
+              {present ? `On ${d.name}` : `Send to ${d.name}`}
+            </button>
+          )
+        })}
         <div className="flex gap-2">
           <button
             disabled={!online || busy !== null || !book.formats.includes('epub')}

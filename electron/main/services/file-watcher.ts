@@ -34,7 +34,7 @@ export function startWatcher(): void {
 async function importAndRemove(path: string): Promise<void> {
   try {
     const [result] = await importer.addFiles([path])
-    if (result.success) {
+    if (result.success || result.skipped) {
       await fs.rm(path, { force: true })
     }
   } catch (err) {

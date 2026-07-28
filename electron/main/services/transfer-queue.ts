@@ -5,7 +5,7 @@ import { pipeline } from 'stream/promises'
 import type { BookFormat } from '@shared/book.types'
 import type { TransferJob } from '@shared/device.types'
 import * as db from './db'
-import { getDevice } from './device-manager'
+import { getDevice, refreshDeviceContents } from './device-manager'
 import { broadcast } from './events'
 import * as nas from './nas-manager'
 import * as sidecar from './sidecar'
@@ -126,6 +126,7 @@ async function runTransfer(job: TransferJob): Promise<void> {
 
     db.logDeviceTransfer(job.bookId, job.deviceId, job.deviceName, format!)
     emit(job, { status: 'done', progress: 1 })
+    await refreshDeviceContents(job.deviceId)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     db.logDeviceTransfer(job.bookId, job.deviceId, job.deviceName, job.format ?? 'unknown', message)

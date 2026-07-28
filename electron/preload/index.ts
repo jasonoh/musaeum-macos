@@ -28,7 +28,8 @@ const api: MusaeumAPI = {
   },
   import: {
     addFiles: (filePaths) => invoke('import:addFiles', filePaths),
-    getImportProgress: (jobId) => invoke('import:getImportProgress', jobId)
+    getImportProgress: (jobId) => invoke('import:getImportProgress', jobId),
+    resolveDuplicate: (jobId, decision) => invoke('import:resolveDuplicate', jobId, decision)
   },
   metadata: {
     getConflictQueue: () => invoke('metadata:getConflictQueue'),
@@ -40,7 +41,8 @@ const api: MusaeumAPI = {
     getConnectedDevices: () => invoke('devices:getConnectedDevices'),
     sendToDevice: (bookId, deviceId) => invoke('devices:sendToDevice', bookId, deviceId),
     getTransferProgress: (jobId) => invoke('devices:getTransferProgress', jobId),
-    exportToAppleBooks: (bookId) => invoke('devices:exportToAppleBooks', bookId)
+    exportToAppleBooks: (bookId) => invoke('devices:exportToAppleBooks', bookId),
+    getOnDeviceBookIds: (deviceId) => invoke('devices:getOnDeviceBookIds', deviceId)
   },
   nas: {
     getStatus: () => invoke('nas:getStatus'),
@@ -69,7 +71,8 @@ const api: MusaeumAPI = {
     conflictQueueUpdated: (cb) => listen(EVENT_CHANNELS.conflictQueueUpdated, cb),
     transferProgress: (cb) => listen(EVENT_CHANNELS.transferProgress, cb),
     libraryChanged: (cb) => listen(EVENT_CHANNELS.libraryChanged, () => cb()),
-    catalogRebuildProgress: (cb) => listen(EVENT_CHANNELS.catalogRebuildProgress, cb)
+    catalogRebuildProgress: (cb) => listen(EVENT_CHANNELS.catalogRebuildProgress, cb),
+    deviceContentsChanged: (cb) => listen(EVENT_CHANNELS.deviceContentsChanged, cb)
   }
 }
 

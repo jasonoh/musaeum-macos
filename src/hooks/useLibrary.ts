@@ -23,7 +23,7 @@ export function useLibrary(): void {
       window.Musaeum.on.catalogRebuildProgress((p) => setRebuildProgress(p)),
       window.Musaeum.on.importProgress((progress) => {
         upsertImportJob(progress)
-        if (progress.step === 'done' || progress.step === 'error') {
+        if (progress.step === 'done' || progress.step === 'error' || progress.step === 'skipped') {
           // Let finished cards linger briefly, then clear them
           setTimeout(() => removeImportJob(progress.jobId), 5_000)
         }

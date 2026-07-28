@@ -12,7 +12,7 @@ facet filters, Kindle transfer with auto-conversion, Apple Books export,
 Calibre migration wizard, Python sidecar. Verified end-to-end against live
 metadata APIs (see CHANGELOG.md).
 
-## Phase 1.5 — PDF support
+## Phase 1.5 — PDF support — shipped 2026-07-27
 
 - [x] **PDF format support shipped** — pdf is a first-class format: import,
       hydration (PDF Info dict extraction + page-1 render as an 'embedded'
@@ -22,8 +22,9 @@ metadata APIs (see CHANGELOG.md).
       attaches PDFs to existing book folders (idempotent) or imports
       PDF-only books as new. Migration wizard: "Import PDFs from Calibre…"
       action with progress + attached/added/skipped summary.
-- [ ] Run the PDF top-up against the real Calibre library (after verifying
-      on a scratch subset)
+- [x] Run the PDF top-up against the real Calibre library — completed
+      2026-07-27; the Calibre PDFs are re-imported into the live Musaeum
+      library. Phase 1.5 (PDF support) is complete.
 
 ## Phase 1.5 — polish before real-library use
 
@@ -54,6 +55,15 @@ Blockers before pointing the app at the full 7000-book NAS library:
         against fixture EPUBs (pytest)
       - main: `db.ts` query/filter builder, `importer.sanitizeTitle`,
         conflict resolution IPC (vitest via npm test — runs through Electron-as-Node for the better-sqlite3 ABI; harness landed with Section B)
+      - main: duplicate GATE — `importer` skip/add_new/add_format branches +
+        `resolveDuplicate`/`abortPendingDecisions` (2026-07-27, untested)
+      - main: device presence — `device-manager.scanDocuments` /
+        `getOnDeviceBookIds` matching (2026-07-27, untested)
+- [ ] Device-presence match misses a book renamed after import (the on-disk
+      file keeps its original `sanitizeTitle` name, so the scan stem no longer
+      equals `sanitizeTitle(currentTitle)`) — only self-corrects on re-send.
+      Revisit if it bites; a rename-the-file-on-title-change pass would fix it
+      broadly. (Shipped 2026-07-27.)
 - [ ] Persist cover `source`/`width`/`height` into metadata.json (sidecar
       returns them; `importer.writeMetadataJson` currently drops them —
       the iOS contract documents them)
@@ -80,8 +90,9 @@ Blockers before pointing the app at the full 7000-book NAS library:
       imports from the interrupted run WILL duplicate under fresh UUIDs and
       need manual cleanup — check for duplicate folders until Section B /
       incremental inserts land)
-- [ ] Import progress: `duplicate_check` step currently invisible in the
-      overlay step list (works, just not rendered as its own row)
+- [x] Import duplicate handling reworked into an import-time GATE (Skip / Add
+      as new / Add format to existing) — supersedes the old invisible
+      `duplicate_check` warning row (2026-07-27)
 - [ ] **Open the stored book file from the app** (confirmed missing
       2026-07-17) — the renderer has no `onDoubleClick`/`onContextMenu`
       handlers and no IPC action opens a book file. Covered by the approved
@@ -140,15 +151,55 @@ Post-merge backlog (from the 2026-07-18 whole-branch review):
 
 ## Packaging & distribution
 
-- [ ] App icon (dark-library mark) → `assets/icons/`
-- [ ] electron-builder config: DMG, hardened runtime, notarization; bundle
-      `sidecar/` into Resources (sidecar.ts already resolves
-      `process.resourcesPath` when packaged; venv strategy TBD — likely
-      require system Python + first-run `pip install`, or ship a pex/zipapp)
+Goal: a double-clickable, signed `Musaeum.app` (DMG) that runs without a
+terminal or an `infisical run` wrapper. Sequenced roughly in build order.
+
+- [ ] App icon (dark-library mark) → `assets/icons/` (`.icns` for macOS)
+- [ ] **electron-builder config** — add `electron-builder` (devDep) + an
+      `electron-builder.yml`: `mac` target `dmg`, `category`
+      `public.app-category.productivity`, `main` already `out/main/index.js`.
+      Wire scripts: `"pack": "npm run build && electron-builder"`. First cut
+      unsigned/no-notarize to get a testable `.app`.
+- [ ] **Bundle the sidecar into Resources** — `extraResources` copies
+      `sidecar/` to `process.resourcesPath/sidecar` (sidecar.ts already
+      resolves this when packaged). Venv strategy TBD — likely require system
+      Python + first-run `pip install`, or ship a pex/zipapp. The bundled
+      copy must NOT include `.venv` (host-specific ABI).
+- [ ] **Signing + notarization** — Developer ID cert, hardened runtime,
+      `notarize` via electron-builder `afterSign`. Needed for Gatekeeper to
+      open the app on another Mac without the right-click bypass.
 - [ ] Decide update mechanism (spec question #5): manual download vs
       electron-updater — leaning manual for a personal tool
 - [ ] `npm audit` — 6 high-severity findings in the dev-dependency chain to
       review (dev-only impact, but check before distributing)
+
+### Secrets in a packaged build (Infisical)
+
+Today the sidecar inherits `process.env` ([`services/sidecar.ts`](electron/main/services/sidecar.ts)
+spawn: `env: { ...process.env, ... }`), so `GOOGLE_BOOKS_API_KEY` only arrives
+when the app is launched through Infisical. Secrets live in the Infisical
+project **`musaeum`**.
+
+- Dev / from-terminal: `infisical run -- npm run dev` and
+  `infisical run -- npm run build` inject the key for that process only
+  (documented in README → Secrets). A CI/build step that hits the Google
+  Books API should likewise be wrapped in `infisical run --`.
+- [ ] **Decide the packaged-app secret path** — a double-clicked `.app` never
+      passes through `infisical run`, so it gets no key. Options, leaning (a):
+      - (a) **Move the key into `app_config`** via the planned Settings UI
+        (Phase 1.5 backlog already lists this) and have the sidecar read it
+        from config/`app_config` instead of env. Cleanest for a personal
+        tool; no Infisical dependency at runtime. Requires threading the key
+        from `app_config` → sidecar spawn `env`.
+      - (b) `infisical run -- open -a Musaeum.app` launch wrapper / shell
+        alias — keeps Infisical as source of truth but reintroduces the
+        terminal for launch.
+      - (c) Bundle `infisical` + a machine identity token and fetch at
+        startup — most moving parts; overkill for single-user.
+- [ ] Once (a) lands, `sidecar.ts` should pass
+      `GOOGLE_BOOKS_API_KEY` into the spawn env from `getConfig()` (falling
+      back to `process.env` so `infisical run -- npm run dev` still works in
+      dev).
 
 ## Known issues / risks
 

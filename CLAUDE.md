@@ -16,8 +16,9 @@ for book titles, covers as the hero element. Design tokens live in
 
 Phase 1 (MVP) was implemented and verified end-to-end on 2026-07-12: import →
 hydration → conflict queue → covers → FTS all confirmed against live APIs.
-See `tasks.md` for the roadmap and known gaps, `README.md` for setup, and
-`CHANGELOG.md` for history.
+Phase 1.5 PDF support shipped 2026-07-27 (PDF as a first-class format +
+Calibre PDF top-up, now run against the real library). See `tasks.md` for the
+roadmap and known gaps, `README.md` for setup, and `CHANGELOG.md` for history.
 
 Dev quickstart:
 
@@ -240,7 +241,11 @@ score = (resolution × 0.4) + (aspect_ratio × 0.3)
 ```
 
 Google Books API key: read from the `GOOGLE_BOOKS_API_KEY` environment
-variable (optional for normal use; required before bulk migration).
+variable (optional for normal use; required before bulk migration). Secrets
+live in the Infisical project `musaeum`; inject them for dev/build by wrapping
+the command — `infisical run -- npm run dev`. A packaged `.app` can't use
+`infisical run`; the planned path is to move the key into `app_config` via
+Settings (see tasks.md → Packaging & distribution).
 
 ### Conflict Resolution UI
 
@@ -278,12 +283,32 @@ variable (optional for normal use; required before bulk migration).
 - Copy to `/documents/` on Kindle volume with streamed progress events
 - Log to `device_history` table (including failures, with error text)
 - Transfers run serially through `transfer-queue.ts`
+- **On-device presence** is derived by *scanning* the connected Kindle's
+  `documents/` folder (not from `device_history`): `device-manager` walks it
+  (depth 2) into a stem set, and `getOnDeviceBookIds` matches books whose
+  `sanitizeTitle(title)` equals a file stem (extension-agnostic). Surfaced as
+  a badge on `BookCard` and an "On {device}" state on the detail-panel send
+  button; a `deviceContentsChanged` event refreshes it on connect and after
+  each transfer completes. Known limitation: a book renamed after import (file
+  keeps its original sanitized name) won't match until re-sent.
 
 ### Duplicate Detection
 
-On import: ISBN-13 match (definitive) → title+author normalized match (warn).
-Duplicates **warn but never block** — the warning travels on the import
-progress event and result.
+On import, a duplicate **gates** the pipeline: an ISBN-13 match (checked
+first) OR a normalized title+author match pauses the import between the
+extract and copy steps and forces a decision in the import overlay
+(`importer.importOne` awaits a `pendingDecisions` resolver keyed by `jobId`;
+resolved via `import.resolveDuplicate` IPC). Three actions:
+- **Skip** — abort; no book created (watched `imports/` file is still removed)
+- **Add as new** — proceed with a fresh UUID + folder + hydration
+- **Add format to existing** — copy the file into the matched book's folder,
+  add the format, rewrite metadata.json + catalog; no new book, no hydration.
+  Deletes any existing file of that extension first so `findFormatFile` can't
+  ship a stale copy.
+
+The pending-decision map is keyed by `jobId` because the file-watcher fans out
+`importOne` concurrently; `abortPendingDecisions()` (on `will-quit`) resolves
+any open gate as Skip so shutdown never hangs.
 
 ### Apple Books Export
 

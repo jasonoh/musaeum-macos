@@ -8,6 +8,7 @@ export function useDevice(): void {
   const removeDevice = useDeviceStore((s) => s.removeDevice)
   const upsertTransfer = useDeviceStore((s) => s.upsertTransfer)
   const removeTransfer = useDeviceStore((s) => s.removeTransfer)
+  const refreshDeviceContents = useDeviceStore((s) => s.refreshDeviceContents)
 
   useEffect(() => {
     void refresh()
@@ -19,8 +20,11 @@ export function useDevice(): void {
         if (job.status === 'done') {
           setTimeout(() => removeTransfer(job.jobId), 5_000)
         }
+      }),
+      window.Musaeum.on.deviceContentsChanged((deviceId) => {
+        void refreshDeviceContents(deviceId)
       })
     ]
     return () => unsubs.forEach((u) => u())
-  }, [refresh, addDevice, removeDevice, upsertTransfer, removeTransfer])
+  }, [refresh, addDevice, removeDevice, upsertTransfer, removeTransfer, refreshDeviceContents])
 }

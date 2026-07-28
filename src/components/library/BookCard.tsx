@@ -1,7 +1,9 @@
 import { memo } from 'react'
 import type { Book } from '@shared/book.types'
 import { seriesDisplay } from '@shared/book.types'
+import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
 import { useUIStore } from '@/stores/ui.store'
+import { DeviceIcon } from '@/components/shared/icons'
 
 export function coverUrl(book: Book, size: 'thumb' | 'full'): string | null {
   const path = size === 'thumb' ? book.coverThumbPath : book.coverFullPath
@@ -29,6 +31,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
   const selectBook = useUIStore((s) => s.selectBook)
   const selected = useUIStore((s) => s.selectedBookId === book.id)
   const thumb = coverUrl(book, 'thumb')
+  const onDevice = useDeviceStore((s) => bookOnDevices(s, book.id).length > 0)
 
   return (
     <button
@@ -53,6 +56,14 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
         )}
         {book.readStatus === 'read' && (
           <div className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-gold-400 shadow" />
+        )}
+        {onDevice && (
+          <div
+            className="absolute left-1.5 top-1.5 rounded-full bg-ink-950/70 p-1 text-gold-400 shadow"
+            title="On device"
+          >
+            <DeviceIcon className="h-2.5 w-2.5" />
+          </div>
         )}
       </div>
 

@@ -67,11 +67,27 @@ export type ImportStep =
   | 'received'
   | 'extracting'
   | 'duplicate_check'
+  | 'awaiting_dedup_decision'
   | 'copying'
   | 'hydrating'
   | 'cover'
   | 'done'
+  | 'skipped'
   | 'error'
+
+export type DuplicateMatchType = 'isbn' | 'title_author'
+export type DuplicateAction = 'skip' | 'add_new' | 'add_format'
+
+export interface DuplicateContext {
+  existingBookId: string
+  existingTitle: string
+  existingAuthor: string | null
+  matchType: DuplicateMatchType
+}
+
+export interface DuplicateDecision {
+  action: DuplicateAction
+}
 
 export interface ImportProgress {
   jobId: string
@@ -80,8 +96,8 @@ export interface ImportProgress {
   step: ImportStep
   /** Set when step === 'error' */
   error?: string
-  /** Set when a probable duplicate was detected (import continues). */
-  duplicateWarning?: string
+  /** Set when step === 'awaiting_dedup_decision' */
+  duplicate?: DuplicateContext
 }
 
 export interface ImportResult {
@@ -90,7 +106,8 @@ export interface ImportResult {
   success: boolean
   bookId?: string
   error?: string
-  duplicateWarning?: string
+  skipped?: boolean
+  action?: DuplicateAction
 }
 
 /** Format "The Expanse #1" — drops trailing .0 on whole-number indices. */

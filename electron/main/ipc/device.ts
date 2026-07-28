@@ -12,4 +12,7 @@ export function registerDeviceHandlers(): void {
     transferQueue.getTransferProgress(jobId)
   )
   handle('devices:exportToAppleBooks', (bookId: string) => appleBooks.exportToAppleBooks(bookId))
+  handle('devices:getOnDeviceBookIds', (deviceId: string) =>
+    deviceManager.getOnDeviceBookIds(deviceId)
+  )
 }

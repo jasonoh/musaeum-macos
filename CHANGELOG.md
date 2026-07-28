@@ -4,9 +4,19 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
-## [Unreleased] — 2026-07-18
+## [Unreleased] — 2026-07-27
 
 ### Added
+- On-device presence: the connected Kindle's `documents/` folder is scanned
+  and matched against the library, so books physically on the device show a
+  badge on their card and an "On {device}" state on the detail-panel send
+  button (refreshed on connect and after each transfer via a new
+  `deviceContentsChanged` event / `devices.getOnDeviceBookIds` IPC). Replaces
+  the previous no-feedback behavior after a send.
+- Packaging & Infisical documentation: README "Secrets" section, expanded
+  `tasks.md` Packaging & distribution backlog (electron-builder, sidecar
+  bundling, signing, and the packaged-app secret-path decision).
+
 - Multi-machine library access (Section B): `catalog.json` derived cache at
   the library root; every metadata write upserts it; cache adopted on
   connect/first-run ("Found a Musaeum library with N books"); sidebar
@@ -31,6 +41,15 @@ the app is packaged.
   `sidecar/requirements-dev.txt`
 
 ### Changed
+- Duplicate imports now **gate** instead of warn: an ISBN-13 or normalized
+  title+author match pauses the import and forces a choice in the overlay —
+  Skip / Add as new / Add format to existing book (`import.resolveDuplicate`
+  IPC; pending-decision map keyed by `jobId` for the watcher's concurrent
+  imports; `abortPendingDecisions()` on quit). "Add format to existing"
+  deletes any prior file of that extension before writing to avoid a stale
+  copy being sent to a device.
+- Phase 1.5 (PDF support) complete: Calibre PDF top-up run against the real
+  library.
 - `sidecar.onNotification` supports multiple subscribers per method and
   returns an unsubscribe function
 

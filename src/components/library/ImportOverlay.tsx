@@ -1,4 +1,5 @@
-import type { ImportProgress, ImportStep } from '@shared/book.types'
+import { useState } from 'react'
+import type { DuplicateAction, ImportProgress, ImportStep } from '@shared/book.types'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
 import { CheckIcon, SpinnerIcon, WarningIcon } from '@/components/shared/icons'
@@ -15,14 +16,68 @@ const STEP_ORDER: ImportStep[] = [
   'received',
   'extracting',
   'duplicate_check',
+  'awaiting_dedup_decision',
   'copying',
   'hydrating',
   'cover',
-  'done'
+  'done',
+  'skipped'
 ]
+
+function DuplicateGate({ job }: { job: ImportProgress }) {
+  const [resolving, setResolving] = useState(false)
+  if (!job.duplicate) return null
+  const { existingTitle, existingAuthor, matchType } = job.duplicate
+
+  const choose = (action: DuplicateAction) => {
+    setResolving(true)
+    void window.Musaeum.import.resolveDuplicate(job.jobId, { action })
+  }
+
+  return (
+    <div className="mt-1.5 space-y-2">
+      <p className="flex items-start gap-1.5 text-[12px] text-gold-400">
+        <WarningIcon className="mt-px h-3.5 w-3.5 shrink-0" />
+        Already in library: “{existingTitle}”{existingAuthor ? ` by ${existingAuthor}` : ''}
+        <span className="text-parchment-faint">
+          {' '}
+          ({matchType === 'isbn' ? 'Same ISBN' : 'Same title & author'})
+        </span>
+      </p>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          disabled={resolving}
+          onClick={() => choose('skip')}
+          className="rounded border border-ink-700 px-2 py-1 text-[11px] text-parchment-dim hover:border-gold-400/60 hover:text-parchment disabled:opacity-40"
+        >
+          Skip
+        </button>
+        <button
+          type="button"
+          disabled={resolving}
+          onClick={() => choose('add_new')}
+          className="rounded border border-ink-700 px-2 py-1 text-[11px] text-parchment-dim hover:border-gold-400/60 hover:text-parchment disabled:opacity-40"
+        >
+          Add as new
+        </button>
+        <button
+          type="button"
+          disabled={resolving}
+          onClick={() => choose('add_format')}
+          className="rounded border border-ink-700 px-2 py-1 text-[11px] text-parchment-dim hover:border-gold-400/60 hover:text-parchment disabled:opacity-40"
+        >
+          Add format to existing
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function JobCard({ job }: { job: ImportProgress }) {
   const failed = job.step === 'error'
+  const skipped = job.step === 'skipped'
+  const awaitingDecision = job.step === 'awaiting_dedup_decision'
   const currentIdx = STEP_ORDER.indexOf(job.step)
 
   return (
@@ -34,6 +89,10 @@ function JobCard({ job }: { job: ImportProgress }) {
           <WarningIcon className="mt-px h-3.5 w-3.5 shrink-0" />
           {job.error ?? 'Import failed'}
         </p>
+      ) : skipped ? (
+        <p className="mt-1.5 text-[12px] text-parchment-faint">Skipped</p>
+      ) : awaitingDecision ? (
+        <DuplicateGate job={job} />
       ) : (
         <ul className="mt-2 space-y-1">
           {STEP_SEQUENCE.map(({ step, label }) => {
@@ -55,13 +114,6 @@ function JobCard({ job }: { job: ImportProgress }) {
             )
           })}
         </ul>
-      )}
-
-      {job.duplicateWarning && (
-        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gold-400">
-          <WarningIcon className="mt-px h-3 w-3 shrink-0" />
-          {job.duplicateWarning}
-        </p>
       )}
     </div>
   )

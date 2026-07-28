@@ -1,12 +1,16 @@
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import type { Device } from '@shared/device.types'
+import * as db from './db'
 import { broadcast } from './events'
+import { sanitizeTitle } from './sanitize'
 
 const POLL_INTERVAL_MS = 5_000
 const VOLUMES = '/Volumes'
+const MAX_SCAN_DEPTH = 2
 
 const devices = new Map<string, Device>()
+const deviceContents = new Map<string, Set<string>>()
 let pollTimer: NodeJS.Timeout | null = null
 
 export function getConnectedDevices(): Device[] {
@@ -43,6 +47,62 @@ async function freeBytes(mountPath: string): Promise<number | null> {
   }
 }
 
+/**
+ * Recursively walk {mountPath}/documents/ (max depth 2) and collect the
+ * lowercased, extension-stripped basename of every file — used to determine
+ * which books are physically present on the device.
+ */
+async function scanDocuments(mountPath: string): Promise<Set<string>> {
+  const stems = new Set<string>()
+  const documentsDir = join(mountPath, 'documents')
+
+  async function walk(dir: string, depth: number): Promise<void> {
+    let entries: import('fs').Dirent[]
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (depth < MAX_SCAN_DEPTH) await walk(full, depth + 1)
+      } else if (entry.isFile()) {
+        const stem = entry.name.replace(/\.[^.]+$/, '')
+        stems.add(stem.toLowerCase())
+      }
+    }
+  }
+
+  try {
+    await walk(documentsDir, 1)
+  } catch {
+    return new Set()
+  }
+  return stems
+}
+
+/** Re-scan a connected device's documents/ folder and broadcast the change. */
+export async function refreshDeviceContents(deviceId: string): Promise<void> {
+  const device = getDevice(deviceId)
+  if (!device) return
+  deviceContents.set(deviceId, await scanDocuments(device.mountPath))
+  broadcast('deviceContentsChanged', deviceId)
+}
+
+/** Book IDs whose sanitized title matches a file present on the device. */
+export function getOnDeviceBookIds(deviceId: string): string[] {
+  const stems = deviceContents.get(deviceId)
+  if (!stems || stems.size === 0) return []
+  const books = db.getBooks()
+  const ids: string[] = []
+  for (const book of books) {
+    if (stems.has(sanitizeTitle(book.title).toLowerCase())) ids.push(book.id)
+  }
+  return ids
+}
+
 async function scan(): Promise<void> {
   let names: string[]
   try {
@@ -69,7 +129,9 @@ async function scan(): Promise<void> {
       }
       devices.set(id, device)
       seen.add(id)
+      deviceContents.set(id, await scanDocuments(mountPath))
       broadcast('deviceConnected', device)
+      broadcast('deviceContentsChanged', id)
     }
   }
 
@@ -80,6 +142,7 @@ async function scan(): Promise<void> {
         seen.add(id) // still mounted; volume just wasn't re-validated
       } catch {
         devices.delete(id)
+        deviceContents.delete(id)
         broadcast('deviceDisconnected', id)
       }
     }

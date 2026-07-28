@@ -1,17 +1,46 @@
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
-import type { Book, BookFormat, ImportProgress, ImportResult, ImportStep } from '@shared/book.types'
+import type {
+  Book,
+  BookFormat,
+  DuplicateContext,
+  DuplicateDecision,
+  DuplicateMatchType,
+  ImportProgress,
+  ImportResult,
+  ImportStep
+} from '@shared/book.types'
 import type { ConflictCandidate } from '@shared/metadata.types'
 import * as db from './db'
 import { broadcast } from './events'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import * as sidecar from './sidecar'
+import { sanitizeTitle } from './sanitize'
+
+export { sanitizeTitle }
 
 const SUPPORTED_FORMATS = new Set(['.epub', '.mobi', '.azw3', '.pdf'])
 
 const jobs = new Map<string, ImportProgress>()
+
+const pendingDecisions = new Map<string, (d: DuplicateDecision) => void>()
+
+export function resolveDuplicate(jobId: string, decision: DuplicateDecision): void {
+  const resolver = pendingDecisions.get(jobId)
+  if (!resolver) return
+  pendingDecisions.delete(jobId)
+  resolver(decision)
+}
+
+/** Resolve every pending gate as Skip — call on shutdown so import loops unwind. */
+export function abortPendingDecisions(): void {
+  for (const [id, resolve] of pendingDecisions) {
+    pendingDecisions.delete(id)
+    resolve({ action: 'skip' })
+  }
+}
 
 export function getImportProgress(jobId: string): ImportProgress | null {
   return jobs.get(jobId) ?? null
@@ -49,17 +78,6 @@ function emit(job: ImportProgress, step: ImportStep, extra?: Partial<ImportProgr
   Object.assign(job, extra, { step })
   jobs.set(job.jobId, job)
   broadcast('importProgress', { ...job })
-}
-
-/** Strip filesystem-hostile characters; cap length for NAS friendliness. */
-export function sanitizeTitle(title: string): string {
-  const clean = title
-    .replace(/[/\\:*?"<>|]/g, '')
-    // eslint-disable-next-line no-control-regex -- stripping control chars is the point
-    .replace(/[\u0000-\u001f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return (clean || 'untitled').slice(0, 80)
 }
 
 function titleFromFilename(filePath: string): string {
@@ -110,18 +128,44 @@ async function importOne(filePath: string): Promise<ImportResult> {
     const author = extracted.authors?.[0]?.name ?? null
     const isbn13 = extracted.identifiers?.isbn_13 ?? null
 
-    // 2. Duplicate detection — ISBN match is definitive, title+author warns
-    emit(job, 'duplicate_check')
-    let duplicateWarning: string | undefined
+    // 2. Duplicate GATE — ISBN-13 or normalized title+author blocks import
+    let existing: Book | null = null
+    let matchType: DuplicateMatchType | null = null
     if (isbn13) {
       const dup = db.findByIsbn13(isbn13)
-      if (dup) duplicateWarning = `Already in library (ISBN match): “${dup.title}”`
+      if (dup) {
+        existing = dup
+        matchType = 'isbn'
+      }
     }
-    if (!duplicateWarning) {
+    if (!existing) {
       const dup = db.findByTitleAuthor(title, author)
-      if (dup) duplicateWarning = `Possible duplicate of “${dup.title}”${dup.author ? ` by ${dup.author}` : ''}`
+      if (dup) {
+        existing = dup
+        matchType = 'title_author'
+      }
     }
-    if (duplicateWarning) emit(job, 'duplicate_check', { duplicateWarning })
+
+    if (existing && matchType) {
+      const duplicateContext: DuplicateContext = {
+        existingBookId: existing.id,
+        existingTitle: existing.title,
+        existingAuthor: existing.author,
+        matchType
+      }
+      emit(job, 'awaiting_dedup_decision', { duplicate: duplicateContext })
+      const decision = await new Promise<DuplicateDecision>((resolve) =>
+        pendingDecisions.set(jobId, resolve)
+      )
+      if (decision.action === 'skip') {
+        emit(job, 'skipped')
+        return { jobId, fileName, success: false, skipped: true, action: 'skip' }
+      }
+      if (decision.action === 'add_format') {
+        return await addFormatToExisting(existing, filePath, ext, format, job, fileName)
+      }
+      // 'add_new' → fall through to the unchanged copy/insert/hydrate pipeline
+    }
 
     // 3. Copy into books/{uuid}/ on the NAS
     emit(job, 'copying')
@@ -170,7 +214,7 @@ async function importOne(filePath: string): Promise<ImportResult> {
     emit(job, 'hydrating', { bookId })
     void hydrate(bookId, targetFile, bookDir, job)
 
-    return { jobId, fileName, success: true, bookId, duplicateWarning }
+    return { jobId, fileName, success: true, bookId }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     emit(job, 'error', { error: message })
@@ -271,6 +315,35 @@ function applyHydration(bookId: string, result: HydrationResult): void {
 function sortableTitle(title: string): string {
   const m = title.match(/^(The|A|An)\s+(.+)$/i)
   return m ? `${m[2]}, ${m[1]}` : title
+}
+
+async function addFormatToExisting(
+  existing: Book,
+  srcPath: string,
+  ext: string,
+  format: BookFormat,
+  job: ImportProgress,
+  fileName: string
+): Promise<ImportResult> {
+  if (!existing.nasPath) throw new Error('Existing book has no NAS path')
+  emit(job, 'copying', { bookId: existing.id })
+  const bookDir = join(nas.getLibraryRoot()!, existing.nasPath)
+  await fs.mkdir(bookDir, { recursive: true })
+  // Overwrite semantics: delete EVERY existing file of this extension first,
+  // then write under the existing book's canonical name — prevents two
+  // same-extension files (findFormatFile picks nondeterministically otherwise).
+  for (const f of await fs.readdir(bookDir)) {
+    if (extname(f).toLowerCase() === ext) await fs.rm(join(bookDir, f), { force: true })
+  }
+  await fs.copyFile(srcPath, join(bookDir, `${sanitizeTitle(existing.title)}${ext}`))
+  const formats = [...new Set([...existing.formats, format])]
+  db.updateBook(existing.id, { formats })
+  const updated = db.getBook(existing.id)!
+  await writeMetadataJson(bookDir, updated)
+  librarySync.upsertCatalog([updated])
+  broadcast('libraryChanged')
+  emit(job, 'done', { bookId: existing.id })
+  return { jobId: job.jobId, fileName, success: true, bookId: existing.id, action: 'add_format' }
 }
 
 export async function writeMetadataJson(

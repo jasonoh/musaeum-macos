@@ -11,6 +11,7 @@ import { closeDb, getBook } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
 import { setMainWindow } from './services/events'
 import { bindToNAS, startWatcher, stopWatcher } from './services/file-watcher'
+import * as importer from './services/importer'
 import * as librarySync from './services/library-sync'
 import * as nas from './services/nas-manager'
 import * as sidecar from './services/sidecar'
@@ -119,4 +120,8 @@ app.on('before-quit', () => {
   nas.stopHealthChecks()
   sidecar.stop()
   closeDb()
+})
+
+app.on('will-quit', () => {
+  importer.abortPendingDecisions()
 })

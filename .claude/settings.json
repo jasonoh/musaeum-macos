@@ -1,0 +1,10 @@
+{
+    "env": {
+        "LEDGER_GUARD_THRESHOLD": "1500",
+        "LEDGER_GUARD_STOP_MODE": "once-per-session",
+        "FABLE_ORCH_METRICS": "(on)",
+        "FABLE_ORCH_SWARM_CLEANUP": "(on)",
+        "FABLE_ORCH_SWARM_MAX_IDLE_H": "48",
+        "FABLE_ORCH_TEAMMATE_IDLE_H": "2"
+    }
+}

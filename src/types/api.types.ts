@@ -1,6 +1,7 @@
 import type {
   Book,
   BookFilters,
+  DuplicateDecision,
   ImportProgress,
   ImportResult,
   LibraryFacets
@@ -42,6 +43,7 @@ export interface MusaeumAPI {
   import: {
     addFiles(filePaths: string[]): Promise<ImportResult[]>
     getImportProgress(jobId: string): Promise<ImportProgress | null>
+    resolveDuplicate(jobId: string, decision: DuplicateDecision): Promise<void>
   }
 
   metadata: {
@@ -55,6 +57,7 @@ export interface MusaeumAPI {
     sendToDevice(bookId: string, deviceId: string): Promise<TransferJob>
     getTransferProgress(jobId: string): Promise<TransferProgress | null>
     exportToAppleBooks(bookId: string): Promise<void>
+    getOnDeviceBookIds(deviceId: string): Promise<string[]>
   }
 
   nas: {
@@ -88,6 +91,7 @@ export interface MusaeumAPI {
     transferProgress(cb: (progress: TransferProgress) => void): Unsubscribe
     libraryChanged(cb: () => void): Unsubscribe
     catalogRebuildProgress(cb: (p: { completed: number; total: number }) => void): Unsubscribe
+    deviceContentsChanged(cb: (deviceId: string) => void): Unsubscribe
   }
 }
 
@@ -100,5 +104,6 @@ export const EVENT_CHANNELS = {
   conflictQueueUpdated: 'event:conflict-queue-updated',
   transferProgress: 'event:transfer-progress',
   libraryChanged: 'event:library-changed',
-  catalogRebuildProgress: 'event:catalog-rebuild-progress'
+  catalogRebuildProgress: 'event:catalog-rebuild-progress',
+  deviceContentsChanged: 'event:device-contents-changed'
 } as const

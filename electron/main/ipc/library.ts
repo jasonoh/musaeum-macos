@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import type { Book, BookFilters } from '@shared/book.types'
+import type { Book, BookFilters, DuplicateDecision } from '@shared/book.types'
 import * as db from '../services/db'
 import { broadcast } from '../services/events'
 import * as importer from '../services/importer'
@@ -51,4 +51,7 @@ export function registerLibraryHandlers(): void {
   // Import lives in the library domain
   handle('import:addFiles', (filePaths: string[]) => importer.addFiles(filePaths))
   handle('import:getImportProgress', (jobId: string) => importer.getImportProgress(jobId))
+  handle('import:resolveDuplicate', (jobId: string, decision: DuplicateDecision) =>
+    importer.resolveDuplicate(jobId, decision)
+  )
 }

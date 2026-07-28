@@ -23,6 +23,27 @@ sidecar/.venv/bin/pip install -r sidecar/requirements.txt
 detected at `/Applications/calibre.app/Contents/MacOS/ebook-convert`; override
 via the `ebook_convert_path` app config key).
 
+### Secrets
+
+`GOOGLE_BOOKS_API_KEY` is read from the environment by the Python sidecar
+([`sidecar/fetchers/google_books.py`](sidecar/fetchers/google_books.py)).
+It is optional for casual use but **required before the 7000-book migration**
+(the free, keyless tier is rate-limited well below what a bulk run needs).
+
+Secrets live in the Infisical project **`musaeum`**. Inject them by wrapping
+the dev/build commands in `infisical run` rather than exporting keys by hand:
+
+```bash
+infisical run -- npm run dev      # sidecar inherits GOOGLE_BOOKS_API_KEY
+infisical run -- npm run build
+```
+
+`infisical run` sets the variables only for the wrapped process, so a bare
+`npm run dev` still works (online metadata just falls back to the keyless
+tier). Packaged `.app` builds can't be launched through `infisical run` by a
+double-click — the plan there is to move the key into `app_config` via a
+Settings screen; see [tasks.md](tasks.md) → Packaging & distribution.
+
 ## Development
 
 ```bash
