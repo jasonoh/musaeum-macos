@@ -1,6 +1,8 @@
 import type {
   Book,
   BookFilters,
+  BookFormat,
+  BookSort,
   DuplicateDecision,
   ImportProgress,
   ImportResult,
@@ -30,9 +32,15 @@ export interface MusaeumAPI {
   library: {
     getBooks(filters?: BookFilters): Promise<Book[]>
     getBook(id: string): Promise<Book>
-    searchBooks(query: string): Promise<Book[]>
+    /** Sorted by `sort` when given, otherwise by FTS relevance rank. */
+    searchBooks(query: string, sort?: BookSort): Promise<Book[]>
     updateBook(id: string, updates: Partial<Book>): Promise<void>
     deleteBook(id: string): Promise<void>
+    /**
+     * Delete individual format files. Selecting every format deletes the book
+     * outright — `bookDeleted` tells the caller that happened.
+     */
+    deleteFormats(id: string, formats: BookFormat[]): Promise<{ bookDeleted: boolean }>
     getFacets(): Promise<LibraryFacets>
     /** Re-read catalog.json into the local cache; rebuilds when missing. */
     refreshLibrary(): Promise<{ books: number }>

@@ -117,6 +117,13 @@ export const TrashIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+/** Column-header sort indicator: points up for ascending, down for descending. */
+export const SortArrowIcon = ({ className, up }: IconProps & { up?: boolean }) => (
+  <svg {...base(className)} style={{ transform: up ? 'rotate(180deg)' : undefined }}>
+    <path d="M12 5v14M12 19l-5-5M12 19l5-5" />
+  </svg>
+)
+
 export const SortIcon = ({ className }: IconProps) => (
   <svg {...base(className)}>
     <path d="M7 4v13M7 17l-3-3M7 17l3-3" />

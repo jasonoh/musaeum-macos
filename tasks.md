@@ -54,7 +54,9 @@ Blockers before pointing the app at the full 7000-book NAS library:
       - sidecar: `pipeline/conflict.py` merge policy, `extractors/epub_metadata.py`
         against fixture EPUBs (pytest)
       - main: `db.ts` query/filter builder, `importer.sanitizeTitle`,
-        conflict resolution IPC (vitest via npm test — runs through Electron-as-Node for the better-sqlite3 ABI; harness landed with Section B)
+        conflict resolution IPC (vitest via npm test — runs through Electron-as-Node for the better-sqlite3 ABI; harness landed with Section B).
+        `db.ts` sort/search ordering and `book-delete.ts` are covered as of
+        2026-07-29; the filter builder and `sanitizeTitle` still are not
       - main: duplicate GATE — `importer` skip/add_new/add_format branches +
         `resolveDuplicate`/`abortPendingDecisions` (2026-07-27, untested)
       - main: device presence — `device-manager.scanDocuments` /
@@ -66,6 +68,14 @@ Blockers before pointing the app at the full 7000-book NAS library:
       equals `sanitizeTitle(currentTitle)`) — only self-corrects on re-send.
       Revisit if it bites; a rename-the-file-on-title-change pass would fix it
       broadly. (Shipped 2026-07-27.)
+- [ ] `books.file_size_bytes` is set at import and never recalculated, so it
+      is wrong after `deleteFormats` removes a file (and after "Add format to
+      existing"). Either recompute from the book folder on those writes or
+      drop the column from the detail panel. (Found 2026-07-29.)
+- [ ] Sorting gaps: Formats is deliberately unsortable, and there is no
+      secondary sort key, so ties (same author, same rating) fall back to
+      SQLite's arbitrary order and can shuffle between loads. Add a stable
+      tiebreak (title) if it becomes noticeable. (Found 2026-07-29.)
 - [ ] Persist cover `source`/`width`/`height` into metadata.json (sidecar
       returns them; `importer.writeMetadataJson` currently drops them —
       the iOS contract documents them)
@@ -96,8 +106,10 @@ Blockers before pointing the app at the full 7000-book NAS library:
       as new / Add format to existing) — supersedes the old invisible
       `duplicate_check` warning row (2026-07-27)
 - [ ] **Open the stored book file from the app** (confirmed missing
-      2026-07-17) — the renderer has no `onDoubleClick`/`onContextMenu`
-      handlers and no IPC action opens a book file. Covered by the approved
+      2026-07-17) — no IPC action opens a book file, and nothing is wired to
+      `onDoubleClick`. As of 2026-07-29 a right-click context menu exists
+      (`BookContextMenu`, grid + list), so the Open action has a home: add it
+      there alongside View details / Delete. Covered by the approved
       design (`docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md`,
       Section C): double-click / detail panel opens the native ReaderView
       (foliate-js for epub, pdf.js for PDF, `musaeum://book/{id}/{format}`).

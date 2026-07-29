@@ -19,9 +19,10 @@ const api: MusaeumAPI = {
   library: {
     getBooks: (filters) => invoke('library:getBooks', filters),
     getBook: (id) => invoke('library:getBook', id),
-    searchBooks: (query) => invoke('library:searchBooks', query),
+    searchBooks: (query, sort) => invoke('library:searchBooks', query, sort),
     updateBook: (id, updates) => invoke('library:updateBook', id, updates),
     deleteBook: (id) => invoke('library:deleteBook', id),
+    deleteFormats: (id, formats) => invoke('library:deleteFormats', id, formats),
     getFacets: () => invoke('library:getFacets'),
     refreshLibrary: () => invoke('library:refreshLibrary'),
     rebuildCatalog: () => invoke('library:rebuildCatalog')

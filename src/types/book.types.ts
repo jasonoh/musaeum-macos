@@ -44,6 +44,28 @@ export interface BookSort {
   direction: 'asc' | 'desc'
 }
 
+/** Human labels for every field/direction pair the sort UI can produce. */
+const SORT_LABELS: Record<SortField, { asc: string; desc: string }> = {
+  title: { asc: 'Title A–Z', desc: 'Title Z–A' },
+  author: { asc: 'Author A–Z', desc: 'Author Z–A' },
+  series: { asc: 'Series', desc: 'Series (reversed)' },
+  date_added: { asc: 'Oldest First', desc: 'Recently Added' },
+  rating: { asc: 'Lowest Rated', desc: 'Highest Rated' },
+  read_status: { asc: 'Read Status', desc: 'Read Status (reversed)' }
+}
+
+export function sortLabel(sort: BookSort): string {
+  return SORT_LABELS[sort.field][sort.direction]
+}
+
+/**
+ * The direction a field sorts on first click: alphabetical fields read best
+ * ascending, while dates and ratings are most useful highest-first.
+ */
+export function defaultSortDirection(field: SortField): 'asc' | 'desc' {
+  return field === 'date_added' || field === 'rating' ? 'desc' : 'asc'
+}
+
 export interface BookFilters {
   authors?: string[]
   series?: string[]

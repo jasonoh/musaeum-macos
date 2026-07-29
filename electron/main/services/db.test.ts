@@ -23,6 +23,101 @@ beforeEach(() => {
   }
 })
 
+describe('sorting', () => {
+  /** Three books that order differently per field. */
+  function seedSortable() {
+    insertBook({
+      ...makeBook('a', 'Charlie'),
+      author: 'Adams',
+      rating: 1,
+      dateAdded: '2026-01-03T00:00:00Z'
+    })
+    insertBook({
+      ...makeBook('b', 'Alpha'),
+      author: 'Carter',
+      rating: 5,
+      dateAdded: '2026-01-01T00:00:00Z'
+    })
+    insertBook({
+      ...makeBook('c', 'Bravo'),
+      author: 'Baker',
+      rating: 3,
+      dateAdded: '2026-01-02T00:00:00Z'
+    })
+  }
+
+  it('defaults to title ascending', () => {
+    seedSortable()
+    expect(getBooks().map((b) => b.title)).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  })
+
+  it.each([
+    ['title', 'asc', ['Alpha', 'Bravo', 'Charlie']],
+    ['title', 'desc', ['Charlie', 'Bravo', 'Alpha']],
+    ['author', 'asc', ['Charlie', 'Bravo', 'Alpha']],
+    ['author', 'desc', ['Alpha', 'Bravo', 'Charlie']],
+    ['rating', 'desc', ['Alpha', 'Bravo', 'Charlie']],
+    ['date_added', 'desc', ['Charlie', 'Bravo', 'Alpha']],
+    ['date_added', 'asc', ['Alpha', 'Bravo', 'Charlie']]
+  ] as const)('orders by %s %s', (field, direction, expected) => {
+    seedSortable()
+    expect(getBooks({ sort: { field, direction } }).map((b) => b.title)).toEqual(expected)
+  })
+
+  it('applies the direction to every key of a multi-key sort', () => {
+    insertBook({ ...makeBook('a', 'Two'), seriesName: 'Expanse', seriesIndex: 2 })
+    insertBook({ ...makeBook('b', 'One'), seriesName: 'Expanse', seriesIndex: 1 })
+    insertBook({ ...makeBook('c', 'Solo'), seriesName: 'Amber', seriesIndex: 1 })
+
+    const asc = getBooks({ sort: { field: 'series', direction: 'asc' } })
+    expect(asc.map((b) => b.title)).toEqual(['Solo', 'One', 'Two'])
+    // Descending reverses the whole ordering, not just the index within a series
+    const desc = getBooks({ sort: { field: 'series', direction: 'desc' } })
+    expect(desc.map((b) => b.title)).toEqual(['Two', 'One', 'Solo'])
+  })
+
+  it('falls back to title ascending for an unknown field', () => {
+    seedSortable()
+    const sort = { field: 'nonsense' as never, direction: 'asc' } as const
+    expect(getBooks({ sort }).map((b) => b.title)).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  })
+})
+
+describe('searchBooks ordering', () => {
+  function seedMatches() {
+    insertBook({ ...makeBook('a', 'Voyage Charlie'), author: 'Adams' })
+    insertBook({ ...makeBook('b', 'Voyage Alpha'), author: 'Carter' })
+    insertBook({ ...makeBook('c', 'Voyage Bravo'), author: 'Baker' })
+  }
+
+  it('applies the requested sort to matches', () => {
+    seedMatches()
+    const titles = searchBooks('Voyage', { field: 'author', direction: 'asc' }).map((b) => b.title)
+    expect(titles).toEqual(['Voyage Charlie', 'Voyage Bravo', 'Voyage Alpha'])
+  })
+
+  it('returns all matches regardless of direction', () => {
+    seedMatches()
+    expect(searchBooks('Voyage', { field: 'title', direction: 'desc' }).map((b) => b.title)).toEqual(
+      ['Voyage Charlie', 'Voyage Bravo', 'Voyage Alpha']
+    )
+  })
+
+  it('sorts the whole library when the query is only punctuation', () => {
+    seedMatches()
+    expect(searchBooks('"', { field: 'title', direction: 'desc' }).map((b) => b.title)).toEqual([
+      'Voyage Charlie',
+      'Voyage Bravo',
+      'Voyage Alpha'
+    ])
+  })
+
+  it('keeps relevance rank when no sort is given', () => {
+    seedMatches()
+    expect(searchBooks('Voyage').length).toBe(3)
+  })
+})
+
 describe('replaceAllBooks', () => {
   it('swaps the whole table: removes, updates, inserts', () => {
     insertBook(makeBook('a', 'Alpha'))

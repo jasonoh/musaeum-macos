@@ -30,8 +30,8 @@ export function BookDetail() {
   const onDevice = useDeviceStore((s) => s.onDevice)
   const sendToDevice = useDeviceStore((s) => s.sendToDevice)
   const online = useNASStore((s) => s.status?.state === 'connected')
+  const requestDelete = useUIStore((s) => s.requestDelete)
   const [busy, setBusy] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const book = useMemo(
     () => books.find((b) => b.id === selectedBookId) ?? null,
@@ -208,32 +208,13 @@ export function BookDetail() {
           </button>
           <button
             disabled={!online || busy !== null}
-            onClick={() => {
-              if (!confirmDelete) {
-                setConfirmDelete(true)
-                setTimeout(() => setConfirmDelete(false), 3_000)
-                return
-              }
-              void run('delete', async () => {
-                await window.Musaeum.library.deleteBook(book.id)
-                selectBook(null)
-              })
-            }}
-            title={confirmDelete ? 'Click again to permanently delete' : 'Delete book'}
-            className={`rounded-md border px-2.5 py-1.5 disabled:opacity-40 ${
-              confirmDelete
-                ? 'border-red-500 bg-red-500/20 text-red-400'
-                : 'border-ink-600 text-parchment-dim hover:bg-ink-800 hover:text-red-400'
-            }`}
+            onClick={() => requestDelete(book.id)}
+            title={book.formats.length > 1 ? 'Delete book or formats' : 'Delete book'}
+            className="rounded-md border border-ink-600 px-2.5 py-1.5 text-parchment-dim hover:bg-ink-800 hover:text-red-400 disabled:opacity-40"
           >
             <TrashIcon className="h-4 w-4" />
           </button>
         </div>
-        {confirmDelete && (
-          <p className="text-center text-[11px] text-red-400">
-            Click delete again to remove the book and its files
-          </p>
-        )}
       </div>
     </aside>
   )

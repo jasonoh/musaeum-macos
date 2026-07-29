@@ -2,18 +2,22 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
 import { SearchBar } from '@/components/shared/SearchBar'
 import { GridIcon, ListIcon } from '@/components/shared/icons'
-import type { SortField } from '@shared/book.types'
+import type { BookSort, SortField } from '@shared/book.types'
+import { sortLabel } from '@shared/book.types'
 
-const SORT_OPTIONS: { field: SortField; direction: 'asc' | 'desc'; label: string }[] = [
-  { field: 'title', direction: 'asc', label: 'Title A–Z' },
-  { field: 'title', direction: 'desc', label: 'Title Z–A' },
-  { field: 'author', direction: 'asc', label: 'Author A–Z' },
-  { field: 'series', direction: 'asc', label: 'Series' },
-  { field: 'date_added', direction: 'desc', label: 'Recently Added' },
-  { field: 'date_added', direction: 'asc', label: 'Oldest First' },
-  { field: 'rating', direction: 'desc', label: 'Rating' },
-  { field: 'read_status', direction: 'asc', label: 'Read Status' }
+/** Curated shortcuts; labels come from the shared map so both sort UIs agree. */
+const SORT_OPTIONS: BookSort[] = [
+  { field: 'title', direction: 'asc' },
+  { field: 'title', direction: 'desc' },
+  { field: 'author', direction: 'asc' },
+  { field: 'series', direction: 'asc' },
+  { field: 'date_added', direction: 'desc' },
+  { field: 'date_added', direction: 'asc' },
+  { field: 'rating', direction: 'desc' },
+  { field: 'read_status', direction: 'asc' }
 ]
+
+const key = (s: BookSort) => `${s.field}:${s.direction}`
 
 export function Toolbar() {
   const viewMode = useUIStore((s) => s.viewMode)
@@ -21,7 +25,12 @@ export function Toolbar() {
   const sort = useLibraryStore((s) => s.sort)
   const setSort = useLibraryStore((s) => s.setSort)
 
-  const sortValue = `${sort.field}:${sort.direction}`
+  const sortValue = key(sort)
+  // A list-view header can select a combination this list doesn't carry (e.g.
+  // Author Z–A); append it so the select never falls back to a wrong option
+  const options = SORT_OPTIONS.some((o) => key(o) === sortValue)
+    ? SORT_OPTIONS
+    : [...SORT_OPTIONS, sort]
 
   return (
     <header className="app-drag flex h-14 shrink-0 items-center gap-3 border-b border-ink-800 bg-ink-900/60 px-4">
@@ -38,9 +47,9 @@ export function Toolbar() {
         className="app-no-drag rounded-md border border-ink-700 bg-ink-850 px-2 py-1.5 text-[13px] text-parchment-dim hover:text-parchment"
         aria-label="Sort books"
       >
-        {SORT_OPTIONS.map((o) => (
-          <option key={`${o.field}:${o.direction}`} value={`${o.field}:${o.direction}`}>
-            Sort: {o.label}
+        {options.map((o) => (
+          <option key={key(o)} value={key(o)}>
+            Sort: {sortLabel(o)}
           </option>
         ))}
       </select>

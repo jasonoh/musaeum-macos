@@ -3,7 +3,9 @@ import { Toolbar } from '@/components/layout/Toolbar'
 import { StatusBar } from '@/components/layout/StatusBar'
 import { GridView } from '@/components/library/GridView'
 import { ListView } from '@/components/library/ListView'
+import { BookContextMenu } from '@/components/library/BookContextMenu'
 import { BookDetail } from '@/components/library/BookDetail'
+import { DeleteBookDialog } from '@/components/library/DeleteBookDialog'
 import { ImportOverlay } from '@/components/library/ImportOverlay'
 import { ConflictQueue } from '@/components/metadata/ConflictQueue'
 import { MigrationWizard } from '@/components/migration/MigrationWizard'
@@ -22,6 +24,7 @@ export default function App() {
 
   const viewMode = useUIStore((s) => s.viewMode)
   const modal = useUIStore((s) => s.modal)
+  const deletingBookId = useUIStore((s) => s.deletingBookId)
 
   return (
     <div className="flex h-full">
@@ -38,6 +41,9 @@ export default function App() {
 
       <BookDetail />
       <ImportOverlay />
+      <BookContextMenu />
+      {/* Keyed so each book opens the dialog with a fresh format selection */}
+      {deletingBookId && <DeleteBookDialog key={deletingBookId} />}
 
       {modal === 'conflicts' && <ConflictQueue />}
       {modal === 'migration' && <MigrationWizard />}

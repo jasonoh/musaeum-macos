@@ -1,7 +1,14 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
-import type { Book, BookFilters, BookFormat, LibraryFacets, ReadStatus } from '@shared/book.types'
+import type {
+  Book,
+  BookFilters,
+  BookFormat,
+  BookSort,
+  LibraryFacets,
+  ReadStatus
+} from '@shared/book.types'
 import type { ConflictCandidate, MetadataConflict } from '@shared/metadata.types'
 import migration001 from '../schema/migrations/001_initial.sql?raw'
 
@@ -140,13 +147,18 @@ const BOOK_COLUMN_MAP: Record<string, string> = {
   nasPath: 'nas_path'
 }
 
-const SORT_SQL: Record<string, string> = {
-  title: 'COALESCE(sort_title, title) COLLATE NOCASE',
-  author: 'COALESCE(author_sort, author) COLLATE NOCASE',
-  series: 'series_name COLLATE NOCASE, series_index',
-  date_added: 'date_added',
-  rating: 'rating',
-  read_status: 'read_status'
+/**
+ * Sort expressions, parameterised by table prefix: the FTS search joins
+ * `books_fts`, which also has `title`/`author` columns, so those references
+ * must be qualified or SQLite rejects them as ambiguous.
+ */
+const SORT_SQL: Record<string, (t: string) => string[]> = {
+  title: (t) => [`COALESCE(${t}sort_title, ${t}title) COLLATE NOCASE`],
+  author: (t) => [`COALESCE(${t}author_sort, ${t}author) COLLATE NOCASE`],
+  series: (t) => [`${t}series_name COLLATE NOCASE`, `${t}series_index`],
+  date_added: (t) => [`${t}date_added`],
+  rating: (t) => [`${t}rating`],
+  read_status: (t) => [`${t}read_status`]
 }
 
 export function getBooks(filters?: BookFilters): Book[] {
@@ -183,12 +195,21 @@ export function getBooks(filters?: BookFilters): Book[] {
     params.push(...filters.formats)
   }
 
-  const sort = filters?.sort ?? { field: 'title', direction: 'asc' }
-  const orderBy = SORT_SQL[sort.field] ?? SORT_SQL.title
-  const dir = sort.direction === 'desc' ? 'DESC' : 'ASC'
-
-  const sql = `SELECT * FROM books ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${orderBy} ${dir}`
+  const sql = `SELECT * FROM books ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${orderClause(filters?.sort)}`
   return (getDb().prepare(sql).all(...params) as BookRow[]).map(rowToBook)
+}
+
+/** ORDER BY body for a sort; falls back to title ascending on an unknown field. */
+function orderClause(
+  sort: BookSort = { field: 'title', direction: 'asc' },
+  tablePrefix = ''
+): string {
+  const dir = sort.direction === 'desc' ? 'DESC' : 'ASC'
+  // Direction applies to every key, so descending 'series' fully reverses
+  // series order rather than only flipping the index within each series
+  return (SORT_SQL[sort.field] ?? SORT_SQL.title)(tablePrefix)
+    .map((expr) => `${expr} ${dir}`)
+    .join(', ')
 }
 
 export function getBook(id: string): Book | null {
@@ -196,12 +217,17 @@ export function getBook(id: string): Book | null {
   return row ? rowToBook(row) : null
 }
 
-export function searchBooks(query: string): Book[] {
+/**
+ * FTS search. Results are ordered by the given sort so the list-view headers
+ * and the toolbar dropdown stay live during a search; with no sort they fall
+ * back to FTS relevance rank.
+ */
+export function searchBooks(query: string, sort?: BookSort): Book[] {
   const terms = query
     .split(/\s+/)
     .map((t) => t.replace(/["*]/g, ''))
     .filter(Boolean)
-  if (!terms.length) return getBooks()
+  if (!terms.length) return getBooks(sort ? { sort } : undefined)
   // Quote each term and add prefix matching; AND semantics across terms
   const match = terms.map((t) => `"${t}"*`).join(' ')
   const rows = getDb()
@@ -209,7 +235,7 @@ export function searchBooks(query: string): Book[] {
       `SELECT books.* FROM books_fts
        JOIN books ON books.rowid = books_fts.rowid
        WHERE books_fts MATCH ?
-       ORDER BY rank`
+       ORDER BY ${sort ? orderClause(sort, 'books.') : 'rank'}`
     )
     .all(match) as BookRow[]
   return rows.map(rowToBook)

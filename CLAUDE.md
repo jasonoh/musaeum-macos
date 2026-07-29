@@ -299,6 +299,47 @@ Settings (see tasks.md → Packaging & distribution).
   Known limitation: a book renamed after import (file keeps its original
   sanitized name) won't match until re-sent.
 
+### Sorting & Search
+
+One `BookSort` in the library store drives every list: the toolbar dropdown
+and the clickable list-view column headers both write to it, so they can never
+disagree. Sort SQL lives in `db.SORT_SQL` — each field maps to an **array** of
+expressions and the direction is applied to every one, so descending `series`
+fully reverses the ordering instead of only flipping the index within a
+series. Entries are parameterised by table prefix because the FTS join exposes
+`books_fts.title`/`author` too, and an unqualified reference is ambiguous.
+
+List-view headers: click to sort, click the active column again to flip.
+First-click direction comes from `defaultSortDirection()` — ascending for text,
+descending for `date_added`/`rating`, which is what "newest"/"best" means.
+Formats has no sensible ordering and is deliberately not sortable. Labels for
+every field/direction pair come from `sortLabel()` in `book.types.ts`, shared
+so the dropdown can name a combination a header produced (it appends the
+current sort when it isn't one of its curated shortcuts).
+
+`searchBooks(query, sort?)` orders matches by the sort when given, falling back
+to FTS relevance `rank` when omitted. The renderer always passes the active
+sort, so the sort controls stay live during a search — the trade-off is that
+relevance rank no longer decides display order there, only which books match.
+
+### Deletion
+
+`services/book-delete.ts` owns both paths; the IPC handlers are thin wrappers.
+- `deleteBook` — removes the NAS folder, the cache row, and the catalog entry
+- `deleteFormats` — removes files **by extension** (not by canonical name, so
+  a book renamed after import still matches), then rewrites metadata.json and
+  upserts the catalog. Selecting every format is not a special UI case: it
+  falls through to `deleteBook` and returns `bookDeleted: true`, since a book
+  with no files left is not worth keeping. Formats the book doesn't have are
+  ignored; an entirely non-matching selection throws.
+
+Entry points, all funneling into one `DeleteBookDialog` (mounted in `App.tsx`,
+keyed on the target book so each open starts with everything selected):
+right-click a book in the grid or list (`BookContextMenu`), the hover trash
+button on `BookCard`, or the detail-panel trash button. The card's delete
+button is a *sibling* of the card `<button>` inside an overlay that mirrors
+the cover box — nested buttons are invalid HTML.
+
 ### Duplicate Detection
 
 On import, a duplicate **gates** the pipeline: an ISBN-13 match (checked
@@ -517,9 +558,10 @@ interface MusaeumAPI {
   library: {
     getBooks(filters?: BookFilters): Promise<Book[]>
     getBook(id: string): Promise<Book>
-    searchBooks(query: string): Promise<Book[]>
+    searchBooks(query: string, sort?: BookSort): Promise<Book[]>  // sort ?? rank
     updateBook(id: string, updates: Partial<Book>): Promise<void>
     deleteBook(id: string): Promise<void>
+    deleteFormats(id: string, formats: BookFormat[]): Promise<{ bookDeleted: boolean }>
     getFacets(): Promise<LibraryFacets>          // filter sidebar counts
     refreshLibrary(): Promise<{ books: number }>   // re-read catalog.json into cache
     rebuildCatalog(): Promise<{ books: number }>   // recovery: walk metadata.json files

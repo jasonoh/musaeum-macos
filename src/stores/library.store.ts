@@ -52,7 +52,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ loading: true })
     try {
       const books = query.trim()
-        ? await window.Musaeum.library.searchBooks(query)
+        ? await window.Musaeum.library.searchBooks(query, sort)
         : await window.Musaeum.library.getBooks({ ...filters, sort })
       const facets = await window.Musaeum.library.getFacets()
       set({ books, facets, loading: false })

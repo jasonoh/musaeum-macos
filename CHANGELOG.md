@@ -7,6 +7,19 @@ the app is packaged.
 ## [Unreleased] — 2026-07-29
 
 ### Added
+- Sortable list-view column headers: click Title / Author / Series / Added /
+  Rating to sort, click the active column again to flip direction. First click
+  is ascending for text columns and descending for Added and Rating; the
+  active column shows a gold arrow. Headers and the toolbar dropdown share one
+  sort state, so the dropdown reflects header-driven sorts (including
+  combinations it doesn't list, e.g. Author Z–A). Formats stays unsortable.
+- Book deletion from the library views: right-click any book in the grid or
+  list for a context menu (View details / Delete…), plus a trash button that
+  appears on the book card on hover. Both open one confirmation dialog, which
+  offers per-format selection for multi-format books — delete a single format
+  file, several, or the whole book (selecting every format deletes the book).
+  New `library.deleteFormats` IPC + `services/book-delete.ts`; the detail
+  panel's two-click delete now routes through the same dialog.
 - On-device presence: the connected Kindle's `documents/` folder is scanned
   and matched against the library, so books physically on the device show a
   badge on their card and an "On {device}" state on the detail-panel send
@@ -41,6 +54,11 @@ the app is packaged.
   `sidecar/requirements-dev.txt`
 
 ### Changed
+- Search results honor the active sort. `library.searchBooks` now takes an
+  optional `BookSort` (falling back to FTS relevance `rank` when omitted) and
+  the renderer always passes one, so the sort controls are no longer dead
+  while a query is active. Trade-off: during a search, relevance rank decides
+  which books match but no longer their display order.
 - Duplicate imports now **gate** instead of warn: an ISBN-13 or normalized
   title+author match pauses the import and forces a choice in the overlay —
   Skip / Add as new / Add format to existing book (`import.resolveDuplicate`
@@ -54,6 +72,10 @@ the app is packaged.
   returns an unsubscribe function
 
 ### Fixed
+- Descending `series` sort only reversed the index within each series — the
+  direction was applied to the last ORDER BY key alone. Every key now takes
+  the direction. Reachable before via the sort dropdown; more visible now that
+  a header click can request it.
 - On-device presence was stale after a cold restart (books showed "Send to
   Kindle" despite already being on the device). Presence depends on the book
   set as well as the device files, but was recomputed only on

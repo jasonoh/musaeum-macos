@@ -1,6 +1,12 @@
-import { promises as fs } from 'fs'
 import { join } from 'path'
-import type { Book, BookFilters, DuplicateDecision } from '@shared/book.types'
+import type {
+  Book,
+  BookFilters,
+  BookFormat,
+  BookSort,
+  DuplicateDecision
+} from '@shared/book.types'
+import * as bookDelete from '../services/book-delete'
 import * as db from '../services/db'
 import { broadcast } from '../services/events'
 import * as importer from '../services/importer'
@@ -17,7 +23,7 @@ export function registerLibraryHandlers(): void {
     return book
   })
 
-  handle('library:searchBooks', (query: string) => db.searchBooks(query))
+  handle('library:searchBooks', (query: string, sort?: BookSort) => db.searchBooks(query, sort))
 
   handle('library:getFacets', () => db.getFacets())
 
@@ -37,16 +43,11 @@ export function registerLibraryHandlers(): void {
     broadcast('libraryChanged')
   })
 
-  handle('library:deleteBook', async (id: string) => {
-    nas.assertOnline()
-    const book = db.getBook(id)
-    if (book?.nasPath) {
-      await fs.rm(join(nas.getLibraryRoot()!, book.nasPath), { recursive: true, force: true })
-    }
-    db.deleteBook(id)
-    librarySync.removeBookFromCatalog(id)
-    broadcast('libraryChanged')
-  })
+  handle('library:deleteBook', (id: string) => bookDelete.deleteBook(id))
+
+  handle('library:deleteFormats', (id: string, formats: BookFormat[]) =>
+    bookDelete.deleteFormats(id, formats)
+  )
 
   // Import lives in the library domain
   handle('import:addFiles', (filePaths: string[]) => importer.addFiles(filePaths))
