@@ -5,6 +5,16 @@ import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
 import { useUIStore } from '@/stores/ui.store'
 import { DeviceIcon, TrashIcon } from '@/components/shared/icons'
 
+/**
+ * Card geometry below the cover, in px. Fixed rather than content-sized so
+ * every card in the grid is exactly `coverWidth × 1.5 + CARD_META_MARGIN +
+ * CARD_META_HEIGHT` tall — GridView's virtualizer computes row offsets from
+ * these instead of measuring the DOM. `CARD_META_HEIGHT` is title (2 lines ×
+ * leading-4) + author (mt-0.5 + leading-4) + series (same).
+ */
+export const CARD_META_HEIGHT = 68
+export const CARD_META_MARGIN = 8
+
 export function coverUrl(book: Book, size: 'thumb' | 'full'): string | null {
   const path = size === 'thumb' ? book.coverThumbPath : book.coverFullPath
   return path ? `musaeum://cover/${book.id}/${size}` : null
@@ -76,15 +86,20 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
           )}
         </div>
 
-        <div className="mt-2 min-h-[3rem] px-0.5">
-          <p className="line-clamp-2 font-display text-[13px] leading-tight text-parchment group-hover:text-gold-300">
+        <div
+          className="overflow-hidden px-0.5"
+          style={{ height: CARD_META_HEIGHT, marginTop: CARD_META_MARGIN }}
+        >
+          <p className="line-clamp-2 font-display text-[13px] leading-4 text-parchment group-hover:text-gold-300">
             {book.title}
           </p>
           {book.author && (
-            <p className="mt-0.5 truncate text-[11px] text-parchment-faint">{book.author}</p>
+            <p className="mt-0.5 truncate text-[11px] leading-4 text-parchment-faint">
+              {book.author}
+            </p>
           )}
           {book.seriesName && (
-            <p className="mt-0.5 truncate text-[11px] italic text-gold-400/70">
+            <p className="mt-0.5 truncate text-[11px] italic leading-4 text-gold-400/70">
               {seriesDisplay(book.seriesName, book.seriesIndex)}
             </p>
           )}

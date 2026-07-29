@@ -2,7 +2,20 @@ import type { Book, SortField } from '@shared/book.types'
 import { defaultSortDirection, seriesDisplay } from '@shared/book.types'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
+import { rowWindow, useScrollMetrics } from '@/hooks/useVirtualRows'
 import { SortArrowIcon, StarIcon } from '@/components/shared/icons'
+
+/**
+ * Row pitch (px) the virtualizer assumes: py-2 (16) + one 20px line, plus the
+ * 1px collapsed bottom border, which sits outside the height set on the <tr>.
+ * Every cell carries explicit leading and every cell's child is block-level —
+ * an inline child would pick up the table's own line strut and silently push
+ * the row past this (which rating's em-dash fallback used to do).
+ */
+const ROW_HEIGHT = 37
+const OVERSCAN_ROWS = 8
+/** Sticky <thead> occupies the top of the scroll content, ahead of row 0. */
+const HEADER_HEIGHT = 37
 
 /** Column definitions; `field` omitted means the column isn't sortable. */
 const COLUMNS: { label: string; width: string; field?: SortField; align?: 'right' }[] = [
@@ -15,9 +28,10 @@ const COLUMNS: { label: string; width: string; field?: SortField; align?: 'right
 ]
 
 function Rating({ value }: { value: number | null }) {
-  if (!value) return <span className="text-parchment-faint">—</span>
+  if (!value)
+    return <span className="block text-[13px] leading-5 text-parchment-faint">—</span>
   return (
-    <span className="flex gap-px text-gold-400">
+    <span className="flex h-5 items-center gap-px text-gold-400">
       {Array.from({ length: value }, (_, i) => (
         <StarIcon key={i} className="h-3 w-3" filled />
       ))}
@@ -37,20 +51,21 @@ function Row({ book }: { book: Book }) {
         e.preventDefault()
         openContextMenu({ bookId: book.id, x: e.clientX, y: e.clientY })
       }}
+      style={{ height: ROW_HEIGHT - 1 }} // the collapsed border supplies the 1px
       className={`cursor-default border-b border-ink-800/60 transition-colors ${
         selected ? 'bg-gold-500/10' : 'hover:bg-ink-850'
       }`}
     >
-      <td className="max-w-0 truncate py-2 pl-6 pr-3 font-display text-[13px] text-parchment">
+      <td className="max-w-0 truncate py-2 pl-6 pr-3 font-display text-[13px] leading-5 text-parchment">
         {book.title}
       </td>
-      <td className="max-w-0 truncate px-3 py-2 text-[13px] text-parchment-dim">
+      <td className="max-w-0 truncate px-3 py-2 text-[13px] leading-5 text-parchment-dim">
         {book.author ?? '—'}
       </td>
-      <td className="max-w-0 truncate px-3 py-2 text-[13px] italic text-gold-400/70">
+      <td className="max-w-0 truncate px-3 py-2 text-[13px] italic leading-5 text-gold-400/70">
         {book.seriesName ? seriesDisplay(book.seriesName, book.seriesIndex) : ''}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 text-[12px] tabular-nums text-parchment-faint">
+      <td className="whitespace-nowrap px-3 py-2 text-[12px] leading-5 tabular-nums text-parchment-faint">
         {book.dateAdded?.slice(0, 10) ?? ''}
       </td>
       <td className="px-3 py-2">
@@ -58,7 +73,7 @@ function Row({ book }: { book: Book }) {
           {book.formats.map((f) => (
             <span
               key={f}
-              className="rounded border border-ink-600 px-1 py-px text-[10px] uppercase text-parchment-faint"
+              className="rounded border border-ink-600 px-1 text-[10px] uppercase leading-[18px] text-parchment-faint"
             >
               {f}
             </span>
@@ -130,11 +145,28 @@ function ariaSort(active: boolean, direction: 'asc' | 'desc'): 'ascending' | 'de
   return direction === 'asc' ? 'ascending' : 'descending'
 }
 
+/** Spacer standing in for the windowed-out rows above or below the viewport. */
+function Spacer({ height }: { height: number }) {
+  if (height <= 0) return null
+  return (
+    <tr aria-hidden>
+      <td colSpan={COLUMNS.length} style={{ height, padding: 0, border: 0 }} />
+    </tr>
+  )
+}
+
 export function ListView() {
   const books = useLibraryStore((s) => s.books)
+  const { ref, metrics } = useScrollMetrics<HTMLDivElement>()
+  const { start, end, padTop, padBottom } = rowWindow(
+    books.length,
+    ROW_HEIGHT,
+    { ...metrics, scrollTop: metrics.scrollTop - HEADER_HEIGHT },
+    OVERSCAN_ROWS
+  )
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div ref={ref} className="h-full overflow-y-auto">
       <table className="w-full table-fixed border-collapse">
         <thead className="sticky top-0 z-10 bg-ink-900">
           <tr className="border-b border-ink-700 text-left text-[11px] font-semibold uppercase tracking-wider text-parchment-faint">
@@ -151,9 +183,11 @@ export function ListView() {
           </tr>
         </thead>
         <tbody>
-          {books.map((book) => (
+          <Spacer height={padTop} />
+          {books.slice(start, end).map((book) => (
             <Row key={book.id} book={book} />
           ))}
+          <Spacer height={padBottom} />
         </tbody>
       </table>
     </div>

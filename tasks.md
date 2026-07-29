@@ -30,9 +30,19 @@ metadata APIs (see CHANGELOG.md).
 
 Blockers before pointing the app at the full 7000-book NAS library:
 
-- [ ] **Virtualize the grid and list views** — currently all book cards render
-      at once; 7000 DOM nodes will blow the <2s load / 500MB memory targets.
-      (react-window or hand-rolled intersection observer.)
+- [x] **Virtualize the grid and list views** — shipped 2026-07-29. Hand-rolled
+      row windowing (`src/hooks/useVirtualRows.ts`): `useScrollMetrics` watches
+      the scroll container, `rowWindow` returns a slice plus top/bottom
+      spacers. react-window was rejected — it wants absolutely positioned
+      cells, costing the grid its CSS grid and the list its real `<table>`.
+      Both views compute row geometry from layout constants instead of
+      measuring, so uniform row height is now load-bearing: `BookCard`'s meta
+      block is fixed-height (`CARD_META_HEIGHT`, exported for GridView) and
+      every ListView cell carries explicit leading with a block-level child.
+      Verified against a synthetic 7000-book library: ~40 rendered items and
+      ~1000 DOM nodes at any scroll offset (was 7000), 32MB JS heap,
+      `getBooks` 115ms, search 18ms, `scrollHeight` stable across offsets,
+      column recount correct on resize.
 - [ ] **Settings UI** — there is currently *no way to change the library root
       after first configuration*, nor to set `smb_url`, `python_path`,
       `ebook_convert_path`, or the Google Books API key from the UI. A small
@@ -72,6 +82,16 @@ Blockers before pointing the app at the full 7000-book NAS library:
       is wrong after `deleteFormats` removes a file (and after "Add format to
       existing"). Either recompute from the book folder on those writes or
       drop the column from the detail panel. (Found 2026-07-29.)
+- [ ] Scroll position survives a search/filter change, so narrowing 7000 books
+      to 1072 can leave you parked near the (new) bottom. Pre-existing, but far
+      more visible now that `scrollHeight` tracks the result count — reset the
+      scroll container to 0 when the result set changes. (Found 2026-07-29.)
+- [ ] The virtualized views assume uniform row height from layout constants
+      (`GridView`'s `MIN_CARD_WIDTH`/`GAP_*`/`CARD_META_HEIGHT`, `ListView`'s
+      `ROW_HEIGHT`/`HEADER_HEIGHT`). A style change that alters real row height
+      without updating them shows up as drift, not a build error. Consider a
+      dev-only assertion comparing the first rendered row's measured height
+      against the constant. (Found 2026-07-29.)
 - [ ] Sorting gaps: Formats is deliberately unsortable, and there is no
       secondary sort key, so ties (same author, same rating) fall back to
       SQLite's arbitrary order and can shuffle between loads. Add a stable

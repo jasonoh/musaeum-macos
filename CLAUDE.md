@@ -322,6 +322,32 @@ to FTS relevance `rank` when omitted. The renderer always passes the active
 sort, so the sort controls stay live during a search — the trade-off is that
 relevance rank no longer decides display order there, only which books match.
 
+### Rendering (virtualized views)
+
+Both library views render only the rows overlapping the viewport.
+`hooks/useVirtualRows.ts` provides the two pieces: `useScrollMetrics` (a
+callback ref + scroll listener + `ResizeObserver` reporting `scrollTop` /
+`viewport` / `width`) and the pure `rowWindow()`, which returns `{start, end,
+padTop, padBottom}`. Views render a top spacer, the slice, and a bottom spacer
+— no absolute positioning, so the grid stays a CSS grid and the list stays a
+real `<table>` (spacers are `<tr>`s with a `colSpan` cell). react-window was
+rejected for exactly that reason.
+
+**Row height is computed, not measured**, so it must stay uniform:
+- `GridView` derives the column count the way `auto-fill`/`minmax` would, then
+  card width → row height, from constants that mirror its Tailwind classes.
+  `BookCard`'s meta block is therefore fixed-height (`CARD_META_HEIGHT` /
+  `CARD_META_MARGIN`, exported for that math) rather than content-sized.
+- `ListView` pins `ROW_HEIGHT` (37 = 16px padding + a 20px line + the 1px
+  collapsed border, which sits *outside* the height set on the `<tr>`) and
+  offsets `scrollTop` by the sticky `<thead>`. Every cell needs explicit
+  leading and a **block-level** child — an inline child picks up the table's
+  own line strut and silently grows the row (this is what the rating em-dash
+  fallback did).
+
+A style change that alters real row height without updating these constants
+shows up as scroll drift, not a build error.
+
 ### Deletion
 
 `services/book-delete.ts` owns both paths; the IPC handlers are thin wrappers.
@@ -625,8 +651,9 @@ interface MusaeumAPI {
 | Format conversion (epub → mobi)     | < 30 seconds |
 | Memory footprint (typical use)      | < 500MB      |
 
-Note: the grid is not virtualized yet — this must land before pointing the
-app at the full 7000-book library (tasks.md).
+Both library views are virtualized (see Rendering below); measured against a
+synthetic 7000-book library at ~1000 DOM nodes, 32MB heap, 115ms `getBooks`,
+18ms search.
 
 ---
 

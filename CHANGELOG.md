@@ -7,6 +7,15 @@ the app is packaged.
 ## [Unreleased] — 2026-07-29
 
 ### Added
+- Virtualized grid and list views — only the rows overlapping the viewport are
+  rendered, so library size no longer drives DOM size. New
+  `src/hooks/useVirtualRows.ts` (`useScrollMetrics` + `rowWindow`) drives both
+  views off the scroll container's own metrics, keeping the grid a CSS grid and
+  the list a real `<table>` (react-window's absolutely positioned cells would
+  have cost both). Measured against a synthetic 7000-book library: ~40 rendered
+  items and ~1000 DOM nodes at any scroll offset instead of 7000, 32MB JS heap,
+  115ms `getBooks`, 18ms search — inside the <2s load and 500MB targets that
+  previously blocked pointing the app at the full NAS library.
 - Sortable list-view column headers: click Title / Author / Series / Added /
   Rating to sort, click the active column again to flip direction. First click
   is ascending for text columns and descending for Added and Rating; the
@@ -54,6 +63,10 @@ the app is packaged.
   `sidecar/requirements-dev.txt`
 
 ### Changed
+- Book card and list row geometry is now fixed rather than content-sized, since
+  the virtualizer computes row offsets from layout constants instead of
+  measuring: the card's title/author/series block has a fixed height
+  (`CARD_META_HEIGHT`), and list cells carry explicit line heights.
 - Search results honor the active sort. `library.searchBooks` now takes an
   optional `BookSort` (falling back to FTS relevance `rank` when omitted) and
   the renderer always passes one, so the sort controls are no longer dead
@@ -72,6 +85,10 @@ the app is packaged.
   returns an unsubscribe function
 
 ### Fixed
+- List rows with no rating were 5px taller than the rest — the em-dash fallback
+  was inline content, so the cell picked up the table's default line strut.
+  Harmless before, but it broke the uniform-height assumption virtualization
+  depends on.
 - Descending `series` sort only reversed the index within each series — the
   direction was applied to the last ORDER BY key alone. Every key now takes
   the direction. Reachable before via the sort dropdown; more visible now that
