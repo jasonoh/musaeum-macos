@@ -58,7 +58,9 @@ Blockers before pointing the app at the full 7000-book NAS library:
       - main: duplicate GATE — `importer` skip/add_new/add_format branches +
         `resolveDuplicate`/`abortPendingDecisions` (2026-07-27, untested)
       - main: device presence — `device-manager.scanDocuments` /
-        `getOnDeviceBookIds` matching (2026-07-27, untested)
+        `getOnDeviceBookIds` matching + the poll self-heal (`setsEqual`
+        re-broadcast) and cold-start recompute-on-`libraryChanged`
+        (2026-07-27, cold-start fix 2026-07-29; untested)
 - [ ] Device-presence match misses a book renamed after import (the on-disk
       file keeps its original `sanitizeTitle` name, so the scan stem no longer
       equals `sanitizeTitle(currentTitle)`) — only self-corrects on re-send.

@@ -4,7 +4,7 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
-## [Unreleased] — 2026-07-27
+## [Unreleased] — 2026-07-29
 
 ### Added
 - On-device presence: the connected Kindle's `documents/` folder is scanned
@@ -52,6 +52,16 @@ the app is packaged.
   library.
 - `sidecar.onNotification` supports multiple subscribers per method and
   returns an unsubscribe function
+
+### Fixed
+- On-device presence was stale after a cold restart (books showed "Send to
+  Kindle" despite already being on the device). Presence depends on the book
+  set as well as the device files, but was recomputed only on
+  `deviceContentsChanged`; at cold start the device scan finished before the
+  slow on-connect catalog sync, so the match ran against a not-yet-loaded
+  library and was never redone. Now recomputed on `libraryChanged` too, and
+  the 5s device poll re-scans a known device's `documents/` (re-broadcasting
+  only on change) so presence self-heals.
 
 ## [0.1.0] — 2026-07-12
 

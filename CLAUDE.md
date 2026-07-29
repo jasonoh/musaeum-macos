@@ -288,9 +288,16 @@ Settings (see tasks.md → Packaging & distribution).
   (depth 2) into a stem set, and `getOnDeviceBookIds` matches books whose
   `sanitizeTitle(title)` equals a file stem (extension-agnostic). Surfaced as
   a badge on `BookCard` and an "On {device}" state on the detail-panel send
-  button; a `deviceContentsChanged` event refreshes it on connect and after
-  each transfer completes. Known limitation: a book renamed after import (file
-  keeps its original sanitized name) won't match until re-sent.
+  button. Presence = f(device files, book set), so the renderer recomputes it
+  on **both** triggers: `deviceContentsChanged` (device side) and
+  `libraryChanged` (book-set side — the on-connect catalog sync loads books
+  asynchronously and can finish *after* the device scan, so recomputing only
+  on the device event left presence stale at cold start). The 5s device poll
+  re-scans a known device's `documents/` and re-broadcasts only when the file
+  set changed (`setsEqual` guard), so presence self-heals when files change on
+  the device outside Musaeum or a first scan ran before the volume settled.
+  Known limitation: a book renamed after import (file keeps its original
+  sanitized name) won't match until re-sent.
 
 ### Duplicate Detection
 

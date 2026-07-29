@@ -23,6 +23,12 @@ export function useDevice(): void {
       }),
       window.Musaeum.on.deviceContentsChanged((deviceId) => {
         void refreshDeviceContents(deviceId)
+      }),
+      // Presence depends on the book set too — recompute when the library
+      // settles (e.g. the slow on-connect catalog sync at cold start), not
+      // just when device contents change.
+      window.Musaeum.on.libraryChanged(() => {
+        for (const d of useDeviceStore.getState().devices) void refreshDeviceContents(d.id)
       })
     ]
     return () => unsubs.forEach((u) => u())

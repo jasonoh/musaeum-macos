@@ -83,6 +83,12 @@ async function scanDocuments(mountPath: string): Promise<Set<string>> {
   return stems
 }
 
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const v of a) if (!b.has(v)) return false
+  return true
+}
+
 /** Re-scan a connected device's documents/ folder and broadcast the change. */
 export async function refreshDeviceContents(deviceId: string): Promise<void> {
   const device = getDevice(deviceId)
@@ -117,6 +123,14 @@ async function scan(): Promise<void> {
     const id = `kindle:${name}`
     if (devices.has(id)) {
       seen.add(id)
+      // Re-scan so presence self-heals: books added/removed on the device
+      // outside Musaeum, or a first scan that ran before the volume settled.
+      const next = await scanDocuments(mountPath)
+      const prev = deviceContents.get(id)
+      if (!prev || !setsEqual(prev, next)) {
+        deviceContents.set(id, next)
+        broadcast('deviceContentsChanged', id)
+      }
       continue
     }
     if (await looksLikeKindle(mountPath, name)) {
