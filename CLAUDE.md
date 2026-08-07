@@ -348,6 +348,17 @@ rejected for exactly that reason.
 A style change that alters real row height without updating these constants
 shows up as scroll drift, not a build error.
 
+**Both scrollers must carry `.no-scroll-anchor`** (`overflow-anchor: none`,
+defined in `index.css`). Spacer virtualization resizes the content *above* the
+viewport, and Chrome's scroll anchoring answers by adjusting `scrollTop` to
+hold its anchor node still — which feeds back into the next window, moving the
+spacer again. Measured in the live app: deleting a book with the detail panel
+open (panel closes → grid gets 360px wider → different column count and row
+height at a non-zero `scrollTop`) ran the grid from 9000px to the bottom of the
+list in ~500ms. `rowWindow` also clamps `scrollTop` to the real maximum, so the
+frame where metrics still describe the old geometry shows the last rows instead
+of an empty window under a full-height spacer.
+
 ### Deletion
 
 `services/book-delete.ts` owns both paths; the IPC handlers are thin wrappers.
@@ -383,6 +394,21 @@ resolved via `import.resolveDuplicate` IPC). Three actions:
 The pending-decision map is keyed by `jobId` because the file-watcher fans out
 `importOne` concurrently; `abortPendingDecisions()` (on `will-quit`) resolves
 any open gate as Skip so shutdown never hangs.
+
+### Opening files outside Musaeum
+
+`services/file-access.ts` hands a book's files to the OS, so a PDF can be read
+in Preview without importing it anywhere:
+- `revealBook` — `shell.showItemInFolder` on one of the book's files (the
+  requested format, else the first), so Finder opens the book's folder with
+  the file selected rather than the parent with a folder icon selected. Falls
+  back to `shell.openPath` on the folder when the book has no files.
+- `openBookFile` — `shell.openPath` on one format's file.
+
+Both resolve files **by extension** (like `deleteFormats`), so a book renamed
+after import still opens. Surfaced in the context menu ("Open EPUB" per format
++ "Show in Finder"), and in the detail panel, where the format badges are
+buttons that open that file and a folder button sits in the actions row.
 
 ### Apple Books Export
 
@@ -623,6 +649,8 @@ interface MusaeumAPI {
   }
   files: {
     getPathForFile(file: File): string           // dropped File → path (webUtils)
+    revealBook(bookId, format?): Promise<void>   // Finder, file selected
+    openBookFile(bookId, format): Promise<void>  // system default app
   }
   on: {                                          // all return an Unsubscribe fn
     nasStatusChanged(cb): Unsubscribe

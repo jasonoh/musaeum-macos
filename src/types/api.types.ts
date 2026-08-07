@@ -88,6 +88,13 @@ export interface MusaeumAPI {
   files: {
     /** Resolve dropped File objects to absolute paths (must run in preload). */
     getPathForFile(file: File): string
+    /**
+     * Open the book's folder in Finder, with `format`'s file selected when the
+     * book has one (defaults to the book's first format).
+     */
+    revealBook(bookId: string, format?: BookFormat): Promise<void>
+    /** Open one of the book's files in the system default app for its type. */
+    openBookFile(bookId: string, format: BookFormat): Promise<void>
   }
 
   on: {

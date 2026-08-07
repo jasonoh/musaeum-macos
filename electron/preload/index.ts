@@ -62,7 +62,9 @@ const api: MusaeumAPI = {
   files: {
     // File.path was removed from Electron's renderer; resolving paths from
     // dropped File objects must happen here in the preload
-    getPathForFile: (file) => webUtils.getPathForFile(file)
+    getPathForFile: (file) => webUtils.getPathForFile(file),
+    revealBook: (bookId, format) => invoke('files:revealBook', bookId, format),
+    openBookFile: (bookId, format) => invoke('files:openBookFile', bookId, format)
   },
   on: {
     nasStatusChanged: (cb) => listen(EVENT_CHANNELS.nasStatusChanged, cb),

@@ -166,7 +166,7 @@ export function ListView() {
   )
 
   return (
-    <div ref={ref} className="h-full overflow-y-auto">
+    <div ref={ref} className="no-scroll-anchor h-full overflow-y-auto">
       <table className="w-full table-fixed border-collapse">
         <thead className="sticky top-0 z-10 bg-ink-900">
           <tr className="border-b border-ink-700 text-left text-[11px] font-semibold uppercase tracking-wider text-parchment-faint">

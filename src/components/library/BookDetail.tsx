@@ -9,6 +9,7 @@ import { CoverFallback, coverUrl } from './BookCard'
 import {
   CheckIcon,
   CloseIcon,
+  FolderIcon,
   RefreshIcon,
   SendIcon,
   StarIcon,
@@ -112,13 +113,18 @@ export function BookDetail() {
 
         {/* Formats + status */}
         <div className="mt-4 flex items-center justify-center gap-2">
+          {/* Each badge opens that file in the system default app — the way to
+              read a PDF without routing it through Apple Books */}
           {book.formats.map((f) => (
-            <span
+            <button
               key={f}
-              className="rounded border border-ink-600 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-parchment-faint"
+              disabled={!online}
+              onClick={() => void run('open', () => window.Musaeum.files.openBookFile(book.id, f))}
+              title={`Open ${f.toUpperCase()}`}
+              className="rounded border border-ink-600 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-parchment-faint transition-colors hover:border-gold-500/50 hover:text-gold-300 disabled:opacity-40 disabled:hover:border-ink-600 disabled:hover:text-parchment-faint"
             >
               {f}
-            </span>
+            </button>
           ))}
           <select
             value={book.readStatus}
@@ -197,6 +203,14 @@ export function BookDetail() {
             className="flex-1 rounded-md border border-ink-600 px-3 py-1.5 text-[12px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
           >
             Apple Books
+          </button>
+          <button
+            disabled={!online || busy !== null}
+            onClick={() => void run('reveal', () => window.Musaeum.files.revealBook(book.id))}
+            title="Show in Finder"
+            className="rounded-md border border-ink-600 px-2.5 py-1.5 text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
+          >
+            <FolderIcon className="h-4 w-4" />
           </button>
           <button
             disabled={!online || busy !== null}

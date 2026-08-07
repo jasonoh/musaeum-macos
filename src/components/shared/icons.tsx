@@ -117,6 +117,21 @@ export const TrashIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+export const FolderIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V7.5z" />
+  </svg>
+)
+
+/** Open elsewhere — used for handing a file to the system default app. */
+export const OpenExternalIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M14 4h6v6" />
+    <path d="M20 4l-8.5 8.5" />
+    <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10" />
+  </svg>
+)
+
 /** Column-header sort indicator: points up for ascending, down for descending. */
 export const SortArrowIcon = ({ className, up }: IconProps & { up?: boolean }) => (
   <svg {...base(className)} style={{ transform: up ? 'rotate(180deg)' : undefined }}>

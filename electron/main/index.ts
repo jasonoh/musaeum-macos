@@ -3,6 +3,7 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { startRestApiIfEnabled } from './api/rest'
 import { registerDeviceHandlers } from './ipc/device'
+import { registerFileHandlers } from './ipc/files'
 import { registerLibraryHandlers } from './ipc/library'
 import { registerMetadataHandlers } from './ipc/metadata'
 import { registerMigrationHandlers } from './ipc/migration'
@@ -87,6 +88,7 @@ app.whenReady().then(() => {
   registerDeviceHandlers()
   registerNASHandlers()
   registerMigrationHandlers()
+  registerFileHandlers()
 
   const win = createWindow()
   setMainWindow(win)

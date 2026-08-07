@@ -1,9 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
-import { BookIcon, TrashIcon } from '@/components/shared/icons'
+import { BookIcon, FolderIcon, OpenExternalIcon, TrashIcon } from '@/components/shared/icons'
 
 const MARGIN = 8
+
+/** The menu is gone by the time these settle, so a failure has nowhere to
+ *  render — surface it the same way the detail panel's actions do. */
+async function reportFailure(work: Promise<unknown>): Promise<void> {
+  try {
+    await work
+  } catch (err) {
+    alert(err instanceof Error ? err.message : String(err))
+  }
+}
 
 /** Right-click menu for a book in the grid or list. Mounted once at app root. */
 export function BookContextMenu() {
@@ -56,6 +66,26 @@ export function BookContextMenu() {
         <p className="truncate px-3 py-1 font-display text-[12px] text-parchment-faint">
           {book.title}
         </p>
+        <div className="my-1 h-px bg-ink-700" />
+        {book.formats.map((f) => (
+          <MenuItem
+            key={f}
+            icon={<OpenExternalIcon className="h-3.5 w-3.5" />}
+            label={`Open ${f.toUpperCase()}`}
+            onClick={() => {
+              closeContextMenu()
+              void reportFailure(window.Musaeum.files.openBookFile(book.id, f))
+            }}
+          />
+        ))}
+        <MenuItem
+          icon={<FolderIcon className="h-3.5 w-3.5" />}
+          label="Show in Finder"
+          onClick={() => {
+            closeContextMenu()
+            void reportFailure(window.Musaeum.files.revealBook(book.id))
+          }}
+        />
         <div className="my-1 h-px bg-ink-700" />
         <MenuItem
           icon={<BookIcon className="h-3.5 w-3.5" />}

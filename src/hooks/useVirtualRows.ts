@@ -83,10 +83,16 @@ export function rowWindow(
 ): RowWindow {
   if (rowCount <= 0 || rowHeight <= 0) return { start: 0, end: 0, padTop: 0, padBottom: 0 }
 
-  const start = Math.min(
-    rowCount,
-    Math.max(0, Math.floor(metrics.scrollTop / rowHeight) - overscan)
-  )
+  // `metrics.scrollTop` is one frame behind whenever the row geometry changes
+  // (books removed, or the grid's column count changing as the detail panel
+  // opens/closes), so it can exceed the content it now describes. Clamping to
+  // the real maximum keeps that frame showing the last rows rather than an
+  // empty window under a full-height spacer; the browser clamps the element's
+  // own scrollTop right after, and the scroll listener catches up.
+  const maxScroll = Math.max(0, rowCount * rowHeight - metrics.viewport)
+  const scrollTop = Math.min(Math.max(0, metrics.scrollTop), maxScroll)
+
+  const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan)
   const end = Math.min(rowCount, start + Math.ceil(metrics.viewport / rowHeight) + overscan * 2 + 1)
 
   return {

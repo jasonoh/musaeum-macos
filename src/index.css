@@ -51,4 +51,18 @@
   .app-no-drag {
     -webkit-app-region: no-drag;
   }
+
+  /*
+   * Required on every spacer-virtualized scroller (see hooks/useVirtualRows.ts).
+   * Those views change the height of the content *above* the viewport as the
+   * window moves, and Chrome's scroll anchoring answers that by adjusting
+   * scrollTop to hold its anchor node still. That adjustment feeds straight
+   * back into the next window computation, which moves the spacer again — a
+   * runaway scroll, not a one-off jump. It shows up whenever row geometry
+   * changes at a non-zero scrollTop, e.g. the detail panel closing after a
+   * delete and handing the grid a wider container (fewer, shorter rows).
+   */
+  .no-scroll-anchor {
+    overflow-anchor: none;
+  }
 }
