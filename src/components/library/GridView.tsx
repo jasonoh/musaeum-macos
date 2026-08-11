@@ -1,5 +1,7 @@
+import { useMemo } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
-import { rowWindow, useScrollMetrics } from '@/hooks/useVirtualRows'
+import { useBookNavigation } from '@/hooks/useBookNavigation'
+import { rowWindow, useAnchoredScroll, useScrollMetrics } from '@/hooks/useVirtualRows'
 import { BookCard, CARD_META_HEIGHT, CARD_META_MARGIN } from './BookCard'
 import { BookIcon } from '@/components/shared/icons'
 
@@ -12,6 +14,7 @@ const PAD_X = 24 // px-6
 const MIN_CARD_WIDTH = 140
 const GAP_X = 20 // gap-x-5
 const GAP_Y = 24 // gap-y-6
+const PAD_TOP = 20 // py-5 — row 0 starts this far into the scroll content
 const OVERSCAN_ROWS = 2
 
 /** Column count `repeat(auto-fill, minmax(MIN_CARD_WIDTH, 1fr))` would pick. */
@@ -40,7 +43,8 @@ function EmptyLibrary({ query }: { query: string }) {
 export function GridView() {
   const books = useLibraryStore((s) => s.books)
   const query = useLibraryStore((s) => s.query)
-  const { ref, metrics } = useScrollMetrics<HTMLDivElement>()
+  const bookIds = useMemo(() => books.map((b) => b.id), [books])
+  const { ref, node, metrics } = useScrollMetrics<HTMLDivElement>()
 
   const contentWidth = Math.max(0, metrics.width - PAD_X * 2)
   const columns = columnCount(contentWidth)
@@ -49,6 +53,17 @@ export function GridView() {
   const rowHeight = cardWidth * 1.5 + CARD_META_MARGIN + CARD_META_HEIGHT + GAP_Y
   const rows = Math.ceil(books.length / columns)
   const { start, end, padTop, padBottom } = rowWindow(rows, rowHeight, metrics, OVERSCAN_ROWS)
+
+  // Registered before the anchor hook so its layout effect restores the anchor
+  // first and this ensure-visible pass gets the final say on the selection
+  useBookNavigation({
+    node,
+    columns,
+    rowHeight,
+    contentTop: PAD_TOP,
+    ready: contentWidth > 0 && books.length > 0
+  })
+  useAnchoredScroll(node, bookIds, columns, rowHeight, PAD_TOP, metrics.scrollTop)
 
   return (
     <div ref={ref} className="no-scroll-anchor h-full overflow-y-auto px-6 py-5">

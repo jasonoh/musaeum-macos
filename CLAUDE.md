@@ -280,7 +280,13 @@ Settings (see tasks.md → Packaging & distribution).
   neither is cached, and caches the result on the NAS. PDF-only books
   transfer as PDF — never converted (Kindles render PDF natively;
   `ebook-convert` is never invoked for PDFs)
-- Copy to `/documents/` on Kindle volume with streamed progress events
+- Copy to `/documents/` on Kindle volume with streamed progress events.
+  `copyWithProgress` opens the source fd itself (`autoClose: false`) and
+  swallows a `close()` failure — macOS's SMB client returns EBADF closing some
+  files it has just read in full, which used to fail transfers that had in fact
+  completed byte-for-byte. Write-side errors still propagate, and the
+  destination size is verified before a book is reported as sent, so a
+  truncated copy is still an error.
 - Log to `device_history` table (including failures, with error text)
 - Transfers run serially through `transfer-queue.ts`
 - **On-device presence** is derived by *scanning* the connected Kindle's
@@ -298,6 +304,21 @@ Settings (see tasks.md → Packaging & distribution).
   the device outside Musaeum or a first scan ran before the volume settled.
   Known limitation: a book renamed after import (file keeps its original
   sanitized name) won't match until re-sent.
+
+### Sort keys
+
+`books.sort_title` / `books.author_sort` drive the title and author sorts
+(`COALESCE(sort_title, title)`, `COALESCE(author_sort, author)`), so a book
+that arrives without them sorts under the wrong letter — "Seth Dickinson"
+under S, invisible among the D's. Only Calibre migration and some EPUBs supply
+them, so every other path derives them with `sortableTitle()` /
+`sortableAuthor()` from `book.types.ts` (shared, so main and renderer agree):
+import, `applyHydration`, `metadataJsonToBook`, and **catalog reads**. The
+catalog one is load-bearing — adoption replaces the local cache wholesale, so
+a catalog lacking sort keys would undo any backfill on every connect.
+Migration 002 backfills existing rows by calling the same two functions,
+registered on the connection as `musaeum_sort_title` / `musaeum_author_sort`
+(see `registerFunctions` in `db.ts`) rather than reimplementing them in SQL.
 
 ### Sorting & Search
 
@@ -348,6 +369,16 @@ rejected for exactly that reason.
 A style change that alters real row height without updating these constants
 shows up as scroll drift, not a build error.
 
+**The grid anchors on a book, not a pixel** (`useAnchoredScroll` in
+`useVirtualRows.ts`). Column count and row height are functions of container
+width, so the same `scrollTop` addresses different books after the detail panel
+opens or closes — measured: deleting a book with the panel open moved the
+viewport from books 105–126 to 148–168. The hook records the top-most visible
+book on every scroll and restores that book to the top when the geometry
+changes. `useBookNavigation`'s ensure-visible pass is a plain effect and so runs
+*after* this layout effect, letting the selection have the final say; keep that
+order (both hooks are called from `GridView`, anchored scroll last).
+
 **Both scrollers must carry `.no-scroll-anchor`** (`overflow-anchor: none`,
 defined in `index.css`). Spacer virtualization resizes the content *above* the
 viewport, and Chrome's scroll anchoring answers by adjusting `scrollTop` to
@@ -358,6 +389,34 @@ height at a non-zero `scrollTop`) ran the grid from 9000px to the bottom of the
 list in ~500ms. `rowWindow` also clamps `scrollTop` to the real maximum, so the
 frame where metrics still describe the old geometry shows the last rows instead
 of an empty window under a full-height spacer.
+
+### Selection & keyboard navigation
+
+Selection lives in `ui.store` (`selectedBookId`), not in either view, so it
+survives a grid↔list switch — but scroll position doesn't, since each view
+mounts its own scroller. `hooks/useBookNavigation.ts` closes that gap for both
+views: on mount it centres the selected book in the viewport, later moves only
+nudge it back into view, and arrow keys walk the same geometry the virtualizer
+uses (`columns` = 1 for the list; the list also passes its sticky header as
+`contentTop`/`stickyTop`). Home/End, PageUp/Down, and Escape (clear selection)
+are handled too. The handler is a window listener that bails when a modal,
+context menu, or text field owns the keyboard — those close themselves on
+Escape.
+
+### Editing metadata by hand
+
+`components/library/BookEditor.tsx` — a modal over `library.updateBook`, which
+already writes metadata.json and upserts the catalog, so the editor needs no
+main-process work of its own. Opened from the detail panel's pencil button or
+the context menu; mounted in `App.tsx` keyed on `ui.store.editingBookId`.
+
+Two rules keep it from doing damage: it sends **only changed fields**, so a
+save can't clobber what hydration wrote meanwhile; and a sort key equal to its
+derived form is shown as a live placeholder rather than a value, so renaming a
+book re-derives the sort title instead of stranding the old one (a genuinely
+custom key is shown and left alone). Renaming does not rename files on disk —
+everything resolves formats by extension, except device presence, which
+matches on `sanitizeTitle(title)` and won't match until re-sent.
 
 ### Deletion
 

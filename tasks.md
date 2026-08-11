@@ -105,7 +105,11 @@ Blockers before pointing the app at the full 7000-book NAS library:
 - [ ] Fix stale "EPUB" wording in `hydration.py` docstring/comments now that
       PDF is a first-class hydration input too
 - [ ] Regression test: mobi/azw3 fall-through in `transfer-queue.ts`'s Kindle
-      format preference logic
+      format preference logic. `transfer-queue.ts` has no tests at all — the
+      2026-08-11 EBADF fix (source fd owned by `copyWithProgress`, close errors
+      logged, destination size verified) was validated by reproducing against
+      the real NAS file, not by a test. Worth covering the size-verification
+      path at least; the EBADF itself can't be simulated locally.
 - [ ] Review `transfer-queue.ts` error message wording (found while auditing
       the "No source file available for conversion" / PDF-passthrough path)
 - [ ] Handle multiple PDFs in one Calibre folder — `topup._find_pdf` and
@@ -135,8 +139,15 @@ Blockers before pointing the app at the full 7000-book NAS library:
       (foliate-js for epub, pdf.js for PDF, `musaeum://book/{id}/{format}`).
       Builds after Section B. The "Enter to open" keyboard-nav item below
       should reuse the same action.
-- [ ] Keyboard navigation: arrows to move selection in grid/list, Esc to
-      close detail panel, Enter to open
+- [x] Keyboard navigation: arrows to move selection in grid/list (plus
+      Home/End/PageUp/PageDown), Esc to close the detail panel; selection now
+      also survives a grid↔list switch and is scrolled into view
+      (`hooks/useBookNavigation.ts`, 2026-08-10). **Enter to open** is still
+      open — it should reuse the ReaderView action above.
+- [ ] Metadata editor follow-ups (shipped 2026-08-10,
+      `components/library/BookEditor.tsx`): no cover replacement (re-hydrate is
+      the only way to change a cover), no multi-author editing (the schema
+      keeps one author string), and no bulk edit across a selection.
 - [ ] Empty-state + skeleton loading polish for slow NAS cover loads
 - [ ] `exports/` staging dir is created but unused — either stage transfers
       through it (per spec) and clear post-transfer, or drop it from the spec

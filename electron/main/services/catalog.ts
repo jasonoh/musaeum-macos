@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import type { Dirent } from 'fs'
 import { extname, join } from 'path'
 import type { Book, BookFormat, ReadStatus } from '@shared/book.types'
+import { sortableAuthor, sortableTitle } from '@shared/book.types'
 
 export const CATALOG_FILENAME = 'catalog.json'
 export const CATALOG_VERSION = 1
@@ -27,6 +28,22 @@ export type CatalogReadState =
   | { state: 'missing' } // ENOENT — no catalog has ever been written
   | { state: 'invalid' } // exists but unparsable / wrong version / wrong shape
 
+/**
+ * Fill in sort keys a catalog entry is missing. Adoption replaces the local
+ * cache wholesale, so without this a catalog written before sort keys were
+ * derived would undo the backfill on every connect — and the book would go
+ * back to sorting under its first name. The derived values reach catalog.json
+ * on the next write, since writes come from the adopted cache.
+ */
+function withSortKeys(book: Book): Book {
+  if (book.sortTitle && (book.authorSort || !book.author)) return book
+  return {
+    ...book,
+    sortTitle: book.sortTitle ?? sortableTitle(book.title),
+    authorSort: book.authorSort ?? sortableAuthor(book.author)
+  }
+}
+
 export async function readCatalogDetailed(root: string): Promise<CatalogReadState> {
   let raw: string
   try {
@@ -40,7 +57,7 @@ export async function readCatalogDetailed(root: string): Promise<CatalogReadStat
     if (parsed.version !== CATALOG_VERSION || !Array.isArray(parsed.books)) {
       return { state: 'invalid' }
     }
-    return { state: 'ok', file: parsed }
+    return { state: 'ok', file: { ...parsed, books: parsed.books.map(withSortKeys) } }
   } catch {
     return { state: 'invalid' }
   }
@@ -163,9 +180,11 @@ export async function metadataJsonToBook(
   return {
     id: json.id || dirName,
     title: json.title,
-    sortTitle: json.sort_title ?? null,
+    // Sort keys are derived when the file doesn't carry them, so a book
+    // written by an older version still sorts under its surname/first word
+    sortTitle: json.sort_title ?? (json.title ? sortableTitle(json.title) : null),
     author: json.authors?.[0]?.name ?? null,
-    authorSort: json.authors?.[0]?.sort ?? null,
+    authorSort: json.authors?.[0]?.sort ?? sortableAuthor(json.authors?.[0]?.name),
     publisher: json.publisher ?? null,
     publishedDate: json.published_date ?? null,
     language: json.language ?? null,

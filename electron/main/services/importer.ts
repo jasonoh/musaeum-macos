@@ -11,6 +11,7 @@ import type {
   ImportResult,
   ImportStep
 } from '@shared/book.types'
+import { sortableAuthor, sortableTitle } from '@shared/book.types'
 import type { ConflictCandidate } from '@shared/metadata.types'
 import * as db from './db'
 import { broadcast } from './events'
@@ -183,7 +184,7 @@ async function importOne(filePath: string): Promise<ImportResult> {
       title,
       sortTitle: sortableTitle(title),
       author,
-      authorSort: extracted.authors?.[0]?.sort ?? null,
+      authorSort: extracted.authors?.[0]?.sort ?? sortableAuthor(author),
       publisher: extracted.publisher ?? null,
       publishedDate: extracted.published_date ?? null,
       language: extracted.language ?? null,
@@ -279,10 +280,10 @@ function applyHydration(bookId: string, result: HydrationResult): void {
   const m = result.metadata
   const updates: Partial<Book> = {}
   if (m.title) updates.title = m.title
-  if (m.sort_title) updates.sortTitle = m.sort_title
+  if (m.sort_title || m.title) updates.sortTitle = m.sort_title ?? sortableTitle(m.title!)
   if (m.authors?.length) {
     updates.author = m.authors[0].name
-    updates.authorSort = m.authors[0].sort ?? null
+    updates.authorSort = m.authors[0].sort ?? sortableAuthor(m.authors[0].name)
   }
   if (m.publisher) updates.publisher = m.publisher
   if (m.published_date) updates.publishedDate = m.published_date
@@ -309,12 +310,6 @@ function applyHydration(bookId: string, result: HydrationResult): void {
   for (const conflict of result.conflicts) {
     db.insertConflict(bookId, conflict.field, conflict.candidates)
   }
-}
-
-/** "The Great Gatsby" → "Great Gatsby, The" */
-function sortableTitle(title: string): string {
-  const m = title.match(/^(The|A|An)\s+(.+)$/i)
-  return m ? `${m[2]}, ${m[1]}` : title
 }
 
 async function addFormatToExisting(

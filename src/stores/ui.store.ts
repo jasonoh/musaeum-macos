@@ -18,6 +18,8 @@ interface UIState {
   contextMenu: ContextMenuTarget | null
   /** Book whose delete dialog is open. */
   deletingBookId: string | null
+  /** Book whose metadata editor is open. */
+  editingBookId: string | null
 
   setViewMode(mode: ViewMode): void
   selectBook(id: string | null): void
@@ -27,6 +29,7 @@ interface UIState {
   openContextMenu(target: ContextMenuTarget): void
   closeContextMenu(): void
   requestDelete(bookId: string | null): void
+  requestEdit(bookId: string | null): void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -37,6 +40,7 @@ export const useUIStore = create<UIState>((set) => ({
   isDraggingFiles: false,
   contextMenu: null,
   deletingBookId: null,
+  editingBookId: null,
 
   setViewMode: (viewMode) => set({ viewMode }),
   selectBook: (selectedBookId) => set({ selectedBookId }),
@@ -45,6 +49,7 @@ export const useUIStore = create<UIState>((set) => ({
   setDraggingFiles: (isDraggingFiles) => set({ isDraggingFiles }),
   openContextMenu: (contextMenu) => set({ contextMenu }),
   closeContextMenu: () => set({ contextMenu: null }),
-  // Opening the dialog always dismisses the menu that launched it
-  requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null })
+  // Opening either dialog always dismisses the menu that launched it
+  requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null }),
+  requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null })
 }))

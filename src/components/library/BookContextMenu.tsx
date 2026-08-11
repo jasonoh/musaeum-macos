@@ -1,7 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
-import { BookIcon, FolderIcon, OpenExternalIcon, TrashIcon } from '@/components/shared/icons'
+import {
+  BookIcon,
+  FolderIcon,
+  OpenExternalIcon,
+  PencilIcon,
+  TrashIcon
+} from '@/components/shared/icons'
 
 const MARGIN = 8
 
@@ -21,6 +27,7 @@ export function BookContextMenu() {
   const closeContextMenu = useUIStore((s) => s.closeContextMenu)
   const selectBook = useUIStore((s) => s.selectBook)
   const requestDelete = useUIStore((s) => s.requestDelete)
+  const requestEdit = useUIStore((s) => s.requestEdit)
   const books = useLibraryStore((s) => s.books)
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x: target?.x ?? 0, y: target?.y ?? 0 })
@@ -94,6 +101,11 @@ export function BookContextMenu() {
             selectBook(book.id)
             closeContextMenu()
           }}
+        />
+        <MenuItem
+          icon={<PencilIcon className="h-3.5 w-3.5" />}
+          label="Edit metadata…"
+          onClick={() => requestEdit(book.id)}
         />
         <MenuItem
           icon={<TrashIcon className="h-3.5 w-3.5" />}

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
-import { createReadStream, createWriteStream, promises as fs } from 'fs'
+import { createWriteStream, promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
+import { Transform } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { BookFormat } from '@shared/book.types'
 import type { TransferJob } from '@shared/device.types'
@@ -144,6 +145,20 @@ async function findFormatFile(bookDir: string, format: BookFormat): Promise<stri
   }
 }
 
+/**
+ * Stream a file to the device, reporting progress.
+ *
+ * The source fd is opened and closed by hand (`autoClose: false`) because
+ * macOS's SMB client can fail `close()` with EBADF on a file it has just read
+ * in full — observed on a 50MB azw3 whose bytes all arrived and whose copy on
+ * the device was byte-identical, while the transfer was reported as failed.
+ * A close error on a read-only fd cannot affect data that has already been
+ * read, so it's logged rather than raised; the write side stays inside the
+ * pipeline, where its errors do matter, and the byte count is verified after.
+ *
+ * Progress counts through a Transform rather than a `data` listener, which
+ * would put the source into flowing mode before the pipeline is wired up.
+ */
 async function copyWithProgress(
   source: string,
   target: string,
@@ -152,14 +167,34 @@ async function copyWithProgress(
   const { size } = await fs.stat(source)
   let copied = 0
   let lastEmit = 0
-  const reader = createReadStream(source)
-  reader.on('data', (chunk) => {
-    copied += chunk.length
-    const now = Date.now()
-    if (now - lastEmit > 200 || copied === size) {
-      lastEmit = now
-      onProgress(size ? copied / size : 1)
-    }
-  })
-  await pipeline(reader, createWriteStream(target))
+
+  const handle = await fs.open(source, 'r')
+  try {
+    const counter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        copied += chunk.length
+        const now = Date.now()
+        if (now - lastEmit > 200 || copied === size) {
+          lastEmit = now
+          onProgress(size ? copied / size : 1)
+        }
+        callback(null, chunk)
+      }
+    })
+    await pipeline(handle.createReadStream({ autoClose: false }), counter, createWriteStream(target))
+  } finally {
+    await handle.close().catch((err) => {
+      console.warn(`[transfer] ignoring close() failure on ${source}:`, err)
+    })
+  }
+
+  // Catches a truncated copy from any cause — a full device, a yanked cable,
+  // or a stream torn down early — before the book is reported as sent
+  const written = await fs.stat(target)
+  if (written.size !== size) {
+    throw new Error(
+      `Copy incomplete: ${written.size} of ${size} bytes reached the device. ` +
+        'Check free space and reconnect the device, then try again.'
+    )
+  }
 }

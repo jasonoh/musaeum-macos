@@ -4,9 +4,26 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
-## [Unreleased] — 2026-07-29
+## [Unreleased] — 2026-08-10
 
 ### Added
+- Metadata editor: a modal for editing a book's bibliographic fields by hand
+  (title, author, series, publisher, published date, language, tags,
+  description, identifiers) — the manual counterpart to hydration, for wrong
+  titles baked into a file or a series the fetchers never found. Opened from
+  the detail panel's pencil button or "Edit metadata…" in the right-click
+  menu; ⌘↵ saves. Only changed fields are sent, so a save can't clobber a
+  value hydration filled in meanwhile. Sort keys that merely match the derived
+  form show as a live placeholder rather than a value, so renaming a book
+  re-derives its sort title instead of stranding the old one.
+- Keyboard navigation in both library views: arrows move the selection (grid
+  arrows move by column, list by row), Home/End jump to the ends, PageUp/Down
+  move a viewport, Escape clears the selection and closes the detail panel.
+  Ignored while a modal, menu, or text field has the keyboard.
+- Selection survives a grid↔list switch: the incoming view scrolls the
+  selected book into the middle of the viewport instead of starting at the
+  top, and keyboard moves keep the selection in view
+  (`src/hooks/useBookNavigation.ts`).
 - Virtualized grid and list views — only the rows overlapping the viewport are
   rendered, so library size no longer drives DOM size. New
   `src/hooks/useVirtualRows.ts` (`useScrollMetrics` + `rowWindow`) drives both
@@ -85,6 +102,37 @@ the app is packaged.
   returns an unsubscribe function
 
 ### Fixed
+- Kindle transfers reported "Failed — EBADF: bad file descriptor, close" while
+  actually succeeding: macOS's SMB client can fail `close()` on a file it has
+  just read in full (observed on a 50MB azw3 whose copy on the device was
+  byte-identical). `copyWithProgress` now owns the source fd
+  (`autoClose: false`) and logs a close failure instead of raising it — a close
+  error on a read-only fd cannot affect bytes already read — and verifies the
+  destination size before reporting the book as sent, so a genuinely truncated
+  copy still fails. Progress now counts through a Transform rather than a
+  `data` listener, which put the source into flowing mode before the pipeline
+  was wired up.
+- Failed transfers could not be dismissed and truncated their error text —
+  successful ones auto-clear after 5s, but a failure stayed in the sidebar
+  forever. Each finished job now has a dismiss button, failures show the full
+  message on hover, and a "Try again" action re-queues the transfer.
+- The grid jumped to a different part of the library whenever its geometry
+  changed — deleting a book with the detail panel open moved the viewport ~43
+  books (measured), because `scrollTop` was preserved across a column-count
+  change that made the same pixel offset mean something else. `useAnchoredScroll`
+  now records the book at the top of the viewport and restores *it* rather than
+  the pixel offset when column count or row height changes; this also covers
+  window resizes.
+- Books imported without an author sort key sorted under their first name — a
+  newly added "Seth Dickinson" book was missing from the D's in an author
+  sort, even though its series-mates were there. Sort keys are now derived
+  (`sortableTitle` / `sortableAuthor` in `book.types.ts`, handling surname
+  particles and generational suffixes) on every write path that lacks them:
+  import, hydration, metadata.json adoption, and catalog reads. Migration 002
+  backfills the existing cache through the same functions, registered as
+  SQLite functions so the SQL and TypeScript can't drift. Deriving on catalog
+  read matters most: adoption replaces the cache wholesale, so a catalog
+  written before this would otherwise undo the backfill on every connect.
 - List rows with no rating were 5px taller than the rest — the em-dash fallback
   was inline content, so the cell picked up the table's default line strut.
   Harmless before, but it broke the uniform-height assumption virtualization

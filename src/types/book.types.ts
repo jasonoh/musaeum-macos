@@ -138,3 +138,50 @@ export function seriesDisplay(name: string, index: number | null): string {
   // JS number formatting already drops the trailing .0 (String(1.0) === '1')
   return `${name} #${index}`
 }
+
+/**
+ * Sort keys. Sorting reads `sort_title`/`author_sort` and falls back to the
+ * display value, so a book that reaches the library without them sorts under
+ * the wrong letter ("Seth Dickinson" under S). Only Calibre migration and the
+ * occasional EPUB supply them, so every other write path derives them here.
+ */
+
+/** "The Great Gatsby" → "Great Gatsby, The" */
+export function sortableTitle(title: string): string {
+  const m = title.match(/^(The|A|An)\s+(.+)$/i)
+  return m ? `${m[2]}, ${m[1]}` : title
+}
+
+/** Name particles that belong to the surname: "Ursula K. Le Guin" → "Le Guin, Ursula K." */
+const NAME_PARTICLES = new Set([
+  'af', 'bin', 'da', 'de', 'del', 'della', 'der', 'di', 'do', 'dos', 'du',
+  'la', 'le', 'san', 'st', 'st.', 'ten', 'ter', 'van', 'von', 'zu'
+])
+
+/** Generational suffixes, kept with the surname so "King Jr." still sorts under K. */
+const NAME_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'i', 'ii', 'iii', 'iv', 'v'])
+
+/** "Seth Dickinson" → "Dickinson, Seth" */
+export function sortableAuthor(name: string | null | undefined): string | null {
+  if (!name) return null
+  const clean = name.trim().replace(/\s+/g, ' ')
+  // Already inverted, or a multi-author string we'd only mangle by reordering
+  if (!clean || clean.includes(',') || clean.includes('&') || / and /i.test(clean)) {
+    return clean || null
+  }
+
+  const parts = clean.split(' ')
+  const suffix =
+    parts.length > 2 && NAME_SUFFIXES.has(parts[parts.length - 1].toLowerCase())
+      ? parts.pop()!
+      : null
+  if (parts.length < 2) return clean
+
+  let firstOfLast = parts.length - 1
+  while (firstOfLast > 1 && NAME_PARTICLES.has(parts[firstOfLast - 1].toLowerCase())) {
+    firstOfLast--
+  }
+  const last = parts.slice(firstOfLast).join(' ')
+  const rest = parts.slice(0, firstOfLast).join(' ')
+  return `${last}${suffix ? ` ${suffix}` : ''}, ${rest}`
+}

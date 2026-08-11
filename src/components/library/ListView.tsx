@@ -2,6 +2,7 @@ import type { Book, SortField } from '@shared/book.types'
 import { defaultSortDirection, seriesDisplay } from '@shared/book.types'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
+import { useBookNavigation } from '@/hooks/useBookNavigation'
 import { rowWindow, useScrollMetrics } from '@/hooks/useVirtualRows'
 import { SortArrowIcon, StarIcon } from '@/components/shared/icons'
 
@@ -157,13 +158,23 @@ function Spacer({ height }: { height: number }) {
 
 export function ListView() {
   const books = useLibraryStore((s) => s.books)
-  const { ref, metrics } = useScrollMetrics<HTMLDivElement>()
+  const { ref, node, metrics } = useScrollMetrics<HTMLDivElement>()
   const { start, end, padTop, padBottom } = rowWindow(
     books.length,
     ROW_HEIGHT,
     { ...metrics, scrollTop: metrics.scrollTop - HEADER_HEIGHT },
     OVERSCAN_ROWS
   )
+
+  useBookNavigation({
+    node,
+    columns: 1,
+    rowHeight: ROW_HEIGHT,
+    // The sticky <thead> both precedes row 0 and covers the top of the viewport
+    contentTop: HEADER_HEIGHT,
+    stickyTop: HEADER_HEIGHT,
+    ready: books.length > 0
+  })
 
   return (
     <div ref={ref} className="no-scroll-anchor h-full overflow-y-auto">

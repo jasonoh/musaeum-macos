@@ -80,6 +80,31 @@ describe('readCatalogDetailed', () => {
     }
   })
 
+  it('derives sort keys a catalog entry is missing', async () => {
+    // A catalog written before sort keys were derived — adopting it as-is
+    // would sort the book under "Seth" and undo the cache backfill
+    await writeCatalog(root, [
+      { ...makeBook('a', 'The Traitor Baru Cormorant'), author: 'Seth Dickinson', sortTitle: null, authorSort: null }
+    ])
+    const result = await readCatalogDetailed(root)
+    expect(result.state).toBe('ok')
+    if (result.state === 'ok') {
+      expect(result.file.books[0].sortTitle).toBe('Traitor Baru Cormorant, The')
+      expect(result.file.books[0].authorSort).toBe('Dickinson, Seth')
+    }
+  })
+
+  it('keeps sort keys the catalog already carries', async () => {
+    await writeCatalog(root, [
+      { ...makeBook('a', 'The Hobbit'), author: 'J.R.R. Tolkien', sortTitle: 'Hobbit', authorSort: 'Tolkien' }
+    ])
+    const result = await readCatalogDetailed(root)
+    if (result.state === 'ok') {
+      expect(result.file.books[0].sortTitle).toBe('Hobbit')
+      expect(result.file.books[0].authorSort).toBe('Tolkien')
+    }
+  })
+
   it('throws on a non-ENOENT read error', async () => {
     if (process.getuid?.() === 0) return // root ignores file modes
     await writeCatalog(root, [makeBook('a')])

@@ -117,6 +117,14 @@ export const TrashIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+/** Edit metadata by hand. */
+export const PencilIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M4 20h4L19.5 8.5a2.12 2.12 0 0 0-3-3L5 17v3z" />
+    <path d="M14.5 6.5l3 3" />
+  </svg>
+)
+
 export const FolderIcon = ({ className }: IconProps) => (
   <svg {...base(className)}>
     <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V7.5z" />

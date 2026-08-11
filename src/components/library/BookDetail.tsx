@@ -10,6 +10,7 @@ import {
   CheckIcon,
   CloseIcon,
   FolderIcon,
+  PencilIcon,
   RefreshIcon,
   SendIcon,
   StarIcon,
@@ -32,6 +33,7 @@ export function BookDetail() {
   const sendToDevice = useDeviceStore((s) => s.sendToDevice)
   const online = useNASStore((s) => s.status?.state === 'connected')
   const requestDelete = useUIStore((s) => s.requestDelete)
+  const requestEdit = useUIStore((s) => s.requestEdit)
   const [busy, setBusy] = useState<string | null>(null)
 
   const book = useMemo(
@@ -203,6 +205,14 @@ export function BookDetail() {
             className="flex-1 rounded-md border border-ink-600 px-3 py-1.5 text-[12px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
           >
             Apple Books
+          </button>
+          <button
+            disabled={!online || busy !== null}
+            onClick={() => requestEdit(book.id)}
+            title="Edit metadata"
+            className="rounded-md border border-ink-600 px-2.5 py-1.5 text-parchment-dim hover:bg-ink-800 hover:text-gold-300 disabled:opacity-40"
+          >
+            <PencilIcon className="h-4 w-4" />
           </button>
           <button
             disabled={!online || busy !== null}

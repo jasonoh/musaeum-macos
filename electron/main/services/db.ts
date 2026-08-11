@@ -9,10 +9,12 @@ import type {
   LibraryFacets,
   ReadStatus
 } from '@shared/book.types'
+import { sortableAuthor, sortableTitle } from '@shared/book.types'
 import type { ConflictCandidate, MetadataConflict } from '@shared/metadata.types'
 import migration001 from '../schema/migrations/001_initial.sql?raw'
+import migration002 from '../schema/migrations/002_sort_keys.sql?raw'
 
-const MIGRATIONS: string[] = [migration001]
+const MIGRATIONS: string[] = [migration001, migration002]
 
 let db: Database.Database | null = null
 
@@ -22,6 +24,7 @@ export function getDb(): Database.Database {
     db = new Database(path)
     db.pragma('journal_mode = WAL')
     db.pragma('foreign_keys = ON')
+    registerFunctions(db)
     runMigrations(db)
   }
   return db
@@ -30,6 +33,20 @@ export function getDb(): Database.Database {
 export function closeDb(): void {
   db?.close()
   db = null
+}
+
+/**
+ * Expose the shared sort-key derivations to SQL so a backfill migration and
+ * the TypeScript write paths can't drift apart. Registered before migrations
+ * run, since 002 calls them.
+ */
+function registerFunctions(d: Database.Database): void {
+  d.function('musaeum_sort_title', { deterministic: true }, (title: unknown) =>
+    typeof title === 'string' ? sortableTitle(title) : null
+  )
+  d.function('musaeum_author_sort', { deterministic: true }, (author: unknown) =>
+    typeof author === 'string' ? sortableAuthor(author) : null
+  )
 }
 
 function runMigrations(d: Database.Database): void {

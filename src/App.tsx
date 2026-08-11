@@ -5,6 +5,7 @@ import { GridView } from '@/components/library/GridView'
 import { ListView } from '@/components/library/ListView'
 import { BookContextMenu } from '@/components/library/BookContextMenu'
 import { BookDetail } from '@/components/library/BookDetail'
+import { BookEditor } from '@/components/library/BookEditor'
 import { DeleteBookDialog } from '@/components/library/DeleteBookDialog'
 import { ImportOverlay } from '@/components/library/ImportOverlay'
 import { ConflictQueue } from '@/components/metadata/ConflictQueue'
@@ -25,6 +26,7 @@ export default function App() {
   const viewMode = useUIStore((s) => s.viewMode)
   const modal = useUIStore((s) => s.modal)
   const deletingBookId = useUIStore((s) => s.deletingBookId)
+  const editingBookId = useUIStore((s) => s.editingBookId)
 
   return (
     <div className="flex h-full">
@@ -44,6 +46,8 @@ export default function App() {
       <BookContextMenu />
       {/* Keyed so each book opens the dialog with a fresh format selection */}
       {deletingBookId && <DeleteBookDialog key={deletingBookId} />}
+      {/* Keyed so the form re-initializes from whichever book is being edited */}
+      {editingBookId && <BookEditor key={editingBookId} />}
 
       {modal === 'conflicts' && <ConflictQueue />}
       {modal === 'migration' && <MigrationWizard />}
