@@ -18,6 +18,7 @@ import type {
   MigrationScan,
   NASStatus
 } from './metadata.types'
+import type { EditableSettings, ExecutableKind, SettingsView } from './settings.types'
 
 /**
  * All IPC results cross the bridge as IPCResult — handlers never throw
@@ -73,6 +74,19 @@ export interface MusaeumAPI {
     reconnect(): Promise<boolean>
     setLibraryRoot(path: string): Promise<void>
     chooseLibraryRoot(): Promise<string | null>
+  }
+
+  settings: {
+    /** Configured values plus what each one actually resolves to. */
+    get(): Promise<SettingsView>
+    /**
+     * Apply the given fields; absent fields are untouched, blank fields are
+     * cleared back to auto-detection. Rejects without writing anything when a
+     * value doesn't validate. Restarts the sidecar when its inputs changed.
+     */
+    save(updates: Partial<EditableSettings>): Promise<void>
+    /** Native file picker for a tool path; null when cancelled. */
+    chooseExecutable(kind: ExecutableKind): Promise<string | null>
   }
 
   migration: {

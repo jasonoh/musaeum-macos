@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export type ViewMode = 'grid' | 'list'
-export type ActiveModal = 'conflicts' | 'migration' | null
+export type ActiveModal = 'conflicts' | 'migration' | 'settings' | null
 
 export interface ContextMenuTarget {
   bookId: string

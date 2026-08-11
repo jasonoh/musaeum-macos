@@ -44,17 +44,40 @@ function sidecarDir(): string {
     : join(app.getAppPath(), 'sidecar')
 }
 
-function resolvePython(): string | null {
+/** Where a resolved tool path came from — surfaced in Settings. */
+export interface ToolResolution {
+  path: string | null
+  source: 'configured' | 'auto' | 'none'
+}
+
+/**
+ * The interpreter the sidecar runs under. Exported with its provenance so
+ * Settings reports what is actually in force rather than re-deriving it.
+ */
+export function resolvePython(): ToolResolution {
   const configured = getConfig('python_path')
-  if (configured && existsSync(configured)) return configured
+  if (configured && existsSync(configured)) return { path: configured, source: 'configured' }
   // Prefer the sidecar's own venv (created by `python3 -m venv sidecar/.venv`)
   const venvPython = join(sidecarDir(), '.venv', 'bin', 'python')
-  if (existsSync(venvPython)) return venvPython
+  if (existsSync(venvPython)) return { path: venvPython, source: 'auto' }
   for (const cmd of PYTHON_CANDIDATES) {
     const res = spawnSync(cmd, ['--version'], { encoding: 'utf8' })
-    if (res.status === 0) return cmd
+    if (res.status === 0) return { path: cmd, source: 'auto' }
   }
-  return null
+  return { path: null, source: 'none' }
+}
+
+/**
+ * The Google Books key handed to the sidecar. `app_config` wins over the
+ * environment so a key set in Settings survives a double-clicked .app, while
+ * `infisical run -- npm run dev` still works with nothing configured.
+ */
+export function resolveGoogleBooksKey(): { key: string | null; source: 'configured' | 'env' | 'none' } {
+  const configured = getConfig('google_books_api_key')
+  if (configured) return { key: configured, source: 'configured' }
+  const fromEnv = process.env.GOOGLE_BOOKS_API_KEY
+  if (fromEnv) return { key: fromEnv, source: 'env' }
+  return { key: null, source: 'none' }
 }
 
 export function isAvailable(): boolean {
@@ -63,15 +86,20 @@ export function isAvailable(): boolean {
 
 export function start(): boolean {
   if (proc) return true
-  const python = resolvePython()
+  const { path: python } = resolvePython()
   if (!python) {
     console.error('[sidecar] no python interpreter found')
     return false
   }
 
+  const { key } = resolveGoogleBooksKey()
   const p = spawn(python, ['main.py'], {
     cwd: sidecarDir(),
-    env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      ...(key ? { GOOGLE_BOOKS_API_KEY: key } : {})
+    }
   })
   proc = p
 
@@ -90,12 +118,12 @@ export function start(): boolean {
   })
   p.on('exit', (code) => {
     console.error(`[sidecar] exited with code ${code}`)
+    // A process we already replaced (stop/restart) must not tear down its
+    // successor — stop() clears `proc` and the pending map synchronously,
+    // and this event arrives after the new process is running
+    if (proc !== p) return
     proc = null
-    for (const [id, call] of pending) {
-      clearTimeout(call.timer)
-      call.reject(new Error('Sidecar process exited'))
-      pending.delete(id)
-    }
+    failPending('Sidecar process exited')
     // Restart with a cap so a crash-looping sidecar doesn't spin forever
     if (restartCount < 3) {
       restartCount++
@@ -106,10 +134,30 @@ export function start(): boolean {
   return true
 }
 
+function failPending(message: string): void {
+  for (const [id, call] of pending) {
+    clearTimeout(call.timer)
+    call.reject(new Error(message))
+    pending.delete(id)
+  }
+}
+
 export function stop(): void {
   restartCount = 99 // suppress auto-restart during shutdown
-  proc?.kill()
+  const p = proc
   proc = null
+  p?.kill()
+  failPending('Sidecar process stopped')
+}
+
+/**
+ * Relaunch under the current config — the interpreter and the Google Books key
+ * are both read at spawn time, so a Settings change only takes effect here.
+ */
+export function restart(): boolean {
+  stop()
+  restartCount = 0
+  return start()
 }
 
 function handleMessage(line: string): void {
@@ -163,10 +211,16 @@ export function call<T = unknown>(
   })
 }
 
+const STANDARD_EBOOK_CONVERT = '/Applications/calibre.app/Contents/MacOS/ebook-convert'
+
 /** Locate ebook-convert; configurable, defaults to the standard Calibre install path. */
-export function ebookConvertPath(): string | null {
+export function resolveEbookConvert(): ToolResolution {
   const configured = getConfig('ebook_convert_path')
-  if (configured && existsSync(configured)) return configured
-  const standard = '/Applications/calibre.app/Contents/MacOS/ebook-convert'
-  return existsSync(standard) ? standard : null
+  if (configured && existsSync(configured)) return { path: configured, source: 'configured' }
+  if (existsSync(STANDARD_EBOOK_CONVERT)) return { path: STANDARD_EBOOK_CONVERT, source: 'auto' }
+  return { path: null, source: 'none' }
+}
+
+export function ebookConvertPath(): string | null {
+  return resolveEbookConvert().path
 }

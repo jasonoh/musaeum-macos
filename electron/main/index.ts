@@ -8,6 +8,7 @@ import { registerLibraryHandlers } from './ipc/library'
 import { registerMetadataHandlers } from './ipc/metadata'
 import { registerMigrationHandlers } from './ipc/migration'
 import { registerNASHandlers } from './ipc/nas'
+import { registerSettingsHandlers } from './ipc/settings'
 import { closeDb, getBook } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
 import { setMainWindow } from './services/events'
@@ -89,6 +90,7 @@ app.whenReady().then(() => {
   registerNASHandlers()
   registerMigrationHandlers()
   registerFileHandlers()
+  registerSettingsHandlers()
 
   const win = createWindow()
   setMainWindow(win)

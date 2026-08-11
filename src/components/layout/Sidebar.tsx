@@ -3,7 +3,7 @@ import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { DevicePanel } from '@/components/device/DevicePanel'
 import { FilterSidebar } from '@/components/shared/FilterSidebar'
-import { SpinnerIcon, WarningIcon } from '@/components/shared/icons'
+import { GearIcon, SpinnerIcon, WarningIcon } from '@/components/shared/icons'
 
 export function Sidebar() {
   const conflictCount = useUIStore((s) => s.conflictCount)
@@ -86,16 +86,25 @@ export function Sidebar() {
 
       <DevicePanel />
 
-      <div className="flex items-center gap-2 border-t border-ink-800 px-4 py-2.5 text-[12px] text-parchment-faint">
-        <span className={`h-2 w-2 rounded-full ${nasDot}`} />
-        {nasStatus?.state === 'connected'
-          ? 'Library connected'
-          : nasStatus?.state === 'reconnecting'
-            ? 'Reconnecting…'
-            : nasStatus?.state === 'unconfigured'
-              ? 'Not configured'
-              : 'Offline'}
-      </div>
+      {/* The status row doubles as the Settings entry point, so an
+          unconfigured or offline library leads straight to where it's fixed */}
+      <button
+        onClick={() => openModal('settings')}
+        title="Settings"
+        className="flex items-center gap-2 border-t border-ink-800 px-4 py-2.5 text-left text-[12px] text-parchment-faint hover:bg-ink-800 hover:text-parchment-dim"
+      >
+        <span className={`h-2 w-2 shrink-0 rounded-full ${nasDot}`} />
+        <span className="truncate">
+          {nasStatus?.state === 'connected'
+            ? 'Library connected'
+            : nasStatus?.state === 'reconnecting'
+              ? 'Reconnecting…'
+              : nasStatus?.state === 'unconfigured'
+                ? 'Not configured'
+                : 'Offline'}
+        </span>
+        <GearIcon className="ml-auto h-3.5 w-3.5 shrink-0" />
+      </button>
     </aside>
   )
 }

@@ -76,6 +76,14 @@ export function setConfig(key: string, value: string): void {
     .run(key, value)
 }
 
+/**
+ * Clear a config key. Distinct from storing '' — every reader treats a missing
+ * key as "fall back to auto-detection", and an empty string would defeat that.
+ */
+export function deleteConfig(key: string): void {
+  getDb().prepare('DELETE FROM app_config WHERE key = ?').run(key)
+}
+
 // --- Books ---
 
 interface BookRow {

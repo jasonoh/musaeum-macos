@@ -10,6 +10,7 @@ import { DeleteBookDialog } from '@/components/library/DeleteBookDialog'
 import { ImportOverlay } from '@/components/library/ImportOverlay'
 import { ConflictQueue } from '@/components/metadata/ConflictQueue'
 import { MigrationWizard } from '@/components/migration/MigrationWizard'
+import { SettingsModal } from '@/components/settings/SettingsModal'
 import { NASStatusBanner } from '@/components/shared/NASStatusBanner'
 import { useDevice } from '@/hooks/useDevice'
 import { useDragDrop } from '@/hooks/useDragDrop'
@@ -51,6 +52,7 @@ export default function App() {
 
       {modal === 'conflicts' && <ConflictQueue />}
       {modal === 'migration' && <MigrationWizard />}
+      {modal === 'settings' && <SettingsModal />}
     </div>
   )
 }

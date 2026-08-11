@@ -51,6 +51,11 @@ const api: MusaeumAPI = {
     setLibraryRoot: (path) => invoke('nas:setLibraryRoot', path),
     chooseLibraryRoot: () => invoke('nas:chooseLibraryRoot')
   },
+  settings: {
+    get: () => invoke('settings:get'),
+    save: (updates) => invoke('settings:save', updates),
+    chooseExecutable: (kind) => invoke('settings:chooseExecutable', kind)
+  },
   migration: {
     scanCalibreLibrary: (path) => invoke('migration:scanCalibreLibrary', path),
     startMigration: (options) => invoke('migration:startMigration', options),
