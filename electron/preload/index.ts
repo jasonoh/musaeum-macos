@@ -43,7 +43,9 @@ const api: MusaeumAPI = {
     sendToDevice: (bookId, deviceId) => invoke('devices:sendToDevice', bookId, deviceId),
     getTransferProgress: (jobId) => invoke('devices:getTransferProgress', jobId),
     exportToAppleBooks: (bookId) => invoke('devices:exportToAppleBooks', bookId),
-    getOnDeviceBookIds: (deviceId) => invoke('devices:getOnDeviceBookIds', deviceId)
+    getOnDeviceBookIds: (deviceId) => invoke('devices:getOnDeviceBookIds', deviceId),
+    removeFromDevice: (bookId, deviceId) =>
+      invoke('devices:removeFromDevice', bookId, deviceId)
   },
   nas: {
     getStatus: () => invoke('nas:getStatus'),

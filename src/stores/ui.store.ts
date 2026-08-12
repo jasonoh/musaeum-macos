@@ -9,6 +9,11 @@ export interface ContextMenuTarget {
   y: number
 }
 
+export interface DeviceRemovalTarget {
+  bookId: string
+  deviceId: string
+}
+
 interface UIState {
   viewMode: ViewMode
   selectedBookId: string | null
@@ -20,6 +25,8 @@ interface UIState {
   deletingBookId: string | null
   /** Book whose metadata editor is open. */
   editingBookId: string | null
+  /** Book + device whose "remove from device" confirmation is open. */
+  removingFromDevice: DeviceRemovalTarget | null
 
   setViewMode(mode: ViewMode): void
   selectBook(id: string | null): void
@@ -30,6 +37,7 @@ interface UIState {
   closeContextMenu(): void
   requestDelete(bookId: string | null): void
   requestEdit(bookId: string | null): void
+  requestDeviceRemoval(target: DeviceRemovalTarget | null): void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -41,6 +49,7 @@ export const useUIStore = create<UIState>((set) => ({
   contextMenu: null,
   deletingBookId: null,
   editingBookId: null,
+  removingFromDevice: null,
 
   setViewMode: (viewMode) => set({ viewMode }),
   selectBook: (selectedBookId) => set({ selectedBookId }),
@@ -49,7 +58,8 @@ export const useUIStore = create<UIState>((set) => ({
   setDraggingFiles: (isDraggingFiles) => set({ isDraggingFiles }),
   openContextMenu: (contextMenu) => set({ contextMenu }),
   closeContextMenu: () => set({ contextMenu: null }),
-  // Opening either dialog always dismisses the menu that launched it
+  // Opening any dialog always dismisses the menu that launched it
   requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null }),
-  requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null })
+  requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null }),
+  requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null })
 }))

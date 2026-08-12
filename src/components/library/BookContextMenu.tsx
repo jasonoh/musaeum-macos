@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
 import {
   BookIcon,
+  DeviceIcon,
   FolderIcon,
   OpenExternalIcon,
   PencilIcon,
@@ -28,7 +30,12 @@ export function BookContextMenu() {
   const selectBook = useUIStore((s) => s.selectBook)
   const requestDelete = useUIStore((s) => s.requestDelete)
   const requestEdit = useUIStore((s) => s.requestEdit)
+  const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
   const books = useLibraryStore((s) => s.books)
+  // Selected as stable slices rather than a derived array, so the menu doesn't
+  // re-render on every unrelated device-store update
+  const devices = useDeviceStore((s) => s.devices)
+  const onDevice = useDeviceStore((s) => s.onDevice)
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x: target?.x ?? 0, y: target?.y ?? 0 })
 
@@ -60,6 +67,8 @@ export function BookContextMenu() {
   if (!target) return null
   const book = books.find((b) => b.id === target.bookId)
   if (!book) return null
+
+  const holding = devices.filter((d) => onDevice[d.id]?.includes(book.id))
 
   return (
     <div className="fixed inset-0 z-50" onClick={closeContextMenu} onContextMenu={closeContextMenu}>
@@ -107,6 +116,14 @@ export function BookContextMenu() {
           label="Edit metadata…"
           onClick={() => requestEdit(book.id)}
         />
+        {holding.map((d) => (
+          <MenuItem
+            key={d.id}
+            icon={<DeviceIcon className="h-3.5 w-3.5" />}
+            label={`Remove from ${d.name}…`}
+            onClick={() => requestDeviceRemoval({ bookId: book.id, deviceId: d.id })}
+          />
+        ))}
         <MenuItem
           icon={<TrashIcon className="h-3.5 w-3.5" />}
           label={book.formats.length > 1 ? 'Delete…' : 'Delete book…'}

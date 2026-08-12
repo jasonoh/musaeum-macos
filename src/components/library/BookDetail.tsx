@@ -34,6 +34,7 @@ export function BookDetail() {
   const online = useNASStore((s) => s.status?.state === 'connected')
   const requestDelete = useUIStore((s) => s.requestDelete)
   const requestEdit = useUIStore((s) => s.requestEdit)
+  const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
   const [busy, setBusy] = useState<string | null>(null)
 
   const book = useMemo(
@@ -181,19 +182,29 @@ export function BookDetail() {
         {devices.map((d) => {
           const present = onDevice[d.id]?.includes(book.id) ?? false
           return (
-            <button
-              key={d.id}
-              disabled={!online || busy !== null}
-              onClick={() => void run('send', () => sendToDevice(book.id, d.id))}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-gold-500 px-3 py-2 text-[13px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40"
-            >
-              {present ? (
-                <CheckIcon className="h-4 w-4" />
-              ) : (
-                <SendIcon className="h-4 w-4" />
+            <div key={d.id} className="flex gap-2">
+              <button
+                disabled={!online || busy !== null}
+                onClick={() => void run('send', () => sendToDevice(book.id, d.id))}
+                title={present ? `Send to ${d.name} again` : undefined}
+                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-gold-500 px-3 py-2 text-[13px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40"
+              >
+                {present ? <CheckIcon className="h-4 w-4" /> : <SendIcon className="h-4 w-4" />}
+                {present ? `On ${d.name}` : `Send to ${d.name}`}
+              </button>
+              {/* Removal needs no NAS — it only touches the device */}
+              {present && (
+                <button
+                  disabled={busy !== null}
+                  onClick={() => requestDeviceRemoval({ bookId: book.id, deviceId: d.id })}
+                  title={`Remove from ${d.name}`}
+                  aria-label={`Remove from ${d.name}`}
+                  className="rounded-md border border-ink-600 px-2.5 text-parchment-dim hover:border-red-500/60 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
               )}
-              {present ? `On ${d.name}` : `Send to ${d.name}`}
-            </button>
+            </div>
           )
         })}
         <div className="flex gap-2">

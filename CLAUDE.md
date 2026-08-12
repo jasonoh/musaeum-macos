@@ -284,8 +284,12 @@ Settings (see tasks.md → Packaging & distribution).
   neither is cached, and caches the result on the NAS. PDF-only books
   transfer as PDF — never converted (Kindles render PDF natively;
   `ebook-convert` is never invoked for PDFs)
-- Copy to `/documents/` on Kindle volume with streamed progress events.
-  `copyWithProgress` opens the source fd itself (`autoClose: false`) and
+- Copy to `/documents/` on Kindle volume with streamed progress events. The
+  destination is named `sanitizeTitle(book.title) + ext`, **not** the source
+  file's basename — renaming a book never renames its NAS files, and presence
+  matches the current title against device file stems, so copying under the
+  on-disk name left a retitled book reading "Send to Kindle" even immediately
+  after a successful send. `copyWithProgress` opens the source fd itself (`autoClose: false`) and
   swallows a `close()` failure — macOS's SMB client returns EBADF closing some
   files it has just read in full, which used to fail transfers that had in fact
   completed byte-for-byte. Write-side errors still propagate, and the
@@ -295,19 +299,35 @@ Settings (see tasks.md → Packaging & distribution).
 - Transfers run serially through `transfer-queue.ts`
 - **On-device presence** is derived by *scanning* the connected Kindle's
   `documents/` folder (not from `device_history`): `device-manager` walks it
-  (depth 2) into a stem set, and `getOnDeviceBookIds` matches books whose
-  `sanitizeTitle(title)` equals a file stem (extension-agnostic). Surfaced as
-  a badge on `BookCard` and an "On {device}" state on the detail-panel send
-  button. Presence = f(device files, book set), so the renderer recomputes it
-  on **both** triggers: `deviceContentsChanged` (device side) and
-  `libraryChanged` (book-set side — the on-connect catalog sync loads books
-  asynchronously and can finish *after* the device scan, so recomputing only
-  on the device event left presence stale at cold start). The 5s device poll
-  re-scans a known device's `documents/` and re-broadcasts only when the file
-  set changed (`setsEqual` guard), so presence self-heals when files change on
-  the device outside Musaeum or a first scan ran before the volume settled.
-  Known limitation: a book renamed after import (file keeps its original
-  sanitized name) won't match until re-sent.
+  (depth 2) into a `stem → paths` map, and `getOnDeviceBookIds` matches books
+  whose `sanitizeTitle(title)` equals a file stem (extension-agnostic).
+  Surfaced as a badge on `BookCard` and an "On {device}" state on the
+  detail-panel send button. Presence = f(device files, book set), so the
+  renderer recomputes it on **both** triggers: `deviceContentsChanged` (device
+  side) and `libraryChanged` (book-set side — the on-connect catalog sync loads
+  books asynchronously and can finish *after* the device scan, so recomputing
+  only on the device event left presence stale at cold start). The 5s device
+  poll re-scans a known device's `documents/` and re-broadcasts only when the
+  stem set changed (`keysEqual` guard), so presence self-heals when files change
+  on the device outside Musaeum or a first scan ran before the volume settled.
+  The walk **skips `{book}.sdr` sidecar folders** — the Kindle names the files
+  inside them after the book, so descending into one reports a book as present
+  from its leftovers alone. Renaming a book renames its NAS files and names
+  future sends from the current title, so presence keeps up — but a copy
+  *already* on the device keeps the name it was sent under and reads as a
+  different book until it is removed and re-sent.
+- **Removing from a device** (`removeBookFromDevice`) is the inverse of
+  presence and matches the same way — sanitized title against file stems — so
+  it deletes exactly what made the book read as "on device". Each matched file
+  takes its `._` AppleDouble sibling and its `{book}.sdr` folder with it, which
+  is what deleting on the Kindle itself does; reading position and annotations
+  go with them. It **re-scans instead of trusting the cached contents** (which
+  are up to one poll interval stale — a file added since would survive and keep
+  the book present), and refuses paths that resolve outside `documents/`.
+  Entry points: the detail panel's trash button beside an "On {device}" button,
+  and a "Remove from {device}…" context-menu item; both open
+  `RemoveFromDeviceDialog`. The library copy is never touched — removal is
+  undone by sending again.
 
 ### Sort keys
 
@@ -454,9 +474,33 @@ Two rules keep it from doing damage: it sends **only changed fields**, so a
 save can't clobber what hydration wrote meanwhile; and a sort key equal to its
 derived form is shown as a live placeholder rather than a value, so renaming a
 book re-derives the sort title instead of stranding the old one (a genuinely
-custom key is shown and left alone). Renaming does not rename files on disk —
-everything resolves formats by extension, except device presence, which
-matches on `sanitizeTitle(title)` and won't match until re-sent.
+custom key is shown and left alone). Renaming a book **does** rename its files
+(see File naming below).
+
+### File naming on disk
+
+`services/book-files.ts` → `renameToTitle(bookDir, title)` keeps a book's
+format files named `{sanitizeTitle(title)}.{ext}`. Files are named once at
+import, but the title keeps moving afterwards — hydration rewrites it, and so
+does the metadata editor — which used to leave the folder holding a book under
+whatever it was first mistaken for (an EPUB with the wrong OPF metadata named
+its files after a different book entirely). Called from **both** places the
+title settles: `importer.hydrate` after `applyHydration`, and the
+`library:updateBook` handler.
+
+- **Title-derived, not diff-driven.** It renames anything whose stem doesn't
+  match, so it repairs drift from any cause, not just the edit that called it.
+  That makes it idempotent and safe to call on every update.
+- **Never throws, and always runs after the canonical write.** Nothing reads
+  these names — every lookup is by extension (`findFormatFile`, `deleteFormats`,
+  `file-access`) — so a failed rename costs tidiness and must never cost an
+  edit that metadata.json has already recorded.
+- **It will not rename one file onto another of the same format.** Renaming is
+  cosmetic; losing a file is not, so a same-extension collision is skipped.
+
+Covers and metadata.json have fixed names and are untouched. Renaming does not
+reach a copy already sitting on a device — that keeps the name it was sent
+under until it is removed and re-sent.
 
 ### Deletion
 
@@ -733,6 +777,8 @@ interface MusaeumAPI {
     sendToDevice(bookId: string, deviceId: string): Promise<TransferJob>
     getTransferProgress(jobId: string): Promise<TransferProgress | null>
     exportToAppleBooks(bookId: string): Promise<void>
+    getOnDeviceBookIds(deviceId: string): Promise<string[]>
+    removeFromDevice(bookId, deviceId): Promise<{ removed: number }>  // deletes off device
   }
   nas: {
     getStatus(): Promise<NASStatus>

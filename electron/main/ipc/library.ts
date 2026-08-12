@@ -7,6 +7,7 @@ import type {
   DuplicateDecision
 } from '@shared/book.types'
 import * as bookDelete from '../services/book-delete'
+import * as bookFiles from '../services/book-files'
 import * as db from '../services/db'
 import { broadcast } from '../services/events'
 import * as importer from '../services/importer'
@@ -37,8 +38,13 @@ export function registerLibraryHandlers(): void {
     // otherwise drift from the canonical file
     const book = db.getBook(id)
     if (book?.nasPath && nas.isOnline()) {
-      await importer.writeMetadataJson(join(nas.getLibraryRoot()!, book.nasPath), book)
+      const bookDir = join(nas.getLibraryRoot()!, book.nasPath)
+      await importer.writeMetadataJson(bookDir, book)
       librarySync.upsertCatalog([book])
+      // After the canonical record, never before it: the files are named from
+      // the title but nothing reads those names, so a failure here must not
+      // cost the user an edit that has already been saved
+      await bookFiles.renameToTitle(bookDir, book.title)
     }
     broadcast('libraryChanged')
   })

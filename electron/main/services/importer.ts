@@ -13,6 +13,7 @@ import type {
 } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
 import type { ConflictCandidate } from '@shared/metadata.types'
+import * as bookFiles from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
 import * as librarySync from './library-sync'
@@ -262,6 +263,10 @@ export async function hydrate(
     if (updated) {
       await writeMetadataJson(bookDir, updated, result.metadata.metadata_sources)
       librarySync.upsertCatalog([updated])
+      // Files were named from the pre-hydration title — often the filename, or
+      // whatever a mispackaged EPUB claimed. Now that the title is settled, the
+      // files follow it.
+      await bookFiles.renameToTitle(bookDir, updated.title)
     }
 
     if (result.conflicts.length) {

@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { createWriteStream, promises as fs } from 'fs'
-import { basename, extname, join } from 'path'
+import { extname, join } from 'path'
 import { Transform } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { BookFormat } from '@shared/book.types'
@@ -9,6 +9,7 @@ import * as db from './db'
 import { getDevice, refreshDeviceContents } from './device-manager'
 import { broadcast } from './events'
 import * as nas from './nas-manager'
+import { sanitizeTitle } from './sanitize'
 import * as sidecar from './sidecar'
 
 /** Kindle format preference: azw3 renders best on modern devices. */
@@ -121,7 +122,13 @@ async function runTransfer(job: TransferJob): Promise<void> {
     emit(job, { status: 'copying', format })
     const documentsDir = join(device.mountPath, 'documents')
     await fs.mkdir(documentsDir, { recursive: true })
-    await copyWithProgress(sourceFile, join(documentsDir, basename(sourceFile)), (p) =>
+    // Named from the book's *current* title, not the source file: renaming a
+    // book never renames its files on the NAS, and on-device presence matches
+    // sanitizeTitle(book.title) against the device's file stems. Copying under
+    // the on-disk name would leave a book that was retitled after import
+    // reading "Send to Kindle" forever, even right after a successful send.
+    const deviceName = `${sanitizeTitle(book.title)}${extname(sourceFile)}`
+    await copyWithProgress(sourceFile, join(documentsDir, deviceName), (p) =>
       emit(job, { progress: p })
     )
 

@@ -67,6 +67,8 @@ export interface MusaeumAPI {
     getTransferProgress(jobId: string): Promise<TransferProgress | null>
     exportToAppleBooks(bookId: string): Promise<void>
     getOnDeviceBookIds(deviceId: string): Promise<string[]>
+    /** Delete the book's files (plus `.sdr` sidecars) from a connected device. */
+    removeFromDevice(bookId: string, deviceId: string): Promise<{ removed: number }>
   }
 
   nas: {

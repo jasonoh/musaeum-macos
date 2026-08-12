@@ -8,6 +8,7 @@ import { BookDetail } from '@/components/library/BookDetail'
 import { BookEditor } from '@/components/library/BookEditor'
 import { DeleteBookDialog } from '@/components/library/DeleteBookDialog'
 import { ImportOverlay } from '@/components/library/ImportOverlay'
+import { RemoveFromDeviceDialog } from '@/components/library/RemoveFromDeviceDialog'
 import { ConflictQueue } from '@/components/metadata/ConflictQueue'
 import { MigrationWizard } from '@/components/migration/MigrationWizard'
 import { SettingsModal } from '@/components/settings/SettingsModal'
@@ -49,6 +50,7 @@ export default function App() {
       {deletingBookId && <DeleteBookDialog key={deletingBookId} />}
       {/* Keyed so the form re-initializes from whichever book is being edited */}
       {editingBookId && <BookEditor key={editingBookId} />}
+      <RemoveFromDeviceDialog />
 
       {modal === 'conflicts' && <ConflictQueue />}
       {modal === 'migration' && <MigrationWizard />}

@@ -15,4 +15,7 @@ export function registerDeviceHandlers(): void {
   handle('devices:getOnDeviceBookIds', (deviceId: string) =>
     deviceManager.getOnDeviceBookIds(deviceId)
   )
+  handle('devices:removeFromDevice', (bookId: string, deviceId: string) =>
+    deviceManager.removeBookFromDevice(bookId, deviceId)
+  )
 }

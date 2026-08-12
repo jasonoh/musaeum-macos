@@ -12,6 +12,7 @@ interface DeviceState {
   upsertTransfer(job: TransferJob): void
   removeTransfer(jobId: string): void
   sendToDevice(bookId: string, deviceId: string): Promise<void>
+  removeFromDevice(bookId: string, deviceId: string): Promise<void>
   setOnDevice(deviceId: string, bookIds: string[]): void
   refreshDeviceContents(deviceId: string): Promise<void>
 }
@@ -51,6 +52,19 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
   async sendToDevice(bookId, deviceId) {
     const job = await window.Musaeum.devices.sendToDevice(bookId, deviceId)
     set((s) => ({ transfers: { ...s.transfers, [job.jobId]: job } }))
+  },
+
+  async removeFromDevice(bookId, deviceId) {
+    await window.Musaeum.devices.removeFromDevice(bookId, deviceId)
+    // The main process re-scans and broadcasts deviceContentsChanged, but that
+    // round-trip is a frame or two behind the click — drop the book now so the
+    // button can't sit on "On Kindle" after a successful removal
+    set((s) => ({
+      onDevice: {
+        ...s.onDevice,
+        [deviceId]: (s.onDevice[deviceId] ?? []).filter((id) => id !== bookId)
+      }
+    }))
   },
 
   setOnDevice: (deviceId, bookIds) =>
