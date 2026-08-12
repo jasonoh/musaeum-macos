@@ -13,7 +13,9 @@ export const app = {
   whenReady: (): Promise<void> => Promise.resolve(),
   on: (): void => undefined,
   // Tests run from the repo root, so sidecar path resolution finds the real
-  // sidecar/ dir — tool detection is then exercised, not stubbed
+  // sidecar/ dir — tool detection is then exercised, not stubbed. Note that
+  // main-process code reads dev-vs-packaged from services/runtime.ts, not from
+  // this field; it is here to keep the mock faithful to the real app surface.
   isPackaged: false,
   getAppPath: (): string => process.cwd()
 }

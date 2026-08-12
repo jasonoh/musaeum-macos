@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type {
   Book,
   BookFilters,
@@ -8,6 +9,7 @@ import type {
   LibraryFacets,
   ReadStatus
 } from '@shared/book.types'
+import { isBookSort } from '@shared/book.types'
 
 export type FacetKind = 'authors' | 'series' | 'tags' | 'formats' | 'readStatus'
 
@@ -36,95 +38,112 @@ interface LibraryState {
 
 const EMPTY_FILTERS: BookFilters = {}
 
-export const useLibraryStore = create<LibraryState>((set, get) => ({
-  books: [],
-  facets: null,
-  loading: false,
-  query: '',
-  filters: EMPTY_FILTERS,
-  sort: { field: 'title', direction: 'asc' },
-  importJobs: {},
-  refreshing: false,
-  rebuildProgress: null,
+export const useLibraryStore = create<LibraryState>()(
+  persist(
+    (set, get) => ({
+      books: [],
+      facets: null,
+      loading: false,
+      query: '',
+      filters: EMPTY_FILTERS,
+      sort: { field: 'title', direction: 'asc' },
+      importJobs: {},
+      refreshing: false,
+      rebuildProgress: null,
 
-  async load() {
-    const { query, filters, sort } = get()
-    set({ loading: true })
-    try {
-      const books = query.trim()
-        ? await window.Musaeum.library.searchBooks(query, sort)
-        : await window.Musaeum.library.getBooks({ ...filters, sort })
-      const facets = await window.Musaeum.library.getFacets()
-      set({ books, facets, loading: false })
-    } catch (err) {
-      console.error('library load failed:', err)
-      set({ loading: false })
+      async load() {
+        const { query, filters, sort } = get()
+        set({ loading: true })
+        try {
+          const books = query.trim()
+            ? await window.Musaeum.library.searchBooks(query, sort)
+            : await window.Musaeum.library.getBooks({ ...filters, sort })
+          const facets = await window.Musaeum.library.getFacets()
+          set({ books, facets, loading: false })
+        } catch (err) {
+          console.error('library load failed:', err)
+          set({ loading: false })
+        }
+      },
+
+      setQuery(query) {
+        set({ query })
+        void get().load()
+      },
+
+      toggleFilter(kind, value) {
+        const filters = { ...get().filters }
+        const current = new Set<string>((filters[kind] as string[] | undefined) ?? [])
+        if (current.has(value)) current.delete(value)
+        else current.add(value)
+        if (current.size === 0) delete filters[kind]
+        else if (kind === 'formats') filters.formats = [...current] as BookFormat[]
+        else if (kind === 'readStatus') filters.readStatus = [...current] as ReadStatus[]
+        else filters[kind] = [...current]
+        set({ filters })
+        void get().load()
+      },
+
+      clearFilters() {
+        set({ filters: EMPTY_FILTERS })
+        void get().load()
+      },
+
+      setSort(sort) {
+        set({ sort })
+        void get().load()
+      },
+
+      upsertImportJob(progress) {
+        set((s) => ({ importJobs: { ...s.importJobs, [progress.jobId]: progress } }))
+      },
+
+      removeImportJob(jobId) {
+        set((s) => {
+          const jobs = { ...s.importJobs }
+          delete jobs[jobId]
+          return { importJobs: jobs }
+        })
+      },
+
+      async refreshLibrary() {
+        set({ refreshing: true })
+        try {
+          await window.Musaeum.library.refreshLibrary()
+        } catch (err) {
+          console.error('library refresh failed:', err)
+        } finally {
+          set({ refreshing: false, rebuildProgress: null })
+        }
+      },
+
+      async rebuildCatalog() {
+        set({ refreshing: true })
+        try {
+          await window.Musaeum.library.rebuildCatalog()
+        } catch (err) {
+          console.error('catalog rebuild failed:', err)
+        } finally {
+          set({ refreshing: false, rebuildProgress: null })
+        }
+      },
+
+      setRebuildProgress(p) {
+        set({ rebuildProgress: p })
+      }
+    }),
+    {
+      // Sort is the only durable preference here. Query and filters are not
+      // restored on purpose: reopening to a filtered library that looks like
+      // a much smaller one is the kind of state a user can't see the cause of.
+      name: 'musaeum.library',
+      partialize: (s) => ({ sort: s.sort }),
+      merge: (persisted, current) => {
+        const { sort } = (persisted ?? {}) as { sort?: unknown }
+        // Storage is only as trustworthy as the build that wrote it, and an
+        // unknown field would reach SORT_SQL with no expression to match
+        return isBookSort(sort) ? { ...current, sort } : current
+      }
     }
-  },
-
-  setQuery(query) {
-    set({ query })
-    void get().load()
-  },
-
-  toggleFilter(kind, value) {
-    const filters = { ...get().filters }
-    const current = new Set<string>((filters[kind] as string[] | undefined) ?? [])
-    if (current.has(value)) current.delete(value)
-    else current.add(value)
-    if (current.size === 0) delete filters[kind]
-    else if (kind === 'formats') filters.formats = [...current] as BookFormat[]
-    else if (kind === 'readStatus') filters.readStatus = [...current] as ReadStatus[]
-    else filters[kind] = [...current]
-    set({ filters })
-    void get().load()
-  },
-
-  clearFilters() {
-    set({ filters: EMPTY_FILTERS })
-    void get().load()
-  },
-
-  setSort(sort) {
-    set({ sort })
-    void get().load()
-  },
-
-  upsertImportJob(progress) {
-    set((s) => ({ importJobs: { ...s.importJobs, [progress.jobId]: progress } }))
-  },
-
-  removeImportJob(jobId) {
-    set((s) => {
-      const jobs = { ...s.importJobs }
-      delete jobs[jobId]
-      return { importJobs: jobs }
-    })
-  },
-
-  async refreshLibrary() {
-    set({ refreshing: true })
-    try {
-      await window.Musaeum.library.refreshLibrary()
-    } catch (err) {
-      console.error('library refresh failed:', err)
-    } finally {
-      set({ refreshing: false, rebuildProgress: null })
-    }
-  },
-
-  async rebuildCatalog() {
-    set({ refreshing: true })
-    try {
-      await window.Musaeum.library.rebuildCatalog()
-    } catch (err) {
-      console.error('catalog rebuild failed:', err)
-    } finally {
-      set({ refreshing: false, rebuildProgress: null })
-    }
-  },
-
-  setRebuildProgress(p) {
-    set({ rebuildProgress: p })
-  }
-}))
+  )
+)

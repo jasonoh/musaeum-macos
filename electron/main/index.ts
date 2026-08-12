@@ -1,4 +1,5 @@
 import { app, BrowserWindow, net, protocol, shell } from 'electron'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { startRestApiIfEnabled } from './api/rest'
@@ -13,9 +14,11 @@ import { closeDb, getBook } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
 import { setMainWindow } from './services/events'
 import { bindToNAS, startWatcher, stopWatcher } from './services/file-watcher'
+import { installApplicationMenu } from './services/menu'
 import * as importer from './services/importer'
 import * as librarySync from './services/library-sync'
 import * as nas from './services/nas-manager'
+import { isPackaged } from './services/runtime'
 import * as sidecar from './services/sidecar'
 
 // Isolated profile for verification/e2e runs — macOS Electron resolves the
@@ -45,6 +48,19 @@ function registerCoverProtocol(): void {
     if (file.includes('..') || file.includes('/')) return new Response(null, { status: 400 })
     return net.fetch(pathToFileURL(join(root, book.nasPath, file)).toString())
   })
+}
+
+/**
+ * The Dock icon comes from the *running bundle's* icon file, so in development
+ * — which runs node_modules/electron/dist/Electron.app — it is Electron's own,
+ * the same class of problem `scripts/dev-app-name.mjs` fixes for the menu bar
+ * title. Packaged builds get the icon from build/icon.icns and need no help,
+ * hence dev-only: setting it there too would just re-set what's already right.
+ */
+function setDevDockIcon(): void {
+  if (isPackaged || process.platform !== 'darwin') return
+  const icon = join(app.getAppPath(), 'build/icon.png')
+  if (existsSync(icon)) app.dock?.setIcon(icon)
 }
 
 function createWindow(): BrowserWindow {
@@ -83,6 +99,8 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   registerCoverProtocol()
+  setDevDockIcon()
+  installApplicationMenu()
 
   registerLibraryHandlers()
   registerMetadataHandlers()

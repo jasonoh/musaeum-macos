@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export type ViewMode = 'grid' | 'list'
 export type ActiveModal = 'conflicts' | 'migration' | 'settings' | null
@@ -40,26 +41,40 @@ interface UIState {
   requestDeviceRemoval(target: DeviceRemovalTarget | null): void
 }
 
-export const useUIStore = create<UIState>((set) => ({
-  viewMode: 'grid',
-  selectedBookId: null,
-  modal: null,
-  conflictCount: 0,
-  isDraggingFiles: false,
-  contextMenu: null,
-  deletingBookId: null,
-  editingBookId: null,
-  removingFromDevice: null,
+export const useUIStore = create<UIState>()(
+  persist(
+    (set) => ({
+      viewMode: 'grid',
+      selectedBookId: null,
+      modal: null,
+      conflictCount: 0,
+      isDraggingFiles: false,
+      contextMenu: null,
+      deletingBookId: null,
+      editingBookId: null,
+      removingFromDevice: null,
 
-  setViewMode: (viewMode) => set({ viewMode }),
-  selectBook: (selectedBookId) => set({ selectedBookId }),
-  openModal: (modal) => set({ modal }),
-  setConflictCount: (conflictCount) => set({ conflictCount }),
-  setDraggingFiles: (isDraggingFiles) => set({ isDraggingFiles }),
-  openContextMenu: (contextMenu) => set({ contextMenu }),
-  closeContextMenu: () => set({ contextMenu: null }),
-  // Opening any dialog always dismisses the menu that launched it
-  requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null }),
-  requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null }),
-  requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null })
-}))
+      setViewMode: (viewMode) => set({ viewMode }),
+      selectBook: (selectedBookId) => set({ selectedBookId }),
+      openModal: (modal) => set({ modal }),
+      setConflictCount: (conflictCount) => set({ conflictCount }),
+      setDraggingFiles: (isDraggingFiles) => set({ isDraggingFiles }),
+      openContextMenu: (contextMenu) => set({ contextMenu }),
+      closeContextMenu: () => set({ contextMenu: null }),
+      // Opening any dialog always dismisses the menu that launched it
+      requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null }),
+      requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null }),
+      requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null })
+    }),
+    {
+      // Only the view choice outlives the session — selection, modals and
+      // dialogs are all about what is on screen right now
+      name: 'musaeum.ui',
+      partialize: (s) => ({ viewMode: s.viewMode }),
+      merge: (persisted, current) => {
+        const { viewMode } = (persisted ?? {}) as { viewMode?: unknown }
+        return viewMode === 'grid' || viewMode === 'list' ? { ...current, viewMode } : current
+      }
+    }
+  )
+)

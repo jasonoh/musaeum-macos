@@ -59,6 +59,21 @@ export function sortLabel(sort: BookSort): string {
 }
 
 /**
+ * Guard for a sort that came from outside the type system — a restored
+ * preference from a build whose fields differed would otherwise reach
+ * `db.SORT_SQL`, which has no expression for it.
+ */
+export function isBookSort(value: unknown): value is BookSort {
+  if (typeof value !== 'object' || value === null) return false
+  const { field, direction } = value as { field?: unknown; direction?: unknown }
+  return (
+    typeof field === 'string' &&
+    Object.prototype.hasOwnProperty.call(SORT_LABELS, field) &&
+    (direction === 'asc' || direction === 'desc')
+  )
+}
+
+/**
  * The direction a field sorts on first click: alphabetical fields read best
  * ascending, while dates and ratings are most useful highest-first.
  */

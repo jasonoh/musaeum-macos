@@ -16,6 +16,7 @@ import { NASStatusBanner } from '@/components/shared/NASStatusBanner'
 import { useDevice } from '@/hooks/useDevice'
 import { useDragDrop } from '@/hooks/useDragDrop'
 import { useLibrary } from '@/hooks/useLibrary'
+import { useMenuCommands } from '@/hooks/useMenuCommands'
 import { useNASStatus } from '@/hooks/useNASStatus'
 import { useUIStore } from '@/stores/ui.store'
 
@@ -24,6 +25,7 @@ export default function App() {
   useNASStatus()
   useDevice()
   useDragDrop()
+  useMenuCommands()
 
   const viewMode = useUIStore((s) => s.viewMode)
   const modal = useUIStore((s) => s.modal)

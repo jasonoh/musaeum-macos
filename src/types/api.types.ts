@@ -28,6 +28,14 @@ export type IPCResult<T> = { success: true; data: T } | { success: false; error:
 
 export type Unsubscribe = () => void
 
+/**
+ * Actions the native application menu can trigger. The menu owns the
+ * keyboard shortcut (macOS expects Cmd+, for settings), the renderer owns
+ * what the action does — so every item here maps to something the UI can
+ * also do on its own.
+ */
+export type MenuCommand = 'open-settings' | 'view-grid' | 'view-list'
+
 /** The API surface exposed on window.Musaeum via contextBridge. */
 export interface MusaeumAPI {
   library: {
@@ -123,6 +131,7 @@ export interface MusaeumAPI {
     libraryChanged(cb: () => void): Unsubscribe
     catalogRebuildProgress(cb: (p: { completed: number; total: number }) => void): Unsubscribe
     deviceContentsChanged(cb: (deviceId: string) => void): Unsubscribe
+    menuCommand(cb: (command: MenuCommand) => void): Unsubscribe
   }
 }
 
@@ -136,5 +145,6 @@ export const EVENT_CHANNELS = {
   transferProgress: 'event:transfer-progress',
   libraryChanged: 'event:library-changed',
   catalogRebuildProgress: 'event:catalog-rebuild-progress',
-  deviceContentsChanged: 'event:device-contents-changed'
+  deviceContentsChanged: 'event:device-contents-changed',
+  menuCommand: 'event:menu-command'
 } as const

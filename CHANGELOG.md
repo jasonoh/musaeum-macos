@@ -7,6 +7,25 @@ the app is packaged.
 ## [Unreleased] — 2026-08-11
 
 ### Added
+- A native application menu (`electron/main/services/menu.ts`), replacing
+  Electron's default one. It carries **⌘,** for Settings — the shortcut macOS
+  users reach for, previously reachable only via the sidebar's gear — plus
+  ⌘1/⌘2 for grid and list. Items send a `menuCommand` event and the renderer
+  decides what it means, so a menu item and its in-app control can't drift
+  apart. The Edit submenu is re-declared explicitly: replacing the default
+  menu would otherwise have taken ⌘C/⌘V/⌘Z away from the metadata editor.
+- The view mode and sort are remembered across restarts (persisted per
+  machine in `localStorage` via zustand's `persist`; filters and the search
+  query deliberately are not). A restored sort is validated on rehydrate —
+  a field from an older build would otherwise reach `db.SORT_SQL` with no
+  matching expression.
+
+### Fixed
+- The menu bar said "Electron" in development. macOS takes that title from
+  the running bundle's `CFBundleName`, not `app.name`, so a new postinstall
+  step (`scripts/dev-app-name.mjs`) names the dev Electron bundle after
+  `productName`; the About panel is set from `app.name` too. Packaged builds
+  already take the name from `package.json`.
 - Settings, reached from the sidebar's library-status row: the library folder
   (with the existing catalog-adoption prompt), the SMB URL used for
   auto-reconnect, the Google Books API key, and the paths to Python and

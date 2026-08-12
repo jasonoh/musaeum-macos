@@ -19,6 +19,11 @@ export default tseslint.config(
     }
   },
   {
+    // Plain-JS build scripts run in Node, outside the TS configs' lib
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { console: 'readonly', process: 'readonly' } }
+  },
+  {
     rules: {
       // Matches the project convention: no `any` — define real interfaces
       '@typescript-eslint/no-explicit-any': 'error',

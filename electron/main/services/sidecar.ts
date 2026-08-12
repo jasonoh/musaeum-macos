@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { getConfig } from './db'
+import { isPackaged } from './runtime'
 
 /**
  * JSON-RPC over stdio bridge to the Python sidecar.
@@ -39,9 +40,7 @@ export function onNotification(method: string, handler: (params: unknown) => voi
 }
 
 function sidecarDir(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'sidecar')
-    : join(app.getAppPath(), 'sidecar')
+  return isPackaged ? join(process.resourcesPath, 'sidecar') : join(app.getAppPath(), 'sidecar')
 }
 
 /** Where a resolved tool path came from — surfaced in Settings. */

@@ -7,6 +7,9 @@
   "author": "Jason Oh <jason@theohs.org>",
   "license": "MIT",
   "private": true,
+  "build": {
+    "appId": "org.theohs.musaeum"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -15,7 +18,8 @@
     "lint": "eslint .",
     "test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "format": "prettier --write .",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "icons": "node scripts/make-icons.mjs && node scripts/dev-app-branding.mjs",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 && node scripts/dev-app-branding.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
