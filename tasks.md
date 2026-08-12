@@ -43,13 +43,20 @@ Blockers before pointing the app at the full 7000-book NAS library:
       ~1000 DOM nodes at any scroll offset (was 7000), 32MB JS heap,
       `getBooks` 115ms, search 18ms, `scrollHeight` stable across offsets,
       column recount correct on resize.
-- [ ] **Settings UI** — there is currently *no way to change the library root
-      after first configuration*, nor to set `smb_url`, `python_path`,
-      `ebook_convert_path`, or the Google Books API key from the UI. A small
-      settings modal writing through to `app_config` covers all five.
-- [ ] **Google Books API key** — obtain and export `GOOGLE_BOOKS_API_KEY`
-      before bulk migration; consider storing in `app_config` via Settings
-      instead of env.
+- [x] **Settings UI** — shipped 2026-08-11.
+      `components/settings/SettingsModal.tsx` over `services/settings.ts`,
+      reached from the sidebar's library-status row: library root (via the
+      existing `chooseLibraryRoot` adoption flow), `smb_url`, `python_path`,
+      `ebook_convert_path`, `google_books_api_key`. Detection is asked of
+      `sidecar.ts` rather than re-implemented, values are validated before
+      anything is written, and clearing a field deletes the key so
+      auto-detection resumes. Verified against a live isolated instance
+      (real venv/Calibre detection, save + clear + rejection paths, sidecar
+      restart carrying the new key into its env).
+- [ ] **Google Books API key** — obtain the key and set it in Settings (or
+      export `GOOGLE_BOOKS_API_KEY`) before bulk migration. The storage
+      question is settled: `app_config` holds it and wins over the
+      environment, so a packaged `.app` no longer needs `infisical run`.
 - [ ] **Migration dry run** — migrate a ~50-book subset of the real Calibre
       library to a scratch target first; review hydration quality and the
       needs-review rate before the full run (hydrating 7000 books at the
@@ -67,6 +74,9 @@ Blockers before pointing the app at the full 7000-book NAS library:
         conflict resolution IPC (vitest via npm test — runs through Electron-as-Node for the better-sqlite3 ABI; harness landed with Section B).
         `db.ts` sort/search ordering and `book-delete.ts` are covered as of
         2026-07-29; the filter builder and `sanitizeTitle` still are not
+      - main: `services/settings.ts` covered as of 2026-08-11 (18 tests:
+        resolution sources, validation rejections, batch atomicity, and the
+        restart-only-on-real-change rule)
       - main: duplicate GATE — `importer` skip/add_new/add_format branches +
         `resolveDuplicate`/`abortPendingDecisions` (2026-07-27, untested)
       - main: device presence — `device-manager.scanDocuments` /
@@ -148,6 +158,11 @@ Blockers before pointing the app at the full 7000-book NAS library:
       `components/library/BookEditor.tsx`): no cover replacement (re-hydrate is
       the only way to change a cover), no multi-author editing (the schema
       keeps one author string), and no bulk edit across a selection.
+- [ ] Settings follow-ups (shipped 2026-08-11): no "test this key" button, so
+      a wrong Google Books key only shows up as degraded hydration;
+      `ebook_convert_path` is validated as an existing file but never run, so
+      a non-Calibre binary passes; and the sidecar restart on save is silent —
+      an in-flight hydration is cancelled with no UI acknowledgement.
 - [ ] Empty-state + skeleton loading polish for slow NAS cover loads
 - [ ] `exports/` staging dir is created but unused — either stage transfers
       through it (per spec) and clear post-transfer, or drop it from the spec
@@ -229,22 +244,14 @@ project **`musaeum`**.
   `infisical run -- npm run build` inject the key for that process only
   (documented in README → Secrets). A CI/build step that hits the Google
   Books API should likewise be wrapped in `infisical run --`.
-- [ ] **Decide the packaged-app secret path** — a double-clicked `.app` never
-      passes through `infisical run`, so it gets no key. Options, leaning (a):
-      - (a) **Move the key into `app_config`** via the planned Settings UI
-        (Phase 1.5 backlog already lists this) and have the sidecar read it
-        from config/`app_config` instead of env. Cleanest for a personal
-        tool; no Infisical dependency at runtime. Requires threading the key
-        from `app_config` → sidecar spawn `env`.
-      - (b) `infisical run -- open -a Musaeum.app` launch wrapper / shell
-        alias — keeps Infisical as source of truth but reintroduces the
-        terminal for launch.
-      - (c) Bundle `infisical` + a machine identity token and fetch at
-        startup — most moving parts; overkill for single-user.
-- [ ] Once (a) lands, `sidecar.ts` should pass
-      `GOOGLE_BOOKS_API_KEY` into the spawn env from `getConfig()` (falling
-      back to `process.env` so `infisical run -- npm run dev` still works in
-      dev).
+- [x] **Packaged-app secret path decided and shipped (2026-08-11)** — option
+      (a): the key lives in `app_config` (`google_books_api_key`), set in
+      Settings. `sidecar.resolveGoogleBooksKey()` prefers it and falls back to
+      `process.env`, so `infisical run -- npm run dev` still works untouched
+      while a double-clicked `.app` needs no wrapper. Rejected: (b) an
+      `infisical run -- open -a Musaeum.app` wrapper (reintroduces the
+      terminal), (c) bundling `infisical` + a machine identity (overkill for
+      single-user).
 
 ## Known issues / risks
 

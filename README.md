@@ -25,10 +25,14 @@ via the `ebook_convert_path` app config key).
 
 ### Secrets
 
-`GOOGLE_BOOKS_API_KEY` is read from the environment by the Python sidecar
-([`sidecar/fetchers/google_books.py`](sidecar/fetchers/google_books.py)).
-It is optional for casual use but **required before the 7000-book migration**
-(the free, keyless tier is rate-limited well below what a bulk run needs).
+`GOOGLE_BOOKS_API_KEY` reaches the Python sidecar
+([`sidecar/fetchers/google_books.py`](sidecar/fetchers/google_books.py)) from
+one of two places: the key set in **Settings**, or the environment. It is
+optional for casual use but **required before the 7000-book migration** (the
+free, keyless tier is rate-limited well below what a bulk run needs).
+
+Settings wins over the environment, so a key entered there survives a
+double-clicked `.app`; leave it blank to keep using the environment.
 
 Secrets live in the Infisical project **`musaeum`**. Inject them by wrapping
 the dev/build commands in `infisical run` rather than exporting keys by hand:
@@ -40,9 +44,9 @@ infisical run -- npm run build
 
 `infisical run` sets the variables only for the wrapped process, so a bare
 `npm run dev` still works (online metadata just falls back to the keyless
-tier). Packaged `.app` builds can't be launched through `infisical run` by a
-double-click — the plan there is to move the key into `app_config` via a
-Settings screen; see [tasks.md](tasks.md) → Packaging & distribution.
+tier). A packaged `.app` can't be launched through `infisical run` by a
+double-click, which is what the Settings field is for — set the key once and
+Infisical stops being a runtime dependency.
 
 ## Development
 

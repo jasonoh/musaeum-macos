@@ -106,6 +106,7 @@ Musaeum/
 │   │   │   ├── metadata.ts       # conflict queue, resolve, rehydrate
 │   │   │   ├── device.ts         # devices, transfers, Apple Books
 │   │   │   ├── nas.ts            # status, reconnect, choose library root
+│   │   │   ├── settings.ts       # get/save app_config, executable pickers
 │   │   │   └── migration.ts      # scan, start, progress, cutover
 │   │   ├── services/             # ALL business logic lives here
 │   │   │   ├── events.ts         # main → renderer broadcast helper
@@ -119,9 +120,11 @@ Musaeum/
 │   │   │   ├── migration.ts      # migration orchestration (node side)
 │   │   │   ├── catalog.ts        # catalog.json read/write/upsert + rebuild walk
 │   │   │   ├── library-sync.ts   # catalog ⇄ SQLite cache (adopt, refresh, rebuild)
+│   │   │   ├── settings.ts       # app_config reads/writes + validation
 │   │   │   └── apple-books.ts    # open -a Books
 │   │   └── schema/migrations/
-│   │       └── 001_initial.sql   # includes FTS5 sync triggers + indices
+│   │       ├── 001_initial.sql   # includes FTS5 sync triggers + indices
+│   │       └── 002_sort_keys.sql # backfills sort_title / author_sort
 │   └── preload/
 │       └── index.ts              # window.Musaeum contextBridge surface
 │
@@ -133,12 +136,13 @@ Musaeum/
 │   │   ├── metadata/             # ConflictQueue, ConflictResolver
 │   │   ├── device/               # DevicePanel, TransferQueue
 │   │   ├── migration/            # MigrationWizard
+│   │   ├── settings/             # SettingsModal
 │   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, icons
 │   ├── stores/                   # library / device / nas / ui zustand stores
 │   ├── hooks/                    # useLibrary, useDevice, useNASStatus, useDragDrop
 │   └── types/                    # SHARED contracts: book / device / metadata /
-│                                 # api (MusaeumAPI + IPCResult) — imported by
-│                                 # main and preload via the @shared alias
+│                                 # settings / api (MusaeumAPI + IPCResult) —
+│                                 # imported by main and preload via @shared
 │
 └── sidecar/                      # Python sidecar (venv at sidecar/.venv)
     ├── requirements.txt
@@ -403,6 +407,42 @@ are handled too. The handler is a window listener that bails when a modal,
 context menu, or text field owns the keyboard — those close themselves on
 Escape.
 
+### Settings
+
+`components/settings/SettingsModal.tsx` over `services/settings.ts` — the only
+way to change `app_config` from the UI. Reached from the sidebar's NAS status
+row, so "Not configured" leads to where it's fixed.
+
+Two rules shape the service:
+- **It never re-implements detection.** What python and ebook-convert resolve
+  to is asked of `sidecar.ts` (`resolvePython` / `resolveEbookConvert`, which
+  return a `ToolResolution` carrying `configured | auto | none`) — the module
+  that actually spawns them. Settings reporting a path the app doesn't use
+  would be worse than showing nothing.
+- **A bad value is rejected at save time**, before anything is written, so a
+  failed save changes nothing. Blank always means "back to auto-detection":
+  the field is `deleteConfig`'d rather than stored as `''`, because every
+  reader treats *missing* as the signal to auto-detect. Each field's
+  placeholder is what it resolves to today, so clearing one visibly falls
+  back instead of breaking a feature.
+
+`python_path` and `google_books_api_key` are read at **spawn** time, so
+changing either calls `sidecar.restart()` — skipped when the value didn't
+actually change, so a no-op re-save can't bounce the sidecar mid-hydration.
+`restart()` is why the exit handler checks `proc !== p` before tearing state
+down: the old process's exit event arrives *after* its replacement is running
+and would otherwise null out the successor.
+
+The Google Books key resolves from `app_config` first and `process.env`
+second, so a key set here survives a double-clicked `.app` while
+`infisical run -- npm run dev` still works with nothing configured. It is
+returned to the renderer in `values` (to edit) but only ever masked in
+`resolved`.
+
+Library root keeps its own flow (`nas.chooseLibraryRoot`) rather than joining
+the batched save — picking a root can adopt an existing catalog, which is a
+question the user has to answer as it happens.
+
 ### Editing metadata by hand
 
 `components/library/BookEditor.tsx` — a modal over `library.updateBook`, which
@@ -614,7 +654,9 @@ CREATE TABLE app_config (
 ```
 
 `app_config` keys in use: `library_root`, `smb_url`, `python_path`,
-`ebook_convert_path`, `rest_api_enabled`.
+`ebook_convert_path`, `google_books_api_key`, `rest_api_enabled`. All but
+`rest_api_enabled` are editable in Settings; a key is deleted rather than
+blanked when cleared (see Settings above).
 
 ---
 
@@ -697,6 +739,11 @@ interface MusaeumAPI {
     reconnect(): Promise<boolean>
     setLibraryRoot(path: string): Promise<void>
     chooseLibraryRoot(): Promise<string | null>  // native folder picker
+  }
+  settings: {
+    get(): Promise<SettingsView>                 // values + what each resolves to
+    save(updates: Partial<EditableSettings>): Promise<void>  // validates, may restart sidecar
+    chooseExecutable(kind: ExecutableKind): Promise<string | null>
   }
   migration: {
     scanCalibreLibrary(path: string): Promise<MigrationScan>

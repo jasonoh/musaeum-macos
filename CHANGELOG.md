@@ -4,9 +4,26 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
-## [Unreleased] — 2026-08-10
+## [Unreleased] — 2026-08-11
 
 ### Added
+- Settings, reached from the sidebar's library-status row: the library folder
+  (with the existing catalog-adoption prompt), the SMB URL used for
+  auto-reconnect, the Google Books API key, and the paths to Python and
+  `ebook-convert`. Until now none of these could be changed after first run —
+  the library root in particular was effectively permanent.
+  Each field's placeholder is the value actually in force, so its note
+  distinguishes "set here" from "auto-detected" from "not found", and clearing
+  a field visibly falls back to detection rather than breaking the feature.
+  Bad values are rejected before anything is written (a path that doesn't
+  exist, a directory where a binary belongs, a Python older than 3.11, a
+  non-`smb://` URL), so a failed save leaves the previous settings intact.
+- The Google Books API key can now live in `app_config` instead of the
+  environment, and the sidecar receives it at spawn either way (config wins).
+  A packaged, double-clicked `.app` can therefore use a key without being
+  launched through `infisical run` — the last thing tying the key to a
+  terminal launch.
+
 - Metadata editor: a modal for editing a book's bibliographic fields by hand
   (title, author, series, publisher, published date, language, tags,
   description, identifiers) — the manual counterpart to hydration, for wrong
@@ -102,6 +119,13 @@ the app is packaged.
   returns an unsubscribe function
 
 ### Fixed
+- A restarted sidecar could be torn down by its predecessor: the old process's
+  `exit` event fires after the replacement is already running and cleared
+  `proc` unconditionally, so the new process was orphaned and every later call
+  reported the sidecar unavailable. The handler now ignores an exit from a
+  process it has already replaced, and `stop()` fails pending calls itself
+  rather than relying on that event. Latent until Settings gained a reason to
+  restart the sidecar (a changed interpreter or API key).
 - Kindle transfers reported "Failed — EBADF: bad file descriptor, close" while
   actually succeeding: macOS's SMB client can fail `close()` on a file it has
   just read in full (observed on a 50MB azw3 whose copy on the device was
