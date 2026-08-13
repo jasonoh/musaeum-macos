@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
 import { closeDb, getBook, insertBook } from './db'
@@ -39,7 +39,14 @@ beforeEach(async () => {
   await writeCatalog(root, [])
 })
 
-afterEach(() => {
+afterEach(async () => {
+  // Stop the health-check/reconnect timers the offline test can arm — left
+  // running, a pending reconnect fires after teardown and shells out to
+  // `open -g smb://...` on the real machine.
+  nas.stopHealthChecks()
+  // Let any fire-and-forget catalog upsert queued by a final report land
+  // before the temp root is removed, so it can't race a later test's rmSync.
+  await librarySync.flushForTests()
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -129,12 +136,29 @@ describe('offline', () => {
     // settles into 'disconnected', which is what saveProgress actually
     // branches on (nas.isOnline()) rather than the root itself.
     await nas.setLibraryRoot(join(root, 'does-not-exist'))
+    // Prove the precondition actually holds — without this, a broken
+    // setLibraryRoot substitution could silently leave the suite "online"
+    // and the assertions below would pass for the wrong reason.
+    expect(nas.isOnline()).toBe(false)
 
-    await saveProgress({ bookId: 'b7', position: 'p1', percent: 0.3, final: false }, 1_000)
+    // Distinguishes "write skipped" from "write attempted and failed silently
+    // the same way": saveProgress's only failure path for writeMetadataJson
+    // logs via console.warn (`[reading] could not write metadata.json...`).
+    // If the `!nas.isOnline()` guard were removed, the code would still reach
+    // an unwritable path, but it would ATTEMPT the write, hit ENOENT, and
+    // warn — so asserting the warn was never called catches that regression
+    // even though the other two assertions below would still hold either way.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await saveProgress({ bookId: 'b7', position: 'p1', percent: 0.3, final: false }, 1_000)
 
-    // Reading is not interrupted by a dropped share
-    expect(getBook('b7')?.readingState?.position).toBe('p1')
-    expect((await readJson(dir)).reading_state).toBeUndefined()
+      // Reading is not interrupted by a dropped share
+      expect(getBook('b7')?.readingState?.position).toBe('p1')
+      expect((await readJson(dir)).reading_state).toBeUndefined()
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })
 
