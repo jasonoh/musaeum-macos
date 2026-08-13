@@ -57,7 +57,13 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
       <button
         onClick={() => selectBook(book.id)}
         // Read through `getState` rather than subscribing: nothing on the card
-        // renders from the reader, and this one is memoized per book
+        // renders from the reader, and this one is memoized per book.
+        //
+        // No `select-none` here, unlike ListView's row: measured, not assumed —
+        // Blink starts no word selection on a double-click inside a <button>,
+        // so opening a book from the grid leaves nothing highlighted behind the
+        // reader. That protection comes from the element, not from this class
+        // list: if the card ever stops being a <button>, add `select-none`.
         onDoubleClick={() => useReaderStore.getState().openBook(book)}
         className="flex w-full flex-col rounded-md text-left focus-visible:ring-2 focus-visible:ring-gold-400/70"
       >

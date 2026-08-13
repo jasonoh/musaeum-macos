@@ -48,3 +48,17 @@ Gotchas learned the hard way:
 - Kill with `pkill -f "electron-vite dev"; pkill -f "node_modules/electron/dist/Electron.app"`.
   A SIGTERM'd instance leaves the profile DB's WAL needing recovery — a
   read-only open then fails; a normal `sqlite3` open recovers it.
+
+## The stale-instance trap (fired twice, on two different sessions)
+
+**An Electron that survived `pkill` keeps port 9222, and CDP answers from it
+happily while running the OLD bundle** — so you verify a build you are not
+testing, and the page reports the change you just made as absent. The second
+occurrence showed the other face of it: the fresh `npm run dev` logged a
+`bind() failed` for 9222 and carried on without a debugger, so nothing in the
+app's own output said which instance CDP was talking to.
+
+Before trusting anything the page reports, confirm the pid listening on 9222 is
+your own run — `lsof -nP -iTCP:9222 -sTCP:LISTEN`, then compare its start time
+(`ps -o lstart= -p <pid>`) against your launch. A screenshot from the wrong
+instance is indistinguishable from a change that didn't work.

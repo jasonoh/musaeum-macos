@@ -4,6 +4,51 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
+## [Unreleased] — 2026-08-13
+
+### Added
+- **Books open inside Musaeum.** A full-window reader renders EPUB, MOBI and
+  AZW3 through a vendored foliate-js; double-click a book in either view, use
+  the detail panel's Read button, or the context menu. PDFs still open in
+  Preview, and so does anything the engine can't render, so every book responds
+  to the same gesture. Typography — typeface, size, line height, spacing, and a
+  paper or ink page theme — is remembered per machine. Reading is the one action
+  that is *not* disabled when the NAS is offline: it is not a write, and the
+  reader explaining that it can't reach the file is better than a dead button
+  that doesn't say why.
+- **Reading position follows you.** Where you left off is stored in the book's
+  metadata.json and travels through catalog.json to any other machine. The three
+  stores are written on different clocks, because they cost very different
+  amounts: SQLite on every page turn, metadata.json on a 30-second throttle, and
+  the whole-library catalog only when you close the reader or quit. Piggybacking
+  the catalog on the throttle, as the original design had it, would have pushed
+  ~10MB over SMB every half minute of reading.
+- Books mark themselves read: opening one starts it, passing 98% finishes it.
+  The transition only ever moves forward, so marking a book read by hand sticks
+  even if you open it again.
+
+### Changed
+- Adopting `catalog.json` — on connect, on "Refresh Library", and on "Rebuild
+  Catalog" — now **keeps local reading state that is newer than the catalog's**
+  instead of replacing the row wholesale. Without it, reading a book while the
+  share was down and then quitting lost the session: the position existed only
+  in SQLite, and the next launch's adoption overwrote it. It also stops a stale
+  catalog written by another machine from rewinding fresher local progress.
+- Quitting now flushes the pending position **before** the database closes.
+  `before-quit` fires ahead of `will-quit` and already closed the DB, so the
+  flush was writing into a closed handle; the shutdown handshake moved into
+  `services/quit.ts` and is bounded by a 3-second timeout, because a wedged SMB
+  mount must never hold the app open on exit.
+
+### Notes
+- foliate-js is **vendored** (`vendor/foliate-js/`, never edited) rather than
+  installed: upstream publishes nothing to npm, and the package sitting on the
+  registry under that name is a stale third-party republish.
+- The reader renders the book's own stylesheets, which arrive as `blob:` URLs,
+  so CSP `style-src` had to admit `blob:`. `script-src` stays `'self'` — book
+  content never executes — and no directive permits a remote host, so an EPUB
+  still cannot phone home through an `@import`, a background image or a font.
+
 ## [Unreleased] — 2026-08-12
 
 ### Added

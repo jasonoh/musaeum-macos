@@ -145,21 +145,18 @@ Blockers before pointing the app at the full 7000-book NAS library:
 - [x] Import duplicate handling reworked into an import-time GATE (Skip / Add
       as new / Add format to existing) — supersedes the old invisible
       `duplicate_check` warning row (2026-07-27)
-- [ ] **Open the stored book file from the app** (confirmed missing
-      2026-07-17) — no IPC action opens a book file, and nothing is wired to
-      `onDoubleClick`. As of 2026-07-29 a right-click context menu exists
-      (`BookContextMenu`, grid + list), so the Open action has a home: add it
-      there alongside View details / Delete. Covered by the approved
-      design (`docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md`,
-      Section C): double-click / detail panel opens the native ReaderView
-      (foliate-js for epub, pdf.js for PDF, `musaeum://book/{id}/{format}`).
-      Builds after Section B. The "Enter to open" keyboard-nav item below
-      should reuse the same action.
+- [x] **Open the stored book file from the app** — shipped 2026-08-13 as the
+      in-app reader (Section C1 below): double-click, the detail panel's Read
+      button and the context menu all open EPUB/MOBI/AZW3 in `ReaderView`, and
+      the context menu additionally opens any format in its system default app
+      (`files.openBookFile` / `revealBook`, shipped 2026-08-10). PDF in the
+      reader is C2; PDFs open in Preview today.
 - [x] Keyboard navigation: arrows to move selection in grid/list (plus
       Home/End/PageUp/PageDown), Esc to close the detail panel; selection now
       also survives a grid↔list switch and is scrolled into view
       (`hooks/useBookNavigation.ts`, 2026-08-10). **Enter to open** is still
-      open — it should reuse the ReaderView action above.
+      open — deliberately left out of C1; it should call the same
+      `reader.openBook` action the four existing entry points use.
 - [ ] Metadata editor follow-ups (shipped 2026-08-10,
       `components/library/BookEditor.tsx`): no cover replacement (re-hydrate is
       the only way to change a cover), no multi-author editing (the schema
@@ -214,6 +211,76 @@ Post-merge backlog (from the 2026-07-18 whole-branch review):
       could yield a reduced (never empty) catalog; re-runnable + logged, fold
       into the "NAS behavior untested against real SMB" pass, along with
       catalog.json rename-replace semantics across SMB servers
+
+## In-app reader (Section C1 of the 2026-07-14 design — shipped 2026-08-13)
+
+Approved design: `docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md`.
+Shipped: EPUB, MOBI and AZW3 render in a full-window `ReaderView` over a
+vendored foliate-js, with reading position persisted across restarts and
+machines. Verified live against an isolated instance (all four entry points,
+paging, TOC, typography measured inside the book document, quit/relaunch
+resume, and a genuine offline state).
+
+- [x] Vendored engine (`vendor/foliate-js/`, provenance in its VENDORED.md) —
+      never edited; the npm package of that name is a stale third-party
+      republish. `vendor/foliate-js/pdf.js` is excluded from the renderer
+      bundle because Vite's asset-import-meta-url plugin cannot build it.
+- [x] `musaeum://book/{id}/{format}` (`services/book-bytes.ts`) — extension
+      lookup, traversal- and symlink-contained, testable without Electron.
+- [x] Tiered reading position (`services/reading-state.ts`): SQLite per page
+      turn, metadata.json on a 30s throttle, catalog.json at session
+      boundaries. Reconciled at every catalog adoption so a newer local
+      position is never overwritten; flushed on quit ahead of `closeDb`.
+- [ ] **C2 — PDF in the reader.** pdf.js into the existing shell (the overlay,
+      TOC panel and typography popover stay; the engine swaps), page numbers as
+      the opaque `position` in the same `reading_state` schema, fit-width /
+      fit-page and zoom in place of font size and line height. If it routes
+      through foliate's own `pdf.js` rather than pdf.js directly, the `external`
+      exclusion in `electron.vite.config.ts` has to be solved rather than
+      dodged.
+- [ ] Reader features deliberately out of C1: no annotations, highlights or
+      bookmarks; no search-in-book; no per-book typography (preferences are
+      global and per machine). Annotations in particular need a storage
+      decision first — metadata.json keeps the book's record small today, and
+      highlights are the first thing that would grow without bound.
+- [ ] Genuine horizontal margin control. The "Spacing" slider drives foliate's
+      paginator `margin` attribute, which it spends on vertical inset and column
+      gutter — the left text edge does not move, which is why the control is not
+      called Margin. Real side margins mean foliate's `max-column-width` / `gap`
+      attributes; deliberately not attempted in C1.
+- [ ] Shutdown edges around the 3s quit flush (`services/quit.ts`), all
+      untested and none fatal: a second ⌘Q inside the window starts a second
+      flush and a second `quit()`; a flush that outlives the timeout keeps
+      writing while teardown runs, so `saveProgress` can reopen the database
+      after `closeDb`; `quit.ts` would block quit forever if `flush` threw
+      *synchronously* (safe today only because `flushPendingBeforeQuit` is
+      async) and its `.catch().finally()` chain is floating; and the watcher,
+      device poll and NAS health checks stay live for that window.
+- [ ] `flushPending` re-reports without passing `now`, so a position flushed at
+      quit is stamped with the quit time rather than the page turn it describes
+      — and `reading_updated_at` is exactly what adoption compares, so a late
+      stamp can win against a genuinely newer position from another machine.
+      Also, a `saveProgress` racing the flush's awaits can strand a fresh
+      pending entry (SQLite still holds it, so nothing is lost locally).
+- [ ] `book-bytes.ts`'s `FORMATS` allowlist is `satisfies BookFormat[]`, which
+      type-checks the literals but does not enforce completeness — a new
+      `BookFormat` member would silently be unservable. Same shape of gap as
+      the sort-key one: it fails as a missing feature, not a type error.
+- [ ] `fs.readdir` on a stalled SMB mount has no timeout and holds a libuv
+      threadpool slot, so several hung reader requests could stall other
+      main-process fs work. The cover route already carries this exposure; fold
+      into the "NAS behavior untested against real SMB" pass below.
+- [ ] Two upstream races in the vendored paginator, non-fatal and unfixable
+      without editing vendor source: an unguarded `this.#view` in a
+      `requestAnimationFrame` inside `setStyles`, and a ResizeObserver firing on
+      a mid-navigation document. Recorded so they are recognised, not
+      re-diagnosed; revisit when the vendored copy is next updated.
+- [ ] Test hygiene surfaced while building this: `library-sync.ts`'s
+      module-level `pending` promise chain is not cleared by `resetForTests()`
+      (benign `[catalog] upsert failed: ENOENT` on stderr in full runs), and
+      `flushForTests` swallows errors via `.catch(() => undefined)`, so a real
+      catalog-upsert failure inside a test is invisible rather than failing it.
+      Both pre-date the reader.
 
 ## Packaging & distribution
 
@@ -314,7 +381,9 @@ project **`musaeum`**.
 ## Post-MVP (unchanged from spec — do not implement yet)
 
 - [ ] Boox Palma WiFi transfer (feature-flagged stub only)
-- [ ] In-app reader / annotations
+- [x] In-app reader — shipped 2026-08-13 for epub/mobi/azw3 (see the reader
+      section above). **Annotations, highlights and bookmarks remain**, and are
+      still Post-MVP: they need a storage decision before any UI.
 - [ ] iOS companion app (REST API activation; contract already staged)
 - [ ] Goodreads account sync
 - [ ] Collections UI (schema present, UI deferred)

@@ -17,8 +17,11 @@ for book titles, covers as the hero element. Design tokens live in
 Phase 1 (MVP) was implemented and verified end-to-end on 2026-07-12: import →
 hydration → conflict queue → covers → FTS all confirmed against live APIs.
 Phase 1.5 PDF support shipped 2026-07-27 (PDF as a first-class format +
-Calibre PDF top-up, now run against the real library). See `tasks.md` for the
-roadmap and known gaps, `README.md` for setup, and `CHANGELOG.md` for history.
+Calibre PDF top-up, now run against the real library). The in-app reader
+shipped 2026-08-13 for EPUB/MOBI/AZW3, with reading position that survives a
+restart and follows you between machines; PDF in the reader is the next phase.
+See `tasks.md` for the roadmap and known gaps, `README.md` for setup, and
+`CHANGELOG.md` for history.
 
 Dev quickstart:
 
@@ -94,7 +97,10 @@ Musaeum/
 ├── tailwind.config.js / postcss.config.js / eslint.config.mjs
 ├── vitest.config.ts              # main-process test config (@shared/electron aliases)
 ├── test/                         # vitest suite + mocks/ (electron stub, helpers)
-├── index.html                    # renderer entry (CSP: only self + musaeum:)
+├── index.html                    # renderer entry (CSP: self + musaeum: + blob:)
+├── vendor/foliate-js/            # VENDORED reader engine — never edited; see
+│                                 # its VENDORED.md (the npm package is a
+│                                 # stale third-party republish)
 ├── scripts/
 │   ├── dev-app-branding.mjs      # postinstall: name + icon the dev Electron bundle
 │   └── make-icons.mjs            # build/icon.png → build/icon.icns (npm run icons)
@@ -112,6 +118,7 @@ Musaeum/
 │   │   │   ├── device.ts         # devices, transfers, Apple Books
 │   │   │   ├── nas.ts            # status, reconnect, choose library root
 │   │   │   ├── settings.ts       # get/save app_config, executable pickers
+│   │   │   ├── reader.ts         # saveProgress (tiered reading-state write)
 │   │   │   └── migration.ts      # scan, start, progress, cutover
 │   │   ├── services/             # ALL business logic lives here
 │   │   │   ├── events.ts         # main → renderer broadcast helper
@@ -128,10 +135,14 @@ Musaeum/
 │   │   │   ├── library-sync.ts   # catalog ⇄ SQLite cache (adopt, refresh, rebuild)
 │   │   │   ├── settings.ts       # app_config reads/writes + validation
 │   │   │   ├── menu.ts           # native application menu (⌘, ⌘1 ⌘2)
+│   │   │   ├── book-bytes.ts     # musaeum://book path resolution + containment
+│   │   │   ├── reading-state.ts  # tiered position writes + quit flush
+│   │   │   ├── quit.ts           # before-quit handshake (flush, then teardown)
 │   │   │   └── apple-books.ts    # open -a Books
 │   │   └── schema/migrations/
 │   │       ├── 001_initial.sql   # includes FTS5 sync triggers + indices
-│   │       └── 002_sort_keys.sql # backfills sort_title / author_sort
+│   │       ├── 002_sort_keys.sql # backfills sort_title / author_sort
+│   │       └── 003_reading_state.sql # reading_position/percent/updated_at
 │   └── preload/
 │       └── index.ts              # window.Musaeum contextBridge surface
 │
@@ -144,8 +155,10 @@ Musaeum/
 │   │   ├── device/               # DevicePanel, TransferQueue
 │   │   ├── migration/            # MigrationWizard
 │   │   ├── settings/             # SettingsModal
+│   │   ├── reader/               # ReaderView, ReaderEngine, ReaderToc,
+│   │   │                         # ReaderPrefsPopover
 │   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, icons
-│   ├── stores/                   # library / device / nas / ui zustand stores
+│   ├── stores/                   # library / device / nas / ui / reader zustand stores
 │   ├── hooks/                    # useLibrary, useDevice, useNASStatus, useDragDrop,
 │   │                             # useMenuCommands
 │   └── types/                    # SHARED contracts: book / device / metadata /
@@ -165,7 +178,8 @@ Musaeum/
 ```
 
 Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*`
-(all three layers). Configured in `electron.vite.config.ts` and both tsconfigs.
+(all three layers), `@vendor/*` → `vendor/*` (renderer only — the reader
+engine). Configured in `electron.vite.config.ts` and both tsconfigs.
 
 ---
 
@@ -717,6 +731,133 @@ after import still opens. Surfaced in the context menu ("Open EPUB" per format
 + "Show in Finder"), and in the detail panel, where the format badges are
 buttons that open that file and a folder button sits in the actions row.
 
+### Reading in the app
+
+`components/reader/ReaderView.tsx` over a **vendored** foliate-js
+(`vendor/foliate-js/`). EPUB, MOBI and AZW3; PDF is a later phase and falls
+through to `files.openBookFile` today, as does anything the engine rejects, so
+every entry point does something for every book. The entry points — double-click
+in either view, the detail panel's Read button, the context menu — are
+deliberately **not** gated on the NAS being online, unlike every sibling action
+in that row: reading is not a write, and the reader's error state (which offers
+"Open externally") explains a failure that a disabled button only hides.
+
+**The engine is vendored, and the npm package is a trap.** Upstream publishes
+nothing to the registry; the `foliate-js` package there is a stale third-party
+republish. Provenance is recorded in `vendor/foliate-js/VENDORED.md`, and the
+tree is never edited — every divergence lives in our code or in
+`src/types/foliate-js.d.ts`.
+
+Four places the engine's real behaviour contradicted the design and the type
+declarations, each found only by running it:
+
+- `view.open()` needs a **`File`**, not a `Blob` — its format sniffing reads
+  `file.name`, so every book failed until the fetched bytes were wrapped
+- `open()` alone renders nothing; a book with no saved position needs an
+  explicit `renderer.next()` to paint its first page
+- `goTo()` returns `undefined` rather than rejecting, so a `.catch()` fallback
+  around it is dead code — the percent fallback has to be reached another way
+- page-turn keys must **also** be bound inside each section document: the
+  book's iframe takes focus on the first click and the window listener stops
+  hearing anything
+
+`vendor/foliate-js/pdf.js` is **excluded from the renderer bundle** (`external`
+in `electron.vite.config.ts`). Vite's asset-import-meta-url plugin rewrites
+foliate's dynamic asset URL into a glob it then rejects, aborting the build;
+excluding it is safe because `readableFormat` never returns pdf, so the module
+is unreachable. A PDF phase that renders through foliate's own pdf.js has to
+revisit that line.
+
+CSP `style-src` includes **`blob:`** because an EPUB's own stylesheets arrive as
+blob URLs — without it books render with none of their typography. `script-src`
+stays `'self'`, so book content never executes, and no directive permits a
+remote host, so remote `@import`, backgrounds and fonts are still refused.
+
+The reader sits at **`z-[45]`**: above the library chrome (ImportOverlay's drop
+overlay is `z-40`) and below every modal, dialog and context menu (`z-50`). It
+shared `z-50` with them at first and painted *through* an open Settings panel —
+observed on screen, not theorised. Correct painting must not depend on mount
+order in `App.tsx`. Its keyboard handler bails for whatever is on top of it, via
+the same `isTypingTarget` guard `useBookNavigation` uses.
+
+Book bytes reach the renderer over **`musaeum://book/{bookId}/{format}`**,
+resolved by `services/book-bytes.ts` — **by extension**, like every other file
+lookup, so a book renamed after import still opens. The path rules live in that
+service rather than in the protocol handler so they can be tested without
+Electron. They realpath **both** the library root and the candidate before
+comparing: resolving only one side 404s every book under a symlinked root, which
+on macOS is the common case (`/tmp` is a symlink to `/private/tmp`, which is
+where every test builds its library).
+
+Typography lives in `stores/reader.store.ts`, persisted per machine like the
+other remembered UI state and re-validated on read (`sanitizePrefs`) rather than
+trusted: typeface, size, line height, page theme, and a control labelled
+**Spacing**. It is not called Margin because foliate spends the value on vertical
+inset and column gutter — the left text edge does not move — and a label that
+promises what the control doesn't do is worse than a vaguer one. The underlying
+field is still `prefs.margin`; genuine side margins need foliate's
+`max-column-width`/`gap` attributes and are a follow-up in tasks.md.
+
+Two races in the vendored paginator are known and not ours to fix without
+editing vendor source: an unguarded `this.#view` inside a `requestAnimationFrame`
+in `setStyles`, and a ResizeObserver firing on a mid-navigation document. Both
+are non-fatal, and recorded here so they are recognised rather than re-diagnosed.
+
+### Reading position
+
+**Tiered, because the three stores cost wildly different amounts**
+(`services/reading-state.ts`, which owns the whole policy):
+
+| trigger | SQLite | metadata.json | catalog.json |
+|---|---|---|---|
+| page turn (debounced 2s) | yes | if >30s since last | no |
+| reader close, app quit | yes | yes | yes |
+
+`catalog.json` is a whole-library rewrite, so piggybacking it on the 30s
+throttle would push ~10MB over SMB every half minute of reading. Position is
+therefore machine-local between sessions and syncs at session boundaries, which
+is what the one-machine-at-a-time model already assumes.
+
+`position` is **opaque** — an EPUB CFI, whatever mobi.js yields, a page number
+for a future PDF engine — and `percent` is the portable fallback for when a
+position no longer resolves. That is what lets one schema serve every engine.
+
+`read_status` **only ever advances** (`unread → reading` on the first save,
+`reading → read` at ≥98%, never back), which is what makes a manual override
+stick.
+
+Offline is deliberately **not** an error here: NAS writes are skipped and the
+report is held in memory while SQLite keeps recording. Unlike `updateBook`, this
+path does not `assertOnline()` — interrupting someone mid-chapter because a
+share dropped is the wrong trade.
+
+That tolerance is only safe because **adoption reconciles instead of
+overwriting**. Every `db.replaceAllBooks` in `library-sync.ts` first keeps local
+reading state that is strictly newer than the incoming record's, and pushes
+those books back to the catalog. Without it, quitting while the NAS was offline
+lost the session outright: the position existed only in SQLite, and the next
+launch's catalog adoption replaced the row wholesale. The same helper stops
+another machine's stale catalog from overwriting fresher local progress, which
+last-write-wins otherwise permits. **`rebuildCatalog` preserves too** —
+metadata.json is deliberately the trailing store for position, so letting a
+recovery walk win would turn "Rebuild Catalog" into a position-eraser.
+
+**Quitting flushes before the database closes** (`services/quit.ts`).
+`before-quit` fires *before* `will-quit` and used to call `closeDb()`, so the
+flush ran against a closed database and, on a synchronous handler, could not
+finish its write in any case. The handshake is now explicit: `preventDefault()`
+→ await the flush → set a guard flag → `quit()` again → teardown. The flag is
+the whole trick — `quit()` re-fires `before-quit`, and without it the handler
+would `preventDefault` forever. It is bounded by a **3s timeout**, because the
+flush writes over SMB and a dead share must never wedge the app on exit; losing
+that write is recoverable (SQLite holds the position and the adoption reconcile
+brings it back), a hang is not.
+
+Reading state rides in `metadata.json` and therefore through `catalog.json`, so
+`metadataJsonToBook` and `replaceAllBooks` must carry it — the same load-bearing
+propagation the sort keys need, and with the same failure mode if missed: silent
+erasure on the next connect.
+
 ### Apple Books Export
 
 `open -a Books {epub}` — right-click/detail-panel action. No deep integration.
@@ -760,7 +901,12 @@ buttons that open that file and a folder button sits in the actions row.
   },
   "formats": ["epub", "mobi", "pdf"],
   "rating": null,
-  "read_status": "unread",
+  "read_status": "reading",
+  "reading_state": {
+    "position": "epubcfi(/6/14!/4/2/8/1:0)",
+    "percent": 0.42,
+    "updated_at": "2025-01-16T22:04:11Z"
+  },
   "date_added": "2025-01-15T10:30:00Z",
   "last_modified": "2025-01-15T10:31:00Z",
   "metadata_sources": {
@@ -815,7 +961,10 @@ CREATE TABLE books (
   last_modified     TEXT,
   file_size_bytes   INTEGER,
   read_status       TEXT DEFAULT 'unread',
-  nas_path          TEXT           -- relative to library root
+  nas_path          TEXT,          -- relative to library root
+  reading_position  TEXT,          -- opaque to us: CFI, engine locator, page
+  reading_percent   REAL,          -- 0–1; the portable fallback
+  reading_updated_at TEXT          -- compared on adoption; newer local wins
 );
 
 CREATE VIRTUAL TABLE books_fts USING fts5(
@@ -969,6 +1118,9 @@ interface MusaeumAPI {
     getPathForFile(file: File): string           // dropped File → path (webUtils)
     revealBook(bookId, format?): Promise<void>   // Finder, file selected
     openBookFile(bookId, format): Promise<void>  // system default app
+  }
+  reader: {
+    saveProgress(report: ProgressReport): Promise<void>  // tiered write; see above
   }
   on: {                                          // all return an Unsubscribe fn
     nasStatusChanged(cb): Unsubscribe
