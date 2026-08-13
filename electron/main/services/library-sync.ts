@@ -56,6 +56,25 @@ export function skipRoot(root: string): void {
 }
 
 /**
+ * Parse `updatedAt` for the reconcile comparison below. Numeric, not
+ * lexical: metadata.json is a documented external contract (hand-editable,
+ * read by the iOS companion), so a trimmed-milliseconds or explicit-offset
+ * timestamp must still compare correctly against Musaeum's own
+ * `new Date().toISOString()` writes. A plain string compare gets that
+ * backwards — `'…T10:00:00Z' > '…T10:00:00.500Z'` lexically (`'Z'` sorts
+ * after `'.'`) even though the millisecond value is later in time. Missing,
+ * empty, or unparseable all return `null` so every call site treats "no
+ * valid time" as one case rather than risking a `NaN` comparison, which is
+ * always `false` and would make an invalid value silently lose in both
+ * comparison directions — never a safe default to rely on implicitly.
+ */
+function parseUpdatedAt(updatedAt: string | undefined): number | null {
+  if (!updatedAt) return null
+  const parsed = Date.parse(updatedAt)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+/**
  * Reconcile incoming books' reading state against the local cache before a
  * wholesale `db.replaceAllBooks` — call immediately before every one of
  * them. Reading position is written to SQLite on every page turn but reaches
@@ -64,9 +83,9 @@ export function skipRoot(root: string): void {
  * while offline (`reading-state.ts` parks the report in memory instead, so
  * quitting offline loses it if nothing here restores it). A wholesale
  * replace with the incoming (stale) catalog view would silently erase the
- * newer local position. Local wins only when it is *strictly* newer — an
- * `updatedAt` string compares correctly for that since it's ISO 8601, and
- * equal timestamps keep the incoming record, since adoption is otherwise
+ * newer local position. Local wins only when it is *strictly* newer, and
+ * only when its `updatedAt` actually parses — equal or unparseable-local
+ * timestamps keep the incoming record, since adoption is otherwise
  * authoritative. Books whose local state won are pushed back to catalog.json
  * in one batched write so the NAS catches up rather than staying stale.
  *
@@ -79,9 +98,10 @@ function preserveLocalReadingState(incoming: Book[]): Book[] {
   const merged = incoming.map((book) => {
     const local = localById.get(book.id)
     const localState = local?.readingState
-    if (!localState?.updatedAt) return book
-    const incomingUpdatedAt = book.readingState?.updatedAt ?? ''
-    if (localState.updatedAt <= incomingUpdatedAt) return book
+    const localTime = parseUpdatedAt(localState?.updatedAt)
+    if (localTime === null || !localState) return book
+    const incomingTime = parseUpdatedAt(book.readingState?.updatedAt)
+    if (incomingTime !== null && incomingTime >= localTime) return book
     const withLocalState: Book = { ...book, readingState: localState }
     changed.push(withLocalState)
     return withLocalState

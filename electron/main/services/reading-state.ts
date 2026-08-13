@@ -89,12 +89,42 @@ export async function saveProgress(report: ProgressReport, now = Date.now()): Pr
   }
 }
 
-/** Flush every unsaved position. Called on `will-quit`. */
+/** Flush every unsaved position. Called (indirectly, see below) on quit. */
 export async function flushPending(): Promise<void> {
   const reports = [...pending.values()]
   pending.clear()
   for (const report of reports) {
     await saveProgress({ ...report, final: true })
+  }
+}
+
+/**
+ * Quit must never hang on a dead or stalled NAS share: `flushPending` writes
+ * metadata.json (and, on the last book, kicks off a catalog.json upsert)
+ * over SMB, and either can block indefinitely if the mount is wedged rather
+ * than cleanly offline. 3s is comfortably more than a healthy SMB write of a
+ * few KB needs, and short enough that quit never visibly hangs — losing the
+ * pending NAS write on timeout is acceptable (SQLite already has the
+ * position, and the next successful sync reconciles it back in via
+ * `library-sync.ts`'s adoption-time reconcile); wedging app exit is not.
+ *
+ * `flush` is injectable so the timeout race itself is testable without a
+ * real stalled filesystem — tests pass a promise that never resolves.
+ */
+const QUIT_FLUSH_TIMEOUT_MS = 3_000
+
+export async function flushPendingBeforeQuit(
+  timeoutMs = QUIT_FLUSH_TIMEOUT_MS,
+  flush: () => Promise<void> = flushPending
+): Promise<void> {
+  let timer!: ReturnType<typeof setTimeout>
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs)
+  })
+  try {
+    await Promise.race([flush(), timeout])
+  } finally {
+    clearTimeout(timer)
   }
 }
 

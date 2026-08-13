@@ -65,6 +65,21 @@ describe('syncOnConnect', () => {
     expect(after).toBe(before)
     expect(getBooks().map((b) => b.id)).toEqual(['local-1'])
   })
+
+  it('preserves a local reading position that is newer than the catalog', async () => {
+    const local = makeBook('rs-sync-newer')
+    local.readingState = { position: 'cfi-local', percent: 0.5, updatedAt: '2026-08-13T12:00:00Z' }
+    insertBook(local)
+
+    const incoming = makeBook('rs-sync-newer')
+    incoming.readingState = { position: 'cfi-stale', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    await writeCatalog(root, [incoming])
+
+    await librarySync.syncOnConnect()
+    await librarySync.flushForTests()
+
+    expect(getBook('rs-sync-newer')?.readingState).toEqual(local.readingState)
+  })
 })
 
 describe('applyCatalog', () => {
@@ -130,6 +145,39 @@ describe('applyCatalog', () => {
     expect(getBook('rs-tie')?.readingState).toEqual(incoming.readingState)
   })
 
+  it('compares timestamps numerically, not lexically, across differing precision', async () => {
+    // Lexically, '...10:00:00.500Z' < '...10:00:00Z' ('.' sorts before 'Z'),
+    // even though the millisecond-precision value is 500ms LATER in time. A
+    // plain string comparison would wrongly let the incoming (chronologically
+    // older) record win here.
+    const local = makeBook('rs-precision')
+    local.readingState = { position: 'cfi-local-ms', percent: 0.6, updatedAt: '2026-08-13T10:00:00.500Z' }
+    insertBook(local)
+
+    const incoming = makeBook('rs-precision')
+    incoming.readingState = { position: 'cfi-incoming-sec', percent: 0.1, updatedAt: '2026-08-13T10:00:00Z' }
+    await writeCatalog(root, [incoming])
+
+    await librarySync.applyCatalog(root)
+    await librarySync.flushForTests()
+
+    expect(getBook('rs-precision')?.readingState).toEqual(local.readingState)
+  })
+
+  it('never lets an unparseable local timestamp win, even if it sorts high lexically', async () => {
+    const local = makeBook('rs-garbage-time')
+    local.readingState = { position: 'cfi-local', percent: 0.6, updatedAt: 'not-a-real-timestamp' }
+    insertBook(local)
+
+    const incoming = makeBook('rs-garbage-time')
+    incoming.readingState = { position: 'cfi-incoming', percent: 0.1, updatedAt: '2026-08-13T10:00:00Z' }
+    await writeCatalog(root, [incoming])
+
+    await librarySync.applyCatalog(root)
+
+    expect(getBook('rs-garbage-time')?.readingState).toEqual(incoming.readingState)
+  })
+
   it('keeps local reading state when the incoming record has none (quit-while-offline)', async () => {
     const local = makeBook('rs-offline-quit')
     local.readingState = { position: 'cfi-stranded', percent: 0.4, updatedAt: '2026-08-13T09:00:00Z' }
@@ -188,6 +236,46 @@ describe('refreshLibrary', () => {
     expect(result).toEqual({ books: 1 })
     expect(getBooks()[0]?.title).toBe('Walked')
     expect((await readCatalog(root))?.books.length).toBe(1)
+  })
+
+  it('preserves a local reading position that is newer than the catalog', async () => {
+    const local = makeBook('rs-refresh-newer')
+    local.readingState = { position: 'cfi-local', percent: 0.5, updatedAt: '2026-08-13T12:00:00Z' }
+    insertBook(local)
+
+    const incoming = makeBook('rs-refresh-newer')
+    incoming.readingState = { position: 'cfi-stale', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    await writeCatalog(root, [incoming])
+
+    await librarySync.refreshLibrary()
+    await librarySync.flushForTests()
+
+    expect(getBook('rs-refresh-newer')?.readingState).toEqual(local.readingState)
+  })
+})
+
+describe('rebuildCatalog', () => {
+  it('preserves a local reading position that is newer than the metadata.json on disk', async () => {
+    const dir = join(root, 'books', 'rs-rebuild-newer')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(
+      join(dir, 'metadata.json'),
+      JSON.stringify({
+        id: 'rs-rebuild-newer',
+        title: 'Walked',
+        reading_state: { position: 'cfi-stale', percent: 0.2, updated_at: '2026-08-13T10:00:00Z' }
+      })
+    )
+
+    const local = makeBook('rs-rebuild-newer')
+    local.readingState = { position: 'cfi-local', percent: 0.5, updatedAt: '2026-08-13T12:00:00Z' }
+    insertBook(local)
+
+    const result = await librarySync.rebuildCatalog()
+    await librarySync.flushForTests()
+
+    expect(result).toEqual({ books: 1 })
+    expect(getBook('rs-rebuild-newer')?.readingState).toEqual(local.readingState)
   })
 })
 

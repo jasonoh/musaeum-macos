@@ -9,7 +9,13 @@ import { readCatalog, writeCatalog } from './catalog'
 import { closeDb, getBook, insertBook } from './db'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
-import { flushPending, nextReadStatus, resetForTests, saveProgress } from './reading-state'
+import {
+  flushPending,
+  flushPendingBeforeQuit,
+  nextReadStatus,
+  resetForTests,
+  saveProgress
+} from './reading-state'
 
 let root: string
 
@@ -180,5 +186,24 @@ describe('flushPending', () => {
     await seed('b9')
     await saveProgress({ bookId: 'b9', position: 'p1', percent: 0.1, final: true }, 1_000)
     await expect(flushPending()).resolves.toBeUndefined()
+  })
+})
+
+describe('flushPendingBeforeQuit', () => {
+  it('resolves once the flush completes, well inside the timeout', async () => {
+    await expect(flushPendingBeforeQuit(1_000, () => Promise.resolve())).resolves.toBeUndefined()
+  })
+
+  it('does not wait for a stalled flush — quit is never blocked by a dead NAS write', async () => {
+    const hangingFlush = () => new Promise<void>(() => undefined) // never settles
+    const start = Date.now()
+    await flushPendingBeforeQuit(30, hangingFlush)
+    // Generous slack for CI scheduling jitter; a real hang would be >>100ms late.
+    expect(Date.now() - start).toBeLessThan(500)
+  })
+
+  it('propagates a flush rejection rather than hanging or swallowing it', async () => {
+    const failingFlush = () => Promise.reject(new Error('nas write failed'))
+    await expect(flushPendingBeforeQuit(1_000, failingFlush)).rejects.toThrow('nas write failed')
   })
 })

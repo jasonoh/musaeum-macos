@@ -21,6 +21,7 @@ import * as importer from './services/importer'
 import * as librarySync from './services/library-sync'
 import * as nas from './services/nas-manager'
 import { ensurePythonEnv } from './services/python-env'
+import { createBeforeQuitHandler } from './services/quit'
 import * as readingState from './services/reading-state'
 import { isPackaged } from './services/runtime'
 import * as sidecar from './services/sidecar'
@@ -165,15 +166,29 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => {
-  stopWatcher()
-  stopDeviceDetection()
-  nas.stopHealthChecks()
-  sidecar.stop()
-  closeDb()
-})
+// Async-shutdown handshake (see services/quit.ts): the first before-quit
+// flushes reading position to the NAS — bounded by its own timeout, so a
+// dead share can never wedge quit — and only the second pass (after that
+// settles) stops watchers/timers and closes the database. Ordering matters:
+// flushPendingBeforeQuit must run and settle before closeDb, or the flush's
+// writes reopen a "closed" database (getDb() silently re-migrates) that is
+// about to vanish anyway.
+app.on(
+  'before-quit',
+  createBeforeQuitHandler({
+    flush: () => readingState.flushPendingBeforeQuit(),
+    teardown: () => {
+      stopWatcher()
+      stopDeviceDetection()
+      nas.stopHealthChecks()
+      sidecar.stop()
+      closeDb()
+    },
+    quit: () => app.quit()
+  })
+)
 
 app.on('will-quit', () => {
+  // Synchronous — safe to leave in will-quit rather than the handshake above.
   importer.abortPendingDecisions()
-  void readingState.flushPending()
 })
