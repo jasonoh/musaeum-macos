@@ -38,5 +38,25 @@ export async function resolveBookFile(bookId: string, format: string): Promise<s
   // By extension, not by canonical name — same rule as file-access and
   // deleteFormats, so a book renamed after import still opens
   const match = entries.find((f) => extname(f).toLowerCase() === `.${format}`)
-  return match ? join(dir, match) : null
+  if (!match) return null
+  const candidate = join(dir, match)
+
+  // The lexical check above stops a traversing nasPath, but not a symlink —
+  // the matched file, or the book folder itself, can point outside the
+  // library root and still pass it. realpath resolves that, but macOS makes
+  // the library root's own ancestry a symlink too (/tmp -> /private/tmp,
+  // /var -> /private/var), so BOTH sides must be realpath'd before comparing
+  // — resolving only the candidate would 404 every legitimate book.
+  let realRoot: string
+  let realCandidate: string
+  try {
+    realRoot = await fs.realpath(root)
+    realCandidate = await fs.realpath(candidate)
+  } catch {
+    return null
+  }
+  const realRel = relative(realRoot, realCandidate)
+  if (realRel.startsWith('..') || realRel === '') return null
+
+  return candidate
 }

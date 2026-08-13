@@ -68,4 +68,35 @@ describe('resolveBookFile', () => {
     insertBook(book)
     expect(await resolveBookFile('b6', 'epub')).toBeNull()
   })
+
+  it('refuses a symlinked file that points outside the library root', async () => {
+    const outside = join(tmpdir(), `musaeum-bytes-outside-${Date.now()}`)
+    await fs.writeFile(outside, 'secret')
+    try {
+      insertBook(makeBook('b7'))
+      const dir = join(root, 'books', 'b7')
+      await fs.mkdir(dir, { recursive: true })
+      await fs.symlink(outside, join(dir, 'Book.epub'))
+      expect(await resolveBookFile('b7', 'epub')).toBeNull()
+    } finally {
+      await fs.rm(outside, { force: true })
+    }
+  })
+
+  it('resolves normally when the library root itself is reached through a symlink', async () => {
+    const target = mkdtempSync(join(tmpdir(), 'musaeum-bytes-target-'))
+    const link = join(tmpdir(), `musaeum-bytes-link-${Date.now()}`)
+    await fs.symlink(target, link)
+    await nas.setLibraryRoot(link)
+    try {
+      insertBook(makeBook('b8'))
+      const dir = join(link, 'books', 'b8')
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(join(dir, 'Book.epub'), 'bytes')
+      expect(await resolveBookFile('b8', 'epub')).toBe(join(dir, 'Book.epub'))
+    } finally {
+      await fs.rm(link, { force: true })
+      rmSync(target, { recursive: true, force: true })
+    }
+  })
 })
