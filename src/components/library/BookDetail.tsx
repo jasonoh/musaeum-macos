@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ReadStatus } from '@shared/book.types'
-import { seriesDisplay } from '@shared/book.types'
+import { readableFormat, seriesDisplay } from '@shared/book.types'
 import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
@@ -209,11 +209,14 @@ export function BookDetail() {
             </div>
           )
         })}
-        {/* Temporary opener — Task 9 replaces it with the real entry points */}
+        {/* Gold-outlined rather than solid: the way into a book, but not in
+            competition with sending it to a device. A book the engine can't
+            render still belongs here — `openBook` hands those to the OS. */}
         <button
           disabled={!online || busy !== null || book.formats.length === 0}
           onClick={() => useReaderStore.getState().openBook(book)}
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-ink-600 px-3 py-1.5 text-[12px] text-parchment-dim hover:border-gold-500/50 hover:text-gold-300 disabled:opacity-40"
+          title={readableFormat(book) ? 'Read in Musaeum' : 'Open in the default app'}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-gold-500/40 px-3 py-2 text-[13px] font-semibold text-gold-300 hover:border-gold-500 hover:bg-gold-500/10 disabled:opacity-40"
         >
           <ReaderIcon className="h-4 w-4" />
           Read

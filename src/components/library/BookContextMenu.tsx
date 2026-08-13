@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
+import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
 import {
   BookIcon,
@@ -8,6 +9,7 @@ import {
   FolderIcon,
   OpenExternalIcon,
   PencilIcon,
+  ReaderIcon,
   TrashIcon
 } from '@/components/shared/icons'
 
@@ -82,6 +84,16 @@ export function BookContextMenu() {
         <p className="truncate px-3 py-1 font-display text-[12px] text-parchment-faint">
           {book.title}
         </p>
+        <div className="my-1 h-px bg-ink-700" />
+        {/* First, and on its own: the thing most right-clicks are after */}
+        <MenuItem
+          icon={<ReaderIcon className="h-3.5 w-3.5" />}
+          label="Read"
+          onClick={() => {
+            useReaderStore.getState().openBook(book)
+            closeContextMenu()
+          }}
+        />
         <div className="my-1 h-px bg-ink-700" />
         {book.formats.map((f) => (
           <MenuItem

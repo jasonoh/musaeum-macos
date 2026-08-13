@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
+import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
 
 /**
@@ -62,6 +63,8 @@ export function useBookNavigation({
   const contextMenu = useUIStore((s) => s.contextMenu)
   const deletingBookId = useUIStore((s) => s.deletingBookId)
   const editingBookId = useUIStore((s) => s.editingBookId)
+  const removingFromDevice = useUIStore((s) => s.removingFromDevice)
+  const readerBookId = useReaderStore((s) => s.bookId)
 
   const index = selectedBookId ? books.findIndex((b) => b.id === selectedBookId) : -1
 
@@ -99,9 +102,20 @@ export function useBookNavigation({
   }, [ready, node, index, columns, rowHeight, contentTop, stickyTop])
 
   useEffect(() => {
-    // A modal or menu owns the keyboard while it's open — including Escape,
-    // which those close themselves.
-    if (!ready || modal || contextMenu || deletingBookId || editingBookId) return
+    // Whatever is painted over the library owns the keyboard while it's open —
+    // including Escape, which each of those closes itself with. The reader is
+    // the inverse of its own guard: without this, arrows would page the book
+    // and walk the selection underneath it at the same time.
+    if (
+      !ready ||
+      modal ||
+      contextMenu ||
+      deletingBookId ||
+      editingBookId ||
+      removingFromDevice ||
+      readerBookId
+    )
+      return
 
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return
@@ -161,6 +175,8 @@ export function useBookNavigation({
     contextMenu,
     deletingBookId,
     editingBookId,
+    removingFromDevice,
+    readerBookId,
     books,
     index,
     selectedBookId,

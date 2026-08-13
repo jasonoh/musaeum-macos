@@ -1,6 +1,7 @@
 import type { Book, SortField } from '@shared/book.types'
 import { defaultSortDirection, seriesDisplay } from '@shared/book.types'
 import { useLibraryStore } from '@/stores/library.store'
+import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
 import { rowWindow, useScrollMetrics } from '@/hooks/useVirtualRows'
@@ -48,6 +49,8 @@ function Row({ book }: { book: Book }) {
   return (
     <tr
       onClick={() => selectBook(book.id)}
+      // Same gesture as the grid: single click selects, double click reads
+      onDoubleClick={() => useReaderStore.getState().openBook(book)}
       onContextMenu={(e) => {
         e.preventDefault()
         openContextMenu({ bookId: book.id, x: e.clientX, y: e.clientY })

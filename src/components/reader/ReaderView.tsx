@@ -5,6 +5,7 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
 import { ReaderEngine } from './ReaderEngine'
+import { ReaderPrefsPopover } from './ReaderPrefsPopover'
 import { ReaderToc } from './ReaderToc'
 import { CloseIcon, ListIcon } from '@/components/shared/icons'
 
@@ -18,12 +19,15 @@ export function ReaderView() {
   const error = useReaderStore((s) => s.error)
   const percent = useReaderStore((s) => s.percent)
   const tocOpen = useReaderStore((s) => s.tocOpen)
+  const prefsOpen = useReaderStore((s) => s.prefsOpen)
   const prefs = useReaderStore((s) => s.prefs)
   const close = useReaderStore((s) => s.close)
   const setStatus = useReaderStore((s) => s.setStatus)
   const setToc = useReaderStore((s) => s.setToc)
   const setPercent = useReaderStore((s) => s.setPercent)
   const toggleToc = useReaderStore((s) => s.toggleToc)
+  const togglePrefs = useReaderStore((s) => s.togglePrefs)
+  const closePrefs = useReaderStore((s) => s.closePrefs)
 
   const books = useLibraryStore((s) => s.books)
   const book = books.find((b) => b.id === bookId) ?? null
@@ -94,6 +98,16 @@ export function ReaderView() {
     (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (overlaid || isTypingTarget(e.target)) return
+      // The typography panel is the reader's own rather than something painted
+      // over it, so Escape dismisses the panel instead of taking the book with
+      // it — and while it is open it owns every other key, so Space can't both
+      // press one of its buttons and turn the page underneath.
+      if (prefsOpen) {
+        if (e.key !== 'Escape') return
+        e.preventDefault()
+        closePrefs()
+        return
+      }
       switch (e.key) {
         case 'Escape':
           e.preventDefault()
@@ -112,7 +126,7 @@ export function ReaderView() {
           break
       }
     },
-    [closeReader, overlaid]
+    [closeReader, closePrefs, overlaid, prefsOpen]
   )
 
   useEffect(() => {
@@ -180,6 +194,17 @@ export function ReaderView() {
           )}
         </div>
 
+        <button
+          onClick={togglePrefs}
+          title="Typography"
+          aria-label="Typography"
+          aria-expanded={prefsOpen}
+          className={`rounded px-1.5 py-1 hover:bg-ink-800 hover:text-parchment ${
+            prefsOpen ? 'text-gold-300' : 'text-parchment-faint'
+          }`}
+        >
+          <span className="font-display text-[15px] leading-4">Aa</span>
+        </button>
         <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-parchment-faint">
           {status === 'ready' ? `${Math.round(percent * 100)}%` : ''}
         </span>
@@ -241,6 +266,8 @@ export function ReaderView() {
           style={{ width: `${Math.min(100, Math.max(0, percent * 100))}%` }}
         />
       </div>
+
+      {prefsOpen && <ReaderPrefsPopover onClose={closePrefs} />}
     </div>
   )
 }

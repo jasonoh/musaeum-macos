@@ -2,6 +2,7 @@ import { memo } from 'react'
 import type { Book } from '@shared/book.types'
 import { seriesDisplay } from '@shared/book.types'
 import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
+import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
 import { DeviceIcon, TrashIcon } from '@/components/shared/icons'
 
@@ -55,6 +56,9 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
     >
       <button
         onClick={() => selectBook(book.id)}
+        // Read through `getState` rather than subscribing: nothing on the card
+        // renders from the reader, and this one is memoized per book
+        onDoubleClick={() => useReaderStore.getState().openBook(book)}
         className="flex w-full flex-col rounded-md text-left focus-visible:ring-2 focus-visible:ring-gold-400/70"
       >
         <div
