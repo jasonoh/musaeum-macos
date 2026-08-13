@@ -10,6 +10,7 @@ import { registerMetadataHandlers } from './ipc/metadata'
 import { registerMigrationHandlers } from './ipc/migration'
 import { registerNASHandlers } from './ipc/nas'
 import { registerSettingsHandlers } from './ipc/settings'
+import { resolveBookFile } from './services/book-bytes'
 import { closeDb, getBook } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
 import { broadcast, setMainWindow } from './services/events'
@@ -34,15 +35,30 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'musaeum', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
 
-function registerCoverProtocol(): void {
-  protocol.handle('musaeum', (request) => {
+/**
+ * musaeum:// — the renderer's only path to library files. Two hosts:
+ *   cover/{bookId}/{thumb|full}   cover images
+ *   book/{bookId}/{format}        book bytes for the reader
+ * CSP forbids file://, so everything the renderer displays comes through here.
+ */
+function registerMusaeumProtocol(): void {
+  protocol.handle('musaeum', async (request) => {
     const url = new URL(request.url)
-    const [bookId, size] = url.pathname.replace(/^\//, '').split('/')
-    if (url.host !== 'cover' || !bookId) return new Response(null, { status: 400 })
+    const [bookId, rest] = url.pathname.replace(/^\//, '').split('/')
+    if (!bookId || !rest) return new Response(null, { status: 400 })
+
+    if (url.host === 'book') {
+      const file = await resolveBookFile(bookId, rest)
+      return file
+        ? net.fetch(pathToFileURL(file).toString())
+        : new Response(null, { status: 404 })
+    }
+
+    if (url.host !== 'cover') return new Response(null, { status: 400 })
 
     const root = nas.getLibraryRoot()
     const book = getBook(bookId)
-    const file = size === 'thumb' ? book?.coverThumbPath : book?.coverFullPath
+    const file = rest === 'thumb' ? book?.coverThumbPath : book?.coverFullPath
     if (!root || !book?.nasPath || !file) return new Response(null, { status: 404 })
 
     // Cover paths are stored relative to the book dir; reject traversal
@@ -99,7 +115,7 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
-  registerCoverProtocol()
+  registerMusaeumProtocol()
   setDevDockIcon()
   installApplicationMenu()
 
