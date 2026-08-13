@@ -37,8 +37,16 @@ function flattenToc(items: FoliateTocItem[] | undefined, depth = 0): ReaderTocIt
   ])
 }
 
+/**
+ * Copies of the Tailwind design tokens, by value. The book renders in its own
+ * iframe document, which the app's stylesheet does not reach, so these cannot
+ * be class names — but they must stay in step with `tailwind.config.js`:
+ * `ink` is `ink-900`, `fg` is `parchment`, `dim` is `parchment-dim`, `link` is
+ * `gold-400`. A palette change has to update this table too. The `paper` row
+ * has no token counterpart — the app has no light theme to borrow from.
+ */
 const PALETTE = {
-  ink: { bg: '#14110d', fg: '#e0d8ca', dim: '#a1957e', link: '#d4a24e' },
+  ink: { bg: '#14110d', fg: '#e9e1d2', dim: '#b3a78f', link: '#d4a24e' },
   paper: { bg: '#f3ece0', fg: '#241f18', dim: '#6b6152', link: '#8a5a1a' }
 } as const
 
@@ -139,6 +147,9 @@ export function ReaderEngine({
     viewRef.current = view
 
     view.addEventListener('relocate', (event) => {
+      // Guarded like onReady/onError: a relocate arriving from a torn-down
+      // view would stamp the previous book's CFI onto the current bookId
+      if (disposed) return
       const detail = (event as CustomEvent<FoliateRelocateDetail>).detail
       cb.current.onRelocate({ position: detail.cfi ?? null, percent: detail.fraction ?? 0 })
     })

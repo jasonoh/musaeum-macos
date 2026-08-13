@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { FoliateView } from '@vendor/foliate-js/view.js'
+import { isTypingTarget } from '@/hooks/useBookNavigation'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
+import { useUIStore } from '@/stores/ui.store'
 import { ReaderEngine } from './ReaderEngine'
 import { ReaderToc } from './ReaderToc'
 import { CloseIcon, ListIcon } from '@/components/shared/icons'
@@ -25,6 +27,20 @@ export function ReaderView() {
 
   const books = useLibraryStore((s) => s.books)
   const book = books.find((b) => b.id === bookId) ?? null
+
+  // Modals and dialogs render *after* the reader in App.tsx at the same z-50,
+  // so they sit on top of an open book and own the keyboard while they do.
+  const modal = useUIStore((s) => s.modal)
+  const contextMenu = useUIStore((s) => s.contextMenu)
+  const deletingBookId = useUIStore((s) => s.deletingBookId)
+  const editingBookId = useUIStore((s) => s.editingBookId)
+  const removingFromDevice = useUIStore((s) => s.removingFromDevice)
+  const overlaid =
+    modal !== null ||
+    contextMenu !== null ||
+    deletingBookId !== null ||
+    editingBookId !== null ||
+    removingFromDevice !== null
 
   const viewRef = useRef<FoliateView | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -67,10 +83,17 @@ export function ReaderView() {
    * Shared by the overlay's window listener and every section document the
    * engine loads — the book's iframe takes focus as soon as a page renders,
    * so window alone would only work until the first click.
+   *
+   * It bails for whatever is on top of the reader the same way
+   * `useBookNavigation` bails for whatever is on top of the library — the
+   * inverse of that guard, and needed just as much: ⌘, over an open book
+   * paints Settings above it, and without this a space typed into one of its
+   * fields would turn the page underneath while Escape closed both at once.
    */
   const onKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (overlaid || isTypingTarget(e.target)) return
       switch (e.key) {
         case 'Escape':
           e.preventDefault()
@@ -89,7 +112,7 @@ export function ReaderView() {
           break
       }
     },
-    [closeReader]
+    [closeReader, overlaid]
   )
 
   useEffect(() => {
@@ -98,7 +121,23 @@ export function ReaderView() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [bookId, onKeyDown])
 
-  // A close that skips the button — window closing, book deleted — still reports
+  /**
+   * A book deleted while it is open takes the reader with it. The pending
+   * report is dropped rather than flushed: the book has no folder left to
+   * write metadata.json into, and how far someone got through a deleted book
+   * is moot. Without this the overlay unmounts on its own (no `book` to
+   * render) but `bookId` stays set, so the debounce fires into the void.
+   */
+  useEffect(() => {
+    if (!bookId || book) return
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+    latest.current = null
+    close()
+  }, [bookId, book, close])
+
+  // A close that skips the button — the window closing, a switch to another
+  // book — still reports
   useEffect(() => () => flush(true), [flush])
 
   if (!bookId || !format || !book) return null

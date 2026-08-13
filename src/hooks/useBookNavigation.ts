@@ -39,7 +39,8 @@ function scrollTo(el: HTMLElement, top: number): void {
   el.scrollTop = top
 }
 
-function isTypingTarget(target: EventTarget | null): boolean {
+/** Exported so the reader's own key handler bails on the same targets. */
+export function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el?.tagName) return false
   const tag = el.tagName.toLowerCase()
