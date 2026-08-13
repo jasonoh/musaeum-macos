@@ -68,8 +68,12 @@ export function ReaderPrefsPopover({ onClose }: { onClose: () => void }) {
             readout={prefs.lineHeight.toFixed(1)}
             onChange={(lineHeight) => setPrefs({ lineHeight })}
           />
+          {/* "Spacing", not "Margin": foliate spends this on page inset and
+              column gutter, so the left text edge never moves. The stored
+              field, the range key and the paginator attribute all stay
+              `margin` — only the promise made to the reader changes. */}
           <Slider
-            label="Margin"
+            label="Spacing"
             {...PREF_RANGES.margin}
             value={prefs.margin}
             readout={`${prefs.margin}px`}

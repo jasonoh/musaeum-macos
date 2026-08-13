@@ -56,7 +56,10 @@ function Row({ book }: { book: Book }) {
         openContextMenu({ bookId: book.id, x: e.clientX, y: e.clientY })
       }}
       style={{ height: ROW_HEIGHT - 1 }} // the collapsed border supplies the 1px
-      className={`cursor-default border-b border-ink-800/60 transition-colors ${
+      // `select-none` because double-click opens the book: without it the
+      // gesture also selects the word under the cursor, leaving a stray
+      // highlight behind the reader overlay
+      className={`cursor-default select-none border-b border-ink-800/60 transition-colors ${
         selected ? 'bg-gold-500/10' : 'hover:bg-ink-850'
       }`}
     >

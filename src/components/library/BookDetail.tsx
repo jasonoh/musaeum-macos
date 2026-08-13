@@ -211,9 +211,14 @@ export function BookDetail() {
         })}
         {/* Gold-outlined rather than solid: the way into a book, but not in
             competition with sending it to a device. A book the engine can't
-            render still belongs here — `openBook` hands those to the OS. */}
+            render still belongs here — `openBook` hands those to the OS.
+            Deliberately *not* gated on `online` like its neighbours: those are
+            writes, this is a read. Offline the bytes are unreachable whichever
+            entry point is used, and the reader's error state says so and offers
+            "Open externally" — better than a dead button with nothing to
+            explain it, and it makes all four entry points behave alike. */}
         <button
-          disabled={!online || busy !== null || book.formats.length === 0}
+          disabled={busy !== null || book.formats.length === 0}
           onClick={() => useReaderStore.getState().openBook(book)}
           title={readableFormat(book) ? 'Read in Musaeum' : 'Open in the default app'}
           className="flex w-full items-center justify-center gap-2 rounded-md border border-gold-500/40 px-3 py-2 text-[13px] font-semibold text-gold-300 hover:border-gold-500 hover:bg-gold-500/10 disabled:opacity-40"
