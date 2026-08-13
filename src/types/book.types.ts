@@ -58,6 +58,17 @@ export interface Book {
   readingState: ReadingState | null
 }
 
+/**
+ * The format the in-app reader should open, in preference order. PDF is
+ * deliberately absent until C2 ships — a PDF-only book falls through to the
+ * system opener, where Preview handles it well.
+ */
+const READABLE_FORMATS: BookFormat[] = ['epub', 'azw3', 'mobi']
+
+export function readableFormat(book: Book): BookFormat | null {
+  return READABLE_FORMATS.find((f) => book.formats.includes(f)) ?? null
+}
+
 export type SortField =
   | 'title'
   | 'author'

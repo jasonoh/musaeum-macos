@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { seriesDisplay, sortableAuthor, sortableTitle } from './book.types'
+import { makeBook } from '../../test/helpers/book'
+import { readableFormat, seriesDisplay, sortableAuthor, sortableTitle } from './book.types'
 
 describe('seriesDisplay', () => {
   it('drops the trailing .0 on whole-number indices', () => {
@@ -48,5 +49,27 @@ describe('sortableAuthor', () => {
     expect(sortableAuthor('Homer')).toBe('Homer')
     expect(sortableAuthor(null)).toBeNull()
     expect(sortableAuthor('   ')).toBeNull()
+  })
+})
+
+describe('readableFormat', () => {
+  it('prefers epub', () => {
+    expect(readableFormat({ ...makeBook('a'), formats: ['pdf', 'mobi', 'epub'] })).toBe('epub')
+  })
+
+  it('falls back to azw3 before mobi', () => {
+    expect(readableFormat({ ...makeBook('a'), formats: ['mobi', 'azw3'] })).toBe('azw3')
+  })
+
+  it('reads a mobi-only book', () => {
+    expect(readableFormat({ ...makeBook('a'), formats: ['mobi'] })).toBe('mobi')
+  })
+
+  it('returns null for a pdf-only book, which C1 cannot render', () => {
+    expect(readableFormat({ ...makeBook('a'), formats: ['pdf'] })).toBeNull()
+  })
+
+  it('returns null for a book with no files', () => {
+    expect(readableFormat({ ...makeBook('a'), formats: [] })).toBeNull()
   })
 })
