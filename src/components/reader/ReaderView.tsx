@@ -142,8 +142,14 @@ export function ReaderView() {
 
   if (!bookId || !format || !book) return null
 
+  // The reader gets a layer of its own, between the library and the modals:
+  // above all library chrome (ImportOverlay's drop target is z-40, its
+  // progress toasts z-30) and below every modal, dialog and context menu
+  // (all z-50), so a modal opened over an open book always paints on top.
+  // Sharing z-50 would leave that to tie-break on mount order in App.tsx —
+  // correct today, and silently broken by anyone who reorders it.
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in flex-col bg-ink-950">
+    <div className="fixed inset-0 z-[45] flex animate-fade-in flex-col bg-ink-950">
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-3">
         <button
           onClick={closeReader}
