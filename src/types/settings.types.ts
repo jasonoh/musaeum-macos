@@ -52,3 +52,26 @@ export interface SettingsView {
 
 /** Executables the settings modal can browse for. */
 export type ExecutableKind = 'python' | 'ebookConvert'
+
+/**
+ * Progress of the one-time Python environment bootstrap a packaged build runs
+ * on first launch (`services/python-env.ts`). Development builds use the
+ * repo's `sidecar/.venv` and never emit anything but a terminal state.
+ */
+export type PythonEnvStage =
+  /** Building the venv from a system interpreter. */
+  | 'creating'
+  /** `pip install -r requirements.txt` — the slow one. */
+  | 'installing'
+  /** An interpreter with the sidecar's dependencies is in place. */
+  | 'ready'
+  /** No usable interpreter, or the install failed. Metadata features degrade. */
+  | 'failed'
+
+export interface PythonEnvProgress {
+  stage: PythonEnvStage
+  /** One short line for the status bar. */
+  message: string
+  /** The reason, when there is one worth showing. */
+  detail?: string
+}

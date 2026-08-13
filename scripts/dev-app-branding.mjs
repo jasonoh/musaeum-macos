@@ -43,9 +43,23 @@ if (process.platform !== 'darwin' || !existsSync(dist)) process.exit(0)
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const appName = pkg.productName || pkg.name
 
-// A `.dev` suffix keeps this bundle from colliding with a future packaged
-// build the way it collided with the stock one — see the identifier note below
-const appId = `${pkg.build?.appId || 'org.theohs.musaeum'}.dev`
+// Read the packaged build's identifier from electron-builder.yml rather than
+// keeping a second copy here — the whole point of the suffix below is that
+// this bundle and the packaged one are distinguishable, which only holds if
+// they are derived from the same string. A one-line regex beats adding a YAML
+// parser for a single top-level scalar.
+function packagedAppId() {
+  try {
+    const yml = readFileSync(join(root, 'electron-builder.yml'), 'utf8')
+    return /^appId:[ \t]*['"]?([^'"\s#]+)/m.exec(yml)?.[1] ?? null
+  } catch {
+    return null
+  }
+}
+
+// A `.dev` suffix keeps this bundle from colliding with the packaged build the
+// way it collided with the stock one — see the identifier note below
+const appId = `${packagedAppId() || 'org.theohs.musaeum'}.dev`
 
 // ---------------------------------------------------------------------------
 // The Dock tile's label is the bundle directory's filename, minus `.app`.

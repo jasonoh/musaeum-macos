@@ -54,12 +54,45 @@ Infisical stops being a runtime dependency.
 npm run dev        # launch the app with hot reload
 npm run typecheck  # tsc across main + renderer
 npm run lint       # eslint
+npm test           # vitest main-process suite (Electron-as-Node)
 npm run build      # production bundles into out/
 ```
 
 First launch shows a banner to choose the library folder — point it at the
 mounted NAS share (or any local folder). Books dropped onto the window, or
 into `{library_root}/imports/`, are imported and hydrated automatically.
+
+## Packaging
+
+```bash
+npm run pack       # build + electron-builder → dist/Musaeum-<version>-arm64.dmg
+npm run pack:dir   # unpacked dist/mac-arm64/Musaeum.app, for fast iteration
+```
+
+**Packaging needs Node 20.19+** (electron-builder 26 loads an ESM-only
+dependency through `require`, which older Node refuses). Node 18 runs
+everything else in this repo fine but fails `npm run pack` with
+`ERR_REQUIRE_ESM`.
+
+The build is currently **unsigned** (`mac.identity: null` in
+`electron-builder.yml`), so macOS needs a right-click → Open the first time.
+Signing and notarization are tracked in [tasks.md](tasks.md).
+
+### Python in a packaged build
+
+The `.app` ships the sidecar as source but **not** `sidecar/.venv` — that venv
+is built against one machine's interpreter and hard-codes absolute paths, and
+nothing may write inside a signed bundle anyway. Instead, on first launch
+[`services/python-env.ts`](electron/main/services/python-env.ts) finds a system
+Python 3.11+, builds a venv in `~/Library/Application Support/Musaeum/
+sidecar-venv`, and installs `requirements.txt` into it (~20s, needs network,
+progress shown in the status bar). Later launches skip it; editing
+`requirements.txt` re-runs it, keyed on a hash recorded in the venv.
+
+So a packaged Musaeum requires **Python 3.11+ on the host**. Homebrew's
+interpreter is found by absolute path as well as by name, because a
+double-clicked app inherits launchd's minimal `PATH` and would not otherwise
+see it.
 
 ## Layout
 

@@ -3,6 +3,9 @@ import { existsSync, statSync } from 'fs'
 import type { AppSettings, EditableSettings, SettingsView } from '@shared/settings.types'
 import { deleteConfig, getConfig, setConfig } from './db'
 import { getLibraryRoot } from './nas-manager'
+// The version rules live with the module that builds the venv, so validating
+// a hand-picked interpreter and choosing one automatically can't disagree
+import { MIN_PYTHON, meetsMinimum, parseVersion } from './python-env'
 import * as sidecar from './sidecar'
 
 /**
@@ -19,9 +22,6 @@ import * as sidecar from './sidecar'
  */
 
 export const DEFAULT_SMB_URL = 'smb://ohnas'
-
-/** Minimum the sidecar's dependencies require (see README). */
-const MIN_PYTHON = [3, 11] as const
 
 const CONFIG_KEYS: Record<keyof EditableSettings, string> = {
   smbUrl: 'smb_url',
@@ -139,18 +139,11 @@ function assertPythonVersion(path: string): void {
   if (res.status !== 0) throw new Error(`${path} did not run — is it a Python interpreter?`)
   const version = parseVersion(`${res.stdout}${res.stderr}`)
   if (!version) throw new Error(`Could not read a version from ${path}`)
-  const [major, minor] = version
-  if (major < MIN_PYTHON[0] || (major === MIN_PYTHON[0] && minor < MIN_PYTHON[1])) {
+  if (!meetsMinimum(version)) {
     throw new Error(
-      `Python ${major}.${minor} is too old — the sidecar needs ${MIN_PYTHON[0]}.${MIN_PYTHON[1]} or newer`
+      `Python ${version[0]}.${version[1]} is too old — the sidecar needs ${MIN_PYTHON[0]}.${MIN_PYTHON[1]} or newer`
     )
   }
-}
-
-/** `Python 3.12.4` → [3, 12]. Old versions print to stderr, so both are searched. */
-function parseVersion(output: string): [number, number] | null {
-  const match = /Python (\d+)\.(\d+)/.exec(output)
-  return match ? [Number(match[1]), Number(match[2])] : null
 }
 
 /** Enough of a key to recognize, not enough to use. */

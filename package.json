@@ -7,12 +7,14 @@
   "author": "Jason Oh <jason@theohs.org>",
   "license": "MIT",
   "private": true,
-  "build": {
-    "appId": "org.theohs.musaeum"
+  "engines": {
+    "node": ">=20.19"
   },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "pack": "npm run build && electron-builder",
+    "pack:dir": "npm run build && electron-builder --dir",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
@@ -38,6 +40,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "electron": "^37.2.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
     "eslint": "^10.7.0",
     "eslint-plugin-react-hooks": "^7.1.1",

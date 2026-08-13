@@ -18,7 +18,12 @@ import type {
   MigrationScan,
   NASStatus
 } from './metadata.types'
-import type { EditableSettings, ExecutableKind, SettingsView } from './settings.types'
+import type {
+  EditableSettings,
+  ExecutableKind,
+  PythonEnvProgress,
+  SettingsView
+} from './settings.types'
 
 /**
  * All IPC results cross the bridge as IPCResult — handlers never throw
@@ -132,6 +137,7 @@ export interface MusaeumAPI {
     catalogRebuildProgress(cb: (p: { completed: number; total: number }) => void): Unsubscribe
     deviceContentsChanged(cb: (deviceId: string) => void): Unsubscribe
     menuCommand(cb: (command: MenuCommand) => void): Unsubscribe
+    pythonEnvProgress(cb: (progress: PythonEnvProgress) => void): Unsubscribe
   }
 }
 
@@ -146,5 +152,6 @@ export const EVENT_CHANNELS = {
   libraryChanged: 'event:library-changed',
   catalogRebuildProgress: 'event:catalog-rebuild-progress',
   deviceContentsChanged: 'event:device-contents-changed',
-  menuCommand: 'event:menu-command'
+  menuCommand: 'event:menu-command',
+  pythonEnvProgress: 'event:python-env-progress'
 } as const

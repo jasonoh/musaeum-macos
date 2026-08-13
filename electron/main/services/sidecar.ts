@@ -1,9 +1,14 @@
-import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'child_process'
-import { app } from 'electron'
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process'
 import { existsSync } from 'fs'
-import { join } from 'path'
 import { getConfig } from './db'
-import { isPackaged } from './runtime'
+import { resolvePython, sidecarDir, type ToolResolution } from './python-env'
+
+// Interpreter resolution lives in ./python-env, which also owns the managed
+// venv a packaged build creates on first launch. It is re-exported here
+// because this is the module that actually spawns the thing — Settings asks
+// `sidecar.resolvePython()` rather than re-deriving detection of its own.
+export { resolvePython } from './python-env'
+export type { ToolResolution } from './python-env'
 
 /**
  * JSON-RPC over stdio bridge to the Python sidecar.
@@ -18,7 +23,6 @@ interface PendingCall {
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000
-const PYTHON_CANDIDATES = ['python3.12', 'python3.11', 'python3']
 
 let proc: ChildProcessWithoutNullStreams | null = null
 let nextId = 1
@@ -37,33 +41,6 @@ export function onNotification(method: string, handler: (params: unknown) => voi
   return () => {
     handlers.delete(handler)
   }
-}
-
-function sidecarDir(): string {
-  return isPackaged ? join(process.resourcesPath, 'sidecar') : join(app.getAppPath(), 'sidecar')
-}
-
-/** Where a resolved tool path came from — surfaced in Settings. */
-export interface ToolResolution {
-  path: string | null
-  source: 'configured' | 'auto' | 'none'
-}
-
-/**
- * The interpreter the sidecar runs under. Exported with its provenance so
- * Settings reports what is actually in force rather than re-deriving it.
- */
-export function resolvePython(): ToolResolution {
-  const configured = getConfig('python_path')
-  if (configured && existsSync(configured)) return { path: configured, source: 'configured' }
-  // Prefer the sidecar's own venv (created by `python3 -m venv sidecar/.venv`)
-  const venvPython = join(sidecarDir(), '.venv', 'bin', 'python')
-  if (existsSync(venvPython)) return { path: venvPython, source: 'auto' }
-  for (const cmd of PYTHON_CANDIDATES) {
-    const res = spawnSync(cmd, ['--version'], { encoding: 'utf8' })
-    if (res.status === 0) return { path: cmd, source: 'auto' }
-  }
-  return { path: null, source: 'none' }
 }
 
 /**

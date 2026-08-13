@@ -1,5 +1,6 @@
 import { useLibraryStore } from '@/stores/library.store'
 import { useDeviceStore } from '@/stores/device.store'
+import { useUIStore } from '@/stores/ui.store'
 import { SpinnerIcon } from '@/components/shared/icons'
 
 export function StatusBar() {
@@ -9,6 +10,7 @@ export function StatusBar() {
   const filters = useLibraryStore((s) => s.filters)
   const importJobs = useLibraryStore((s) => s.importJobs)
   const transfers = useDeviceStore((s) => s.transfers)
+  const pythonEnv = useUIStore((s) => s.pythonEnv)
 
   const activeImports = Object.values(importJobs).filter(
     (j) => j.step !== 'done' && j.step !== 'error'
@@ -34,6 +36,22 @@ export function StatusBar() {
         <span className="flex items-center gap-1.5 text-gold-400">
           <SpinnerIcon className="h-3 w-3" />
           Sending {activeTransfers} to device…
+        </span>
+      )}
+      {/* First launch only: the packaged app builds its Python environment
+          before metadata features work. `title` carries the detail — pip's
+          failure line is far too long for a 28px bar. */}
+      {pythonEnv && (
+        <span
+          title={pythonEnv.detail}
+          className={
+            pythonEnv.stage === 'failed'
+              ? 'flex items-center gap-1.5 text-red-400'
+              : 'flex items-center gap-1.5 text-gold-400'
+          }
+        >
+          {pythonEnv.stage !== 'failed' && <SpinnerIcon className="h-3 w-3" />}
+          {pythonEnv.message}
         </span>
       )}
       {loading && <span className="ml-auto">Loading…</span>}

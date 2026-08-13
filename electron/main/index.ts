@@ -12,12 +12,13 @@ import { registerNASHandlers } from './ipc/nas'
 import { registerSettingsHandlers } from './ipc/settings'
 import { closeDb, getBook } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
-import { setMainWindow } from './services/events'
+import { broadcast, setMainWindow } from './services/events'
 import { bindToNAS, startWatcher, stopWatcher } from './services/file-watcher'
 import { installApplicationMenu } from './services/menu'
 import * as importer from './services/importer'
 import * as librarySync from './services/library-sync'
 import * as nas from './services/nas-manager'
+import { ensurePythonEnv } from './services/python-env'
 import { isPackaged } from './services/runtime'
 import * as sidecar from './services/sidecar'
 
@@ -113,7 +114,16 @@ app.whenReady().then(() => {
   const win = createWindow()
   setMainWindow(win)
 
-  sidecar.start()
+  // A packaged build has no venv until it makes one, so the sidecar starts
+  // only once an interpreter with its dependencies exists — starting first
+  // would fall through to a bare system python and crash-loop on the import
+  // of Pillow. Resolves in a microtask on every launch but the first, and a
+  // failure still starts the sidecar: dependencies installed globally are a
+  // setup python-env can't detect but the sidecar can still use.
+  void ensurePythonEnv((progress) => broadcast('pythonEnvProgress', progress)).finally(() => {
+    sidecar.start()
+  })
+
   nas.onStatusChange((status) => {
     if (status.state === 'connected') void librarySync.syncOnConnect()
   })

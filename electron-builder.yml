@@ -1,0 +1,76 @@
+appId: org.theohs.musaeum
+productName: Musaeum
+copyright: © 2026 Jason Oh
+
+directories:
+  # `build/` is buildResources by default, which is both why icon.icns is
+  # picked up with no `mac.icon` entry (see CLAUDE.md → App icon) and why the
+  # directory is not itself copied into the app.
+  buildResources: build
+  output: dist
+
+# An allowlist, not the scaffold's exclusion list. Everything the main process
+# needs is compiled into out/ by electron-vite, so naming the two things that
+# matter is shorter and cannot silently start shipping a new top-level
+# directory. Production `dependencies` (better-sqlite3) are collected by
+# electron-builder's own node_modules pass and are unaffected by this list —
+# devDependencies are never copied.
+files:
+  - out/**
+  - package.json
+
+# better-sqlite3's .node binary cannot be loaded from inside an asar archive.
+# electron-builder's smartUnpack detects this on its own; the rule is spelled
+# out anyway because the failure mode — a packaged app that dies opening the
+# database while dev works fine — is expensive to diagnose.
+asarUnpack:
+  - '**/*.node'
+
+# The Python sidecar ships as source. `services/sidecar.ts` already resolves
+# `process.resourcesPath/sidecar` when packaged, so no code change is needed
+# for it to be found here — only for its interpreter to exist (see
+# services/python-env.ts).
+#
+# `.venv` must never be copied: it is built against the host's Python and its
+# absolute paths, so a bundled copy would be broken on any other machine and
+# would defeat the managed venv in userData. tests/ and requirements-dev.txt
+# are dev-only weight.
+#
+# If a self-contained Python runtime is ever bundled instead (the option-B
+# path), it becomes a second entry here — `from: <runtime dir>, to: python` —
+# and `pythonCandidates()` in services/python-env.ts already prefers it.
+extraResources:
+  - from: sidecar
+    to: sidecar
+    filter:
+      - '**/*'
+      - '!.venv'
+      - '!.venv/**'
+      - '!**/__pycache__'
+      - '!**/__pycache__/**'
+      - '!tests'
+      - '!tests/**'
+      - '!requirements-dev.txt'
+
+mac:
+  category: public.app-category.productivity
+  darkModeSupport: true
+  target:
+    - target: dmg
+      arch: [arm64]
+  # Unsigned first cut. Without this electron-builder auto-discovers whatever
+  # Developer ID happens to be in the keychain, so the build would differ
+  # between machines. Signing + notarization is a tracked follow-up
+  # (tasks.md → Packaging); turning it on means removing this line and adding
+  # hardenedRuntime + entitlements + an afterSign notarize hook.
+  identity: null
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+      type: file
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications

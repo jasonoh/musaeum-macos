@@ -4,6 +4,49 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
+## [Unreleased] — 2026-08-12
+
+### Added
+- **Musaeum packages into a double-clickable `.app`.** `npm run pack` produces
+  a DMG via electron-builder; `npm run pack:dir` an unpacked bundle for faster
+  iteration. The build is unsigned for now, so macOS wants a right-click →
+  Open the first time — signing and notarization are the next step and need a
+  Developer ID.
+- The packaged app **builds its own Python environment on first launch**. The
+  bundle ships the sidecar as source but not its venv, which is built against
+  one machine's interpreter and could not live inside a signed bundle anyway;
+  instead the app finds a system Python 3.11+, creates a venv in Application
+  Support, and installs the sidecar's dependencies into it (~20s, once, with
+  progress in the status bar). Later launches skip it, and editing
+  `requirements.txt` re-runs it — the check is a hash recorded in the venv, so
+  a normal launch costs one file read.
+
+  Before this, a packaged build fell through to whatever bare `python3` it
+  could find, and the sidecar crash-looped on `import PIL` three times before
+  giving up: every metadata feature silently unavailable, with the reason only
+  visible in a terminal nobody was running. Interpreters are now searched by
+  absolute path as well as by name, because a double-clicked app inherits
+  launchd's minimal `PATH` and cannot see a Homebrew Python otherwise.
+
+  Bundling a self-contained CPython instead stays open: `resolvePython()`
+  checks a bundled runtime *before* the managed venv, so that path is one
+  packaging entry rather than a rewrite.
+
+### Changed
+- Interpreter resolution moved to `services/python-env.ts`, which now also
+  owns the minimum-version rules that `services/settings.ts` validates against
+  — so a hand-picked interpreter and an auto-detected one are judged by the
+  same standard. `sidecar.ts` re-exports `resolvePython`, so Settings still
+  asks the module that spawns the process. A bare system `python3` is now
+  version-checked before being offered, instead of being handed over on the
+  strength of running at all.
+
+### Notes
+- Packaging requires **Node 20.19+**: electron-builder 26 reaches an ESM-only
+  dependency through `require`, and older Node refuses. It fails *after*
+  electron-vite has finished building, which makes it look like a build error
+  rather than a toolchain one. `engines` in package.json now records the floor.
+
 ## [Unreleased] — 2026-08-11
 
 ### Added

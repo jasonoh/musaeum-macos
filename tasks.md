@@ -77,6 +77,12 @@ Blockers before pointing the app at the full 7000-book NAS library:
       - main: `services/settings.ts` covered as of 2026-08-11 (18 tests:
         resolution sources, validation rejections, batch atomicity, and the
         restart-only-on-real-change rule)
+      - main: `services/python-env.ts` covered as of 2026-08-12 (22 tests:
+        version parsing/comparison, `resolvePython` precedence, and every
+        `needsBootstrap` branch including the requirements-hash marker). The
+        actual venv build + `pip install` is NOT covered — it needs the
+        network and ~20s — and was verified by launching the packaged app
+        against a clean profile instead.
       - main: duplicate GATE — `importer` skip/add_new/add_format branches +
         `resolveDuplicate`/`abortPendingDecisions` (2026-07-27, untested)
       - main: device presence — `device-manager.scanDocuments` /
@@ -214,20 +220,52 @@ Post-merge backlog (from the 2026-07-18 whole-branch review):
 Goal: a double-clickable, signed `Musaeum.app` (DMG) that runs without a
 terminal or an `infisical run` wrapper. Sequenced roughly in build order.
 
-- [ ] App icon (dark-library mark) → `assets/icons/` (`.icns` for macOS)
-- [ ] **electron-builder config** — add `electron-builder` (devDep) + an
-      `electron-builder.yml`: `mac` target `dmg`, `category`
-      `public.app-category.productivity`, `main` already `out/main/index.js`.
-      Wire scripts: `"pack": "npm run build && electron-builder"`. First cut
-      unsigned/no-notarize to get a testable `.app`.
-- [ ] **Bundle the sidecar into Resources** — `extraResources` copies
-      `sidecar/` to `process.resourcesPath/sidecar` (sidecar.ts already
-      resolves this when packaged). Venv strategy TBD — likely require system
-      Python + first-run `pip install`, or ship a pex/zipapp. The bundled
-      copy must NOT include `.venv` (host-specific ABI).
+- [x] App icon (dark-library mark) — shipped 2026-08-12 as `build/icon.icns`
+      (not `assets/icons/`): `build/icon.png` is the master, `npm run icons`
+      packs the iconset. electron-builder finds it with no `mac.icon` entry
+      because `build/` is the default `buildResources` dir — confirmed in the
+      packaged bundle.
+- [x] **electron-builder config** — shipped 2026-08-12. `electron-builder.yml`
+      (dmg / arm64 / `public.app-category.productivity`) + `npm run pack` and
+      `npm run pack:dir`. `files` is an allowlist (`out/**`, `package.json`);
+      production `dependencies` are collected separately, so better-sqlite3
+      still ships and its `.node` is unpacked from the asar. Unsigned for now
+      via `mac.identity: null` — without it electron-builder signs with
+      whatever Developer ID is in the keychain, so the build would differ
+      between machines. Produces a 117MB DMG.
+      **Requires Node 20.19+** — electron-builder 26 `require()`s an ESM-only
+      `@noble/hashes`, so on Node 18 `npm run pack` dies with `ERR_REQUIRE_ESM`
+      *after* electron-vite has already built. `engines` now records this.
+- [x] **Bundle the sidecar into Resources** — shipped 2026-08-12.
+      `extraResources` copies `sidecar/` minus `.venv`, `tests/`,
+      `__pycache__`, and `requirements-dev.txt`.
+      Venv strategy decided: **option (a), first-run venv in `userData`**
+      (`services/python-env.ts`). Option (b) — bundling a standalone CPython —
+      is deliberately still reachable: `resolvePython()` checks
+      `Resources/python/bin/python3` *before* the managed venv, so adopting it
+      is one `extraResources` entry plus a build step, with no code change.
+      Rejected (c) pex/zipapp: it still needs a host interpreter and still
+      unpacks native wheels to a cache, so it keeps (a)'s constraint without
+      its simplicity.
 - [ ] **Signing + notarization** — Developer ID cert, hardened runtime,
       `notarize` via electron-builder `afterSign`. Needed for Gatekeeper to
-      open the app on another Mac without the right-click bypass.
+      open the app on another Mac without the right-click bypass. Turning it
+      on = delete `mac.identity: null`, add `hardenedRuntime` + entitlements
+      (the venv bootstrap spawns a Python subprocess, so check whether
+      `allow-jit` / `disable-library-validation` are needed) + an afterSign
+      hook. Blocked on an Apple Developer account.
+- [ ] Packaged-build follow-ups from the 2026-08-12 first cut:
+      - The bootstrap has no retry button — a failure (no Python, no network)
+        shows in the status bar and is only retried by relaunching. Settings
+        is where a "Set up the metadata engine" action belongs.
+      - `pip install` output is discarded except the last line on failure;
+        a long install shows one static "Installing metadata dependencies…"
+        with no percentage.
+      - Nothing verifies the *bundled* sidecar actually imports on a machine
+        that has never run the dev venv — verified here by launching with
+        launchd's minimal `PATH`, but not by an automated check.
+      - `dist/` output is untested on a second Mac (the whole point of
+        packaging); the DMG has only been opened on the build machine.
 - [ ] Decide update mechanism (spec question #5): manual download vs
       electron-updater — leaning manual for a personal tool
 - [ ] `npm audit` — 6 high-severity findings in the dev-dependency chain to

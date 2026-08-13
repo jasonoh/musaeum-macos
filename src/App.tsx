@@ -18,6 +18,7 @@ import { useDragDrop } from '@/hooks/useDragDrop'
 import { useLibrary } from '@/hooks/useLibrary'
 import { useMenuCommands } from '@/hooks/useMenuCommands'
 import { useNASStatus } from '@/hooks/useNASStatus'
+import { usePythonEnv } from '@/hooks/usePythonEnv'
 import { useUIStore } from '@/stores/ui.store'
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
   useDevice()
   useDragDrop()
   useMenuCommands()
+  usePythonEnv()
 
   const viewMode = useUIStore((s) => s.viewMode)
   const modal = useUIStore((s) => s.modal)

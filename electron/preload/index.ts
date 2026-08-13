@@ -83,7 +83,8 @@ const api: MusaeumAPI = {
     libraryChanged: (cb) => listen(EVENT_CHANNELS.libraryChanged, () => cb()),
     catalogRebuildProgress: (cb) => listen(EVENT_CHANNELS.catalogRebuildProgress, cb),
     deviceContentsChanged: (cb) => listen(EVENT_CHANNELS.deviceContentsChanged, cb),
-    menuCommand: (cb) => listen(EVENT_CHANNELS.menuCommand, cb)
+    menuCommand: (cb) => listen(EVENT_CHANNELS.menuCommand, cb),
+    pythonEnvProgress: (cb) => listen(EVENT_CHANNELS.pythonEnvProgress, cb)
   }
 }
 

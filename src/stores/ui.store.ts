@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { PythonEnvProgress } from '@shared/settings.types'
 
 export type ViewMode = 'grid' | 'list'
 export type ActiveModal = 'conflicts' | 'migration' | 'settings' | null
@@ -28,6 +29,12 @@ interface UIState {
   editingBookId: string | null
   /** Book + device whose "remove from device" confirmation is open. */
   removingFromDevice: DeviceRemovalTarget | null
+  /**
+   * Latest word from the first-launch Python bootstrap, or null once it has
+   * finished cleanly. A failure is kept so the status bar can keep saying why
+   * metadata features are unavailable.
+   */
+  pythonEnv: PythonEnvProgress | null
 
   setViewMode(mode: ViewMode): void
   selectBook(id: string | null): void
@@ -39,6 +46,7 @@ interface UIState {
   requestDelete(bookId: string | null): void
   requestEdit(bookId: string | null): void
   requestDeviceRemoval(target: DeviceRemovalTarget | null): void
+  setPythonEnv(progress: PythonEnvProgress | null): void
 }
 
 export const useUIStore = create<UIState>()(
@@ -53,6 +61,7 @@ export const useUIStore = create<UIState>()(
       deletingBookId: null,
       editingBookId: null,
       removingFromDevice: null,
+      pythonEnv: null,
 
       setViewMode: (viewMode) => set({ viewMode }),
       selectBook: (selectedBookId) => set({ selectedBookId }),
@@ -64,7 +73,8 @@ export const useUIStore = create<UIState>()(
       // Opening any dialog always dismisses the menu that launched it
       requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null }),
       requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null }),
-      requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null })
+      requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null }),
+      setPythonEnv: (pythonEnv) => set({ pythonEnv })
     }),
     {
       // Only the view choice outlives the session — selection, modals and
