@@ -55,11 +55,46 @@ export function skipRoot(root: string): void {
   handledRoots.add(root)
 }
 
+/**
+ * Reconcile incoming books' reading state against the local cache before a
+ * wholesale `db.replaceAllBooks` — call immediately before every one of
+ * them. Reading position is written to SQLite on every page turn but reaches
+ * the NAS (metadata.json, catalog.json) on a trailing clock: a 30s throttle
+ * for the former, session boundaries for the latter, and neither at all
+ * while offline (`reading-state.ts` parks the report in memory instead, so
+ * quitting offline loses it if nothing here restores it). A wholesale
+ * replace with the incoming (stale) catalog view would silently erase the
+ * newer local position. Local wins only when it is *strictly* newer — an
+ * `updatedAt` string compares correctly for that since it's ISO 8601, and
+ * equal timestamps keep the incoming record, since adoption is otherwise
+ * authoritative. Books whose local state won are pushed back to catalog.json
+ * in one batched write so the NAS catches up rather than staying stale.
+ *
+ * Reads the local cache once — this runs on every connect/refresh over the
+ * whole library (~6,900 books), not per book.
+ */
+function preserveLocalReadingState(incoming: Book[]): Book[] {
+  const localById = new Map(db.getBooks().map((b) => [b.id, b]))
+  const changed: Book[] = []
+  const merged = incoming.map((book) => {
+    const local = localById.get(book.id)
+    const localState = local?.readingState
+    if (!localState?.updatedAt) return book
+    const incomingUpdatedAt = book.readingState?.updatedAt ?? ''
+    if (localState.updatedAt <= incomingUpdatedAt) return book
+    const withLocalState: Book = { ...book, readingState: localState }
+    changed.push(withLocalState)
+    return withLocalState
+  })
+  if (changed.length > 0) upsertCatalog(changed)
+  return merged
+}
+
 /** Adopt the catalog at root as the local cache. Returns the book count. */
 export async function applyCatalog(root: string): Promise<number> {
   const cat = await catalog.readCatalog(root)
   if (!cat) throw new Error('No readable catalog.json at the library root')
-  db.replaceAllBooks(cat.books)
+  db.replaceAllBooks(preserveLocalReadingState(cat.books))
   handledRoots.add(root)
   broadcast('libraryChanged')
   return cat.books.length
@@ -77,7 +112,7 @@ export async function syncOnConnect(): Promise<void> {
   try {
     const result = await catalog.readCatalogDetailed(root)
     if (result.state === 'ok') {
-      db.replaceAllBooks(result.file.books)
+      db.replaceAllBooks(preserveLocalReadingState(result.file.books))
       broadcast('libraryChanged')
     } else if (result.state === 'missing' && db.getBooks().length > 0) {
       // Pre-catalog library on this machine: bootstrap the catalog from cache
@@ -101,7 +136,7 @@ export async function refreshLibrary(): Promise<{ books: number }> {
   const root = nas.getLibraryRoot()!
   const result = await catalog.readCatalogDetailed(root)
   if (result.state !== 'ok') return rebuildCatalog()
-  db.replaceAllBooks(result.file.books)
+  db.replaceAllBooks(preserveLocalReadingState(result.file.books))
   handledRoots.add(root)
   broadcast('libraryChanged')
   return { books: result.file.books.length }
@@ -114,7 +149,7 @@ export async function rebuildCatalog(): Promise<{ books: number }> {
   const books = await catalog.rebuildFromBookDirs(root, (p) =>
     broadcast('catalogRebuildProgress', p)
   )
-  db.replaceAllBooks(books)
+  db.replaceAllBooks(preserveLocalReadingState(books))
   handledRoots.add(root)
   broadcast('libraryChanged')
   return { books: books.length }

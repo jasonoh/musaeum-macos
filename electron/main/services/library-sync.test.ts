@@ -85,6 +85,91 @@ describe('applyCatalog', () => {
 
     expect(getBook('rs-adopt')?.readingState).toEqual(book.readingState)
   })
+
+  it('keeps a local reading position that is strictly newer than the catalog', async () => {
+    const local = makeBook('rs-local-newer')
+    local.readingState = { position: 'cfi-local', percent: 0.5, updatedAt: '2026-08-13T12:00:00Z' }
+    insertBook(local)
+
+    const incoming = makeBook('rs-local-newer')
+    incoming.readingState = { position: 'cfi-stale', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    await writeCatalog(root, [incoming])
+
+    await librarySync.applyCatalog(root)
+    await librarySync.flushForTests()
+
+    expect(getBook('rs-local-newer')?.readingState).toEqual(local.readingState)
+  })
+
+  it('adopts catalog reading state when it is newer than local', async () => {
+    const local = makeBook('rs-catalog-newer')
+    local.readingState = { position: 'cfi-local', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    insertBook(local)
+
+    const incoming = makeBook('rs-catalog-newer')
+    incoming.readingState = { position: 'cfi-fresh', percent: 0.9, updatedAt: '2026-08-13T12:00:00Z' }
+    await writeCatalog(root, [incoming])
+
+    await librarySync.applyCatalog(root)
+
+    expect(getBook('rs-catalog-newer')?.readingState).toEqual(incoming.readingState)
+  })
+
+  it('adopts the incoming record when timestamps are equal', async () => {
+    const tie = '2026-08-13T11:00:00Z'
+    const local = makeBook('rs-tie')
+    local.readingState = { position: 'cfi-local', percent: 0.3, updatedAt: tie }
+    insertBook(local)
+
+    const incoming = makeBook('rs-tie')
+    incoming.readingState = { position: 'cfi-incoming', percent: 0.7, updatedAt: tie }
+    await writeCatalog(root, [incoming])
+
+    await librarySync.applyCatalog(root)
+
+    expect(getBook('rs-tie')?.readingState).toEqual(incoming.readingState)
+  })
+
+  it('keeps local reading state when the incoming record has none (quit-while-offline)', async () => {
+    const local = makeBook('rs-offline-quit')
+    local.readingState = { position: 'cfi-stranded', percent: 0.4, updatedAt: '2026-08-13T09:00:00Z' }
+    insertBook(local)
+
+    const incoming = makeBook('rs-offline-quit')
+    incoming.readingState = null
+    await writeCatalog(root, [incoming])
+
+    await librarySync.applyCatalog(root)
+    await librarySync.flushForTests()
+
+    expect(getBook('rs-offline-quit')?.readingState).toEqual(local.readingState)
+  })
+
+  it('keeps the incoming reading state when there is no local book, without crashing', async () => {
+    const incoming = makeBook('rs-no-local')
+    incoming.readingState = { position: 'cfi-new-machine', percent: 0.1, updatedAt: '2026-08-13T08:00:00Z' }
+    await writeCatalog(root, [incoming])
+
+    await expect(librarySync.applyCatalog(root)).resolves.toBe(1)
+    expect(getBook('rs-no-local')?.readingState).toEqual(incoming.readingState)
+  })
+
+  it('pushes a locally-won reading state back to catalog.json', async () => {
+    const local = makeBook('rs-pushback')
+    local.readingState = { position: 'cfi-local', percent: 0.5, updatedAt: '2026-08-13T12:00:00Z' }
+    insertBook(local)
+
+    const incoming = makeBook('rs-pushback')
+    incoming.readingState = { position: 'cfi-stale', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    await writeCatalog(root, [incoming])
+
+    await librarySync.applyCatalog(root)
+    await librarySync.flushForTests()
+
+    const cat = await readCatalog(root)
+    const written = cat?.books.find((b) => b.id === 'rs-pushback')
+    expect(written?.readingState).toEqual(local.readingState)
+  })
 })
 
 describe('refreshLibrary', () => {
