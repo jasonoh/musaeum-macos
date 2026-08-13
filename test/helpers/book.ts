@@ -27,6 +27,7 @@ export function makeBook(id: string, title = `Book ${id}`): Book {
     lastModified: null,
     fileSizeBytes: null,
     readStatus: 'unread',
-    nasPath: `books/${id}`
+    nasPath: `books/${id}`,
+    readingState: null
   }
 }

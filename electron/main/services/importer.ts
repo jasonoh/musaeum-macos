@@ -206,7 +206,8 @@ async function importOne(filePath: string): Promise<ImportResult> {
       lastModified: now,
       fileSizeBytes: stat.size,
       readStatus: 'unread',
-      nasPath: join('books', bookId)
+      nasPath: join('books', bookId),
+      readingState: null
     }
     db.insertBook(book)
     await writeMetadataJson(bookDir, book)

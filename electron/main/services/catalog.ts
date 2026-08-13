@@ -205,7 +205,8 @@ export async function metadataJsonToBook(
     lastModified: json.last_modified ?? null,
     fileSizeBytes,
     readStatus: (READ_STATUSES.has(json.read_status ?? '') ? json.read_status : 'unread') as ReadStatus,
-    nasPath: join('books', dirName)
+    nasPath: join('books', dirName),
+    readingState: null
   }
 }
 

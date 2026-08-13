@@ -7,14 +7,16 @@ import type {
   BookFormat,
   BookSort,
   LibraryFacets,
+  ReadingState,
   ReadStatus
 } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
 import type { ConflictCandidate, MetadataConflict } from '@shared/metadata.types'
 import migration001 from '../schema/migrations/001_initial.sql?raw'
 import migration002 from '../schema/migrations/002_sort_keys.sql?raw'
+import migration003 from '../schema/migrations/003_reading_state.sql?raw'
 
-const MIGRATIONS: string[] = [migration001, migration002]
+const MIGRATIONS: string[] = [migration001, migration002, migration003]
 
 let db: Database.Database | null = null
 
@@ -113,6 +115,9 @@ interface BookRow {
   file_size_bytes: number | null
   read_status: string | null
   nas_path: string | null
+  reading_position: string | null
+  reading_percent: number | null
+  reading_updated_at: string | null
 }
 
 function rowToBook(r: BookRow): Book {
@@ -142,7 +147,17 @@ function rowToBook(r: BookRow): Book {
     lastModified: r.last_modified,
     fileSizeBytes: r.file_size_bytes,
     readStatus: (r.read_status ?? 'unread') as ReadStatus,
-    nasPath: r.nas_path
+    nasPath: r.nas_path,
+    // `updated_at` is the presence marker: a row with no timestamp has never
+    // been opened, and reporting `percent: 0` would render as 0% progress
+    // rather than as "not started"
+    readingState: r.reading_updated_at
+      ? {
+          position: r.reading_position,
+          percent: r.reading_percent ?? 0,
+          updatedAt: r.reading_updated_at
+        }
+      : null
   }
 }
 
@@ -274,8 +289,8 @@ export function insertBook(book: Book): void {
         language, description, isbn_10, isbn_13, goodreads_id, openlibrary_id,
         series_name, series_index, series_total, cover_thumb_path, cover_full_path,
         formats, tags, rating, date_added, last_modified, file_size_bytes,
-        read_status, nas_path
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        read_status, nas_path, reading_position, reading_percent, reading_updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       book.id,
@@ -303,7 +318,10 @@ export function insertBook(book: Book): void {
       book.lastModified,
       book.fileSizeBytes,
       book.readStatus,
-      book.nasPath
+      book.nasPath,
+      book.readingState?.position ?? null,
+      book.readingState?.percent ?? null,
+      book.readingState?.updatedAt ?? null
     )
 }
 
@@ -323,6 +341,20 @@ export function updateBook(id: string, updates: Partial<Book>): void {
   getDb()
     .prepare(`UPDATE books SET ${sets.join(', ')} WHERE id = ?`)
     .run(...params)
+}
+
+/**
+ * Reading position has its own writer rather than going through `updateBook`:
+ * it is a nested value the generic column map can't flatten, and `updateBook`
+ * bumps `last_modified` on every call — turning a page is not a metadata edit.
+ */
+export function setReadingState(id: string, state: ReadingState): void {
+  getDb()
+    .prepare(
+      `UPDATE books SET reading_position = ?, reading_percent = ?, reading_updated_at = ?
+       WHERE id = ?`
+    )
+    .run(state.position, state.percent, state.updatedAt, id)
 }
 
 export function deleteBook(id: string): void {

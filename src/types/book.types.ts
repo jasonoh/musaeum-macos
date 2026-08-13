@@ -2,6 +2,32 @@ export type BookFormat = 'epub' | 'mobi' | 'azw3' | 'pdf'
 
 export type ReadStatus = 'unread' | 'reading' | 'read'
 
+/**
+ * Where the reader left off. `position` is opaque to Musaeum — an EPUB CFI,
+ * whatever mobi.js yields for KF8, a page number for PDF — because three
+ * engines have to share one schema and none of them agree on a format.
+ * `percent` is the portable fallback: when a position no longer resolves,
+ * the reader seeks to the fraction instead.
+ */
+export interface ReadingState {
+  position: string | null
+  percent: number
+  updatedAt: string
+}
+
+/**
+ * What the reader reports as the user moves through a book. `final` marks a
+ * session boundary (reader closed, app quitting) — see reading-state.ts for
+ * what that costs. Shared because the renderer sends it and the main process
+ * consumes it.
+ */
+export interface ProgressReport {
+  bookId: string
+  position: string | null
+  percent: number
+  final: boolean
+}
+
 export interface Book {
   id: string
   title: string
@@ -29,6 +55,7 @@ export interface Book {
   fileSizeBytes: number | null
   readStatus: ReadStatus
   nasPath: string | null
+  readingState: ReadingState | null
 }
 
 export type SortField =

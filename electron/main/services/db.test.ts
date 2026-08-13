@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import {
   closeDb,
+  getBook,
   getBooks,
   getDb,
   getUnresolvedConflictCount,
@@ -12,7 +13,8 @@ import {
   insertConflict,
   logDeviceTransfer,
   replaceAllBooks,
-  searchBooks
+  searchBooks,
+  setReadingState
 } from './db'
 
 beforeEach(() => {
@@ -157,5 +159,37 @@ describe('replaceAllBooks', () => {
   it('re-enables foreign keys afterwards', () => {
     replaceAllBooks([])
     expect(getDb().pragma('foreign_keys', { simple: true })).toBe(1)
+  })
+})
+
+describe('reading state', () => {
+  it('round-trips through insert and read', () => {
+    const book = makeBook('rs-1')
+    book.readingState = { position: 'epubcfi(/6/4!/2/10)', percent: 0.42, updatedAt: '2026-08-13T10:00:00Z' }
+    insertBook(book)
+
+    expect(getBook('rs-1')?.readingState).toEqual({
+      position: 'epubcfi(/6/4!/2/10)',
+      percent: 0.42,
+      updatedAt: '2026-08-13T10:00:00Z'
+    })
+  })
+
+  it('is null for a book that has never been opened', () => {
+    insertBook(makeBook('rs-2'))
+    expect(getBook('rs-2')?.readingState).toBeNull()
+  })
+
+  it('setReadingState updates in place without touching last_modified', () => {
+    const book = makeBook('rs-3')
+    book.lastModified = '2020-01-01T00:00:00Z'
+    insertBook(book)
+
+    setReadingState('rs-3', { position: 'p1', percent: 0.1, updatedAt: '2026-08-13T10:00:00Z' })
+
+    const updated = getBook('rs-3')!
+    expect(updated.readingState?.percent).toBe(0.1)
+    // Turning a page is not a metadata edit
+    expect(updated.lastModified).toBe('2020-01-01T00:00:00Z')
   })
 })
