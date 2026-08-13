@@ -6,6 +6,8 @@ import { readableFormat } from '@shared/book.types'
 export interface ReaderTocItem {
   label: string
   href: string
+  /** Nesting level in the book's own TOC; the panel indents by it. */
+  depth?: number
 }
 
 export type ReaderStatus = 'idle' | 'loading' | 'ready' | 'error'

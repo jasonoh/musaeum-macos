@@ -4,6 +4,7 @@ import { seriesDisplay } from '@shared/book.types'
 import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
+import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
 import { CoverFallback, coverUrl } from './BookCard'
 import {
@@ -11,6 +12,7 @@ import {
   CloseIcon,
   FolderIcon,
   PencilIcon,
+  ReaderIcon,
   RefreshIcon,
   SendIcon,
   StarIcon,
@@ -207,6 +209,15 @@ export function BookDetail() {
             </div>
           )
         })}
+        {/* Temporary opener — Task 9 replaces it with the real entry points */}
+        <button
+          disabled={!online || busy !== null || book.formats.length === 0}
+          onClick={() => useReaderStore.getState().openBook(book)}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-ink-600 px-3 py-1.5 text-[12px] text-parchment-dim hover:border-gold-500/50 hover:text-gold-300 disabled:opacity-40"
+        >
+          <ReaderIcon className="h-4 w-4" />
+          Read
+        </button>
         <div className="flex gap-2">
           <button
             disabled={!online || busy !== null || !book.formats.includes('epub')}

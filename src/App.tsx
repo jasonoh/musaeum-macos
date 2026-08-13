@@ -11,6 +11,7 @@ import { ImportOverlay } from '@/components/library/ImportOverlay'
 import { RemoveFromDeviceDialog } from '@/components/library/RemoveFromDeviceDialog'
 import { ConflictQueue } from '@/components/metadata/ConflictQueue'
 import { MigrationWizard } from '@/components/migration/MigrationWizard'
+import { ReaderView } from '@/components/reader/ReaderView'
 import { SettingsModal } from '@/components/settings/SettingsModal'
 import { NASStatusBanner } from '@/components/shared/NASStatusBanner'
 import { useDevice } from '@/hooks/useDevice'
@@ -55,6 +56,7 @@ export default function App() {
       {/* Keyed so the form re-initializes from whichever book is being edited */}
       {editingBookId && <BookEditor key={editingBookId} />}
       <RemoveFromDeviceDialog />
+      <ReaderView />
 
       {modal === 'conflicts' && <ConflictQueue />}
       {modal === 'migration' && <MigrationWizard />}

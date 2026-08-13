@@ -48,6 +48,14 @@ export const BookIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+/** Open book — "read this here", as against BookIcon's closed spine. */
+export const ReaderIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M12 7.5C10.6 6.2 8.7 5.5 6.5 5.5H3v12h3.5c2.2 0 4.1.7 5.5 2 1.4-1.3 3.3-2 5.5-2H21v-12h-3.5c-2.2 0-4.1.7-5.5 2z" />
+    <line x1="12" y1="7.5" x2="12" y2="19.5" />
+  </svg>
+)
+
 export const StarIcon = ({ className, filled }: IconProps & { filled?: boolean }) => (
   <svg {...base(className)} fill={filled ? 'currentColor' : 'none'}>
     <path d="M12 3l2.7 5.6 6.1.8-4.5 4.3 1.1 6-5.4-2.9-5.4 2.9 1.1-6L3.2 9.4l6.1-.8L12 3z" />
