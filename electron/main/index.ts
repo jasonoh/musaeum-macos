@@ -9,6 +9,7 @@ import { registerLibraryHandlers } from './ipc/library'
 import { registerMetadataHandlers } from './ipc/metadata'
 import { registerMigrationHandlers } from './ipc/migration'
 import { registerNASHandlers } from './ipc/nas'
+import { registerReaderHandlers } from './ipc/reader'
 import { registerSettingsHandlers } from './ipc/settings'
 import { resolveBookFile } from './services/book-bytes'
 import { closeDb, getBook } from './services/db'
@@ -20,6 +21,7 @@ import * as importer from './services/importer'
 import * as librarySync from './services/library-sync'
 import * as nas from './services/nas-manager'
 import { ensurePythonEnv } from './services/python-env'
+import * as readingState from './services/reading-state'
 import { isPackaged } from './services/runtime'
 import * as sidecar from './services/sidecar'
 
@@ -126,6 +128,7 @@ app.whenReady().then(() => {
   registerMigrationHandlers()
   registerFileHandlers()
   registerSettingsHandlers()
+  registerReaderHandlers()
 
   const win = createWindow()
   setMainWindow(win)
@@ -172,4 +175,5 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   importer.abortPendingDecisions()
+  void readingState.flushPending()
 })

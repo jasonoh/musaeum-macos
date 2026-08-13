@@ -73,6 +73,9 @@ const api: MusaeumAPI = {
     revealBook: (bookId, format) => invoke('files:revealBook', bookId, format),
     openBookFile: (bookId, format) => invoke('files:openBookFile', bookId, format)
   },
+  reader: {
+    saveProgress: (report) => invoke('reader:saveProgress', report)
+  },
   on: {
     nasStatusChanged: (cb) => listen(EVENT_CHANNELS.nasStatusChanged, cb),
     deviceConnected: (cb) => listen(EVENT_CHANNELS.deviceConnected, cb),

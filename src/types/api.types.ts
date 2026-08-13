@@ -6,7 +6,8 @@ import type {
   DuplicateDecision,
   ImportProgress,
   ImportResult,
-  LibraryFacets
+  LibraryFacets,
+  ProgressReport
 } from './book.types'
 import type { Device, TransferJob, TransferProgress } from './device.types'
 import type {
@@ -124,6 +125,10 @@ export interface MusaeumAPI {
     revealBook(bookId: string, format?: BookFormat): Promise<void>
     /** Open one of the book's files in the system default app for its type. */
     openBookFile(bookId: string, format: BookFormat): Promise<void>
+  }
+
+  reader: {
+    saveProgress(report: ProgressReport): Promise<void>
   }
 
   on: {
