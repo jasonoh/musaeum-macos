@@ -377,6 +377,13 @@ export async function writeMetadataJson(
     formats: book.formats,
     rating: book.rating,
     read_status: book.readStatus,
+    reading_state: book.readingState
+      ? {
+          position: book.readingState.position,
+          percent: book.readingState.percent,
+          updated_at: book.readingState.updatedAt
+        }
+      : null,
     date_added: book.dateAdded,
     last_modified: book.lastModified,
     ...(sources ? { metadata_sources: sources } : {})

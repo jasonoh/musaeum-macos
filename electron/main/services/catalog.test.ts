@@ -18,6 +18,7 @@ import {
   writeCatalog,
   type MetadataJson
 } from './catalog'
+import { writeMetadataJson } from './importer'
 
 let root: string
 beforeEach(() => {
@@ -271,5 +272,36 @@ describe('rebuildFromBookDirs', () => {
     expect(books[0].title).toBe('Second')
     const cat = await readCatalog(root)
     expect(cat?.books.length).toBe(1)
+  })
+})
+
+describe('reading state propagation', () => {
+  it('survives a metadata.json round-trip', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'musaeum-rs-'))
+    const book = makeBook('rs-1')
+    book.readingState = { position: 'epubcfi(/6/4!/2/10)', percent: 0.42, updatedAt: '2026-08-13T10:00:00Z' }
+
+    await writeMetadataJson(dir, book)
+    const json = JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')) as MetadataJson
+    const restored = await metadataJsonToBook(json, 'rs-1', dir)
+
+    expect(restored.readingState).toEqual(book.readingState)
+  })
+
+  it('reads as null when metadata.json predates reading state', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'musaeum-rs-'))
+    const restored = await metadataJsonToBook({ id: 'rs-2', title: 'Old Book' }, 'rs-2', dir)
+    expect(restored.readingState).toBeNull()
+  })
+
+  it('rejects a malformed reading_state rather than trusting it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'musaeum-rs-'))
+    const restored = await metadataJsonToBook(
+      { id: 'rs-3', title: 'Broken', reading_state: { percent: 5, position: 12 } } as unknown as MetadataJson,
+      'rs-3',
+      dir
+    )
+    // percent clamps into range; a non-string position is discarded
+    expect(restored.readingState).toEqual({ position: null, percent: 1, updatedAt: '' })
   })
 })

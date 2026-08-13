@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs'
 import type { Dirent } from 'fs'
 import { extname, join } from 'path'
-import type { Book, BookFormat, ReadStatus } from '@shared/book.types'
+import type { Book, BookFormat, ReadingState, ReadStatus } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
 
 export const CATALOG_FILENAME = 'catalog.json'
@@ -152,12 +152,35 @@ export interface MetadataJson {
   formats?: string[]
   rating?: number | null
   read_status?: string
+  reading_state?: {
+    position?: string | null
+    percent?: number | null
+    updated_at?: string | null
+  } | null
   date_added?: string | null
   last_modified?: string | null
 }
 
 const VALID_FORMATS = new Set(['epub', 'mobi', 'azw3', 'pdf'])
 const READ_STATUSES = new Set(['unread', 'reading', 'read'])
+
+/**
+ * metadata.json is written by us but read from a NAS any machine can touch,
+ * so reading state is validated rather than trusted: a percent outside 0–1
+ * would drive a progress bar off its track, and a non-string position would
+ * be handed to the engine as a seek target.
+ */
+function toReadingState(raw: MetadataJson['reading_state']): ReadingState | null {
+  if (!raw || typeof raw !== 'object') return null
+  const percent = typeof raw.percent === 'number' && Number.isFinite(raw.percent)
+    ? Math.min(1, Math.max(0, raw.percent))
+    : 0
+  return {
+    position: typeof raw.position === 'string' ? raw.position : null,
+    percent,
+    updatedAt: typeof raw.updated_at === 'string' ? raw.updated_at : ''
+  }
+}
 
 export async function metadataJsonToBook(
   json: MetadataJson,
@@ -206,7 +229,7 @@ export async function metadataJsonToBook(
     fileSizeBytes,
     readStatus: (READ_STATUSES.has(json.read_status ?? '') ? json.read_status : 'unread') as ReadStatus,
     nasPath: join('books', dirName),
-    readingState: null
+    readingState: toReadingState(json.reading_state)
   }
 }
 

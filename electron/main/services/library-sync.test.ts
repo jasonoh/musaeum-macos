@@ -6,7 +6,7 @@ import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
-import { closeDb, getBooks, insertBook } from './db'
+import { closeDb, getBook, getBooks, insertBook } from './db'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 
@@ -74,6 +74,16 @@ describe('applyCatalog', () => {
     const count = await librarySync.applyCatalog(root)
     expect(count).toBe(2)
     expect(getBooks().map((b) => b.id).sort()).toEqual(['a', 'b'])
+  })
+
+  it('preserves reading state across a catalog adoption', async () => {
+    const book = makeBook('rs-adopt')
+    book.readingState = { position: 'epubcfi(/6/4)', percent: 0.6, updatedAt: '2026-08-13T10:00:00Z' }
+    await writeCatalog(root, [book])
+
+    await librarySync.applyCatalog(root)
+
+    expect(getBook('rs-adopt')?.readingState).toEqual(book.readingState)
   })
 })
 
