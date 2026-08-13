@@ -10,3 +10,5 @@ sidecar/.venv/
 .env
 .env.local
 .claude.superpowers/
+.claude/worktrees/
+.superpowers/
