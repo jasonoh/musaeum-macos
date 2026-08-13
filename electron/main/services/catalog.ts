@@ -44,6 +44,49 @@ function withSortKeys(book: Book): Book {
   }
 }
 
+/**
+ * Reading state as it arrives from a file — every field is `unknown` because
+ * both files carrying it (metadata.json, catalog.json) are written by us but
+ * read from a NAS any machine can touch, and either may have been hand-edited
+ * or written by a different version.
+ */
+type UntrustedReadingState =
+  | { position?: unknown; percent?: unknown; updatedAt?: unknown }
+  | null
+  | undefined
+
+/**
+ * The one validator for reading state off disk, used by both read paths: a
+ * percent outside 0–1 would drive a progress bar off its track, and a
+ * non-string position would be handed to the engine as a seek target.
+ */
+function validateReadingState(raw: UntrustedReadingState): ReadingState | null {
+  if (!raw || typeof raw !== 'object') return null
+  const percent = typeof raw.percent === 'number' && Number.isFinite(raw.percent)
+    ? Math.min(1, Math.max(0, raw.percent))
+    : 0
+  return {
+    position: typeof raw.position === 'string' ? raw.position : null,
+    percent,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : ''
+  }
+}
+
+/**
+ * Normalize one catalog entry on read. catalog.json is read on every launch,
+ * so it needs the same guards the cold path (`metadataJsonToBook`) applies to
+ * metadata.json: it lives on a share any machine can write, and an
+ * out-of-range percent or non-string position reaching the reader is the same
+ * bug from either file. Entries with no reading state — nearly all of them —
+ * skip the allocation.
+ */
+function fromCatalogEntry(book: Book): Book {
+  const normalized = withSortKeys(book)
+  const readingState = validateReadingState(normalized.readingState)
+  if (readingState === null && normalized.readingState == null) return normalized
+  return { ...normalized, readingState }
+}
+
 export async function readCatalogDetailed(root: string): Promise<CatalogReadState> {
   let raw: string
   try {
@@ -57,7 +100,7 @@ export async function readCatalogDetailed(root: string): Promise<CatalogReadStat
     if (parsed.version !== CATALOG_VERSION || !Array.isArray(parsed.books)) {
       return { state: 'invalid' }
     }
-    return { state: 'ok', file: { ...parsed, books: parsed.books.map(withSortKeys) } }
+    return { state: 'ok', file: { ...parsed, books: parsed.books.map(fromCatalogEntry) } }
   } catch {
     return { state: 'invalid' }
   }
@@ -86,6 +129,39 @@ export function mergeBooks(current: Book[], updates: Book[]): Book[] {
   return [...byId.values()]
 }
 
+/** Typed field copy — keeps `mergeBookFields` free of casts. */
+function copyField<K extends keyof Book>(target: Book, source: Book, key: K): void {
+  target[key] = source[key]
+}
+
+/**
+ * Merge only `fields` from each update onto the catalog's existing entry,
+ * instead of replacing it (`mergeBooks`). A whole-record upsert is right after
+ * a deliberate edit, where this machine's copy *is* the newest; it is wrong
+ * for a background push like reading position, where the rest of this
+ * machine's snapshot may be days stale and would silently overwrite a title,
+ * tag or rating changed on another machine. A book the catalog does not hold
+ * at all is inserted whole — there is nothing to preserve.
+ */
+export function mergeBookFields(
+  current: Book[],
+  updates: Book[],
+  fields: readonly (keyof Book)[]
+): Book[] {
+  const byId = new Map(current.map((b) => [b.id, b]))
+  for (const update of updates) {
+    const existing = byId.get(update.id)
+    if (!existing) {
+      byId.set(update.id, update)
+      continue
+    }
+    const merged = { ...existing }
+    for (const field of fields) copyField(merged, update, field)
+    byId.set(update.id, merged)
+  }
+  return [...byId.values()]
+}
+
 // All catalog mutations funnel through one promise chain — concurrent
 // imports would otherwise interleave their read-modify-write cycles
 let queue: Promise<unknown> = Promise.resolve()
@@ -108,6 +184,22 @@ export function upsertIntoCatalog(
   return enqueue(async () => {
     const current = (await readCatalog(root))?.books ?? fallback()
     await writeCatalog(root, mergeBooks(current, updates))
+  })
+}
+
+/**
+ * Like `upsertIntoCatalog`, but updates only `fields` on entries the catalog
+ * already holds (see `mergeBookFields`). Same serialized read-modify-write.
+ */
+export function updateFieldsInCatalog(
+  root: string,
+  updates: Book[],
+  fields: readonly (keyof Book)[],
+  fallback: () => Book[]
+): Promise<void> {
+  return enqueue(async () => {
+    const current = (await readCatalog(root))?.books ?? fallback()
+    await writeCatalog(root, mergeBookFields(current, updates, fields))
   })
 }
 
@@ -164,22 +256,14 @@ export interface MetadataJson {
 const VALID_FORMATS = new Set(['epub', 'mobi', 'azw3', 'pdf'])
 const READ_STATUSES = new Set(['unread', 'reading', 'read'])
 
-/**
- * metadata.json is written by us but read from a NAS any machine can touch,
- * so reading state is validated rather than trusted: a percent outside 0–1
- * would drive a progress bar off its track, and a non-string position would
- * be handed to the engine as a seek target.
- */
+/** metadata.json's snake_case spelling, mapped onto the shared validator. */
 function toReadingState(raw: MetadataJson['reading_state']): ReadingState | null {
   if (!raw || typeof raw !== 'object') return null
-  const percent = typeof raw.percent === 'number' && Number.isFinite(raw.percent)
-    ? Math.min(1, Math.max(0, raw.percent))
-    : 0
-  return {
-    position: typeof raw.position === 'string' ? raw.position : null,
-    percent,
-    updatedAt: typeof raw.updated_at === 'string' ? raw.updated_at : ''
-  }
+  return validateReadingState({
+    position: raw.position,
+    percent: raw.percent,
+    updatedAt: raw.updated_at
+  })
 }
 
 export async function metadataJsonToBook(

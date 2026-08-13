@@ -14,10 +14,19 @@ import * as nas from './nas-manager'
 // must not re-apply and clobber books added since the first sync
 const handledRoots = new Set<string>()
 
-// Tracks in-flight fire-and-forget writes so tests (and shutdown) can await them
+// Tracks in-flight fire-and-forget writes so shutdown (and tests) can await
+// them — see `flushPendingWrites`.
 let pending: Promise<unknown> = Promise.resolve()
 function track(p: Promise<unknown>): void {
-  pending = pending.then(() => p.catch(() => undefined))
+  // The chain must never reject: it is awaited on the quit path, where a
+  // failed catalog write is a tolerable loss (the catalog is derived, and
+  // metadata.json already has the truth) but a blocked exit is not. Failures
+  // are logged rather than discarded — a silently failing catalog write is
+  // exactly the kind of thing that only surfaces as "the other machine never
+  // saw my position".
+  pending = pending.then(() =>
+    p.catch((err) => console.error('[catalog] pending write failed:', err))
+  )
 }
 
 export function upsertCatalog(books: Book[]): void {
@@ -27,6 +36,22 @@ export function upsertCatalog(books: Book[]): void {
     catalog
       .upsertIntoCatalog(root, books, () => db.getBooks())
       .catch((err) => console.error('[catalog] upsert failed:', err))
+  )
+}
+
+/**
+ * Update only `fields` on the catalog's existing entry for each book, rather
+ * than replacing the record. For background pushes (reading position) where
+ * the rest of this machine's snapshot may be stale — see
+ * `catalog.mergeBookFields`.
+ */
+export function updateCatalogFields(books: Book[], fields: readonly (keyof Book)[]): void {
+  const root = nas.getLibraryRoot()
+  if (!root || !nas.isOnline() || books.length === 0) return
+  track(
+    catalog
+      .updateFieldsInCatalog(root, books, fields, () => db.getBooks())
+      .catch((err) => console.error('[catalog] field update failed:', err))
   )
 }
 
@@ -106,7 +131,10 @@ function preserveLocalReadingState(incoming: Book[]): Book[] {
     changed.push(withLocalState)
     return withLocalState
   })
-  if (changed.length > 0) upsertCatalog(changed)
+  // Field-merge, not upsert: the rest of each record is the catalog's own
+  // (just-read) copy, and the enqueued write re-reads — so replacing the
+  // whole entry could undo an edit that landed in between.
+  if (changed.length > 0) updateCatalogFields(changed, ['readingState'])
   return merged
 }
 
@@ -175,10 +203,24 @@ export async function rebuildCatalog(): Promise<{ books: number }> {
   return { books: books.length }
 }
 
+/**
+ * Await every catalog write dispatched so far. The upsert helpers above are
+ * deliberately fire-and-forget — they sit on the critical path of an import
+ * or a page turn — but quit has to wait for them or `teardown` closes the
+ * database and exits with catalog.json's read-modify-write still in flight,
+ * leaving the derived cache one session behind on every machine. Never
+ * rejects (see `track`); callers bound it with their own timeout rather than
+ * this module arming a second one.
+ */
+export function flushPendingWrites(): Promise<void> {
+  return pending.then(() => undefined)
+}
+
 /** Test-only helpers. */
 export function resetForTests(): void {
   handledRoots.clear()
 }
+/** Alias of `flushPendingWrites`, kept for the tests that predate it. */
 export function flushForTests(): Promise<unknown> {
-  return pending
+  return flushPendingWrites()
 }

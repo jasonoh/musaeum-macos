@@ -1,5 +1,5 @@
 import { join } from 'path'
-import type { ProgressReport, ReadStatus, ReadingState } from '@shared/book.types'
+import type { Book, ProgressReport, ReadStatus, ReadingState } from '@shared/book.types'
 import * as db from './db'
 import { writeMetadataJson } from './importer'
 import * as librarySync from './library-sync'
@@ -24,6 +24,16 @@ import * as nas from './nas-manager'
  */
 
 const JSON_INTERVAL_MS = 30_000
+
+/**
+ * The only fields a progress save may push to catalog.json. Reading is not a
+ * deliberate edit: the rest of this machine's copy of the book can be days
+ * older than the catalog's, so upserting the whole record would quietly
+ * overwrite a title, tag or rating changed on another machine — a class of
+ * data loss that did not exist while catalog upserts only ever followed an
+ * edit or a hydration.
+ */
+const READING_FIELDS: readonly (keyof Book)[] = ['readingState', 'readStatus']
 
 const lastJsonWrite = new Map<string, number>()
 /** Books whose latest position has not reached the NAS yet — flushed at quit. */
@@ -82,30 +92,41 @@ export async function saveProgress(report: ProgressReport, now = Date.now()): Pr
   }
 
   if (report.final) {
-    librarySync.upsertCatalog([updated])
+    librarySync.updateCatalogFields([updated], READING_FIELDS)
     pending.delete(report.bookId)
   } else {
     pending.set(report.bookId, report)
   }
 }
 
-/** Flush every unsaved position. Called (indirectly, see below) on quit. */
+/**
+ * Flush every unsaved position. Called (indirectly, see below) on quit.
+ *
+ * `saveProgress` dispatches its catalog.json write fire-and-forget, so
+ * awaiting the metadata.json writes alone would let quit's `teardown` close
+ * the database and exit with the catalog's read-modify-write still in flight
+ * — the policy table's "quit → catalog.json" cell honored only when the app
+ * happens to keep running. Awaiting the queue closes that: it runs inside the
+ * caller's existing timeout (`flushPendingBeforeQuit`), and the queue never
+ * rejects, so a dead share still costs at most that one bound.
+ */
 export async function flushPending(): Promise<void> {
   const reports = [...pending.values()]
   pending.clear()
   for (const report of reports) {
     await saveProgress({ ...report, final: true })
   }
+  await librarySync.flushPendingWrites()
 }
 
 /**
  * Quit must never hang on a dead or stalled NAS share: `flushPending` writes
- * metadata.json (and, on the last book, kicks off a catalog.json upsert)
- * over SMB, and either can block indefinitely if the mount is wedged rather
- * than cleanly offline. 3s is comfortably more than a healthy SMB write of a
- * few KB needs, and short enough that quit never visibly hangs — losing the
- * pending NAS write on timeout is acceptable (SQLite already has the
- * position, and the next successful sync reconciles it back in via
+ * metadata.json and then waits for the queued catalog.json writes to land,
+ * both over SMB, and either can block indefinitely if the mount is wedged
+ * rather than cleanly offline. 3s is comfortably more than a healthy SMB
+ * write of a few KB needs, and short enough that quit never visibly hangs —
+ * losing the pending NAS write on timeout is acceptable (SQLite already has
+ * the position, and the next successful sync reconciles it back in via
  * `library-sync.ts`'s adoption-time reconcile); wedging app exit is not.
  *
  * `flush` is injectable so the timeout race itself is testable without a

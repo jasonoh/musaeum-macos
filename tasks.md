@@ -205,8 +205,13 @@ Post-merge backlog (from the 2026-07-18 whole-branch review):
 - [ ] Tag the SQLite cache with the root it mirrors (`cache_root` config) —
       switching roots can seed a fresh root's catalog with the old root's
       records (bootstrap branch); only matters if a second library ever exists
-- [ ] Atomic `writeMetadataJson` (.part + rename) — the rebuild walk gave torn
-      metadata.json files a new consumer (skipped + logged today)
+- [x] Atomic `writeMetadataJson` (.part + rename) — done 2026-08-13, mirroring
+      `catalog.ts`'s `writeCatalog`. The reader made this reachable rather than
+      theoretical: metadata.json is now rewritten every 30s of reading and
+      again at quit, where the 3s flush timeout deliberately lets the process
+      exit with an SMB write possibly mid-flight — and a torn file makes
+      `rebuildFromBookDirs` fail `JSON.parse` and drop the book from the
+      rebuilt catalog entirely
 - [ ] Rebuild walk conflates a per-folder SMB blip with a broken folder —
       could yield a reduced (never empty) catalog; re-runnable + logged, fold
       into the "NAS behavior untested against real SMB" pass, along with

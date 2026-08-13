@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
 import { closeDb, getBook, getBooks, insertBook } from './db'
@@ -287,5 +287,46 @@ describe('upsertCatalog / removeBookFromCatalog', () => {
     await librarySync.flushForTests()
     const cat = await readCatalog(root)
     expect(cat?.books.map((b) => b.id)).toEqual(['b'])
+  })
+})
+
+describe('updateCatalogFields', () => {
+  it('updates only the named fields on an entry another machine edited', async () => {
+    await writeCatalog(root, [{ ...makeBook('a', 'Edited Elsewhere'), tags: ['keep'] }])
+
+    const stale = makeBook('a', 'Stale Local')
+    stale.readingState = { position: 'cfi-local', percent: 0.5, updatedAt: '2026-08-13T12:00:00Z' }
+    librarySync.updateCatalogFields([stale], ['readingState'])
+    await librarySync.flushPendingWrites()
+
+    const entry = (await readCatalog(root))?.books.find((b) => b.id === 'a')
+    expect(entry?.title).toBe('Edited Elsewhere')
+    expect(entry?.tags).toEqual(['keep'])
+    expect(entry?.readingState).toEqual(stale.readingState)
+  })
+})
+
+describe('flushPendingWrites', () => {
+  it('resolves once a dispatched write has landed', async () => {
+    await writeCatalog(root, [])
+    librarySync.upsertCatalog([makeBook('b')])
+    await librarySync.flushPendingWrites()
+    // No second await: the write must already be on disk
+    expect((await readCatalog(root))?.books.map((b) => b.id)).toEqual(['b'])
+  })
+
+  it('resolves — and logs — when a catalog write fails, so quit is never blocked', async () => {
+    // A directory where writeCatalog wants its scratch file: the write fails
+    // (EISDIR) while the root itself stays mounted, so the upsert is actually
+    // attempted rather than skipped by the offline guard.
+    await fs.mkdir(join(root, 'catalog.json.part'))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      librarySync.upsertCatalog([makeBook('doomed')])
+      await expect(librarySync.flushPendingWrites()).resolves.toBeUndefined()
+      expect(errSpy).toHaveBeenCalled()
+    } finally {
+      errSpy.mockRestore()
+    }
   })
 })

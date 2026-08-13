@@ -388,5 +388,14 @@ export async function writeMetadataJson(
     last_modified: book.lastModified,
     ...(sources ? { metadata_sources: sources } : {})
   }
-  await fs.writeFile(join(bookDir, 'metadata.json'), JSON.stringify(json, null, 2), 'utf8')
+  // Atomic write: .part then rename, exactly as catalog.ts's writeCatalog —
+  // and more load-bearing here, because metadata.json is the canonical record
+  // while the catalog is a derived cache. Reading position rewrites this file
+  // every 30s of reading and again at quit, where the flush timeout
+  // deliberately lets the process exit with an SMB write possibly mid-flight;
+  // a torn file then fails JSON.parse in `rebuildFromBookDirs`, which skips
+  // the folder — so the book disappears from the rebuilt catalog entirely.
+  const target = join(bookDir, 'metadata.json')
+  await fs.writeFile(`${target}.part`, JSON.stringify(json, null, 2), 'utf8')
+  await fs.rename(`${target}.part`, target)
 }

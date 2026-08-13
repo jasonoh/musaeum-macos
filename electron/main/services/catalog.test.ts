@@ -7,6 +7,7 @@ import { makeBook } from '../../../test/helpers/book'
 import {
   CATALOG_VERSION,
   catalogPath,
+  mergeBookFields,
   mergeBooks,
   metadataJsonToBook,
   readCatalog,
@@ -14,6 +15,7 @@ import {
   rebuildFromBookDirs,
   removeFromCatalog,
   replaceCatalog,
+  updateFieldsInCatalog,
   upsertIntoCatalog,
   writeCatalog,
   type MetadataJson
@@ -106,6 +108,43 @@ describe('readCatalogDetailed', () => {
     }
   })
 
+  it('validates reading state from the catalog, not only from metadata.json', async () => {
+    // The hot path: catalog.json is read on every launch, and it lives on a
+    // share any machine can write. An out-of-range percent or a non-string
+    // position is the same bug here as in metadata.json, which the cold path
+    // already rejects.
+    await fs.writeFile(
+      catalogPath(root),
+      JSON.stringify({
+        version: CATALOG_VERSION,
+        generated_at: '2026-08-13T10:00:00Z',
+        books: [
+          { ...makeBook('rs-cat'), readingState: { position: 12, percent: 5, updatedAt: null } }
+        ]
+      }),
+      'utf8'
+    )
+    const result = await readCatalogDetailed(root)
+    expect(result.state).toBe('ok')
+    if (result.state === 'ok') {
+      expect(result.file.books[0].readingState).toEqual({
+        position: null,
+        percent: 1,
+        updatedAt: ''
+      })
+    }
+  })
+
+  it('passes a well-formed reading state through untouched', async () => {
+    const book = makeBook('rs-cat-ok')
+    book.readingState = { position: 'epubcfi(/6/4)', percent: 0.42, updatedAt: '2026-08-13T10:00:00Z' }
+    await writeCatalog(root, [book])
+    const result = await readCatalogDetailed(root)
+    if (result.state === 'ok') {
+      expect(result.file.books[0].readingState).toEqual(book.readingState)
+    }
+  })
+
   it('throws on a non-ENOENT read error', async () => {
     if (process.getuid?.() === 0) return // root ignores file modes
     await writeCatalog(root, [makeBook('a')])
@@ -124,6 +163,87 @@ describe('mergeBooks', () => {
     const merged = mergeBooks(current, [makeBook('a', 'New A'), makeBook('c')])
     expect(merged.map((b) => b.id).sort()).toEqual(['a', 'b', 'c'])
     expect(merged.find((b) => b.id === 'a')?.title).toBe('New A')
+  })
+})
+
+describe('mergeBookFields', () => {
+  it('updates only the named fields, keeping the rest of the existing entry', () => {
+    const inCatalog = { ...makeBook('a', 'Edited On Another Machine'), tags: ['from-b'], rating: 5 }
+    const staleLocal = {
+      ...makeBook('a', 'Stale Local Title'),
+      tags: [],
+      rating: null,
+      readStatus: 'reading' as const,
+      readingState: { position: 'p1', percent: 0.5, updatedAt: '2026-08-13T10:00:00Z' }
+    }
+
+    const merged = mergeBookFields([inCatalog], [staleLocal], ['readingState', 'readStatus'])
+
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({
+      title: 'Edited On Another Machine',
+      tags: ['from-b'],
+      rating: 5,
+      readStatus: 'reading'
+    })
+    expect(merged[0].readingState).toEqual(staleLocal.readingState)
+  })
+
+  it('inserts a book the catalog does not hold at all', () => {
+    const merged = mergeBookFields([makeBook('a')], [makeBook('b', 'Brand New')], ['readingState'])
+    expect(merged.map((b) => b.id).sort()).toEqual(['a', 'b'])
+    expect(merged.find((b) => b.id === 'b')?.title).toBe('Brand New')
+  })
+
+  it('does not mutate the entry it merges onto', () => {
+    const existing = makeBook('a', 'Catalog Title')
+    const merged = mergeBookFields(
+      [existing],
+      [{ ...makeBook('a', 'Stale'), readStatus: 'read' as const }],
+      ['readStatus']
+    )
+    expect(existing.readStatus).toBe('unread')
+    expect(merged[0].readStatus).toBe('read')
+  })
+})
+
+describe('updateFieldsInCatalog', () => {
+  it('preserves the catalog record and writes only the named fields', async () => {
+    await writeCatalog(root, [
+      { ...makeBook('a', 'Edited On Another Machine'), tags: ['keep'], rating: 4 }
+    ])
+
+    await updateFieldsInCatalog(
+      root,
+      [
+        {
+          ...makeBook('a', 'Stale Local Title'),
+          tags: [],
+          rating: null,
+          readStatus: 'reading' as const,
+          readingState: { position: 'p1', percent: 0.5, updatedAt: '2026-08-13T10:00:00Z' }
+        }
+      ],
+      ['readingState', 'readStatus'],
+      () => []
+    )
+
+    const cat = await readCatalog(root)
+    expect(cat?.books[0]).toMatchObject({
+      title: 'Edited On Another Machine',
+      tags: ['keep'],
+      rating: 4,
+      readStatus: 'reading'
+    })
+    expect(cat?.books[0].readingState?.position).toBe('p1')
+  })
+
+  it('inserts the whole record when the catalog has no entry for the book', async () => {
+    await writeCatalog(root, [])
+    await updateFieldsInCatalog(root, [makeBook('new', 'Never Catalogued')], ['readingState'], () => [])
+    const cat = await readCatalog(root)
+    expect(cat?.books.map((b) => b.id)).toEqual(['new'])
+    expect(cat?.books[0].title).toBe('Never Catalogued')
   })
 })
 
@@ -272,6 +392,53 @@ describe('rebuildFromBookDirs', () => {
     expect(books[0].title).toBe('Second')
     const cat = await readCatalog(root)
     expect(cat?.books.length).toBe(1)
+  })
+})
+
+describe('writeMetadataJson atomicity', () => {
+  async function bookDir(id: string): Promise<string> {
+    const dir = join(root, 'books', id)
+    await fs.mkdir(dir, { recursive: true })
+    return dir
+  }
+
+  it('leaves no .part file behind after a successful write', async () => {
+    const dir = await bookDir('atomic-1')
+    await writeMetadataJson(dir, makeBook('atomic-1'))
+
+    await expect(fs.access(join(dir, 'metadata.json.part'))).rejects.toThrow()
+    expect(JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')).id).toBe('atomic-1')
+  })
+
+  it('leaves the previous metadata.json intact when the write is interrupted', async () => {
+    const dir = await bookDir('atomic-2')
+    await writeMetadataJson(dir, makeBook('atomic-2', 'First Title'))
+    const before = await fs.readFile(join(dir, 'metadata.json'), 'utf8')
+
+    // Interrupt the write where the .part scheme means it can only be
+    // interrupted: the scratch file, before the rename. A directory in its
+    // place fails the write (EISDIR) at exactly that point, which is what a
+    // crash or a killed process mid-write looks like to the next reader.
+    await fs.mkdir(join(dir, 'metadata.json.part'))
+    await expect(writeMetadataJson(dir, makeBook('atomic-2', 'Second Title'))).rejects.toThrow()
+
+    // The canonical record still parses and still holds the old content — a
+    // plain fs.writeFile would have truncated it into an unparsable stub, and
+    // rebuildFromBookDirs would then drop the book from the catalog entirely.
+    const after = await fs.readFile(join(dir, 'metadata.json'), 'utf8')
+    expect(after).toBe(before)
+    expect(JSON.parse(after).title).toBe('First Title')
+  })
+
+  it('keeps a rebuild walk seeing the previous book after an interrupted write', async () => {
+    const dir = await bookDir('atomic-3')
+    await writeMetadataJson(dir, makeBook('atomic-3', 'Survivor'))
+    await fs.mkdir(join(dir, 'metadata.json.part'))
+    await expect(writeMetadataJson(dir, makeBook('atomic-3', 'Interrupted'))).rejects.toThrow()
+
+    const books = await rebuildFromBookDirs(root)
+    expect(books.map((b) => b.id)).toEqual(['atomic-3'])
+    expect(books[0].title).toBe('Survivor')
   })
 })
 

@@ -111,6 +111,37 @@ describe('saveProgress write tiering', () => {
     expect(catalogued?.readingState?.position).toBe('p9')
   })
 
+  it('pushes a position without overwriting fields edited on another machine', async () => {
+    await seed('b10')
+    // Machine B edited this book after machine A's snapshot of it. Reading is
+    // not an edit, so A's stale title/tags/rating must not ride along with
+    // the position it pushes.
+    await writeCatalog(root, [
+      { ...makeBook('b10', 'Edited On B'), tags: ['from-b'], rating: 5 }
+    ])
+
+    await saveProgress({ bookId: 'b10', position: 'p1', percent: 0.5, final: true }, 1_000)
+    await librarySync.flushForTests()
+
+    const entry = (await readCatalog(root))?.books.find((b) => b.id === 'b10')
+    expect(entry?.title).toBe('Edited On B')
+    expect(entry?.tags).toEqual(['from-b'])
+    expect(entry?.rating).toBe(5)
+    // …while the reading fields it is actually responsible for do land
+    expect(entry?.readingState?.position).toBe('p1')
+    expect(entry?.readStatus).toBe('reading')
+  })
+
+  it('adds a book the catalog has never seen as a whole record', async () => {
+    await seed('b11')
+    await saveProgress({ bookId: 'b11', position: 'p1', percent: 0.5, final: true }, 1_000)
+    await librarySync.flushForTests()
+
+    const entry = (await readCatalog(root))?.books.find((b) => b.id === 'b11')
+    expect(entry?.title).toBe('Book b11')
+    expect(entry?.readingState?.position).toBe('p1')
+  })
+
   it('advances read status as progress is saved', async () => {
     await seed('b5')
     await saveProgress({ bookId: 'b5', position: 'p1', percent: 0.1, final: false }, 1_000)
@@ -187,11 +218,41 @@ describe('flushPending', () => {
     await saveProgress({ bookId: 'b9', position: 'p1', percent: 0.1, final: true }, 1_000)
     await expect(flushPending()).resolves.toBeUndefined()
   })
+
+  it('waits for the catalog write, not just metadata.json', async () => {
+    const dir = await seed('b12')
+    await saveProgress({ bookId: 'b12', position: 'p1', percent: 0.1, final: false }, 1_000)
+    await saveProgress({ bookId: 'b12', position: 'p2', percent: 0.2, final: false }, 6_000)
+
+    await flushPending()
+
+    // Deliberately NO flushForTests() here. At quit there is no such step:
+    // the moment this resolves, the handshake calls quit() and teardown
+    // closes the database and exits. Awaiting a test-only helper would prove
+    // a property the shipped path does not have.
+    const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b12')
+    expect(catalogued?.readingState?.position).toBe('p2')
+    expect((await readJson(dir)).reading_state.position).toBe('p2')
+  })
 })
 
 describe('flushPendingBeforeQuit', () => {
   it('resolves once the flush completes, well inside the timeout', async () => {
     await expect(flushPendingBeforeQuit(1_000, () => Promise.resolve())).resolves.toBeUndefined()
+  })
+
+  it('lands the catalog write through the real default flush, inside the timeout', async () => {
+    await seed('b13')
+    await saveProgress({ bookId: 'b13', position: 'p1', percent: 0.1, final: false }, 1_000)
+    await saveProgress({ bookId: 'b13', position: 'p2', percent: 0.2, final: false }, 6_000)
+
+    // Only a timeout is passed, so this exercises the production `flushPending`
+    // — the catalog write must land inside the existing 3s bound, with no
+    // second timer of its own.
+    await flushPendingBeforeQuit(1_000)
+
+    const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b13')
+    expect(catalogued?.readingState?.position).toBe('p2')
   })
 
   it('does not wait for a stalled flush — quit is never blocked by a dead NAS write', async () => {
