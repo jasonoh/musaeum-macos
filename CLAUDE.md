@@ -204,10 +204,14 @@ engine). Configured in `electron.vite.config.ts` and both tsconfigs.
   gets raw `file://` access (CSP enforces this)
 - **Multi-machine**: `catalog.json` at the library root is a derived cache of
   every book's `metadata.json` (which stays canonical). Every metadata write
-  upserts it (bulk ops batch one write); on connect and on "Refresh Library"
-  the local SQLite cache is transactionally replaced from it; "Rebuild
-  Catalog" re-walks `books/*/metadata.json` as recovery. Last-write-wins,
-  one machine at a time. (`services/catalog.ts`, `services/library-sync.ts`)
+  upserts it (bulk ops batch one write) — a deliberate edit or hydration
+  upserts the whole record, but a background push like reading position
+  field-merges only its own fields onto the existing entry, so finishing a
+  chapter on one machine can't clobber an edit made on another; on connect
+  and on "Refresh Library" the local SQLite cache is transactionally replaced
+  from it; "Rebuild Catalog" re-walks `books/*/metadata.json` as recovery.
+  Last-write-wins, one machine at a time. (`services/catalog.ts`,
+  `services/library-sync.ts`)
 
 ### Book Storage Structure (NAS)
 
