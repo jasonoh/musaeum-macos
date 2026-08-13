@@ -20,7 +20,7 @@ import {
   writeCatalog,
   type MetadataJson
 } from './catalog'
-import { writeMetadataJson } from './importer'
+import { peekNextScratchId, writeMetadataJson } from './importer'
 
 let root: string
 beforeEach(() => {
@@ -402,11 +402,21 @@ describe('writeMetadataJson atomicity', () => {
     return dir
   }
 
-  it('leaves no .part file behind after a successful write', async () => {
+  // The scratch name is unique per call (pid + a per-process counter, not a
+  // fixed `.part` suffix — see the comment at its use site in importer.ts),
+  // so simulating an interrupted write means pre-occupying the exact path the
+  // *next* call will pick, which `peekNextScratchId` predicts without
+  // consuming it.
+  function nextScratchPath(dir: string): string {
+    return join(dir, `metadata.json.${process.pid}.${peekNextScratchId()}.part`)
+  }
+
+  it('leaves no scratch file behind after a successful write', async () => {
     const dir = await bookDir('atomic-1')
     await writeMetadataJson(dir, makeBook('atomic-1'))
 
-    await expect(fs.access(join(dir, 'metadata.json.part'))).rejects.toThrow()
+    const leftovers = (await fs.readdir(dir)).filter((f) => f.includes('.part'))
+    expect(leftovers).toEqual([])
     expect(JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')).id).toBe('atomic-1')
   })
 
@@ -419,7 +429,7 @@ describe('writeMetadataJson atomicity', () => {
     // interrupted: the scratch file, before the rename. A directory in its
     // place fails the write (EISDIR) at exactly that point, which is what a
     // crash or a killed process mid-write looks like to the next reader.
-    await fs.mkdir(join(dir, 'metadata.json.part'))
+    await fs.mkdir(nextScratchPath(dir))
     await expect(writeMetadataJson(dir, makeBook('atomic-2', 'Second Title'))).rejects.toThrow()
 
     // The canonical record still parses and still holds the old content — a
@@ -433,7 +443,7 @@ describe('writeMetadataJson atomicity', () => {
   it('keeps a rebuild walk seeing the previous book after an interrupted write', async () => {
     const dir = await bookDir('atomic-3')
     await writeMetadataJson(dir, makeBook('atomic-3', 'Survivor'))
-    await fs.mkdir(join(dir, 'metadata.json.part'))
+    await fs.mkdir(nextScratchPath(dir))
     await expect(writeMetadataJson(dir, makeBook('atomic-3', 'Interrupted'))).rejects.toThrow()
 
     const books = await rebuildFromBookDirs(root)

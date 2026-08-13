@@ -29,6 +29,25 @@ const jobs = new Map<string, ImportProgress>()
 
 const pendingDecisions = new Map<string, (d: DuplicateDecision) => void>()
 
+// Per-process counter giving each writeMetadataJson call a unique scratch
+// file name (see the comment at its use site for why a fixed name, as
+// writeCatalog uses, is unsafe here).
+let scratchCounter = 0
+function nextScratchId(): number {
+  scratchCounter += 1
+  return scratchCounter
+}
+
+/**
+ * Test-only: the id `writeMetadataJson`'s *next* call will use, without
+ * consuming it. Lets tests that simulate an interrupted write (by occupying
+ * the scratch path ahead of time, e.g. as a directory) predict the exact
+ * unique path a real call will pick, since it's no longer a fixed name.
+ */
+export function peekNextScratchId(): number {
+  return scratchCounter + 1
+}
+
 export function resolveDuplicate(jobId: string, decision: DuplicateDecision): void {
   const resolver = pendingDecisions.get(jobId)
   if (!resolver) return
@@ -395,7 +414,27 @@ export async function writeMetadataJson(
   // deliberately lets the process exit with an SMB write possibly mid-flight;
   // a torn file then fails JSON.parse in `rebuildFromBookDirs`, which skips
   // the folder — so the book disappears from the rebuilt catalog entirely.
+  //
+  // Unlike writeCatalog, this scratch name cannot be fixed: catalog writes are
+  // serialized through one promise queue (`catalog.ts`'s `enqueue`), so only
+  // one writer ever touches `catalog.json.part` at a time. metadata.json has
+  // no such queue — `reading:saveProgress` is unserialized, and its
+  // `lastJsonWrite` bookkeeping updates only after the await, so two page
+  // turns in the same session can both see themselves as "first" and both
+  // write the same book's metadata.json concurrently. A shared scratch path
+  // would let a second writer's rename land on a file the first is still
+  // mid-write into — the exact torn-file failure this atomic write exists to
+  // prevent. Suffixing with the pid and a per-process counter keeps every
+  // writer, in this process or another, on its own scratch file.
   const target = join(bookDir, 'metadata.json')
-  await fs.writeFile(`${target}.part`, JSON.stringify(json, null, 2), 'utf8')
-  await fs.rename(`${target}.part`, target)
+  const scratch = `${target}.${process.pid}.${nextScratchId()}.part`
+  await fs.writeFile(scratch, JSON.stringify(json, null, 2), 'utf8')
+  try {
+    await fs.rename(scratch, target)
+  } catch (err) {
+    // Best-effort cleanup only — never mask the original rename error, and
+    // never throw a second error out of a catch block.
+    await fs.rm(scratch, { force: true }).catch(() => undefined)
+    throw err
+  }
 }
