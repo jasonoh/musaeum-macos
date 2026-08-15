@@ -1,9 +1,10 @@
-# Design: Multi-book selection and bulk delete
+# Design: Multi-book selection and bulk actions
 
 **Date:** 2026-08-14
 **Status:** Approved (brainstorming session with Jason)
-**Scope:** Selection model for both library views, plus one bulk action —
-delete. Bulk metadata edit is explicitly deferred to the backlog.
+**Scope:** Selection model for both library views, plus three bulk actions —
+delete, send to device, and re-hydrate metadata. Bulk metadata edit is
+explicitly deferred to the backlog.
 
 Today the library can hold exactly one book at a time:
 `ui.store.selectedBookId: string | null`, read directly by `BookCard`,
@@ -12,8 +13,8 @@ Today the library can hold exactly one book at a time:
 twelve books is twelve trips through the same dialog.
 
 This replaces that single id with a real selection, adds ⌘-click / ⇧-click in
-both views and a checkbox column in the list, and gives the selection one
-action: delete.
+both views and a checkbox column in the list, and gives the selection three
+actions: delete, send to device, and re-hydrate metadata.
 
 ## What is in scope
 
@@ -21,16 +22,22 @@ action: delete.
 - A checkbox column in `ListView`, always visible, with a select-all header box
 - A selection panel in the detail slot when 2+ books are selected
 - Bulk delete: one confirmation, one batched main-process operation
+- Bulk send to device: N jobs onto the existing serial transfer queue
+- Bulk re-hydrate: one sequential, cancellable main-process job
 - Keyboard: ⇧+arrows extend, Escape clears, ⌘A selects all (see the caveat)
+
+**The three actions are deliberately not symmetric**, because the services
+under them are not. Delete needs a new batched main-process operation; send
+needs no main-process work at all; re-hydrate needs a whole job with progress
+and cancellation. Sections 9, 11 and 12 each justify their shape against what
+the existing service actually does, and the differences are the design rather
+than an inconsistency to be tidied away later.
 
 ## What is deliberately not in scope
 
 - **Bulk metadata edit** (add tags / set series / set read status across a
   selection). Wanted, and the largest piece of new UI in the family; it goes to
   `tasks.md` as backlog rather than into this phase.
-- **Bulk send-to-device** and **bulk re-hydrate.** Both are cheap loops over
-  existing services, but neither was asked for, and each carries its own
-  progress-reporting question (a serial transfer queue; a rate-limited API).
 - **Card checkboxes in the grid.** The grid gets modifier clicks only.
 - **Cross-view selection persistence beyond what already exists.** Selection
   lives in `ui.store`, so it already survives a grid↔list switch. Nothing here
@@ -132,8 +139,21 @@ height from container width, and a panel that changed width between modes
 would re-flow the grid on every selection size change.
 
 Contents: the count ("12 books selected"), the first ~5 titles with "+7 more",
-a danger-styled Delete button, and Clear. Nothing else — per-book actions have
-no meaning across a selection, and the ones that do are the deferred backlog.
+then the actions — **Send to {device}**, **Refresh metadata**, and a
+danger-styled **Delete**, separated from the other two — plus Clear.
+
+Ordering is safety, not taste: the destructive action sits apart from the two
+recoverable ones, and Delete is the only one styled as danger.
+
+Every action is gated on the NAS being online, exactly as the detail panel's
+equivalents already are. (Reading is the documented exception to that rule,
+and none of these three is a read.) Send is shown only when a device is
+connected, and its label carries the real device name, matching the detail
+panel's existing "Send to {device}" button.
+
+Per-book actions that have no group meaning — Read, Open in Preview, Show in
+Finder, Edit metadata — are absent, not disabled. The one group-meaningful
+action still missing is bulk metadata edit, which is the deferred backlog item.
 
 ## 5. ListView checkbox column
 
@@ -249,7 +269,96 @@ longer exist must not stay selected, and leaving that to `load()`'s prune
 would depend on broadcast timing. Books that **failed** to delete are kept
 selected, so the reported failure is also the retry.
 
-## 11. Testing
+## 11. Bulk send to device needs no main-process work
+
+Measured rather than assumed: `transferQueue.sendToDevice(bookId, deviceId)`
+(`transfer-queue.ts:31`) is **synchronous** — it returns a `TransferJob` after
+enqueueing, and the queue is already serial with `transferProgress` events
+driving the existing `TransferQueue` UI. Enqueueing costs no NAS I/O.
+
+So the renderer loops the existing IPC, in a new
+`device.store.sendBooksToDevice(ids, deviceId)` that merges the returned jobs
+into `transfers` the same way the single-book action does. No new IPC, no new
+service, no new progress UI — `StatusBar` already renders "Sending N to
+device…" off the same `transfers` map, and will simply count higher.
+
+Two rules:
+
+- **Books already on the device are skipped**, using the presence map the
+  device store already maintains, and the button label reflects the sendable
+  count ("Send 9 to Kindle" out of a selection of twelve). Presence is derived
+  from a scan of the device, so this is the same source of truth the card
+  badge and the detail panel's "On {device}" state use. If every selected book
+  is already there, the button is disabled and says so.
+- **The loop is fire-and-forget per book but sequential in the queue.** One
+  book that fails to convert or copy is logged to `device_history` with its
+  error, exactly as today; it does not stop the other eleven, because the
+  queue's existing per-job error handling already owns that.
+
+Conversions triggered by a send do write `metadata.json` and upsert the
+catalog per book, because a cached azw3 is a new format on that book. That is
+unchanged single-book behaviour and is not batched here: an `ebook-convert`
+run takes ~30 seconds, so one catalog write per conversion is nothing like the
+per-book cost that shapes the delete and hydrate designs.
+
+## 12. Bulk re-hydrate is a real job
+
+The opposite situation from send. `metadata:rehydrateBook` is already
+fire-and-forget (`void importer.hydrate(...)`), and each `hydrate` call does
+its own `writeMetadataJson`, `librarySync.upsertCatalog([updated])` and
+`broadcast('libraryChanged')` (`importer.ts:284–295`). Looping it in the
+renderer over fifty books would mean fifty whole-catalog rewrites over SMB,
+fifty full library reloads in the renderer, and fifty *concurrent* sidecar
+hydrations against rate-limited APIs — the sidecar dispatches on a thread
+pool, so nothing there serialises them.
+
+New service `electron/main/services/bulk-hydrate.ts` (business logic in
+services, never in a handler):
+
+- `assertOnline()` once; refuse to start if a job is already running — one at
+  a time, reported as a clear error rather than silently interleaved
+- **sequential**: `await importer.hydrate(...)` per book, which is what keeps
+  the API request rate at roughly the single-book rate the pipeline was built
+  and rate-limited for
+- broadcasts `bulkHydrateProgress` `{ completed, total, failed, running }`
+  after each book
+- checks a cancel flag between books, and stops early if `nas.isOnline()` goes
+  false — every remaining write would fail anyway, and reporting a stop is
+  better than reporting fifty failures
+- on finish (or cancel, or NAS loss): one `librarySync.writeFullCatalog()`,
+  one `broadcast('libraryChanged')`, one final progress event with
+  `running: false`
+- a book with no hydratable file is **skipped and counted**, not thrown. The
+  existing single-book handler looks for `.epub`/`.mobi`/`.azw3` only, so
+  PDF-only books have nothing to hydrate from; that file-finding logic is
+  extracted into one helper both call sites use, so they cannot drift.
+
+`importer.hydrate` gains an options parameter `{ batched?: boolean }`,
+defaulting false so the import path is byte-for-byte unchanged. When batched
+it skips its own `upsertCatalog` and its own `libraryChanged` broadcast — the
+job owns both. It still writes `metadata.json` per book: that file is the
+canonical store and is small and local to the book's own folder, which is
+exactly what the catalog is not. `conflictQueueUpdated` still fires per book,
+since it broadcasts a count and does no I/O.
+
+**Cancellation stops the loop, not the book in flight.** A sidecar call cannot
+be aborted cleanly mid-request, so the current book finishes and is counted;
+everything after it is dropped. The button says "Cancel", and the honest
+behaviour is that it stops within one book.
+
+Surface: `metadata:rehydrateBooks(ids)` and `metadata:cancelRehydrate()` in
+`ipc/metadata.ts` (thin wrappers), matching entries in `api.types.ts` and the
+preload, and a `bulkHydrateProgress` entry in `EVENT_CHANNELS`
+(`event:bulk-hydrate-progress`) alongside the existing progress channels.
+
+Progress surfaces in `StatusBar`, which already carries transient job state in
+this exact shape ("Importing 3…", "Sending 2 to device…"): a
+"Refreshing metadata 12/40…" row with a Cancel control beside it. It lives
+there rather than in the selection panel because the job outlives the
+selection — clearing the selection, or letting a background reload prune it,
+must never strand a running job with no way to stop it.
+
+## 13. Testing
 
 **TDD, tests first.**
 
@@ -273,8 +382,24 @@ which already builds a real library root and flushes `librarySync`:
 - unknown ids are reported, not thrown
 - an empty selection is a no-op that writes nothing
 
+`electron/main/services/bulk-hydrate.test.ts` — new, with the sidecar stubbed:
+
+- books are hydrated **sequentially**, not concurrently (the rate-limit
+  guarantee, asserted by overlapping call timestamps)
+- `catalog.json` is written **once** for the whole job, not per book
+- cancelling stops the loop, counts the in-flight book, and still writes the
+  catalog once
+- a book with no hydratable file (PDF-only) is skipped and counted, not thrown
+- NAS going offline mid-job stops it and reports
+- starting a second job while one runs is refused
+
+Send-to-device gets no new main-process test, because it adds no
+main-process code — the loop is a store method over an IPC call already
+covered by the transfer queue's own behaviour. Its verification is live.
+
 Live verification with the `verify` skill: ⌘-click, ⇧-click, checkbox and
-header select-all, ⌘A interception, bulk delete of several books, and
+header select-all, ⌘A interception, bulk delete of several books, a bulk send
+that skips books already on the device, a bulk re-hydrate with cancel, and
 **`scrollHeight` unchanged in the list view** — the row-height regression
 this design most risks.
 
@@ -284,15 +409,19 @@ this design most risks.
 
 New: `src/lib/selection.ts`, `src/lib/selection.test.ts`,
 `src/components/library/SelectionPanel.tsx`,
-`src/components/library/DeleteSelectionDialog.tsx`
+`src/components/library/DeleteSelectionDialog.tsx`,
+`electron/main/services/bulk-hydrate.ts`,
+`electron/main/services/bulk-hydrate.test.ts`
 
 Changed: `src/stores/ui.store.ts`, `src/stores/library.store.ts`,
-`src/components/library/GridView.tsx`, `ListView.tsx`, `BookCard.tsx`,
-`BookDetail.tsx`, `BookContextMenu.tsx`, `src/hooks/useBookNavigation.ts`,
+`src/stores/device.store.ts`, `src/components/library/GridView.tsx`,
+`ListView.tsx`, `BookCard.tsx`, `BookDetail.tsx`, `BookContextMenu.tsx`,
+`src/components/layout/StatusBar.tsx`, `src/hooks/useBookNavigation.ts`,
 `src/hooks/useMenuCommands.ts`, `src/App.tsx`, `src/types/api.types.ts`,
 `electron/main/services/menu.ts`, `services/book-delete.ts`,
-`electron/main/ipc/library.ts`, `electron/preload/index.ts`,
-`electron/main/services/book-delete.test.ts`
+`services/importer.ts` (the `batched` option on `hydrate`),
+`electron/main/ipc/library.ts`, `electron/main/ipc/metadata.ts`,
+`electron/preload/index.ts`, `electron/main/services/book-delete.test.ts`
 
 Docs: `CLAUDE.md` (a Selection section, and the `MusaeumAPI` surface),
 `tasks.md` (this phase, plus the bulk-metadata-edit backlog item),
@@ -308,3 +437,15 @@ Docs: `CLAUDE.md` (a Selection section, and the `MusaeumAPI` surface),
 4. **A partially failed bulk delete** leaves the library correct but the user
    informed of less than they asked for — which is the intended trade against
    an all-or-nothing transaction across N independent NAS folders.
+5. **The `batched` option on `importer.hydrate`** is the one change in this
+   design that touches the import path. It defaults to false and the import
+   call site is not modified, but a mistake here is silent: a batched hydrate
+   that forgot to write the catalog at the end would leave the other machine
+   with stale records, which is the same failure mode the reading-position
+   work had to fix. The "catalog written exactly once" test exists precisely
+   to pin this down.
+6. **A long bulk re-hydrate is minutes of API traffic.** It is sequential by
+   design, and the Google Books key matters more here than anywhere else in
+   the app — an unkeyed run of a few hundred books is the fastest way to meet
+   a rate limit. Cancellation is the mitigation, and it stops within one book,
+   not instantly.
