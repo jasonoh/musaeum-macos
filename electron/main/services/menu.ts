@@ -55,7 +55,9 @@ function buildTemplate(): MenuItemConstructorOptions[] {
       { role: 'cut' },
       { role: 'copy' },
       { role: 'paste' },
-      { role: 'selectAll' }
+      // Not `role: 'selectAll'` — that role owns ⌘A, and the library needs it.
+      // The renderer routes by focus so text fields keep their own select-all.
+      { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: command('select-all') }
     ]
   }
 

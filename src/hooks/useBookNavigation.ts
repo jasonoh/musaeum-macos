@@ -57,16 +57,22 @@ export function useBookNavigation({
   ready
 }: BookNavigationOptions): void {
   const books = useLibraryStore((s) => s.books)
-  const selectedBookId = useUIStore((s) => s.selectedBookId)
+  const cursorId = useUIStore((s) => s.selection.cursor)
+  const selectionSize = useUIStore((s) => s.selection.ids.size)
   const selectBook = useUIStore((s) => s.selectBook)
+  const extendSelectionTo = useUIStore((s) => s.extendSelectionTo)
+  const clearSelection = useUIStore((s) => s.clearSelection)
   const modal = useUIStore((s) => s.modal)
   const contextMenu = useUIStore((s) => s.contextMenu)
   const deletingBookId = useUIStore((s) => s.deletingBookId)
+  const deletingSelection = useUIStore((s) => s.deletingSelection)
   const editingBookId = useUIStore((s) => s.editingBookId)
   const removingFromDevice = useUIStore((s) => s.removingFromDevice)
   const readerBookId = useReaderStore((s) => s.bookId)
 
-  const index = selectedBookId ? books.findIndex((b) => b.id === selectedBookId) : -1
+  // Navigation follows the cursor, not the selection: with a range selected,
+  // the book the user last moved to is the one to keep in view
+  const index = cursorId ? books.findIndex((b) => b.id === cursorId) : -1
 
   /**
    * Whether this mount has already aligned itself to the selection. The first
@@ -111,6 +117,7 @@ export function useBookNavigation({
       modal ||
       contextMenu ||
       deletingBookId ||
+      deletingSelection ||
       editingBookId ||
       removingFromDevice ||
       readerBookId
@@ -120,9 +127,9 @@ export function useBookNavigation({
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return
       if (e.key === 'Escape') {
-        if (!selectedBookId) return
+        if (!selectionSize) return
         e.preventDefault()
-        selectBook(null)
+        clearSelection()
         return
       }
       if (!books.length) return
@@ -164,7 +171,10 @@ export function useBookNavigation({
           return
       }
       e.preventDefault() // arrows would otherwise scroll the container away
-      if (next !== index) selectBook(books[next].id)
+      if (next === index) return
+      // ⇧ extends the range from the anchor; a plain arrow collapses to one
+      if (e.shiftKey) extendSelectionTo(books[next].id)
+      else selectBook(books[next].id)
     }
 
     window.addEventListener('keydown', onKey)
@@ -174,13 +184,16 @@ export function useBookNavigation({
     modal,
     contextMenu,
     deletingBookId,
+    deletingSelection,
     editingBookId,
     removingFromDevice,
     readerBookId,
     books,
     index,
-    selectedBookId,
+    selectionSize,
     selectBook,
+    extendSelectionTo,
+    clearSelection,
     columns,
     rowHeight,
     node

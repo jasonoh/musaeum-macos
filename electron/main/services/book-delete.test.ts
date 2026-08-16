@@ -3,9 +3,9 @@ import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
-import { deleteBook, deleteFormats } from './book-delete'
+import { deleteBook, deleteBooks, deleteFormats } from './book-delete'
 import { readCatalog, writeCatalog } from './catalog'
 import { closeDb, getBook, getBooks, insertBook } from './db'
 import * as librarySync from './library-sync'
@@ -114,5 +114,68 @@ describe('deleteFormats', () => {
 
   it('throws for an unknown book', async () => {
     await expect(deleteFormats('missing', ['epub'])).rejects.toThrow(/not found/)
+  })
+})
+
+describe('deleteBooks', () => {
+  it('deletes every book, its folder, and its cache row', async () => {
+    const dirs = [await seed('m1', ['epub']), await seed('m2', ['epub']), await seed('m3', ['pdf'])]
+    await seed('keep', ['epub'])
+
+    const result = await deleteBooks(['m1', 'm2', 'm3'])
+
+    expect(result.deleted).toBe(3)
+    expect(result.failed).toEqual([])
+    for (const dir of dirs) {
+      await expect(fs.access(dir)).rejects.toThrow()
+    }
+    expect(getBooks().map((b) => b.id)).toEqual(['keep'])
+  })
+
+  it('writes the catalog once for the whole batch, not once per book', async () => {
+    await seed('m1', ['epub'])
+    await seed('m2', ['epub'])
+    await seed('m3', ['epub'])
+    await seed('keep', ['epub'])
+    const full = vi.spyOn(librarySync, 'writeFullCatalog')
+    const perBook = vi.spyOn(librarySync, 'removeBookFromCatalog')
+
+    await deleteBooks(['m1', 'm2', 'm3'])
+    await librarySync.flushForTests()
+
+    expect(full).toHaveBeenCalledTimes(1)
+    expect(perBook).not.toHaveBeenCalled()
+    // …and the file it wrote is correct, not merely written once
+    const catalog = await readCatalog(root)
+    expect(catalog?.books.map((b) => b.id)).toEqual(['keep'])
+    full.mockRestore()
+    perBook.mockRestore()
+  })
+
+  it('keeps going past a book it cannot delete, and reports it', async () => {
+    await seed('ok1', ['epub'])
+    await seed('ok2', ['epub'])
+
+    // An id with no row is the cheapest stand-in for a book that has gone
+    // missing under the batch — the point is that it doesn't abort the rest
+    const result = await deleteBooks(['ok1', 'missing-entirely', 'ok2'])
+
+    expect(result.deleted).toBe(2)
+    expect(result.failed).toEqual([
+      { id: 'missing-entirely', title: 'missing-entirely', error: 'Book not found' }
+    ])
+    expect(getBook('ok1')).toBeFalsy()
+    expect(getBook('ok2')).toBeFalsy()
+  })
+
+  it('writes nothing when nothing was deleted', async () => {
+    await seed('keep', ['epub'])
+    const full = vi.spyOn(librarySync, 'writeFullCatalog')
+
+    const result = await deleteBooks([])
+
+    expect(result.deleted).toBe(0)
+    expect(full).not.toHaveBeenCalled()
+    full.mockRestore()
   })
 })

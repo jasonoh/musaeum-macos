@@ -10,6 +10,7 @@ import type {
   ReadStatus
 } from '@shared/book.types'
 import { isBookSort } from '@shared/book.types'
+import type { BulkHydrateProgress } from '@shared/metadata.types'
 
 export type FacetKind = 'authors' | 'series' | 'tags' | 'formats' | 'readStatus'
 
@@ -23,6 +24,9 @@ interface LibraryState {
   importJobs: Record<string, ImportProgress>
   refreshing: boolean
   rebuildProgress: { completed: number; total: number } | null
+  /** Live bulk re-hydration progress, or null when no job is running. */
+  bulkHydrate: BulkHydrateProgress | null
+  setBulkHydrate(p: BulkHydrateProgress | null): void
 
   load(): Promise<void>
   setQuery(query: string): void
@@ -50,6 +54,7 @@ export const useLibraryStore = create<LibraryState>()(
       importJobs: {},
       refreshing: false,
       rebuildProgress: null,
+      bulkHydrate: null,
 
       async load() {
         const { query, filters, sort } = get()
@@ -130,6 +135,10 @@ export const useLibraryStore = create<LibraryState>()(
 
       setRebuildProgress(p) {
         set({ rebuildProgress: p })
+      },
+
+      setBulkHydrate(p) {
+        set({ bulkHydrate: p })
       }
     }),
     {

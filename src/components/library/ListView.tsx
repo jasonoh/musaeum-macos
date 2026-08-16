@@ -1,11 +1,12 @@
 import type { Book, SortField } from '@shared/book.types'
 import { defaultSortDirection, seriesDisplay } from '@shared/book.types'
+import { modifiersFrom } from '@/lib/selection'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
-import { useUIStore } from '@/stores/ui.store'
+import { selectionCount, useUIStore } from '@/stores/ui.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
 import { rowWindow, useScrollMetrics } from '@/hooks/useVirtualRows'
-import { SortArrowIcon, StarIcon } from '@/components/shared/icons'
+import { CheckIcon, SortArrowIcon, StarIcon } from '@/components/shared/icons'
 
 /**
  * Row pitch (px) the virtualizer assumes: py-2 (16) + one 20px line, plus the
@@ -20,8 +21,16 @@ const OVERSCAN_ROWS = 8
 const HEADER_HEIGHT = 37
 
 /** Column definitions; `field` omitted means the column isn't sortable. */
-const COLUMNS: { label: string; width: string; field?: SortField; align?: 'right' }[] = [
-  { label: 'Title', width: 'w-[30%]', field: 'title' },
+const COLUMNS: {
+  label: string
+  width: string
+  field?: SortField
+  align?: 'right'
+  /** The checkbox column: rendered by its own header and row cells. */
+  select?: true
+}[] = [
+  { label: '', width: 'w-10', select: true },
+  { label: 'Title', width: 'w-[28%]', field: 'title' },
   { label: 'Author', width: 'w-[20%]', field: 'author' },
   { label: 'Series', width: 'w-[18%]', field: 'series' },
   { label: 'Added', width: 'w-[12%]', field: 'date_added' },
@@ -30,8 +39,7 @@ const COLUMNS: { label: string; width: string; field?: SortField; align?: 'right
 ]
 
 function Rating({ value }: { value: number | null }) {
-  if (!value)
-    return <span className="block text-[13px] leading-5 text-parchment-faint">—</span>
+  if (!value) return <span className="block text-[13px] leading-5 text-parchment-faint">—</span>
   return (
     <span className="flex h-5 items-center gap-px text-gold-400">
       {Array.from({ length: value }, (_, i) => (
@@ -42,18 +50,19 @@ function Rating({ value }: { value: number | null }) {
 }
 
 function Row({ book }: { book: Book }) {
-  const selectBook = useUIStore((s) => s.selectBook)
-  const selected = useUIStore((s) => s.selectedBookId === book.id)
-  const openContextMenu = useUIStore((s) => s.openContextMenu)
+  const select = useUIStore((s) => s.select)
+  const toggleBookSelection = useUIStore((s) => s.toggleBookSelection)
+  const selected = useUIStore((s) => s.selection.ids.has(book.id))
+  const openContextMenuFor = useUIStore((s) => s.openContextMenuFor)
 
   return (
     <tr
-      onClick={() => selectBook(book.id)}
+      onClick={(e) => select(book.id, modifiersFrom(e))}
       // Same gesture as the grid: single click selects, double click reads
       onDoubleClick={() => useReaderStore.getState().openBook(book)}
       onContextMenu={(e) => {
         e.preventDefault()
-        openContextMenu({ bookId: book.id, x: e.clientX, y: e.clientY })
+        openContextMenuFor({ bookId: book.id, x: e.clientX, y: e.clientY })
       }}
       style={{ height: ROW_HEIGHT - 1 }} // the collapsed border supplies the 1px
       // `select-none` because double-click opens the book: without it the
@@ -63,7 +72,27 @@ function Row({ book }: { book: Book }) {
         selected ? 'bg-gold-500/10' : 'hover:bg-ink-850'
       }`}
     >
-      <td className="max-w-0 truncate py-2 pl-6 pr-3 font-display text-[13px] leading-5 text-parchment">
+      {/* The 20px line and block-level child keep this cell inside ROW_HEIGHT.
+          stopPropagation so ticking a box doesn't also run the row's click and
+          collapse the selection to this one book. */}
+      <td
+        className="w-10 py-2 pl-6 pr-2"
+        onClick={(e) => {
+          e.stopPropagation()
+          toggleBookSelection(book.id)
+        }}
+      >
+        <span className="flex h-5 items-center">
+          <span
+            className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-colors ${
+              selected ? 'border-gold-400 bg-gold-500/30 text-gold-200' : 'border-ink-600'
+            }`}
+          >
+            {selected && <CheckIcon className="h-2.5 w-2.5" />}
+          </span>
+        </span>
+      </td>
+      <td className="max-w-0 truncate px-3 py-2 font-display text-[13px] leading-5 text-parchment">
         {book.title}
       </td>
       <td className="max-w-0 truncate px-3 py-2 text-[13px] leading-5 text-parchment-dim">
@@ -119,7 +148,10 @@ function HeaderCell({
 
   const active = sort.field === field
   return (
-    <th className={`${width} ${padding} font-semibold`} aria-sort={ariaSort(active, sort.direction)}>
+    <th
+      className={`${width} ${padding} font-semibold`}
+      aria-sort={ariaSort(active, sort.direction)}
+    >
       <button
         onClick={() =>
           setSort({
@@ -142,6 +174,42 @@ function HeaderCell({
           }`}
           up={active ? sort.direction === 'asc' : defaultSortDirection(field) === 'asc'}
         />
+      </button>
+    </th>
+  )
+}
+
+/**
+ * Select-all box. "All" means every book currently loaded — that is, under
+ * the active search and filters — which is the only meaning that matches
+ * what is on screen.
+ */
+function SelectAllHeaderCell() {
+  const books = useLibraryStore((s) => s.books)
+  const count = useUIStore(selectionCount)
+  const selectAllBooks = useUIStore((s) => s.selectAllBooks)
+  const clearSelection = useUIStore((s) => s.clearSelection)
+
+  const all = books.length > 0 && count === books.length
+  const some = count > 0 && !all
+
+  return (
+    <th className="w-10 py-2 pl-6 pr-2">
+      <button
+        role="checkbox"
+        aria-checked={all ? 'true' : some ? 'mixed' : 'false'}
+        aria-label={all ? 'Deselect all books' : 'Select all books'}
+        onClick={() => (all ? clearSelection() : selectAllBooks())}
+        className="flex h-5 items-center"
+      >
+        <span
+          className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-colors ${
+            all || some ? 'border-gold-400 bg-gold-500/30 text-gold-200' : 'border-ink-600'
+          }`}
+        >
+          {all && <CheckIcon className="h-2.5 w-2.5" />}
+          {some && <span className="h-0.5 w-2 rounded bg-gold-200" />}
+        </span>
       </button>
     </th>
   )
@@ -187,16 +255,20 @@ export function ListView() {
       <table className="w-full table-fixed border-collapse">
         <thead className="sticky top-0 z-10 bg-ink-900">
           <tr className="border-b border-ink-700 text-left text-[11px] font-semibold uppercase tracking-wider text-parchment-faint">
-            {COLUMNS.map((c, i) => (
-              <HeaderCell
-                key={c.label}
-                label={c.label}
-                width={c.width}
-                field={c.field}
-                first={i === 0}
-                last={i === COLUMNS.length - 1}
-              />
-            ))}
+            {COLUMNS.map((c, i) =>
+              c.select ? (
+                <SelectAllHeaderCell key="select" />
+              ) : (
+                <HeaderCell
+                  key={c.label}
+                  label={c.label}
+                  width={c.width}
+                  field={c.field}
+                  first={i === 0}
+                  last={i === COLUMNS.length - 1}
+                />
+              )
+            )}
           </tr>
         </thead>
         <tbody>

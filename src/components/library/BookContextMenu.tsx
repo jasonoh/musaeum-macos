@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
-import { useUIStore } from '@/stores/ui.store'
+import { selectionCount, useUIStore } from '@/stores/ui.store'
 import {
   BookIcon,
+  CloseIcon,
   DeviceIcon,
   FolderIcon,
   OpenExternalIcon,
@@ -33,6 +34,9 @@ export function BookContextMenu() {
   const requestDelete = useUIStore((s) => s.requestDelete)
   const requestEdit = useUIStore((s) => s.requestEdit)
   const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
+  const count = useUIStore(selectionCount)
+  const clearSelection = useUIStore((s) => s.clearSelection)
+  const requestSelectionDelete = useUIStore((s) => s.requestSelectionDelete)
   const books = useLibraryStore((s) => s.books)
   // Selected as stable slices rather than a derived array, so the menu doesn't
   // re-render on every unrelated device-store update
@@ -69,6 +73,46 @@ export function BookContextMenu() {
   if (!target) return null
   const book = books.find((b) => b.id === target.bookId)
   if (!book) return null
+
+  if (count >= 2) {
+    return (
+      <div
+        className="fixed inset-0 z-50"
+        onClick={closeContextMenu}
+        onContextMenu={closeContextMenu}
+      >
+        <div
+          ref={ref}
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+          style={{ left: pos.x, top: pos.y }}
+          className="absolute w-52 animate-fade-in overflow-hidden rounded-lg border border-ink-700 bg-ink-850 py-1 shadow-cover-lift"
+        >
+          <p className="px-3 py-1 font-display text-[12px] text-parchment-faint">
+            {count} books selected
+          </p>
+          <div className="my-1 h-px bg-ink-700" />
+          {/* Per-book actions are absent rather than disabled: silently
+              applying "Read" to one book of twelve is worse than not offering
+              it. */}
+          <MenuItem
+            icon={<CloseIcon className="h-3.5 w-3.5" />}
+            label="Clear selection"
+            onClick={() => {
+              clearSelection()
+              closeContextMenu()
+            }}
+          />
+          <MenuItem
+            icon={<TrashIcon className="h-3.5 w-3.5" />}
+            label={`Delete ${count} books…`}
+            danger
+            onClick={() => requestSelectionDelete(true)}
+          />
+        </div>
+      </div>
+    )
+  }
 
   const holding = devices.filter((d) => onDevice[d.id]?.includes(book.id))
 

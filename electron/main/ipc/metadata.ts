@@ -1,7 +1,7 @@
-import { promises as fs } from 'fs'
-import { extname, join } from 'path'
+import { join } from 'path'
 import type { Book } from '@shared/book.types'
 import type { ConflictChoices } from '@shared/metadata.types'
+import * as bulkHydrate from '../services/bulk-hydrate'
 import * as db from '../services/db'
 import { broadcast } from '../services/events'
 import * as importer from '../services/importer'
@@ -76,12 +76,17 @@ export function registerMetadataHandlers(): void {
     const book = db.getBook(bookId)
     if (!book?.nasPath) throw new Error('Book not found')
     const bookDir = join(nas.getLibraryRoot()!, book.nasPath)
-    const files = await fs.readdir(bookDir)
-    const bookFile = files.find((f) =>
-      ['.epub', '.mobi', '.azw3'].includes(extname(f).toLowerCase())
-    )
-    if (!bookFile) throw new Error('No book file found to hydrate from')
+    const file = await bulkHydrate.findHydratableFile(bookDir)
+    if (!file) throw new Error('No book file found to hydrate from')
     // Fire and forget — hydration is always non-blocking
-    void importer.hydrate(bookId, join(bookDir, bookFile), bookDir)
+    void importer.hydrate(bookId, file, bookDir)
+  })
+
+  handle('metadata:rehydrateBooks', (bookIds: string[]) => {
+    bulkHydrate.startBulkHydrate(bookIds)
+  })
+
+  handle('metadata:cancelRehydrate', () => {
+    bulkHydrate.cancelBulkHydrate()
   })
 }

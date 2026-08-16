@@ -15,6 +15,13 @@ export function useMenuCommands(): void {
         if (cmd === 'open-settings') openModal('settings')
         else if (cmd === 'view-grid') setViewMode('grid')
         else if (cmd === 'view-list') setViewMode('list')
+        else if (cmd === 'select-all') {
+          // Text fields keep ⌘A: the menu item took the accelerator away from
+          // the `selectAll` role, so this hands it back where it belongs.
+          const el = document.activeElement
+          if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.select()
+          else useUIStore.getState().selectAllBooks()
+        }
       }),
     []
   )

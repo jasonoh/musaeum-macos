@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs'
 import { extname, join } from 'path'
+import type { BulkDeleteResult } from '@shared/api.types'
 import type { BookFormat } from '@shared/book.types'
 import * as db from './db'
 import { broadcast } from './events'
@@ -62,4 +63,52 @@ export async function deleteFormats(
 
   broadcast('libraryChanged')
   return { bookDeleted: false }
+}
+
+/**
+ * Delete many books in one pass.
+ *
+ * Not a loop over `deleteBook`: that function removes each book from the
+ * catalog individually, and every one of those enqueues a **whole-file**
+ * rewrite of catalog.json over SMB, plus a `libraryChanged` broadcast that
+ * reloads the entire library in the renderer. For a dozen books that is a
+ * dozen ~10MB writes and a dozen reloads. This does the per-book work with no
+ * catalog contact at all and finishes with one batched write.
+ *
+ * One book's failure never aborts the rest — the books are independent
+ * folders on a share that may be flaky, and eleven successful deletions plus
+ * an honest report beats a half-finished batch.
+ */
+export async function deleteBooks(ids: string[]): Promise<BulkDeleteResult> {
+  nas.assertOnline()
+  const root = nas.getLibraryRoot()!
+  const failed: BulkDeleteResult['failed'] = []
+  let deleted = 0
+
+  for (const id of ids) {
+    const book = db.getBook(id)
+    if (!book) {
+      failed.push({ id, title: id, error: 'Book not found' })
+      continue
+    }
+    try {
+      if (book.nasPath) {
+        await fs.rm(join(root, book.nasPath), { recursive: true, force: true })
+      }
+      db.deleteBook(id)
+      deleted++
+    } catch (err) {
+      failed.push({
+        id,
+        title: book.title,
+        error: err instanceof Error ? err.message : String(err)
+      })
+    }
+  }
+
+  if (deleted > 0) {
+    librarySync.writeFullCatalog()
+    broadcast('libraryChanged')
+  }
+  return { deleted, failed }
 }

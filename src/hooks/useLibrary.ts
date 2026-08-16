@@ -8,7 +8,18 @@ export function useLibrary(): void {
   const upsertImportJob = useLibraryStore((s) => s.upsertImportJob)
   const removeImportJob = useLibraryStore((s) => s.removeImportJob)
   const setRebuildProgress = useLibraryStore((s) => s.setRebuildProgress)
+  const setBulkHydrate = useLibraryStore((s) => s.setBulkHydrate)
   const setConflictCount = useUIStore((s) => s.setConflictCount)
+  const books = useLibraryStore((s) => s.books)
+  const pruneSelection = useUIStore((s) => s.pruneSelection)
+
+  // Selection is pruned to what is actually loaded. Without this, selecting
+  // twelve books and then typing a search leaves them selected but invisible,
+  // and "Delete 12 books" would delete books the user can no longer see. The
+  // cost — narrowing a filter drops the selection — is the intended trade.
+  useEffect(() => {
+    pruneSelection(books.map((b) => b.id))
+  }, [books, pruneSelection])
 
   useEffect(() => {
     void load()
@@ -21,6 +32,7 @@ export function useLibrary(): void {
       window.Musaeum.on.libraryChanged(() => void load()),
       window.Musaeum.on.conflictQueueUpdated((count) => setConflictCount(count)),
       window.Musaeum.on.catalogRebuildProgress((p) => setRebuildProgress(p)),
+      window.Musaeum.on.bulkHydrateProgress((p) => setBulkHydrate(p.running ? p : null)),
       window.Musaeum.on.importProgress((progress) => {
         upsertImportJob(progress)
         if (progress.step === 'done' || progress.step === 'error' || progress.step === 'skipped') {
@@ -30,5 +42,5 @@ export function useLibrary(): void {
       })
     ]
     return () => unsubs.forEach((u) => u())
-  }, [load, upsertImportJob, removeImportJob, setRebuildProgress, setConflictCount])
+  }, [load, upsertImportJob, removeImportJob, setRebuildProgress, setBulkHydrate, setConflictCount])
 }

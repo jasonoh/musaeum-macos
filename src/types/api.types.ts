@@ -11,6 +11,7 @@ import type {
 } from './book.types'
 import type { Device, TransferJob, TransferProgress } from './device.types'
 import type {
+  BulkHydrateProgress,
   ConflictChoices,
   MetadataConflict,
   MigrationJob,
@@ -40,7 +41,13 @@ export type Unsubscribe = () => void
  * what the action does — so every item here maps to something the UI can
  * also do on its own.
  */
-export type MenuCommand = 'open-settings' | 'view-grid' | 'view-list'
+export type MenuCommand = 'open-settings' | 'view-grid' | 'view-list' | 'select-all'
+
+/** Outcome of a batched delete: partial success is normal, not an error. */
+export interface BulkDeleteResult {
+  deleted: number
+  failed: { id: string; title: string; error: string }[]
+}
 
 /** The API surface exposed on window.Musaeum via contextBridge. */
 export interface MusaeumAPI {
@@ -51,6 +58,11 @@ export interface MusaeumAPI {
     searchBooks(query: string, sort?: BookSort): Promise<Book[]>
     updateBook(id: string, updates: Partial<Book>): Promise<void>
     deleteBook(id: string): Promise<void>
+    /**
+     * Delete many books in one batched operation. Partial success is normal:
+     * `failed` names the books that survived and why.
+     */
+    deleteBooks(ids: string[]): Promise<BulkDeleteResult>
     /**
      * Delete individual format files. Selecting every format deletes the book
      * outright — `bookDeleted` tells the caller that happened.
@@ -73,6 +85,10 @@ export interface MusaeumAPI {
     getConflictQueue(): Promise<MetadataConflict[]>
     resolveConflict(conflictId: number, choices: ConflictChoices): Promise<void>
     rehydrateBook(bookId: string): Promise<void>
+    /** Re-hydrate many books as one sequential job; progress via events. */
+    rehydrateBooks(bookIds: string[]): Promise<void>
+    /** Stop a running bulk re-hydrate after the book in flight. */
+    cancelRehydrate(): Promise<void>
   }
 
   devices: {
@@ -140,6 +156,7 @@ export interface MusaeumAPI {
     transferProgress(cb: (progress: TransferProgress) => void): Unsubscribe
     libraryChanged(cb: () => void): Unsubscribe
     catalogRebuildProgress(cb: (p: { completed: number; total: number }) => void): Unsubscribe
+    bulkHydrateProgress(cb: (p: BulkHydrateProgress) => void): Unsubscribe
     deviceContentsChanged(cb: (deviceId: string) => void): Unsubscribe
     menuCommand(cb: (command: MenuCommand) => void): Unsubscribe
     pythonEnvProgress(cb: (progress: PythonEnvProgress) => void): Unsubscribe
@@ -156,6 +173,7 @@ export const EVENT_CHANNELS = {
   transferProgress: 'event:transfer-progress',
   libraryChanged: 'event:library-changed',
   catalogRebuildProgress: 'event:catalog-rebuild-progress',
+  bulkHydrateProgress: 'event:bulk-hydrate-progress',
   deviceContentsChanged: 'event:device-contents-changed',
   menuCommand: 'event:menu-command',
   pythonEnvProgress: 'event:python-env-progress'

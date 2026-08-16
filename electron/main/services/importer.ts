@@ -249,7 +249,14 @@ export async function hydrate(
   bookId: string,
   filePath: string,
   bookDir: string,
-  job?: ImportProgress
+  job?: ImportProgress,
+  /**
+   * Batched: the caller owns the catalog write and the libraryChanged
+   * broadcast for the whole run. metadata.json is still written per book —
+   * it is the canonical store and lives in the book's own folder, which is
+   * exactly what catalog.json is not.
+   */
+  options: { batched?: boolean } = {}
 ): Promise<void> {
   const book = db.getBook(bookId)
   if (!book) return
@@ -282,7 +289,7 @@ export async function hydrate(
     const updated = db.getBook(bookId)
     if (updated) {
       await writeMetadataJson(bookDir, updated, result.metadata.metadata_sources)
-      librarySync.upsertCatalog([updated])
+      if (!options.batched) librarySync.upsertCatalog([updated])
       // Files were named from the pre-hydration title — often the filename, or
       // whatever a mispackaged EPUB claimed. Now that the title is settled, the
       // files follow it.
@@ -292,7 +299,7 @@ export async function hydrate(
     if (result.conflicts.length) {
       broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
     }
-    broadcast('libraryChanged')
+    if (!options.batched) broadcast('libraryChanged')
     if (job) emit(job, 'done')
   } catch (err) {
     // Hydration failure is non-fatal — the book stays with embedded metadata
@@ -390,9 +397,7 @@ export async function writeMetadataJson(
       ? { name: book.seriesName, index: book.seriesIndex, total: book.seriesTotal }
       : null,
     tags: book.tags,
-    cover: book.coverFullPath
-      ? { full: book.coverFullPath, thumb: book.coverThumbPath }
-      : null,
+    cover: book.coverFullPath ? { full: book.coverFullPath, thumb: book.coverThumbPath } : null,
     formats: book.formats,
     rating: book.rating,
     read_status: book.readStatus,

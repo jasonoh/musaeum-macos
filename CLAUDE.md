@@ -442,16 +442,42 @@ of an empty window under a full-height spacer.
 
 ### Selection & keyboard navigation
 
-Selection lives in `ui.store` (`selectedBookId`), not in either view, so it
-survives a grid↔list switch — but scroll position doesn't, since each view
-mounts its own scroller. `hooks/useBookNavigation.ts` closes that gap for both
-views: on mount it centres the selected book in the viewport, later moves only
-nudge it back into view, and arrow keys walk the same geometry the virtualizer
-uses (`columns` = 1 for the list; the list also passes its sticky header as
-`contentTop`/`stickyTop`). Home/End, PageUp/Down, and Escape (clear selection)
+Selection lives in `ui.store`, not in either view, so it survives a grid↔list
+switch — but scroll position doesn't, since each view mounts its own scroller.
+`hooks/useBookNavigation.ts` closes that gap for both views: on mount it centres
+the cursor book in the viewport, later moves only nudge it back into view, and
+arrow keys walk the same geometry the virtualizer uses (`columns` = 1 for the
+list; the list also passes its sticky header as `contentTop`/`stickyTop`).
+Home/End, PageUp/Down, ⇧+arrows (extend the range), and Escape (clear selection)
 are handled too. The handler is a window listener that bails when a modal,
 context menu, or text field owns the keyboard — those close themselves on
 Escape.
+
+Selection is a `Selection` (`src/lib/selection.ts`): a `Set` of ids plus an
+**anchor** (the range pivot, set by plain and ⌘ clicks) and a **cursor** (the
+keyboard focus, moved by ⇧ clicks and ⇧ arrows). Two fields, because a single
+"lead" cannot express both — repeated ⇧-clicks must re-range from one pivot
+rather than creep. The grammar lives in that pure module and is unit-tested
+there; views call `select(id, modifiersFrom(event))` and never do set math.
+`selectedBookId` survives as a **derived** selector — the id when exactly one
+book is selected, null otherwise — which is why the detail panel, the metadata
+editor and the single-book delete dialog needed no changes.
+
+`useLibrary` prunes the selection to the loaded books on every library change.
+Without it, selecting twelve books and then searching leaves them selected but
+invisible, and "Delete 12 books" would delete books the user cannot see. The
+cost — narrowing a filter drops the selection — is deliberate.
+
+**⌘A is a menu command, not a key listener.** The Edit menu's
+`{ role: 'selectAll' }` owns that accelerator, so `menu.ts` replaces it with a
+custom item and `useMenuCommands` routes by focus: an input or textarea gets
+`select()`, anything else selects every loaded book.
+
+Both views show membership the same way (gold ring on a card, gold row tint);
+the list adds a **checkbox column** with a tri-state select-all header, whose
+cell must keep a 20px line and a block-level child like every other cell — the
+row pitch is still exactly `ROW_HEIGHT` (measured: 37px pitch, 36px on the
+`<tr>` plus the collapsed border).
 
 ### Application menu
 
@@ -701,6 +727,40 @@ right-click a book in the grid or list (`BookContextMenu`), the hover trash
 button on `BookCard`, or the detail-panel trash button. The card's delete
 button is a *sibling* of the card `<button>` inside an overlay that mirrors
 the cover box — nested buttons are invalid HTML.
+
+### Bulk actions
+
+Three, and deliberately not symmetric — the services under them are not.
+
+- **Delete** — `book-delete.deleteBooks(ids)`. Not a loop over `deleteBook`:
+  that removes each book from the catalog individually, and every one of those
+  enqueues a whole-file rewrite of `catalog.json` over SMB plus a
+  `libraryChanged` broadcast that reloads the library. This does the per-book
+  work with no catalog contact and finishes with one `writeFullCatalog()`. A
+  single failure never aborts the rest; the result carries `failed` and those
+  books stay selected so the report doubles as the retry.
+- **Send to device** — no main-process work at all. `sendToDevice` returns as
+  soon as the job is enqueued and the transfer queue is already serial, so
+  `device.store.sendBooksToDevice` loops the existing IPC and `StatusBar`
+  counts the jobs for free. Books already on the device are skipped, using the
+  same scanned presence map the card badge uses.
+- **Re-hydrate** — `services/bulk-hydrate.ts`, a real job: sequential (the
+  sidecar's thread pool would otherwise fan out concurrent hydrations at
+  rate-limited APIs), cancellable, and batched via a `batched` option on
+  `importer.hydrate` that suppresses its per-book `upsertCatalog` and
+  `libraryChanged` so the job can write the catalog once at the end. Cancelling
+  stops the loop, not the book in flight. Progress and Cancel live in
+  `StatusBar`, because the job outlives the selection.
+
+`findHydratableFile` is shared between the bulk job and the single-book
+`metadata:rehydrateBook` handler so the two cannot disagree about what a book
+can be hydrated from. PDF-only books have nothing, and are skipped, not failed.
+
+The surface is `SelectionPanel` (the detail slot, same 360px width so the grid
+never re-flows when the selection changes size), a selection-scoped context
+menu, and `DeleteSelectionDialog`. Per-book actions are *absent* from the
+multi-selection menu rather than disabled — silently applying "Read" to one
+book of twelve is worse than not offering it.
 
 ### Duplicate Detection
 
@@ -1078,6 +1138,7 @@ interface MusaeumAPI {
     updateBook(id: string, updates: Partial<Book>): Promise<void>
     deleteBook(id: string): Promise<void>
     deleteFormats(id: string, formats: BookFormat[]): Promise<{ bookDeleted: boolean }>
+    deleteBooks(ids: string[]): Promise<BulkDeleteResult>  // batched; partial-tolerant
     getFacets(): Promise<LibraryFacets>          // filter sidebar counts
     refreshLibrary(): Promise<{ books: number }>   // re-read catalog.json into cache
     rebuildCatalog(): Promise<{ books: number }>   // recovery: walk metadata.json files
@@ -1090,6 +1151,8 @@ interface MusaeumAPI {
     getConflictQueue(): Promise<MetadataConflict[]>
     resolveConflict(conflictId: number, choices: ConflictChoices): Promise<void>
     rehydrateBook(bookId: string): Promise<void>
+    rehydrateBooks(bookIds: string[]): Promise<void>  // sequential job; events report
+    cancelRehydrate(): Promise<void>             // stops after the book in flight
   }
   devices: {
     getConnectedDevices(): Promise<Device[]>
@@ -1135,6 +1198,7 @@ interface MusaeumAPI {
     transferProgress(cb): Unsubscribe
     libraryChanged(cb): Unsubscribe              // any book data changed → reload
     catalogRebuildProgress(cb): Unsubscribe      // {completed, total} during rebuild
+    bulkHydrateProgress(cb): Unsubscribe         // bulk re-hydrate; running:false ends it
     menuCommand(cb): Unsubscribe                 // native menu → UI action
     pythonEnvProgress(cb): Unsubscribe           // first-run venv bootstrap
   }

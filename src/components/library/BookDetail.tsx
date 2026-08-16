@@ -5,7 +5,7 @@ import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useReaderStore } from '@/stores/reader.store'
-import { useUIStore } from '@/stores/ui.store'
+import { selectedBookId, useUIStore } from '@/stores/ui.store'
 import { CoverFallback, coverUrl } from './BookCard'
 import {
   CheckIcon,
@@ -26,7 +26,9 @@ const READ_STATUS_OPTIONS: { value: ReadStatus; label: string }[] = [
 ]
 
 export function BookDetail() {
-  const selectedBookId = useUIStore((s) => s.selectedBookId)
+  // The derived single selection: the panel is for one book, and the
+  // SelectionPanel takes over when several are selected
+  const bookId = useUIStore(selectedBookId)
   const selectBook = useUIStore((s) => s.selectBook)
   const books = useLibraryStore((s) => s.books)
   const load = useLibraryStore((s) => s.load)
@@ -39,10 +41,7 @@ export function BookDetail() {
   const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
   const [busy, setBusy] = useState<string | null>(null)
 
-  const book = useMemo(
-    () => books.find((b) => b.id === selectedBookId) ?? null,
-    [books, selectedBookId]
-  )
+  const book = useMemo(() => books.find((b) => b.id === bookId) ?? null, [books, bookId])
   if (!book) return null
   const full = coverUrl(book, 'full')
 
@@ -254,7 +253,9 @@ export function BookDetail() {
           </button>
           <button
             disabled={!online || busy !== null}
-            onClick={() => void run('rehydrate', () => window.Musaeum.metadata.rehydrateBook(book.id))}
+            onClick={() =>
+              void run('rehydrate', () => window.Musaeum.metadata.rehydrateBook(book.id))
+            }
             title="Re-fetch metadata"
             className="rounded-md border border-ink-600 px-2.5 py-1.5 text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
           >

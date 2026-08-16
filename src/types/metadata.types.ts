@@ -19,6 +19,15 @@ export type ConflictChoices = Record<string, MetadataSource>
 
 export type NASState = 'connected' | 'disconnected' | 'reconnecting' | 'unconfigured'
 
+/** Progress of a bulk re-hydration job. `running` false means it is over. */
+export interface BulkHydrateProgress {
+  completed: number
+  total: number
+  failed: number
+  skipped: number
+  running: boolean
+}
+
 export interface NASStatus {
   state: NASState
   libraryRoot: string | null
@@ -48,12 +57,7 @@ export interface MigrationJob {
   jobId: string
 }
 
-export type MigrationPhase =
-  | 'scanning'
-  | 'copying'
-  | 'hydrating'
-  | 'done'
-  | 'error'
+export type MigrationPhase = 'scanning' | 'copying' | 'hydrating' | 'done' | 'error'
 
 export interface MigrationProgress {
   jobId: string

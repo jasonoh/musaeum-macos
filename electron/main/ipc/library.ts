@@ -1,11 +1,5 @@
 import { join } from 'path'
-import type {
-  Book,
-  BookFilters,
-  BookFormat,
-  BookSort,
-  DuplicateDecision
-} from '@shared/book.types'
+import type { Book, BookFilters, BookFormat, BookSort, DuplicateDecision } from '@shared/book.types'
 import * as bookDelete from '../services/book-delete'
 import * as bookFiles from '../services/book-files'
 import * as db from '../services/db'
@@ -50,6 +44,8 @@ export function registerLibraryHandlers(): void {
   })
 
   handle('library:deleteBook', (id: string) => bookDelete.deleteBook(id))
+
+  handle('library:deleteBooks', (ids: string[]) => bookDelete.deleteBooks(ids))
 
   handle('library:deleteFormats', (id: string, formats: BookFormat[]) =>
     bookDelete.deleteFormats(id, formats)

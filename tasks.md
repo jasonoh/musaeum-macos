@@ -157,6 +157,21 @@ Blockers before pointing the app at the full 7000-book NAS library:
       (`hooks/useBookNavigation.ts`, 2026-08-10). **Enter to open** is still
       open — deliberately left out of C1; it should call the same
       `reader.openBook` action the four existing entry points use.
+- [x] **Multi-book selection and bulk actions** — shipped 2026-08-15.
+      ⌘-click and ⇧-click in both views, a checkbox column with select-all in
+      the list, a selection panel in the detail slot, and three bulk actions:
+      delete (batched, one catalog write), send to device (loop onto the
+      serial queue), re-hydrate (sequential cancellable job). Design:
+      `docs/superpowers/specs/2026-08-14-multi-book-selection-design.md`.
+      Not verified in the harness: the ⌘A **accelerator** itself (the menu
+      item and its renderer routing are in place, but driving a native menu
+      needs assistive access the verify sandbox doesn't have). If ⌘A ever
+      fails to reach the renderer, the documented fallback is to restore
+      `{ role: 'selectAll' }` and leave the header checkbox as select-all.
+- [ ] **Bulk metadata edit** — apply a field across a selection: add tags, set
+      series, set read status. The one group-meaningful action left out of the
+      selection work above; it needs its own modal and an "only changed
+      fields" write like `BookEditor`'s.
 - [ ] Metadata editor follow-ups (shipped 2026-08-10,
       `components/library/BookEditor.tsx`): no cover replacement (re-hydrate is
       the only way to change a cover), no multi-author editing (the schema

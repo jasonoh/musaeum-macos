@@ -22,6 +22,7 @@ const api: MusaeumAPI = {
     searchBooks: (query, sort) => invoke('library:searchBooks', query, sort),
     updateBook: (id, updates) => invoke('library:updateBook', id, updates),
     deleteBook: (id) => invoke('library:deleteBook', id),
+    deleteBooks: (ids) => invoke('library:deleteBooks', ids),
     deleteFormats: (id, formats) => invoke('library:deleteFormats', id, formats),
     getFacets: () => invoke('library:getFacets'),
     refreshLibrary: () => invoke('library:refreshLibrary'),
@@ -36,7 +37,9 @@ const api: MusaeumAPI = {
     getConflictQueue: () => invoke('metadata:getConflictQueue'),
     resolveConflict: (conflictId, choices) =>
       invoke('metadata:resolveConflict', conflictId, choices),
-    rehydrateBook: (bookId) => invoke('metadata:rehydrateBook', bookId)
+    rehydrateBook: (bookId) => invoke('metadata:rehydrateBook', bookId),
+    rehydrateBooks: (bookIds) => invoke('metadata:rehydrateBooks', bookIds),
+    cancelRehydrate: () => invoke('metadata:cancelRehydrate')
   },
   devices: {
     getConnectedDevices: () => invoke('devices:getConnectedDevices'),
@@ -44,8 +47,7 @@ const api: MusaeumAPI = {
     getTransferProgress: (jobId) => invoke('devices:getTransferProgress', jobId),
     exportToAppleBooks: (bookId) => invoke('devices:exportToAppleBooks', bookId),
     getOnDeviceBookIds: (deviceId) => invoke('devices:getOnDeviceBookIds', deviceId),
-    removeFromDevice: (bookId, deviceId) =>
-      invoke('devices:removeFromDevice', bookId, deviceId)
+    removeFromDevice: (bookId, deviceId) => invoke('devices:removeFromDevice', bookId, deviceId)
   },
   nas: {
     getStatus: () => invoke('nas:getStatus'),
@@ -85,6 +87,7 @@ const api: MusaeumAPI = {
     transferProgress: (cb) => listen(EVENT_CHANNELS.transferProgress, cb),
     libraryChanged: (cb) => listen(EVENT_CHANNELS.libraryChanged, () => cb()),
     catalogRebuildProgress: (cb) => listen(EVENT_CHANNELS.catalogRebuildProgress, cb),
+    bulkHydrateProgress: (cb) => listen(EVENT_CHANNELS.bulkHydrateProgress, cb),
     deviceContentsChanged: (cb) => listen(EVENT_CHANNELS.deviceContentsChanged, cb),
     menuCommand: (cb) => listen(EVENT_CHANNELS.menuCommand, cb),
     pythonEnvProgress: (cb) => listen(EVENT_CHANNELS.pythonEnvProgress, cb)

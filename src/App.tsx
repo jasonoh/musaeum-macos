@@ -7,8 +7,10 @@ import { BookContextMenu } from '@/components/library/BookContextMenu'
 import { BookDetail } from '@/components/library/BookDetail'
 import { BookEditor } from '@/components/library/BookEditor'
 import { DeleteBookDialog } from '@/components/library/DeleteBookDialog'
+import { DeleteSelectionDialog } from '@/components/library/DeleteSelectionDialog'
 import { ImportOverlay } from '@/components/library/ImportOverlay'
 import { RemoveFromDeviceDialog } from '@/components/library/RemoveFromDeviceDialog'
+import { SelectionPanel } from '@/components/library/SelectionPanel'
 import { ConflictQueue } from '@/components/metadata/ConflictQueue'
 import { MigrationWizard } from '@/components/migration/MigrationWizard'
 import { ReaderView } from '@/components/reader/ReaderView'
@@ -33,6 +35,7 @@ export default function App() {
   const viewMode = useUIStore((s) => s.viewMode)
   const modal = useUIStore((s) => s.modal)
   const deletingBookId = useUIStore((s) => s.deletingBookId)
+  const deletingSelection = useUIStore((s) => s.deletingSelection)
   const editingBookId = useUIStore((s) => s.editingBookId)
 
   return (
@@ -42,17 +45,19 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Toolbar />
         <NASStatusBanner />
-        <main className="min-h-0 flex-1">
-          {viewMode === 'grid' ? <GridView /> : <ListView />}
-        </main>
+        <main className="min-h-0 flex-1">{viewMode === 'grid' ? <GridView /> : <ListView />}</main>
         <StatusBar />
       </div>
 
       <BookDetail />
+      {/* Both return null unless they own the current selection — one book for
+          the detail panel, two or more for the selection panel */}
+      <SelectionPanel />
       <ImportOverlay />
       <BookContextMenu />
       {/* Keyed so each book opens the dialog with a fresh format selection */}
       {deletingBookId && <DeleteBookDialog key={deletingBookId} />}
+      {deletingSelection && <DeleteSelectionDialog />}
       {/* Keyed so the form re-initializes from whichever book is being edited */}
       {editingBookId && <BookEditor key={editingBookId} />}
       <RemoveFromDeviceDialog />

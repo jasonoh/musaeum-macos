@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import type { Book } from '@shared/book.types'
 import { seriesDisplay } from '@shared/book.types'
+import { modifiersFrom } from '@/lib/selection'
 import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
@@ -39,9 +40,11 @@ export function CoverFallback({ book, large }: { book: Book; large?: boolean }) 
 }
 
 export const BookCard = memo(function BookCard({ book }: { book: Book }) {
-  const selectBook = useUIStore((s) => s.selectBook)
-  const selected = useUIStore((s) => s.selectedBookId === book.id)
-  const openContextMenu = useUIStore((s) => s.openContextMenu)
+  const select = useUIStore((s) => s.select)
+  // A boolean selector, so zustand re-renders only the cards whose membership
+  // actually changed rather than every mounted card on every selection change
+  const selected = useUIStore((s) => s.selection.ids.has(book.id))
+  const openContextMenuFor = useUIStore((s) => s.openContextMenuFor)
   const requestDelete = useUIStore((s) => s.requestDelete)
   const thumb = coverUrl(book, 'thumb')
   const onDevice = useDeviceStore((s) => bookOnDevices(s, book.id).length > 0)
@@ -51,11 +54,11 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
       className="group relative"
       onContextMenu={(e) => {
         e.preventDefault()
-        openContextMenu({ bookId: book.id, x: e.clientX, y: e.clientY })
+        openContextMenuFor({ bookId: book.id, x: e.clientX, y: e.clientY })
       }}
     >
       <button
-        onClick={() => selectBook(book.id)}
+        onClick={(e) => select(book.id, modifiersFrom(e))}
         // Read through `getState` rather than subscribing: nothing on the card
         // renders from the reader, and this one is memoized per book.
         //

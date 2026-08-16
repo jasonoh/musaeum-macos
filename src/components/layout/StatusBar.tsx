@@ -10,6 +10,7 @@ export function StatusBar() {
   const filters = useLibraryStore((s) => s.filters)
   const importJobs = useLibraryStore((s) => s.importJobs)
   const transfers = useDeviceStore((s) => s.transfers)
+  const bulkHydrate = useLibraryStore((s) => s.bulkHydrate)
   const pythonEnv = useUIStore((s) => s.pythonEnv)
 
   const activeImports = Object.values(importJobs).filter(
@@ -36,6 +37,23 @@ export function StatusBar() {
         <span className="flex items-center gap-1.5 text-gold-400">
           <SpinnerIcon className="h-3 w-3" />
           Sending {activeTransfers} to device…
+        </span>
+      )}
+      {bulkHydrate && (
+        <span className="flex items-center gap-1.5 text-gold-400">
+          <SpinnerIcon className="h-3 w-3" />
+          <span className="tabular-nums">
+            Refreshing metadata {bulkHydrate.completed}/{bulkHydrate.total}…
+          </span>
+          {/* Cancel lives here, not in the selection panel: the job outlives
+              the selection, and clearing the selection must never strand a
+              running job with no way to stop it. */}
+          <button
+            onClick={() => void window.Musaeum.metadata.cancelRehydrate()}
+            className="underline underline-offset-2 hover:text-gold-300"
+          >
+            Cancel
+          </button>
         </span>
       )}
       {/* First launch only: the packaged app builds its Python environment

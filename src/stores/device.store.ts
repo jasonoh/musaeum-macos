@@ -12,6 +12,7 @@ interface DeviceState {
   upsertTransfer(job: TransferJob): void
   removeTransfer(jobId: string): void
   sendToDevice(bookId: string, deviceId: string): Promise<void>
+  sendBooksToDevice(bookIds: string[], deviceId: string): Promise<void>
   removeFromDevice(bookId: string, deviceId: string): Promise<void>
   setOnDevice(deviceId: string, bookIds: string[]): void
   refreshDeviceContents(deviceId: string): Promise<void>
@@ -37,8 +38,7 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
     void get().refreshDeviceContents(device.id)
   },
 
-  removeDevice: (deviceId) =>
-    set((s) => ({ devices: s.devices.filter((d) => d.id !== deviceId) })),
+  removeDevice: (deviceId) => set((s) => ({ devices: s.devices.filter((d) => d.id !== deviceId) })),
 
   upsertTransfer: (job) => set((s) => ({ transfers: { ...s.transfers, [job.jobId]: job } })),
 
@@ -52,6 +52,25 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
   async sendToDevice(bookId, deviceId) {
     const job = await window.Musaeum.devices.sendToDevice(bookId, deviceId)
     set((s) => ({ transfers: { ...s.transfers, [job.jobId]: job } }))
+  },
+
+  /**
+   * Send many books. A plain loop over the single-book call is correct here:
+   * `sendToDevice` returns as soon as the job is enqueued, and the main
+   * process's transfer queue is already serial, so this adds N jobs to one
+   * queue rather than N concurrent copies. StatusBar counts them for free.
+   */
+  async sendBooksToDevice(bookIds, deviceId) {
+    const already = new Set(get().onDevice[deviceId] ?? [])
+    for (const bookId of bookIds.filter((id) => !already.has(id))) {
+      try {
+        await get().sendToDevice(bookId, deviceId)
+      } catch (err) {
+        // The queue logs per-book failures to device_history; one book that
+        // can't be queued must not stop the rest
+        console.error(`send to device failed for ${bookId}:`, err)
+      }
+    }
   },
 
   async removeFromDevice(bookId, deviceId) {
@@ -82,7 +101,5 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
 
 /** Names of connected devices that currently have this book on them. */
 export function bookOnDevices(state: DeviceState, bookId: string): string[] {
-  return state.devices
-    .filter((d) => state.onDevice[d.id]?.includes(bookId))
-    .map((d) => d.name)
+  return state.devices.filter((d) => state.onDevice[d.id]?.includes(bookId)).map((d) => d.name)
 }

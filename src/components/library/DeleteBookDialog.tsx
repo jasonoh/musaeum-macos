@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { BookFormat } from '@shared/book.types'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
-import { useUIStore } from '@/stores/ui.store'
+import { selectedBookId, useUIStore } from '@/stores/ui.store'
 import { CheckIcon, SpinnerIcon, TrashIcon } from '@/components/shared/icons'
 
 /**
@@ -14,7 +14,7 @@ export function DeleteBookDialog() {
   const bookId = useUIStore((s) => s.deletingBookId)
   const requestDelete = useUIStore((s) => s.requestDelete)
   const selectBook = useUIStore((s) => s.selectBook)
-  const selectedBookId = useUIStore((s) => s.selectedBookId)
+  const currentSelection = useUIStore(selectedBookId)
   const books = useLibraryStore((s) => s.books)
   const online = useNASStore((s) => s.status?.state === 'connected')
 
@@ -59,7 +59,7 @@ export function DeleteBookDialog() {
     try {
       if (wholeBook) {
         await window.Musaeum.library.deleteBook(book.id)
-        if (selectedBookId === book.id) selectBook(null)
+        if (currentSelection === book.id) selectBook(null)
       } else {
         await window.Musaeum.library.deleteFormats(book.id, selected)
       }
@@ -115,9 +115,7 @@ export function DeleteBookDialog() {
               )
             })}
             <button
-              onClick={() =>
-                setChosen(wholeBook ? new Set<BookFormat>() : new Set(book.formats))
-              }
+              onClick={() => setChosen(wholeBook ? new Set<BookFormat>() : new Set(book.formats))}
               className="pt-0.5 text-[11px] text-parchment-faint underline-offset-2 hover:text-gold-300 hover:underline"
             >
               {wholeBook ? 'Clear selection' : 'Select all formats'}

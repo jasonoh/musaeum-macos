@@ -4,6 +4,35 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
+## [Unreleased] — 2026-08-15
+
+### Added
+- **Select many books, and act on all of them.** ⌘-click adds and removes,
+  ⇧-click takes a run, ⇧+arrow extends from the keyboard, and the list view
+  gains a checkbox column with a select-all header. A second ⇧-click re-ranges
+  from the same pivot instead of creeping outward, which is why the selection
+  carries both an anchor and a cursor rather than one "last clicked" id. Two or
+  more books swap the detail panel for a selection panel of exactly the same
+  width, so the grid never re-flows underneath the change.
+- **Three bulk actions: delete, send to device, refresh metadata.** Deleting a
+  selection is one batched operation rather than a loop — a loop would rewrite
+  the whole ~10MB `catalog.json` over SMB once per book and reload the library
+  in the renderer just as often. A book that can't be deleted doesn't abort the
+  batch; it is named in the dialog and stays selected, so the report is also
+  the retry.
+- **Refreshing metadata across a selection is a real job**: sequential, because
+  the sidecar would otherwise fan out concurrent hydrations at rate-limited
+  APIs; batched, so the catalog is written once at the end; and cancellable,
+  because a few hundred books is minutes of work. Progress and Cancel live in
+  the status bar rather than the selection panel — the job outlives the
+  selection, and clearing the selection must never strand it with no way to
+  stop it.
+
+### Changed
+- The Edit menu's Select All is now a Musaeum command rather than the stock
+  role, so ⌘A selects the loaded library. It routes by focus: inside a text
+  field it still selects that field's text.
+
 ## [Unreleased] — 2026-08-13
 
 ### Added
