@@ -197,6 +197,25 @@ export type PythonEnvResult = { ok: true; python: string } | { ok: false; reason
 let inFlight: Promise<PythonEnvResult> | null = null
 
 /**
+ * The last non-ready bootstrap state, kept for a renderer that mounted too
+ * late to hear it broadcast.
+ *
+ * `ensurePythonEnv` runs immediately after `createWindow()` in `index.ts`, so
+ * on a machine with no usable interpreter the `failed` event is emitted before
+ * the renderer has subscribed — and that is precisely the state that stays
+ * true until someone fixes it. Held here so the renderer can *ask* on mount
+ * rather than depend on having been listening at the right moment.
+ *
+ * Cleared by a `ready`, mirroring the hook: the bootstrap runs once, and a
+ * finished one has nothing left to say.
+ */
+let lastProgress: PythonEnvProgress | null = null
+
+export function getPythonEnvState(): PythonEnvProgress | null {
+  return lastProgress
+}
+
+/**
  * Make a usable interpreter exist, reporting progress as it goes. Returns
  * fast when nothing is needed, which is every launch after the first.
  *
@@ -208,7 +227,18 @@ export function ensurePythonEnv(
   onProgress: (progress: PythonEnvProgress) => void
 ): Promise<PythonEnvResult> {
   if (!inFlight) {
-    inFlight = bootstrap(onProgress)
+    const record = (progress: PythonEnvProgress): void => {
+      lastProgress = progress.stage === 'ready' ? null : progress
+      onProgress(progress)
+    }
+    inFlight = bootstrap(record).then((result) => {
+      // A success clears an earlier failure even when it reported no progress
+      // at all: the "nothing to do" path is deliberately silent, so a retry
+      // from Settings that now resolves would otherwise leave the old failure
+      // pinned to the status bar forever
+      if (result.ok) lastProgress = null
+      return result
+    })
     // Cleared on settle so a later call (a retry from Settings) can run again
     void inFlight.finally(() => {
       inFlight = null
@@ -222,7 +252,13 @@ async function bootstrap(
 ): Promise<PythonEnvResult> {
   if (!needsBootstrap()) {
     const { path } = resolvePython()
-    return path ? { ok: true, python: path } : { ok: false, reason: noInterpreterMessage() }
+    if (path) return { ok: true, python: path }
+    // Nothing to build *and* nothing to run: a configured interpreter that has
+    // since been deleted, say. Reported like any other failure rather than
+    // returned silently, so it reaches the status bar and `getPythonEnvState`
+    const reason = noInterpreterMessage()
+    onProgress({ stage: 'failed', message: 'Python not found', detail: reason })
+    return { ok: false, reason }
   }
 
   const base = findBaseInterpreter()

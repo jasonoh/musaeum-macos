@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39,6 +39,7 @@ vi.mock('electron', () => ({
 const { closeDb, setConfig } = await import('./db')
 const {
   ensurePythonEnv,
+  getPythonEnvState,
   findBaseInterpreter,
   managedVenvDir,
   meetsMinimum,
@@ -217,6 +218,37 @@ describe('ensurePythonEnv', () => {
 
     expect(result).toEqual({ ok: true, python: process.execPath })
     expect(existsSync(managedVenvDir())).toBe(false)
+  })
+
+  // The bootstrap runs before the renderer subscribes, so a failure nobody
+  // heard is a failure nobody can see — the app looks healthy while every
+  // metadata feature silently does nothing.
+  // Driven by making the venv target unwritable, because the no-interpreter
+  // case can't be forced on a machine that has one (and this file's other
+  // tests need the real interpreter search).
+  it('holds a failure for a renderer that mounted too late to hear it', async () => {
+    writeRequirements()
+    // Open the DB first: `needsBootstrap` reads config, and SQLite can't
+    // create its files once the directory below goes read-only
+    setConfig('smb_url', 'smb://noop')
+    chmodSync(paths.userData, 0o500)
+    try {
+      const result = await ensurePythonEnv(vi.fn())
+
+      expect(result.ok).toBe(false)
+      expect(getPythonEnvState()).toMatchObject({ stage: 'failed' })
+    } finally {
+      chmodSync(paths.userData, 0o700)
+    }
+  })
+
+  it('reports nothing to a late renderer when the environment is fine', async () => {
+    writeRequirements()
+    touch(DEV_VENV_PYTHON)
+
+    await ensurePythonEnv(vi.fn())
+
+    expect(getPythonEnvState()).toBeNull()
   })
 })
 

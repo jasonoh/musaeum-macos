@@ -60,6 +60,25 @@ export function isAvailable(): boolean {
   return proc !== null
 }
 
+/** What a user is told when metadata features have no interpreter to run on. */
+const UNAVAILABLE =
+  'Python sidecar is unavailable — install Python 3.11+ to enable metadata features'
+
+/**
+ * Throws unless the sidecar is running, starting it if it isn't.
+ *
+ * `importer.hydrate` deliberately swallows its own failures: a book keeps its
+ * embedded metadata and an import is never blocked by a dead sidecar. That is
+ * the right trade on the import path and the wrong one for an explicit
+ * "Refresh metadata", which is fire-and-forget and so resolved *successfully*
+ * having done nothing at all — no cover, no error, no way to tell. This is the
+ * pre-flight that lets those handlers fail at the IPC boundary instead, where
+ * the renderer already surfaces the message.
+ */
+export function assertAvailable(): void {
+  if (!proc && !start()) throw new Error(UNAVAILABLE)
+}
+
 export function start(): boolean {
   if (proc) return true
   const { path: python } = resolvePython()
@@ -172,9 +191,7 @@ export function call<T = unknown>(
   timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<T> {
   if (!proc && !start()) {
-    return Promise.reject(
-      new Error('Python sidecar is unavailable — install Python 3.11+ to enable metadata features')
-    )
+    return Promise.reject(new Error(UNAVAILABLE))
   }
   const id = `req-${nextId++}`
   return new Promise<T>((resolve, reject) => {

@@ -58,7 +58,8 @@ const api: MusaeumAPI = {
   settings: {
     get: () => invoke('settings:get'),
     save: (updates) => invoke('settings:save', updates),
-    chooseExecutable: (kind) => invoke('settings:chooseExecutable', kind)
+    chooseExecutable: (kind) => invoke('settings:chooseExecutable', kind),
+    getPythonEnv: () => invoke('settings:getPythonEnv')
   },
   migration: {
     scanCalibreLibrary: (path) => invoke('migration:scanCalibreLibrary', path),

@@ -6,6 +6,7 @@ import { broadcast } from './events'
 import * as importer from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
+import * as sidecar from './sidecar'
 
 /**
  * Re-hydrate many books as one job.
@@ -54,6 +55,9 @@ export function cancelBulkHydrate(): void {
 export function startBulkHydrate(ids: string[]): void {
   if (running) throw new Error('A metadata refresh is already running')
   nas.assertOnline()
+  // Same reason as the single-book path: once the job is running its only
+  // channel is progress events, and every book would report as a bare failure
+  sidecar.assertAvailable()
   running = true
   cancelled = false
   current = run(ids)

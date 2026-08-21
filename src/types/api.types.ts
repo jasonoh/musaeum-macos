@@ -119,6 +119,13 @@ export interface MusaeumAPI {
     save(updates: Partial<EditableSettings>): Promise<void>
     /** Native file picker for a tool path; null when cancelled. */
     chooseExecutable(kind: ExecutableKind): Promise<string | null>
+    /**
+     * The last unresolved Python-bootstrap state, or null when there is none.
+     *
+     * The `pythonEnvProgress` event fires before the renderer subscribes, so
+     * this is how a late mount learns the metadata engine never started.
+     */
+    getPythonEnv(): Promise<PythonEnvProgress | null>
   }
 
   migration: {

@@ -1,5 +1,6 @@
 import { dialog } from 'electron'
 import type { EditableSettings, ExecutableKind } from '@shared/settings.types'
+import { getPythonEnvState } from '../services/python-env'
 import * as settings from '../services/settings'
 import { handle } from './handle'
 
@@ -15,6 +16,7 @@ const PICKERS: Record<ExecutableKind, { title: string; defaultPath: string }> = 
 export function registerSettingsHandlers(): void {
   handle('settings:get', () => settings.getSettings())
   handle('settings:save', (updates: Partial<EditableSettings>) => settings.saveSettings(updates))
+  handle('settings:getPythonEnv', () => getPythonEnvState())
 
   handle('settings:chooseExecutable', async (kind: ExecutableKind) => {
     const picker = PICKERS[kind]

@@ -5,6 +5,7 @@ import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
+import * as sidecar from './sidecar'
 import { writeCatalog } from './catalog'
 import { closeDb, insertBook } from './db'
 import * as importer from './importer'
@@ -17,6 +18,13 @@ import {
   resetForTests,
   startBulkHydrate
 } from './bulk-hydrate'
+
+/**
+ * Stubbed because the real `assertAvailable` *starts* the sidecar, and
+ * `getAppPath()` is the repo root under vitest — so an unmocked guard spawns a
+ * live Python process against `sidecar/.venv` for every test in this file.
+ */
+vi.mock('./sidecar', () => ({ assertAvailable: vi.fn() }))
 
 let root: string
 /** Order and overlap of hydrate calls, for the sequencing assertions. */
@@ -156,5 +164,19 @@ describe('startBulkHydrate', () => {
       throw new Error('Library is offline')
     })
     expect(() => startBulkHydrate(['a'])).toThrow(/offline/i)
+  })
+
+  // Without this the job starts, reports every book as a bare failure, and
+  // gives no hint that the cause is one missing interpreter rather than the
+  // books themselves
+  it('throws when the sidecar has no interpreter, before hydrating anything', async () => {
+    await seed('a')
+    vi.mocked(sidecar.assertAvailable).mockImplementation(() => {
+      throw new Error('Python sidecar is unavailable')
+    })
+
+    expect(() => startBulkHydrate(['a'])).toThrow(/sidecar is unavailable/i)
+    await flushForTests()
+    expect(calls).toEqual([])
   })
 })

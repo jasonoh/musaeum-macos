@@ -73,6 +73,8 @@ export function registerMetadataHandlers(): void {
 
   handle('metadata:rehydrateBook', async (bookId: string) => {
     nas.assertOnline()
+    // Before the fire-and-forget below, because after it nothing can report
+    sidecar.assertAvailable()
     const book = db.getBook(bookId)
     if (!book?.nasPath) throw new Error('Book not found')
     const bookDir = join(nas.getLibraryRoot()!, book.nasPath)
