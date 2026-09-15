@@ -6,6 +6,7 @@ applied so the book is never coverless while waiting on review).
 """
 
 import io
+import os
 from typing import Optional
 
 import requests
@@ -95,15 +96,42 @@ def _write_cover(data: bytes, book_dir: str) -> dict:
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
 
-    full = img.copy()
-    full.thumbnail((FULL_MAX, FULL_MAX * 2))
-    full.save(f"{book_dir}/cover_full.jpg", "JPEG", quality=88)
+    full = _encode(img, (FULL_MAX, FULL_MAX * 2), 88)
+    thumb = _encode(img, (THUMB_MAX, THUMB_MAX * 2), 85)
+    full_path = os.path.join(book_dir, "cover_full.jpg")
+    thumb_path = os.path.join(book_dir, "cover_thumb.jpg")
 
-    thumb = img.copy()
-    thumb.thumbnail((THUMB_MAX, THUMB_MAX * 2))
-    thumb.save(f"{book_dir}/cover_thumb.jpg", "JPEG", quality=85)
+    # Compared *before* writing: "did this run change the cover?" is what the
+    # caller reports back to the user, and the filenames are fixed, so nothing
+    # downstream can tell a re-download of the same image from a genuinely new
+    # one. Byte comparison, not mtime — a re-download rewrites identical bytes
+    # and always advances mtime, which would report every refresh as a change.
+    changed = _differs(full_path, full) or _differs(thumb_path, thumb)
 
-    return {"full": "cover_full.jpg", "thumb": "cover_thumb.jpg"}
+    for path, blob in ((full_path, full), (thumb_path, thumb)):
+        with open(path, "wb") as fh:
+            fh.write(blob)
+
+    return {"full": "cover_full.jpg", "thumb": "cover_thumb.jpg", "changed": changed}
+
+
+def _encode(img: Image.Image, max_size: tuple, quality: int) -> bytes:
+    """Render one JPEG size to memory, so it can be compared before it lands."""
+    copy = img.copy()
+    copy.thumbnail(max_size)
+    buf = io.BytesIO()
+    copy.save(buf, "JPEG", quality=quality)
+    return buf.getvalue()
+
+
+def _differs(path: str, data: bytes) -> bool:
+    """True when writing `data` to `path` would change what is on disk."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read() != data
+    except OSError:
+        # Missing or unreadable: whatever is there now, this write creates it
+        return True
 
 
 def fetch_cover(book_dir: str, url: Optional[str] = None, source: str = "google_books") -> dict:

@@ -102,6 +102,15 @@ export const WarningIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+/** Neutral notice — "nothing changed" is an answer, not a warning. */
+export const InfoIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <circle cx="12" cy="12" r="9" />
+    <line x1="12" y1="11" x2="12" y2="16.5" />
+    <circle cx="12" cy="7.8" r="0.5" fill="currentColor" />
+  </svg>
+)
+
 export const SendIcon = ({ className }: IconProps) => (
   <svg {...base(className)}>
     <path d="M22 2L11 13" />

@@ -16,6 +16,7 @@ import { MigrationWizard } from '@/components/migration/MigrationWizard'
 import { ReaderView } from '@/components/reader/ReaderView'
 import { SettingsModal } from '@/components/settings/SettingsModal'
 import { NASStatusBanner } from '@/components/shared/NASStatusBanner'
+import { Toasts } from '@/components/shared/Toasts'
 import { useDevice } from '@/hooks/useDevice'
 import { useDragDrop } from '@/hooks/useDragDrop'
 import { useLibrary } from '@/hooks/useLibrary'
@@ -66,6 +67,10 @@ export default function App() {
       {modal === 'conflicts' && <ConflictQueue />}
       {modal === 'migration' && <MigrationWizard />}
       {modal === 'settings' && <SettingsModal />}
+
+      {/* Last, and above the modals: it is the report for work that finished
+          while the user was somewhere else */}
+      <Toasts />
     </div>
   )
 }

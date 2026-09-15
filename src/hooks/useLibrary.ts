@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
+import { describeBulkHydrate } from '@/lib/metadata-feedback'
 
 /** Wire the library store to main-process events. Mount once at app root. */
 export function useLibrary(): void {
@@ -10,6 +11,7 @@ export function useLibrary(): void {
   const setRebuildProgress = useLibraryStore((s) => s.setRebuildProgress)
   const setBulkHydrate = useLibraryStore((s) => s.setBulkHydrate)
   const setConflictCount = useUIStore((s) => s.setConflictCount)
+  const notify = useUIStore((s) => s.notify)
   const books = useLibraryStore((s) => s.books)
   const pruneSelection = useUIStore((s) => s.pruneSelection)
 
@@ -32,7 +34,16 @@ export function useLibrary(): void {
       window.Musaeum.on.libraryChanged(() => void load()),
       window.Musaeum.on.conflictQueueUpdated((count) => setConflictCount(count)),
       window.Musaeum.on.catalogRebuildProgress((p) => setRebuildProgress(p)),
-      window.Musaeum.on.bulkHydrateProgress((p) => setBulkHydrate(p.running ? p : null)),
+      window.Musaeum.on.bulkHydrateProgress((p) => {
+        setBulkHydrate(p.running ? p : null)
+        // The status bar counter just disappears when the job ends, which is
+        // the least informative moment of a job that may have failed, skipped
+        // or been cut short — so the run reports itself once, at the end
+        if (!p.running) {
+          const summary = describeBulkHydrate(p)
+          if (summary) notify(summary)
+        }
+      }),
       window.Musaeum.on.importProgress((progress) => {
         upsertImportJob(progress)
         if (progress.step === 'done' || progress.step === 'error' || progress.step === 'skipped') {
@@ -42,5 +53,13 @@ export function useLibrary(): void {
       })
     ]
     return () => unsubs.forEach((u) => u())
-  }, [load, upsertImportJob, removeImportJob, setRebuildProgress, setBulkHydrate, setConflictCount])
+  }, [
+    load,
+    upsertImportJob,
+    removeImportJob,
+    setRebuildProgress,
+    setBulkHydrate,
+    setConflictCount,
+    notify
+  ])
 }

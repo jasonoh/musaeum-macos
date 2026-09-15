@@ -4,10 +4,12 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BulkHydrateProgress } from '@shared/metadata.types'
 import { makeBook } from '../../../test/helpers/book'
 import * as sidecar from './sidecar'
 import { writeCatalog } from './catalog'
 import { closeDb, insertBook } from './db'
+import * as events from './events'
 import * as importer from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
@@ -54,6 +56,8 @@ beforeEach(async () => {
     const start = Date.now()
     await new Promise((r) => setTimeout(r, 10))
     calls.push({ id: bookId, start, end: Date.now() })
+    // A book that hydrates cleanly and finds nothing new — the common case
+    return { ok: true, changed: [], conflicts: 0 }
   })
 })
 
@@ -178,5 +182,84 @@ describe('startBulkHydrate', () => {
     expect(() => startBulkHydrate(['a'])).toThrow(/sidecar is unavailable/i)
     await flushForTests()
     expect(calls).toEqual([])
+  })
+})
+
+/**
+ * The job's only report. `hydrate` returns its failure instead of throwing, so
+ * without these assertions a book that never made it looks exactly like a book
+ * that was already up to date.
+ */
+describe('bulk hydrate reporting', () => {
+  function lastProgress(spy: ReturnType<typeof vi.spyOn>): BulkHydrateProgress {
+    const sent = spy.mock.calls
+      .filter(([channel]) => channel === 'bulkHydrateProgress')
+      .map(([, payload]) => payload as BulkHydrateProgress)
+    return sent[sent.length - 1]
+  }
+
+  it('counts a failed hydration as failed, with its reason', async () => {
+    await seed('a')
+    await seed('b')
+    vi.mocked(importer.hydrate).mockImplementation(async (id) =>
+      id === 'b'
+        ? { ok: false, error: 'Python sidecar is unavailable' }
+        : { ok: true, changed: [], conflicts: 0 }
+    )
+    const spy = vi.spyOn(events, 'broadcast')
+
+    startBulkHydrate(['a', 'b'])
+    await flushForTests()
+
+    const progress = lastProgress(spy)
+    expect(progress).toMatchObject({
+      completed: 2,
+      failed: 1,
+      updated: 0,
+      lastError: 'Python sidecar is unavailable',
+      running: false
+    })
+  })
+
+  it('counts only the books whose metadata actually changed', async () => {
+    await seed('a')
+    await seed('b')
+    vi.mocked(importer.hydrate).mockImplementation(async (id) => ({
+      ok: true,
+      changed: id === 'a' ? ['cover', 'series'] : [],
+      conflicts: 0
+    }))
+    const spy = vi.spyOn(events, 'broadcast')
+
+    startBulkHydrate(['a', 'b'])
+    await flushForTests()
+
+    expect(lastProgress(spy)).toMatchObject({ completed: 2, updated: 1, running: false })
+  })
+
+  it('says the run was cancelled rather than leaving a count that stopped', async () => {
+    await seed('a')
+    await seed('b')
+    const spy = vi.spyOn(events, 'broadcast')
+
+    startBulkHydrate(['a', 'b'])
+    cancelBulkHydrate()
+    await flushForTests()
+
+    expect(lastProgress(spy)).toMatchObject({ stopped: 'cancelled', running: false })
+  })
+
+  it('names the share dropping as the reason it stopped', async () => {
+    await seed('a')
+    await seed('b')
+    // Online for the first book's check, gone for the second's
+    vi.spyOn(nas, 'isOnline').mockReturnValueOnce(true).mockReturnValue(false)
+    const spy = vi.spyOn(events, 'broadcast')
+
+    startBulkHydrate(['a', 'b'])
+    await flushForTests()
+
+    const progress = lastProgress(spy)
+    expect(progress).toMatchObject({ completed: 1, stopped: 'offline', running: false })
   })
 })

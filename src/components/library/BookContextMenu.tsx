@@ -3,6 +3,8 @@ import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
+import { refreshBookMetadata } from '@/lib/metadata-refresh'
+import { notifyError } from '@/lib/notify'
 import {
   BookIcon,
   CloseIcon,
@@ -11,6 +13,7 @@ import {
   OpenExternalIcon,
   PencilIcon,
   ReaderIcon,
+  RefreshIcon,
   TrashIcon
 } from '@/components/shared/icons'
 
@@ -22,7 +25,7 @@ async function reportFailure(work: Promise<unknown>): Promise<void> {
   try {
     await work
   } catch (err) {
-    alert(err instanceof Error ? err.message : String(err))
+    notifyError(err)
   }
 }
 
@@ -171,6 +174,16 @@ export function BookContextMenu() {
           icon={<PencilIcon className="h-3.5 w-3.5" />}
           label="Edit metadata…"
           onClick={() => requestEdit(book.id)}
+        />
+        {/* The same action as the detail panel's refresh button, so it reports
+            the same way — the menu is gone long before the fetch is */}
+        <MenuItem
+          icon={<RefreshIcon className="h-3.5 w-3.5" />}
+          label="Re-fetch metadata"
+          onClick={() => {
+            closeContextMenu()
+            void refreshBookMetadata(book.id)
+          }}
         />
         {holding.map((d) => (
           <MenuItem

@@ -157,10 +157,13 @@ Musaeum/
 │   │   ├── settings/             # SettingsModal
 │   │   ├── reader/               # ReaderView, ReaderEngine, ReaderToc,
 │   │   │                         # ReaderPrefsPopover
-│   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, icons
+│   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, Toasts,
+│   │                             # icons
 │   ├── stores/                   # library / device / nas / ui / reader zustand stores
 │   ├── hooks/                    # useLibrary, useDevice, useNASStatus, useDragDrop,
 │   │                             # useMenuCommands
+│   ├── lib/                      # renderer-side pure logic: selection, metadata-feedback,
+│   │                             # metadata-refresh, notify
 │   └── types/                    # SHARED contracts: book / device / metadata /
 │                                 # settings / api (MusaeumAPI + IPCResult) —
 │                                 # imported by main and preload via @shared
@@ -235,7 +238,9 @@ engine). Configured in `electron.vite.config.ts` and both tsconfigs.
 
 Triggered automatically on every book import. Non-blocking: the book is
 inserted into the library immediately after copy; hydration continues async
-(`importer.hydrate` is fire-and-forget).
+(`importer.hydrate` is fire-and-forget from the import path — it *returns* what
+it did, and the explicit re-fetch described under "Metadata refresh feedback"
+is the one caller that waits for that value).
 
 ```
 1. Extract embedded metadata (EPUB OPF, or PDF Info dict + page-1 render as
@@ -685,6 +690,63 @@ book re-derives the sort title instead of stranding the old one (a genuinely
 custom key is shown and left alone). Renaming a book **does** rename its files
 (see File naming below).
 
+### Metadata refresh feedback
+
+Pressing **Re-fetch metadata** (the detail panel's ↻ button, or the context
+menu) reports three things it used to leave to inference: that a fetch is
+running, what it changed, and why it failed. The button's own state covers the
+first (`ui.store.refreshingBooks`, subscribed as a boolean per book, so only
+the book being refreshed re-renders — plus a spinner chip on its card, which is
+the only sign left when the panel has moved on to another book), and the other
+two arrive as a **toast** when the fetch settles.
+
+- **`importer.hydrate` returns what it did** (`HydrateOutcome` in
+  `src/types/metadata.types.ts`) rather than only logging it: `{ok: true,
+  changed, conflicts}` or `{ok: false, error}`. Still never throws — a failed
+  hydration is non-fatal by design — so import and the bulk job ignore the
+  value, while the re-fetch reports it.
+- **Only a real change counts as a change.** `applyHydration` diffs against the
+  row before writing and reports the user-facing field each changed column
+  belongs to (`HYDRATED_KEY_FIELD` → `HydratedField`). Two exclusions carry
+  that: `sort_title`/`author_sort` are derived companions and are *not* in the
+  map (a backfilled sort key is not a title change, and reporting it would put
+  "Title" on every refresh of a book that arrived without one); and the cover
+  hangs on the sidecar's byte comparison, not the row's path — the paths are
+  fixed names (`cover_full.jpg`), so `select_cover` hashes what it is about to
+  write against what is there and returns `changed`. Without that, the most
+  visible change a refresh can make would be the one thing never reported.
+- **"Nothing changed" is the answer most worth giving**, and it is a different
+  toast from success (`No new metadata found` / "already has the latest
+  details"). A refresh that finds nothing new used to look identical to one
+  that did nothing at all.
+- **A conflict queues a review offer**, not a claim of success: the toast
+  carries a *Review* action that opens the conflict queue.
+- **The single-book path is the one awaited hydration.** Import and the bulk
+  job keep the non-blocking contract; this one is a user action with a person
+  waiting, and the panel that launched it can be gone by the time the answer
+  arrives — which is why the report goes to the store rather than to component
+  state. Everything funnels through `lib/metadata-refresh.ts`, so the button and
+  the context menu cannot drift.
+- **Failures keep their own words.** Pre-flight rejections (offline, no
+  metadata engine, no EPUB/MOBI/AZW3 to read) and in-flight sidecar errors are
+  passed through as the toast's detail line rather than flattened into "failed".
+
+`components/shared/Toasts.tsx` is the surface: bottom-centre (never over the
+detail panel's action row, which is where these are triggered), at `z-[60]` —
+above the modals, because a completion report must not be hidden behind a panel
+opened while the job ran. The store owns dismissal (`notify`/`dismissToast`,
+3 on screen, errors last longest, an identical message refreshing the toast
+instead of stacking a twin). It also replaces the two `alert()` calls that used
+to interrupt with an OS dialog.
+
+The **bulk** job reports itself once at the end, through the same surface: the
+status-bar counter simply disappears when the run ends, which is the least
+informative moment of a job that may have been cancelled or cut short by the
+share dropping. `BulkHydrateProgress` therefore carries `updated` (books that
+actually changed), `stopped: 'cancelled' | 'offline'`, and `lastError` — and
+`failed` is now a real number: `hydrate` returning its failure is what let the
+loop stop counting a dead fetch as a finished one.
+
 ### File naming on disk
 
 `services/book-files.ts` → `renameToTitle(bookDir, title)` keeps a book's
@@ -692,9 +754,11 @@ format files named `{sanitizeTitle(title)}.{ext}`. Files are named once at
 import, but the title keeps moving afterwards — hydration rewrites it, and so
 does the metadata editor — which used to leave the folder holding a book under
 whatever it was first mistaken for (an EPUB with the wrong OPF metadata named
-its files after a different book entirely). Called from **both** places the
-title settles: `importer.hydrate` after `applyHydration`, and the
-`library:updateBook` handler.
+its files after a different book entirely). Called from **every** place the
+title settles: `importer.hydrate` after `applyHydration`, the
+`library:updateBook` handler, and `metadata:resolveConflict` (resolving a title
+conflict is a settled title too — without it, renaming a book back to its
+embedded title left the Google-matched name on its files).
 
 - **Title-derived, not diff-driven.** It renames anything whose stem doesn't
   match, so it repairs drift from any cause, not just the edit that called it.
@@ -750,7 +814,8 @@ Three, and deliberately not symmetric — the services under them are not.
   `importer.hydrate` that suppresses its per-book `upsertCatalog` and
   `libraryChanged` so the job can write the catalog once at the end. Cancelling
   stops the loop, not the book in flight. Progress and Cancel live in
-  `StatusBar`, because the job outlives the selection.
+  `StatusBar`, because the job outlives the selection; the run's outcome arrives
+  as a toast when it ends (see Metadata refresh feedback).
 
 `findHydratableFile` is shared between the bulk job and the single-book
 `metadata:rehydrateBook` handler so the two cannot disagree about what a book
@@ -1150,7 +1215,12 @@ interface MusaeumAPI {
   metadata: {
     getConflictQueue(): Promise<MetadataConflict[]>
     resolveConflict(conflictId: number, choices: ConflictChoices): Promise<void>
-    rehydrateBook(bookId: string): Promise<void>
+    /**
+     * Re-fetch one book's metadata and report what it did (`HydrateOutcome`).
+     * Rejects only for the pre-flight failures — offline, no metadata engine,
+     * nothing hydratable in the book's folder.
+     */
+    rehydrateBook(bookId: string): Promise<HydrateOutcome>
     rehydrateBooks(bookIds: string[]): Promise<void>  // sequential job; events report
     cancelRehydrate(): Promise<void>             // stops after the book in flight
   }

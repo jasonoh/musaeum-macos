@@ -13,6 +13,7 @@ import type { Device, TransferJob, TransferProgress } from './device.types'
 import type {
   BulkHydrateProgress,
   ConflictChoices,
+  HydrateOutcome,
   MetadataConflict,
   MigrationJob,
   MigrationOptions,
@@ -84,7 +85,13 @@ export interface MusaeumAPI {
   metadata: {
     getConflictQueue(): Promise<MetadataConflict[]>
     resolveConflict(conflictId: number, choices: ConflictChoices): Promise<void>
-    rehydrateBook(bookId: string): Promise<void>
+    /**
+     * Re-fetch one book's metadata and report what it did, rather than
+     * returning as soon as the work is queued. Rejects only for the pre-flight
+     * failures (offline, no metadata engine, nothing to hydrate from); a
+     * hydration that fails in flight comes back as `{ ok: false }`.
+     */
+    rehydrateBook(bookId: string): Promise<HydrateOutcome>
     /** Re-hydrate many books as one sequential job; progress via events. */
     rehydrateBooks(bookIds: string[]): Promise<void>
     /** Stop a running bulk re-hydrate after the book in flight. */

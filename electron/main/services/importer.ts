@@ -12,7 +12,7 @@ import type {
   ImportStep
 } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
-import type { ConflictCandidate } from '@shared/metadata.types'
+import type { ConflictCandidate, HydratedField, HydrateOutcome } from '@shared/metadata.types'
 import * as bookFiles from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
@@ -92,7 +92,15 @@ interface HydrationResult {
     metadata_sources?: Record<string, { fetched_at: string; match_confidence: number }>
   }
   conflicts: { field: string; candidates: ConflictCandidate[] }[]
-  cover: { full: string; thumb: string; source: string; width: number; height: number } | null
+  cover: {
+    full: string
+    thumb: string
+    source: string
+    width: number
+    height: number
+    /** Present since the feedback work; absent on a sidecar that predates it. */
+    changed?: boolean
+  } | null
 }
 
 function emit(job: ImportProgress, step: ImportStep, extra?: Partial<ImportProgress>): void {
@@ -244,7 +252,15 @@ async function importOne(filePath: string): Promise<ImportResult> {
   }
 }
 
-/** Async hydration: online metadata fetch, conflict queueing, cover selection. */
+/**
+ * Async hydration: online metadata fetch, conflict queueing, cover selection.
+ *
+ * Returns what it did rather than only logging it. Callers that treat
+ * hydration as fire-and-forget (import) ignore the value; the explicit
+ * re-fetch behind the metadata-refresh button waits for it and reports it.
+ * A failure is part of that value — never a throw — because a failed
+ * hydration is non-fatal by design: the book keeps its embedded metadata.
+ */
 export async function hydrate(
   bookId: string,
   filePath: string,
@@ -257,9 +273,9 @@ export async function hydrate(
    * exactly what catalog.json is not.
    */
   options: { batched?: boolean } = {}
-): Promise<void> {
+): Promise<HydrateOutcome> {
   const book = db.getBook(bookId)
-  if (!book) return
+  if (!book) return { ok: false, error: 'Book not found' }
 
   try {
     const result = await sidecar.call<HydrationResult>(
@@ -284,7 +300,7 @@ export async function hydrate(
     )
 
     if (job) emit(job, 'cover')
-    applyHydration(bookId, result)
+    const changed = applyHydration(bookId, result)
 
     const updated = db.getBook(bookId)
     if (updated) {
@@ -301,47 +317,105 @@ export async function hydrate(
     }
     if (!options.batched) broadcast('libraryChanged')
     if (job) emit(job, 'done')
+    return { ok: true, changed, conflicts: result.conflicts.length }
   } catch (err) {
     // Hydration failure is non-fatal — the book stays with embedded metadata
     console.error(`[import] hydration failed for ${bookId}:`, err)
     if (job) emit(job, 'done')
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 
-function applyHydration(bookId: string, result: HydrationResult): void {
+/**
+ * The `books` columns hydration writes, mapped to the user-facing field each
+ * one belongs to. Several columns are one field — the four identifier columns
+ * are a single "identifiers" — so this map is what lets the refresh report read
+ * "Title, cover and series" instead of naming columns.
+ *
+ * Only columns whose own value is what the user sees are listed. `sort_title`
+ * and `author_sort` are derived from `title` and `author` and are written
+ * through the same path, but a book whose sort key was only ever backfilled
+ * has not had its title changed, and reporting it as such would put "Title"
+ * on every refresh of every book that arrived without one.
+ */
+const HYDRATED_KEY_FIELD: Partial<Record<keyof Book, HydratedField>> = {
+  title: 'title',
+  coverFullPath: 'cover',
+  coverThumbPath: 'cover',
+  author: 'author',
+  seriesName: 'series',
+  seriesIndex: 'series',
+  seriesTotal: 'series',
+  description: 'description',
+  publisher: 'publisher',
+  publishedDate: 'published_date',
+  language: 'language',
+  isbn10: 'identifiers',
+  isbn13: 'identifiers',
+  goodreadsId: 'identifiers',
+  openlibraryId: 'identifiers',
+  tags: 'tags'
+}
+
+/** Reference compare, except arrays (tags), which are compared by value. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b)
+  return false
+}
+
+/** Applies a hydration result; returns the fields whose value really changed. */
+function applyHydration(bookId: string, result: HydrationResult): HydratedField[] {
+  const before = db.getBook(bookId)
+  if (!before) return []
   const m = result.metadata
   const updates: Partial<Book> = {}
-  if (m.title) updates.title = m.title
-  if (m.sort_title || m.title) updates.sortTitle = m.sort_title ?? sortableTitle(m.title!)
-  if (m.authors?.length) {
-    updates.author = m.authors[0].name
-    updates.authorSort = m.authors[0].sort ?? sortableAuthor(m.authors[0].name)
+  const changed = new Set<HydratedField>()
+
+  const set = (key: keyof Book, value: Book[keyof Book]): void => {
+    const field = HYDRATED_KEY_FIELD[key]
+    if (field && !sameValue(before[key], value)) changed.add(field)
+    ;(updates as Record<string, unknown>)[key] = value
   }
-  if (m.publisher) updates.publisher = m.publisher
-  if (m.published_date) updates.publishedDate = m.published_date
-  if (m.language) updates.language = m.language
-  if (m.description) updates.description = m.description
+
+  if (m.title) set('title', m.title)
+  if (m.sort_title || m.title) set('sortTitle', m.sort_title ?? sortableTitle(m.title!))
+  if (m.authors?.length) {
+    set('author', m.authors[0].name)
+    set('authorSort', m.authors[0].sort ?? sortableAuthor(m.authors[0].name))
+  }
+  if (m.publisher) set('publisher', m.publisher)
+  if (m.published_date) set('publishedDate', m.published_date)
+  if (m.language) set('language', m.language)
+  if (m.description) set('description', m.description)
   if (m.identifiers) {
-    if (m.identifiers.isbn_10) updates.isbn10 = m.identifiers.isbn_10
-    if (m.identifiers.isbn_13) updates.isbn13 = m.identifiers.isbn_13
-    if (m.identifiers.goodreads) updates.goodreadsId = m.identifiers.goodreads
-    if (m.identifiers.openlibrary) updates.openlibraryId = m.identifiers.openlibrary
+    if (m.identifiers.isbn_10) set('isbn10', m.identifiers.isbn_10)
+    if (m.identifiers.isbn_13) set('isbn13', m.identifiers.isbn_13)
+    if (m.identifiers.goodreads) set('goodreadsId', m.identifiers.goodreads)
+    if (m.identifiers.openlibrary) set('openlibraryId', m.identifiers.openlibrary)
   }
   if (m.series) {
-    updates.seriesName = m.series.name
-    updates.seriesIndex = m.series.index
-    updates.seriesTotal = m.series.total ?? null
+    set('seriesName', m.series.name)
+    set('seriesIndex', m.series.index)
+    set('seriesTotal', m.series.total ?? null)
   }
-  if (m.tags?.length) updates.tags = m.tags
+  if (m.tags?.length) set('tags', m.tags)
   if (result.cover) {
-    updates.coverFullPath = result.cover.full
-    updates.coverThumbPath = result.cover.thumb
+    // The paths are fixed names, so they say nothing about whether the artwork
+    // changed — the sidecar compares the bytes it is about to write and says
+    // so. Falling back to the path diff keeps this honest against a sidecar
+    // too old to report it (a first cover is a change either way).
+    const coverChanged = result.cover.changed ?? before.coverFullPath !== result.cover.full
+    set('coverFullPath', result.cover.full)
+    set('coverThumbPath', result.cover.thumb)
+    if (coverChanged) changed.add('cover')
   }
   db.updateBook(bookId, updates)
 
   for (const conflict of result.conflicts) {
     db.insertConflict(bookId, conflict.field, conflict.candidates)
   }
+  return [...changed]
 }
 
 async function addFormatToExisting(

@@ -5,7 +5,7 @@ import { modifiersFrom } from '@/lib/selection'
 import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
-import { DeviceIcon, TrashIcon } from '@/components/shared/icons'
+import { DeviceIcon, SpinnerIcon, TrashIcon } from '@/components/shared/icons'
 
 /**
  * Card geometry below the cover, in px. Fixed rather than content-sized so
@@ -46,6 +46,8 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
   const selected = useUIStore((s) => s.selection.ids.has(book.id))
   const openContextMenuFor = useUIStore((s) => s.openContextMenuFor)
   const requestDelete = useUIStore((s) => s.requestDelete)
+  // Boolean selector again: only the card being refreshed re-renders
+  const refreshing = useUIStore((s) => Boolean(s.refreshingBooks[book.id]))
   const thumb = coverUrl(book, 'thumb')
   const onDevice = useDeviceStore((s) => bookOnDevices(s, book.id).length > 0)
 
@@ -95,6 +97,17 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
               title="On device"
             >
               <DeviceIcon className="h-2.5 w-2.5" />
+            </div>
+          )}
+          {/* Bottom-left, opposite the delete control and clear of both
+              badges above: this is the only sign a re-fetch is running while
+              the detail panel that started it has moved on to another book */}
+          {refreshing && (
+            <div
+              className="absolute bottom-1.5 left-1.5 rounded-full bg-ink-950/80 p-1 text-gold-400 shadow"
+              title="Refreshing metadata…"
+            >
+              <SpinnerIcon className="h-3 w-3" />
             </div>
           )}
         </div>

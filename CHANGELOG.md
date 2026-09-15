@@ -4,6 +4,60 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
+## [Unreleased] — 2026-09-15
+
+### Added
+- **A metadata re-fetch now says what it did.** Pressing Re-fetch metadata used
+  to return instantly and report nothing: a successful fetch announced itself by
+  quietly redrawing the card, and a failed one said nothing at all. The button
+  spins while the fetch runs (and the book's card carries a spinner too, so a
+  refresh started from one book and left behind is still visible), and the
+  answer arrives when it settles — *Metadata updated* with the fields that
+  actually changed, *No new metadata found* when the sources had nothing new to
+  add, or the failure's own message. The last of those is the one that mattered
+  most: hydration failures are non-fatal by design and were only ever logged, so
+  a timeout at Google Books was indistinguishable from a book that was already
+  perfect.
+- **Conflicts queue a review from the report** — a refresh that found
+  disagreement offers a *Review* button on the same report rather than leaving
+  the queue badge to be noticed.
+- **A request to re-fetch is available from the context menu** for a single
+  book, matching the detail panel's button and reporting identically.
+- **A small toast surface** (`components/shared/Toasts.tsx`, owned by the UI
+  store) for work that finishes out of the reader's sight. It carries those
+  reports, replaces the two blocking `alert()` calls the detail panel and
+  context menu used for failures, and now also reports the end of a bulk
+  refresh, whose status-bar counter previously vanished without a word.
+
+### Changed
+- **`importer.hydrate` returns what it did** — `{ok, changed, conflicts}` or
+  `{ok: false, error}` — instead of only logging it. Import still ignores the
+  value (hydration is non-blocking and non-fatal), but the explicit re-fetch is
+  now an awaited call: it is a user action with someone waiting on the answer,
+  and the panel that started it can be gone by the time the answer arrives.
+- **The single-book "changed" report is diffed, not guessed.** Only a column
+  whose value really moved counts, mapped to the field a reader would name, and
+  the derived sort keys deliberately do not count — a backfilled `sort_title` is
+  not a title change, and reporting it would put "Title" on every refresh of
+  every book that arrived without one. The cover is the interesting case: the
+  files keep fixed names, so a re-download of the same artwork and a genuinely
+  new one are indistinguishable from the row; the sidecar now compares the bytes
+  it is about to write and says whether the cover changed.
+- **`failed` in a bulk refresh is a real number.** The job counted a book as
+  done whether or not the fetch inside it succeeded, so the counter never moved.
+  It now distinguishes refreshed, actually-changed, skipped and failed, and
+  reports why it stopped — cancelled, or the share dropping under it.
+- **Errors from the detail panel and the context menu are reported on screen**
+  rather than in a blocking OS alert dialog.
+
+### Fixed
+- **Resolving a title conflict now renames the book's files.** Every other path
+  that settles a title (`importer.hydrate`, `library:updateBook`) keeps the
+  format files named after the book; `metadata:resolveConflict` updated the
+  record and left the old name on disk, so a refresh that matched an anthology
+  and then a review choosing the embedded title ended with the right title in
+  the library and the anthology's name in the folder.
+
 ## [Unreleased] — 2026-08-15
 
 ### Added

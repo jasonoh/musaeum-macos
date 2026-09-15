@@ -1,6 +1,7 @@
 import { join } from 'path'
 import type { Book } from '@shared/book.types'
 import type { ConflictChoices } from '@shared/metadata.types'
+import * as bookFiles from '../services/book-files'
 import * as bulkHydrate from '../services/bulk-hydrate'
 import * as db from '../services/db'
 import { broadcast } from '../services/events'
@@ -63,7 +64,13 @@ export function registerMetadataHandlers(): void {
 
     const book = db.getBook(conflict.bookId)
     if (book?.nasPath && nas.isOnline()) {
-      await importer.writeMetadataJson(join(nas.getLibraryRoot()!, book.nasPath), book)
+      const bookDir = join(nas.getLibraryRoot()!, book.nasPath)
+      await importer.writeMetadataJson(bookDir, book)
+      // A title resolution is the third place a title settles, after hydration
+      // and the metadata editor — and the only one that forgot the files, which
+      // left a book renamed to "After the Quake" holding "The Bakery Attack.epub"
+      // on disk. Never throws; see book-files.ts.
+      await bookFiles.renameToTitle(bookDir, book.title)
       librarySync.upsertCatalog([book])
     }
 
@@ -73,15 +80,19 @@ export function registerMetadataHandlers(): void {
 
   handle('metadata:rehydrateBook', async (bookId: string) => {
     nas.assertOnline()
-    // Before the fire-and-forget below, because after it nothing can report
+    // Before the fetch below, because a failure after it has no channel home
     sidecar.assertAvailable()
     const book = db.getBook(bookId)
     if (!book?.nasPath) throw new Error('Book not found')
     const bookDir = join(nas.getLibraryRoot()!, book.nasPath)
     const file = await bulkHydrate.findHydratableFile(bookDir)
-    if (!file) throw new Error('No book file found to hydrate from')
-    // Fire and forget — hydration is always non-blocking
-    void importer.hydrate(bookId, file, bookDir)
+    if (!file) throw new Error('No EPUB, MOBI or AZW3 file to refresh from')
+    // The one awaited hydration: this call is a user action, not a background
+    // chore, so the caller is told what happened rather than being left to
+    // watch the card. Import and the bulk job keep the non-blocking contract —
+    // there is nothing to report to, and fifty books must not hold one invoke
+    // open for minutes.
+    return importer.hydrate(bookId, file, bookDir)
   })
 
   handle('metadata:rehydrateBooks', (bookIds: string[]) => {

@@ -15,9 +15,12 @@ import {
   ReaderIcon,
   RefreshIcon,
   SendIcon,
+  SpinnerIcon,
   StarIcon,
   TrashIcon
 } from '@/components/shared/icons'
+import { refreshBookMetadata } from '@/lib/metadata-refresh'
+import { notifyError } from '@/lib/notify'
 
 const READ_STATUS_OPTIONS: { value: ReadStatus; label: string }[] = [
   { value: 'unread', label: 'Unread' },
@@ -39,6 +42,9 @@ export function BookDetail() {
   const requestDelete = useUIStore((s) => s.requestDelete)
   const requestEdit = useUIStore((s) => s.requestEdit)
   const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
+  // Subscribed per book (a boolean selector), so the panel re-renders when
+  // *this* book's refresh starts or ends and not on any other's
+  const refreshing = useUIStore((s) => Boolean(bookId && s.refreshingBooks[bookId]))
   const [busy, setBusy] = useState<string | null>(null)
 
   const book = useMemo(() => books.find((b) => b.id === bookId) ?? null, [books, bookId])
@@ -50,7 +56,7 @@ export function BookDetail() {
     try {
       await fn()
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err))
+      notifyError(err)
     } finally {
       setBusy(null)
     }
@@ -252,14 +258,19 @@ export function BookDetail() {
             <FolderIcon className="h-4 w-4" />
           </button>
           <button
-            disabled={!online || busy !== null}
-            onClick={() =>
-              void run('rehydrate', () => window.Musaeum.metadata.rehydrateBook(book.id))
-            }
-            title="Re-fetch metadata"
+            disabled={!online || busy !== null || refreshing}
+            onClick={() => void refreshBookMetadata(book.id)}
+            title={refreshing ? 'Refreshing metadata…' : 'Re-fetch metadata'}
+            aria-label={refreshing ? 'Refreshing metadata' : 'Re-fetch metadata'}
             className="rounded-md border border-ink-600 px-2.5 py-1.5 text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
           >
-            <RefreshIcon className="h-4 w-4" />
+            {/* The fetch takes seconds and the answer arrives as a toast, so
+                the button has to say "still working" on its own */}
+            {refreshing ? (
+              <SpinnerIcon className="h-4 w-4 text-gold-400" />
+            ) : (
+              <RefreshIcon className="h-4 w-4" />
+            )}
           </button>
           <button
             disabled={!online || busy !== null}

@@ -18,6 +18,59 @@ import {
 export type ViewMode = 'grid' | 'list'
 export type ActiveModal = 'conflicts' | 'migration' | 'settings' | null
 
+export type ToastKind = 'success' | 'info' | 'error'
+
+/**
+ * A transient report of something that finished out of the user's sight — a
+ * metadata refresh, a failed action. Deliberately not a dialog: the point is
+ * to say what happened, not to interrupt.
+ */
+export interface Toast {
+  id: number
+  kind: ToastKind
+  message: string
+  /** Second line: the specifics — what changed, or why it failed. */
+  detail?: string
+  action?: { label: string; run(): void }
+}
+
+/** How long each kind stays on screen. Errors are worth reading. */
+const TOAST_LIFE_MS: Record<ToastKind, number> = {
+  success: 6000,
+  info: 7000,
+  error: 12000
+}
+
+/** Beyond this the oldest goes: three is a report, more is a wall. */
+const MAX_TOASTS = 3
+
+let nextToastId = 1
+const toastTimers = new Map<number, ReturnType<typeof setTimeout>>()
+
+function scheduleDismiss(id: number, kind: ToastKind): void {
+  // Resolved at fire time, so a toast that is re-notified under the same id
+  // (none today) or dismissed early can't be resurrected by a stale callback
+  toastTimers.set(
+    id,
+    setTimeout(() => useUIStore.getState().dismissToast(id), TOAST_LIFE_MS[kind])
+  )
+}
+
+function clearTimer(id: number): void {
+  const timer = toastTimers.get(id)
+  if (timer) {
+    clearTimeout(timer)
+    toastTimers.delete(id)
+  }
+}
+
+export interface NotifyInput {
+  kind: ToastKind
+  message: string
+  detail?: string
+  action?: { label: string; run(): void }
+}
+
 export interface ContextMenuTarget {
   bookId: string
   x: number
@@ -50,6 +103,14 @@ interface UIState {
    * metadata features are unavailable.
    */
   pythonEnv: PythonEnvProgress | null
+  /** Transient reports, newest last. */
+  toasts: Toast[]
+  /**
+   * Books whose metadata is being re-fetched right now, keyed by id. In the
+   * store rather than in the button, because the fetch outlives the panel it
+   * was started from — the card behind it still says the book is working.
+   */
+  refreshingBooks: Record<string, true>
 
   setViewMode(mode: ViewMode): void
   select(id: string, mods: ClickModifiers): void
@@ -73,6 +134,10 @@ interface UIState {
   requestEdit(bookId: string | null): void
   requestDeviceRemoval(target: DeviceRemovalTarget | null): void
   setPythonEnv(progress: PythonEnvProgress | null): void
+  /** Show a transient report; returns its id for callers that dismiss early. */
+  notify(input: NotifyInput): number
+  dismissToast(id: number): void
+  setBookRefreshing(bookId: string, refreshing: boolean): void
 }
 
 const PLAIN_CLICK: ClickModifiers = { toggle: false, range: false }
@@ -90,7 +155,7 @@ function bookOrder(): string[] {
 
 export const useUIStore = create<UIState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       viewMode: 'grid',
       selection: EMPTY_SELECTION,
       modal: null,
@@ -102,6 +167,8 @@ export const useUIStore = create<UIState>()(
       editingBookId: null,
       removingFromDevice: null,
       pythonEnv: null,
+      toasts: [],
+      refreshingBooks: {},
 
       setViewMode: (viewMode) => set({ viewMode }),
       select: (id, mods) =>
@@ -133,7 +200,52 @@ export const useUIStore = create<UIState>()(
       requestSelectionDelete: (deletingSelection) => set({ deletingSelection, contextMenu: null }),
       requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null }),
       requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null }),
-      setPythonEnv: (pythonEnv) => set({ pythonEnv })
+      setPythonEnv: (pythonEnv) => set({ pythonEnv }),
+
+      notify: (input) => {
+        const id = nextToastId++
+        const toast: Toast = {
+          id,
+          kind: input.kind,
+          message: input.message,
+          detail: input.detail,
+          action: input.action
+        }
+        const previous = get().toasts
+        // A re-click, or a job reporting the same summary twice, refreshes the
+        // toast that is already up rather than stacking a twin next to it
+        const toasts = [
+          ...previous.filter((t) => t.message !== toast.message || t.detail !== toast.detail),
+          toast
+        ]
+        // Oldest first out of the way — three reports is information, more is
+        // a wall. Their timers go with them, so a dropped toast can't fire a
+        // dismissal for an id that has been reused by nothing at all.
+        const overflow = toasts.length - MAX_TOASTS
+        if (overflow > 0) toasts.splice(0, overflow)
+
+        const kept = new Set(toasts.map((t) => t.id))
+        for (const t of previous) if (!kept.has(t.id)) clearTimer(t.id)
+
+        set({ toasts })
+        scheduleDismiss(id, toast.kind)
+        return id
+      },
+
+      dismissToast: (id) => {
+        clearTimer(id)
+        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
+      },
+
+      setBookRefreshing: (bookId, refreshing) => {
+        if (Boolean(get().refreshingBooks[bookId]) === refreshing) return
+        set((s) => {
+          const refreshingBooks = { ...s.refreshingBooks }
+          if (refreshing) refreshingBooks[bookId] = true
+          else delete refreshingBooks[bookId]
+          return { refreshingBooks }
+        })
+      }
     }),
     {
       // Only the view choice outlives the session — selection, modals and

@@ -69,6 +69,7 @@ async function run(ids: string[]): Promise<void> {
     total: ids.length,
     failed: 0,
     skipped: 0,
+    updated: 0,
     running: true
   }
   broadcast('bulkHydrateProgress', { ...progress })
@@ -76,10 +77,16 @@ async function run(ids: string[]): Promise<void> {
 
   try {
     for (const id of ids) {
-      if (cancelled) break
+      if (cancelled) {
+        progress.stopped = 'cancelled'
+        break
+      }
       // Every remaining write would fail anyway; stopping and saying so beats
       // reporting fifty separate failures
-      if (!nas.isOnline()) break
+      if (!nas.isOnline()) {
+        progress.stopped = 'offline'
+        break
+      }
 
       const book = db.getBook(id)
       if (!book?.nasPath) {
@@ -91,14 +98,24 @@ async function run(ids: string[]): Promise<void> {
           if (!file) {
             progress.skipped++
           } else {
-            await importer.hydrate(id, file, bookDir, undefined, { batched: true })
-            hydrated++
+            const outcome = await importer.hydrate(id, file, bookDir, undefined, { batched: true })
+            // `hydrate` returns its failure rather than throwing, so this is
+            // the only place the job can learn a book didn't make it — counting
+            // it as done is what made `failed` a number that never moved.
+            if (outcome.ok) {
+              hydrated++
+              if (outcome.changed.length > 0) progress.updated++
+            } else {
+              progress.failed++
+              progress.lastError = outcome.error
+            }
           }
         } catch (err) {
           // `hydrate` swallows its own pipeline failures (a book keeps its
           // embedded metadata), so this catches the surrounding I/O only
           console.error(`[bulk-hydrate] ${id} failed:`, err)
           progress.failed++
+          progress.lastError = err instanceof Error ? err.message : String(err)
         }
       }
       progress.completed++
