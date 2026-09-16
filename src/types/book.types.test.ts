@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeBook } from '../../test/helpers/book'
-import { readableFormat, seriesDisplay, sortableAuthor, sortableTitle } from './book.types'
+import { readableFormat, seriesDisplay, sortableAuthor, sortableTitle, primaryFormat, orderedFormats } from './book.types'
 
 describe('seriesDisplay', () => {
   it('drops the trailing .0 on whole-number indices', () => {
@@ -71,5 +71,49 @@ describe('readableFormat', () => {
 
   it('returns null for a book with no files', () => {
     expect(readableFormat({ ...makeBook('a'), formats: [] })).toBeNull()
+  })
+})
+
+describe('primaryFormat', () => {
+  it('names the format the reader would open', () => {
+    expect(primaryFormat({ ...makeBook('a'), formats: ['pdf', 'mobi', 'epub'] })).toBe('epub')
+    expect(primaryFormat({ ...makeBook('a'), formats: ['mobi', 'azw3'] })).toBe('azw3')
+  })
+
+  it('names a pdf-only book pdf, where readableFormat answers null', () => {
+    expect(primaryFormat({ ...makeBook('a'), formats: ['pdf'] })).toBe('pdf')
+  })
+
+  it('prefers an epub over a pdf when a book has both', () => {
+    expect(primaryFormat({ ...makeBook('a'), formats: ['pdf', 'epub'] })).toBe('epub')
+  })
+
+  it('returns null for a book with no files', () => {
+    expect(primaryFormat({ ...makeBook('a'), formats: [] })).toBeNull()
+  })
+})
+
+describe('orderedFormats', () => {
+  it('reads in preference order regardless of how the array was stored', () => {
+    expect(orderedFormats({ ...makeBook('a'), formats: ['pdf', 'mobi', 'epub'] })).toEqual([
+      'epub',
+      'mobi',
+      'pdf'
+    ])
+    expect(orderedFormats({ ...makeBook('a'), formats: ['mobi', 'epub'] })).toEqual([
+      'epub',
+      'mobi'
+    ])
+  })
+
+  it('keeps a format the order does not know, after the ones it does', () => {
+    expect(orderedFormats({ ...makeBook('a'), formats: ['pdf', 'epub'] })).toEqual([
+      'epub',
+      'pdf'
+    ])
+  })
+
+  it('is empty for a book with no files', () => {
+    expect(orderedFormats({ ...makeBook('a'), formats: [] })).toEqual([])
   })
 })

@@ -69,6 +69,34 @@ export function readableFormat(book: Book): BookFormat | null {
   return READABLE_FORMATS.find((f) => book.formats.includes(f)) ?? null
 }
 
+/**
+ * Format preference order: what the reader would open first, PDF last — it
+ * has no in-app reader and is never converted, so it is the odd one out rather
+ * than anyone's first choice.
+ */
+const FORMAT_ORDER: BookFormat[] = [...READABLE_FORMATS, 'pdf']
+
+/**
+ * The book's formats in preference order. One ordering rule for every label,
+ * so a card's chip and its tooltip cannot disagree — the database's own array
+ * order is not stable (`["epub","mobi"]` and `["mobi","epub"]` are both
+ * common), which is why nothing may read `formats[0]` directly. Formats the
+ * order doesn't know are kept, after the known ones.
+ */
+export function orderedFormats(book: Book): BookFormat[] {
+  const known = FORMAT_ORDER.filter((f) => book.formats.includes(f))
+  return [...known, ...book.formats.filter((f) => !known.includes(f))]
+}
+
+/**
+ * The format a card names: the one the reader would open. A PDF-only book has
+ * no *readable* format and still gets labelled — "PDF" is the one worth seeing
+ * from across the grid (never converted, no in-app reader).
+ */
+export function primaryFormat(book: Book): BookFormat | null {
+  return orderedFormats(book)[0] ?? null
+}
+
 export type SortField =
   | 'title'
   | 'author'

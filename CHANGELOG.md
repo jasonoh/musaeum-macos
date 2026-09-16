@@ -28,6 +28,14 @@ the app is packaged.
   reports, replaces the two blocking `alert()` calls the detail panel and
   context menu used for failures, and now also reports the end of a bulk
   refresh, whose status-bar counter previously vanished without a word.
+- **A card says what file it is.** The only way to learn whether a book was an
+  EPUB or a PDF was to open it, which is the wrong trade for something glanced
+  at across 7000 covers. Each card now carries a small format chip in the
+  bottom-left of its cover — the primary format, plus a count of the rest
+  (*EPUB +1*), with the full list in the chip's tooltip. PDF sorts last in that
+  preference but is never what gets hidden: a PDF-only book reads *PDF*, which
+  is the label most worth seeing at a glance, since a PDF is never converted
+  and has no in-app reader.
 
 ### Changed
 - **`importer.hydrate` returns what it did** — `{ok, changed, conflicts}` or

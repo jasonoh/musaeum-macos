@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import type { Book } from '@shared/book.types'
-import { seriesDisplay } from '@shared/book.types'
+import { orderedFormats, primaryFormat, seriesDisplay } from '@shared/book.types'
 import { modifiersFrom } from '@/lib/selection'
 import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
 import { useReaderStore } from '@/stores/reader.store'
@@ -50,6 +50,8 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
   const refreshing = useUIStore((s) => Boolean(s.refreshingBooks[book.id]))
   const thumb = coverUrl(book, 'thumb')
   const onDevice = useDeviceStore((s) => bookOnDevices(s, book.id).length > 0)
+  const format = primaryFormat(book)
+  const extraFormats = book.formats.length - 1
 
   return (
     <div
@@ -99,17 +101,39 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
               <DeviceIcon className="h-2.5 w-2.5" />
             </div>
           )}
-          {/* Bottom-left, opposite the delete control and clear of both
-              badges above: this is the only sign a re-fetch is running while
-              the detail panel that started it has moved on to another book */}
-          {refreshing && (
-            <div
-              className="absolute bottom-1.5 left-1.5 rounded-full bg-ink-950/80 p-1 text-gold-400 shadow"
-              title="Refreshing metadata…"
-            >
-              <SpinnerIcon className="h-3 w-3" />
-            </div>
-          )}
+          {/* Bottom-left, opposite the delete control and clear of both badges
+              above. The format chip lives here because it is the one thing the
+              card is *scanned* for — how it used to work was opening the book
+              — and the re-fetch spinner shares the corner beside it rather
+              than stacking, since the spinner is transient and the chip is
+              not: this is the only sign a refresh is running while the detail
+              panel that started it has already moved on to another book. */}
+          <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1">
+            {refreshing && (
+              <div
+                className="rounded-full bg-ink-950/80 p-1 text-gold-400 shadow"
+                title="Refreshing metadata…"
+              >
+                <SpinnerIcon className="h-3 w-3" />
+              </div>
+            )}
+            {/* The primary format only, with a count of the rest — a card that
+                listed every format would be four chips of noise over artwork
+                nobody chose it for. The full list is the tooltip. Sits on its
+                own dark plate with a backdrop blur so it reads over a cover of
+                any brightness. */}
+            {format && (
+              <div
+                title={orderedFormats(book).join(' · ').toUpperCase()}
+                className="rounded-[3px] bg-ink-950/70 px-1 py-px text-[10px] font-semibold uppercase leading-[14px] tracking-wider text-parchment-dim shadow backdrop-blur-sm transition-colors group-hover:text-parchment"
+              >
+                {format}
+                {extraFormats > 0 && (
+                  <span className="text-parchment-faint"> +{extraFormats}</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div

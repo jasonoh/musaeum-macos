@@ -398,6 +398,27 @@ to FTS relevance `rank` when omitted. The renderer always passes the active
 sort, so the sort controls stay live during a search — the trade-off is that
 relevance rank no longer decides display order there, only which books match.
 
+### Card format chip
+
+`BookCard` labels every cover with the book's **primary format** — the one the
+reader would open — plus a count of the rest (`EPUB +1`), the full list being
+the chip's tooltip. It sits in the bottom-left of the cover, the one corner no
+other badge owns (top-left device, top-right read dot, bottom-right delete on
+hover) and shares that corner with the re-fetch spinner as a flex row rather
+than stacking on it, so neither element has to move.
+
+`primaryFormat` / `orderedFormats` in `book.types.ts` own the preference order
+(epub → azw3 → mobi → pdf) and exist because **nothing may read `formats[0]`
+directly**: the array holds whatever order the writing source left, and the
+real library stores `["epub","mobi"]` and `["mobi","epub"]` in nearly equal
+numbers. PDF sorts last but is never dropped — a PDF-only book is the case most
+worth seeing from across the grid, since it is never converted and has no
+in-app reader.
+
+The chip is fixed at 16px tall and absolutely positioned over the cover, so it
+costs the row math below nothing; making it content-sized would put card height
+back in the DOM.
+
 ### Rendering (virtualized views)
 
 Both library views render only the rows overlapping the viewport.
