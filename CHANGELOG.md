@@ -65,6 +65,16 @@ the app is packaged.
   record and left the old name on disk, so a refresh that matched an anthology
   and then a review choosing the embedded title ended with the right title in
   the library and the anthology's name in the folder.
+- **The `MUSAEUM` wordmark is centred on the titlebar's own geometry.** It was
+  placed by hand — 76px of left padding in an end-aligned row — which left its
+  centre at x 125.5 when the space it belongs in runs from the traffic lights
+  (x 74) to the column's edge (x 223); it now centres in that space (148.5), on
+  the line through the dots' centres (y 25.5). The numbers come from
+  `src/types/window-chrome.ts`, which the window's own `trafficLightPosition`
+  reads too, because half a pixel of drift between the two is visible against a
+  15px wordmark. The dots' centre is *measured*, not computed: Electron's margin
+  is the corner of the close button's frame, not the centre of the 12px circle
+  drawn inside it.
 
 ## [Unreleased] — 2026-08-15
 

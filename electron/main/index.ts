@@ -2,6 +2,7 @@ import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import { TRAFFIC_LIGHT_POSITION } from '@shared/window-chrome'
 import { startRestApiIfEnabled } from './api/rest'
 import { registerDeviceHandlers } from './ipc/device'
 import { registerFileHandlers } from './ipc/files'
@@ -92,7 +93,7 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#0d0b09',
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 20, y: 18 },
+    trafficLightPosition: { ...TRAFFIC_LIGHT_POSITION },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

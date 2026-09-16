@@ -4,6 +4,7 @@ import { useUIStore } from '@/stores/ui.store'
 import { DevicePanel } from '@/components/device/DevicePanel'
 import { FilterSidebar } from '@/components/shared/FilterSidebar'
 import { GearIcon, SpinnerIcon, WarningIcon } from '@/components/shared/icons'
+import { TRAFFIC_LIGHT_CENTER_Y, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 
 export function Sidebar() {
   const conflictCount = useUIStore((s) => s.conflictCount)
@@ -25,9 +26,22 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-ink-800 bg-ink-900">
-      {/* Traffic-light clearance; the wordmark row doubles as a drag handle */}
-      <div className="app-drag flex h-14 shrink-0 items-end px-4 pb-2 pl-[76px]">
-        <h1 className="font-display text-[15px] font-semibold tracking-[0.18em] text-gold-400">
+      {/* Traffic-light clearance; the wordmark row doubles as a drag handle.
+          The wordmark is centred in the space the dots leave — between them and
+          the column's right edge — on the line through their centres, which is
+          why the row is a positioning context rather than a padded flex line
+          (see window-chrome.ts for where those numbers come from). The
+          translate is half the trailing letter-space, which no eye reads.
+
+          The box, not the caps, is what can be centred: a line box centres its
+          leading, and text paints on a whole-pixel grid here (measured — `top`
+          anywhere from 25.5 to 26.25 paints identically, +1px moves a full
+          pixel), so the caps' own half pixel is not reachable from CSS. */}
+      <div className="app-drag relative h-14 shrink-0">
+        <h1
+          className="absolute -translate-y-1/2 translate-x-[0.13em] text-center font-display text-[15px] font-semibold tracking-[0.18em] text-gold-400"
+          style={{ left: TRAFFIC_LIGHT_RIGHT_EDGE, right: 0, top: TRAFFIC_LIGHT_CENTER_Y }}
+        >
           MUSAEUM
         </h1>
       </div>
