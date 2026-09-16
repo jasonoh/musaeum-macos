@@ -302,6 +302,214 @@ resume, and a genuine offline state).
       catalog-upsert failure inside a test is invisible rather than failing it.
       Both pre-date the reader.
 
+## Theming (design: `docs/superpowers/specs/theming.md` — slices 1–2 landed 2026-09-15)
+
+Approved design: `docs/superpowers/specs/theming.md` (1,776 lines, **currently untracked** — commit it
+with slice 1). Seven owner-approved slices: import a colour scheme from a provider the owner already
+uses (base16/base24, iTerm2 `.itermcolors`, Obsidian `theme.css` via a sandboxed CSS resolver), derive
+Musaeum's **17** design values from it, and apply them to the whole app including the reader. A theme
+supplies **palette only** — never geometry, typography, shadow shape or layout.
+
+Reference prototype, **outside the repo** and nothing vendored from it: **`~/theme-probe/`** (9.8M) —
+`derive.py` (pure stdlib: provider adapters → one IR → tokens, with contrast floors enforced),
+`HANDOFF.md`, `preview.html`, `frames/baseline/`, `frames/after-slice1/`, `curated/` (13 candidate
+schemes). **Its rules are authoritative for slice 2, which must reproduce them verbatim.** It was
+measured on 8 palettes × 11 audits, 0 failures, including the two rules added for slice 7
+(`scrim`, the status family).
+
+- [x] **Slice 1 — token plumbing** (landed 2026-09-15, **uncommitted**). `tailwind.config.js` +
+      `src/index.css`: 19 custom properties on `:root` (14 palette channels + `--on-accent` +
+      `--scrim`, three shadow alphas, `color-scheme: dark`), colours in the
+      `rgb(var(--x) / <alpha-value>)` form. That form is load-bearing rather than stylistic: **63
+      opacity-modified token utilities across 20 files** silently stop being generated under a plain
+      `var()`. Verified by the orchestrator — gate green (270 tests, identical to the `bdc54ec`
+      baseline), all 14 hex literals convert byte-for-byte, and **0 of 1,296,000 pixels differ** on
+      the library view. Named residual: 146 pixels of the settings-scrim frame differ by exactly
+      1/255 — alpha-composite rounding between `rgba(13,11,9,0.8)` and `rgb(13 11 9 / 0.8)`.
+      Sub-perceptual and inherent to the required form; **do not chase it as a regression**.
+- [x] **Slice 2 — derivation core** (landed 2026-09-15, **uncommitted**).
+      `electron/main/services/theme/` + `src/types/theme.types.ts`: colour maths, the two provider
+      adapters (base16 and iTerm2 — hand-rolled, no new dependency), and a verbatim port of
+      `derive.py`'s `derive_tokens()`, plus AC1.4 (moved here by J9). Verified by the orchestrator on
+      the returned tree: gate typecheck 0 / lint 0 / `npm test` **321 passed, 19 files** (baseline
+      270/17); a differential probe over all 15 real palettes reported **every derived value identical
+      to the prototype** — every hex byte-for-byte, every audit ratio to 1e-9, every `adjusted`/`notes`
+      string, 1,539 assertions; and three hand-applied mutations each reddened only their own
+      criterion (deleting the terminal floor check → AC2.2; an accept-everything iTerm grey filter →
+      3 AC2.4 tests; one channel step in `--ink-950` → 2 AC1.4 tests), every file restored
+      byte-identical. Corpus vendored with it: 13 base16 schemes at
+      `electron/main/services/theme/builtin/` — byte-identical to `tinted-theming/schemes@spec-0.11`
+      (`7cda828e`) — and 2 `.itermcolors` at `test/fixtures/theme/`, value-identical to
+      `mbadolato/iTerm2-Color-Schemes@master` (`1a3e1d29`). **Both provenance claims are now measured**,
+      which the spec had recorded as unverified. A read-only pre-merge review then found **one BLOCK
+      and ten defects**; an adversarial audit of that repair found **four more fix-now**, the last of
+      which is the one worth knowing: `deriveTheme` was *still* returning `ok: true` with rows in its
+      own audit table **below their floor**, because the prototype audits two placements but walks one
+      score. Both rounds are in the adjudications below, and the spec carries them as A12–A20. Final
+      gate: typecheck 0 / lint 0 / **356 passed, 19 files**; corpus pins (13 files, 240 audit rows, all
+      meeting their floors) and every AC2.1 literal unchanged; the differential re-run after each round,
+      **identical to `derive.py` both times** — neither round moved a single derived value.
+- [ ] **Slice 3 — persistence and apply-on-boot.** An `app_config` theme key (no SQL migration needed:
+      `app_config` is `key`/`value`), `backgroundColor` at window creation (hardcoded today at
+      `electron/main/index.ts:94`), and a renderer theme store. Carry a `theme_engine_version`: stored
+      derived values are unversioned, so a later rule change would leave every stored theme silently
+      rendering by the old rules with nothing to notice it.
+- [ ] **Slice 4 — import and picker.** File import, a themes drop-box directory, and an Appearance
+      section in the settings modal. Owed at this slice: the **CHANGELOG entry** (slice 1 is
+      invisible; this is the first user-visible change) and the `docs/architecture.md` directory
+      listing for the new `src/lib/theme/` files.
+- [ ] **Slice 5 — reader convergence and the light flip.** The reader's own `PALETTE` table
+      (`src/components/reader/ReaderEngine.tsx:48-50`) becomes derived, under two hard constraints: its
+      injected stylesheet must carry **resolved literals, never variable references** — foliate's
+      `vendor/foliate-js/paginator.js:191` reads the book document's resolved background back out and
+      string-compares it against a transparent rgba, and an unresolvable `var()` falls through that
+      test — and the alpha-suffix concatenation at `ReaderEngine.tsx:104` must go. Also derived
+      shadows and the native window appearance.
+- [ ] **Slice 6 — Obsidian resolver.** Load `theme.css` in a sandboxed offscreen window with the
+      dark/light class applied and read the variables back as computed values. It is needed rather
+      than nice: a regex scrape resolves **1 of the 5** Obsidian themes installed on this machine —
+      the rest compute their roles through `hsl(var(--base-h) …)`, `var()` chains and `color-mix()`.
+      Security surface: arbitrary CSS, possibly a remote `@import`, network blocked, and never injected
+      into the real renderer. Stored as **derived values only** plus `sourcePath` — never a copy of the
+      source CSS.
+- [ ] **Slice 7a — the status family and the inversions.** The *derivation* half already landed with
+      slice 2 (`theme/derive.ts` + `src/types/theme.types.ts` carry `danger`/`ok`/`warn` with their
+      `400`/`500`/`600` steps and `on-*` foregrounds, floors enforced and corpus-tested); what 7a owes
+      is the `:root` + `tailwind.config.js` wiring for `scrim` and the status family, and then the
+      migration: the **twelve veils** (`bg-ink-950/70|80` → `bg-scrim/…`) and the two
+      `ring-white/5` hairlines (`BookCard.tsx:79`, `BookDetail.tsx:81`). Not optional: under a flipped
+      light ramp `ink-950` is the *lightest* tone, so every modal backdrop inverts to a white wash —
+      and four of the twelve are chips laid over **cover art** (`BookCard.tsx:98/114/128/167`), which
+      is exactly why `scrim` is a role that darkens in both variants rather than a ramp step.
+- [ ] **Slice 7b — the status sweep.** Migrate the **53 stock-palette sites across 16 files**
+      (`text-red-400` ×23, `bg-red-500` ×11, `border-red-500` ×7, `text-white` ×4, `bg-red-600` ×3,
+      `ring-white` ×2, `bg-emerald-500` ×1). Acceptance is a repo-wide grep reaching zero, with the
+      count recorded before and after. Split out of 7a because the sweep crosses 16 files, over the
+      ~10-file bound; 7a is the bounded half and lands green on its own.
+- [ ] **`gold-200` defect — fixed by slice 7a** (spec J5). Four sites in two files reference a ramp
+      step the config **never defined** (`gold` is 300/400/500/600), so `text-gold-200` / `bg-gold-200`
+      emit no CSS rule at all. Measured in the running app: the selected-row tick computes to
+      `rgb(125,114,96)` — an inherited `parchment-faint` — while the same element's `bg-gold-500/30`
+      tint works correctly. Fix: the three text sites → `gold-300`, and the mark at
+      `ListView.tsx:211` → `bg-gold-400`.
+
+Decisions already closed — **do not re-litigate**; each carries its rejected alternative and a reversal
+condition in the spec's adjudication block (J1–J11): palette-only (never layout); scheme-native accent
+rather than amber-locked; light themes supported from day one; all three providers in v1; curated
+built-ins **and** file import; token names stay `ink`/`parchment`/`gold` in v1 (renaming would touch 28
+files — it is a separate mechanical pass, after slice 5); and the full status sweep inside this feature
+rather than as debt, staged 7a/7b.
+
+### Slice 2 adjudications (2026-09-15 — do not re-litigate)
+
+Porting `derive.py` forced four calls. Each carries what it beat and what would reverse it; the spec
+carries the same set as its amendment round 2.
+
+1. **`derive.py` wins over §2.2's prose wherever the two disagree** — in three places. The scrim rule:
+   the prototype mixes the dark end 35% toward black and walks a luminance floor, where §2.2 described
+   the dark variant's scrim as *being* the dark end. The status floors: `400` is 4.5 (not 3.0), `600` is
+   a bare `adjust_light`, and `on_fill` is a `max` rather than the walk §2.2 describes. And the ladder's
+   `mix(…, 'linear')`, which is a componentwise sRGB interpolation, **not** an interpolation in linear
+   light — swapping it for real linear-light or for Oklab moves nine tests. *Rejected:* implementing the
+   prose. The tests pin the prototype, and the prototype is what was measured over 8 palettes.
+   *Reversal:* a real palette where the prototype's rule fails and the prose's would not.
+2. **The status family ships inside slice 2, not 7a.** §2.2's return-key list omits it and J2 gave the
+   derivation to 7a, but J6 had already landed it in the prototype, and this slice's whole burden is to
+   reproduce that prototype verbatim. **7a's scope therefore shrinks**: it owns the variables and the
+   site migrations, not the derivation. *Rejected:* deferring it, which splits one function across two
+   slices and breaks the property J6 was executed to preserve. *Reversal:* slice 7 being dropped — the
+   status block is self-contained and deletes cleanly.
+3. **Terminal floor verification is the port's one addition.** The prototype's six bounded loops exit at
+   their cap **without re-checking**, so a theme that never met a floor is returned as a success whose
+   own audit row reads FAIL. An unmet floor now returns a value — `{ role, ratio, floor }` — and nothing
+   throws (invariant 12). *Measured:* identical results on all 15 real palettes, and the synthetic
+   `#808080` palette, which the prototype returns as a theme with 9 FAIL audit rows, is rejected with
+   `parchment 1.0 < 4.5`. *Rejected:* keeping the silent pass — it is precisely the class of failure the
+   picker would otherwise present as a working theme. *Reversal:* none foreseen.
+4. **AC2.4 is amended** (spec amendment round 2). Its literal clause — every derived ladder stop within
+   `hue_delta < 0.61` of its canvas, on the gruvbox iTerm fixture — is **false against the reference
+   implementation**: six of the seven stops measure 1.29–2.47, because that fixture's canvas chroma
+   (0.0049) sits under the filter's own 0.01 bypass, so the hue clause never applies and a near-grey's
+   hue angle is numerical noise. The criterion keeps its literal clause on the **nord** fixture (where it
+   holds, 0.000–0.003) and asserts the property on gruvbox: every chromatic ANSI slot excluded by the
+   filter, the ladder grey and rising, and the witness that a luminance sort would have taken gruvbox's
+   green. *Rejected:* deleting the criterion, or softening it to nothing — the mutation it names (an
+   unfiltered luminance sort of all slots) still kills three tests. *Reversal:* if a fixture turns up for
+   which the literal clause holds *and* that mutation still kills it, restore the literal form there.
+   **It now has a decider:** a synthetic `.itermcolors` built inline in the test (canvas chroma 0.0351,
+   above the filter's 0.01 bypass; an off-hue near-grey inside the luminance window) — measured,
+   deleting the hue clause moves `bg3` from `#506070` to `#5a4a3a` and reddens exactly that case. The
+   nord clause (a) survives as a **property pin that cannot discriminate**, and its comment says so.
+5. **The failure reason became a discriminated union** (`kind: 'floor' | 'malformed'`, plus
+   `metric: 'contrast' | 'luminance'` on the floor arm), taken deliberately before any consumer exists.
+   *Rejected:* leaving `{ role, ratio, floor }` bare — a malformed IR then has no way to report itself,
+   and `deriveTheme` would keep **throwing** on a missing field or returning an `ok: true` theme with
+   all-NaN tokens, which is precisely what invariant 12 forbids at the one entry point that will
+   receive untrusted input (slice 6's resolver, slice 3's re-derive). *Reversal:* none foreseen — the
+   change is cheapest now; after slice 3 stores and slice 4 formats reasons it costs a migration.
+6. **The six `Number.isFinite` guards stay, recorded as *unreachable* rather than as tested
+   behaviour.** The repair round measured that deleting all six leaves the suite green, and the
+   orchestrator reproduced it independently (0 of 345 cases redden — mutation M7). They are kept
+   because they are what holds the totality claim if a future rule introduces a non-finite path. The
+   honest statement is "unreachable given the validation fix", not "covered".
+7. **A three-digit hex is expanded, not rejected.** `normalizeHex` is the one validator the contract
+   named, and it accepts `#rgb`/`#rrggbbaa`; so `#fff` becomes `#ffffff` and then fails a *floor*
+   rather than being called malformed. The dispatch contradicted itself (it said "six hex digits" and
+   also "use `normalizeHex`"); the code follows the validator, which is the better answer for a value
+   a user can see. (The first claim written for this — "a three-digit hex becomes a floor rejection" —
+   holds only for the metronome fixture; on real palettes a white canvas or border is *accepted*. The
+   test now pins both directions.)
+8. **The audit table is verified against itself** (spec A20): **no success result may carry a row below
+   its own floor.** A general sweep, added *alongside* the six precise per-loop checks, because the
+   prototype audits two placements but walks one score — the status fill's guard accepts
+   `max(separation from canvas, separation from panel)`, so a fill that clears the panel but not the
+   canvas passed while its shipped row read FAIL, and `accent on canvas` had no guard at all.
+   *Measured before the sweep:* 715 of 40,894 successful random-IR derivations (1.7%) carried a
+   sub-floor row, and **1,200 single-field perturbations of the 15 palettes produced none** — which is
+   why neither the corpus test nor any per-loop witness could see it. *Rejected:* leaving it, which
+   ships a theme whose own table prints FAIL while the picker shows it as active. *Reversal:* none
+   foreseen; the derivation's rules are untouched, which the differential re-run proves.
+9. **`variant` is validated**, `muted: null` now rejects like every other required field, `ir.notes` is
+   filtered to strings, and every `malformed` detail goes through a bounded, throw-proof
+   `describeValue`. The last closes totality's one remaining hole (a field whose `toString` throws used
+   to throw out of `deriveTheme`). *Rejected* for notes: coercing with `String()`, which would
+   reintroduce the single call into a caller's own value that the round closed.
+10. **`index.ts` exports the discriminated failure types and drops `FloorFailure`.** The front door
+   otherwise hands slice 4 exactly the shape the discriminant was added to retire, and a cast restores
+   the un-narrowed `.ratio` that the `tsc --strict` probe was written to prevent. *Reversal:* if a
+   consumer genuinely needs the base shape, re-add it with a comment saying why.
+11. **The sweep's finiteness arm is kept and recorded as *unreachable* today** (0 non-finite rows over
+   60,000 random IRs and the whole corpus). Three lines inside a sweep the criterion already requires,
+   and the arm that keeps "no success carries a bad row" true if a rule above ever produces a NaN —
+   the same standing as the six `Number.isFinite` guards in adjudication 6.
+
+Notes and named debt left by this slice:
+
+- `deriveTheme()` **mutates the IR it is handed** (`notes`), exactly as the prototype does. Derive once
+  per parse, or clone: two derivations over one IR accumulate duplicate notes in the result, which is
+  where slice 3's re-derive-on-version-mismatch path (J3) would bite.
+- `ThemeIr.accents` is a complete `Record<AccentSlot, string>` and both adapters reject a file that
+  cannot fill every slot, so §2.2's "a provider that omits one falls back to the accent ramp" has no
+  implementation. Slice 6 owns that call — Obsidian is the only provider that can legitimately miss a
+  role.
+- `parseItermcolors(text, name?)` takes the palette's display name as an optional second argument; the
+  loader passes the file stem, which is the prototype's behaviour. Slice 4 calling the adapter directly
+  must pass a name or accept an empty one.
+- `THEME_ENGINE_VERSION = 1` is declared in `theme/index.ts`, next to the rules it versions (J3 consumes
+  it in slice 3).
+- The vendored corpus is **13** schemes (spec §5 said 10), and **4 of the 13 are light** — not the
+  "deliberately half light" §6.5 claims. Both corrected in the spec; recorded here because the light
+  share matters: light variants are where the derivation is least tested, and slice 2 is now the layer
+  that carries that risk forward.
+- `.prettierignore` (new) lists `electron/main/services/theme/builtin/` and `test/fixtures/theme/` —
+  `prettier --write .` would otherwise rewrite the vendored YAML.
+- **Dispatch defect, recorded so it is not repeated:** the repair contract conjectured that a *balanced*
+  extra container would trip the plist scanner's stack-length guard. Measured false — the stack is empty
+  at that point, the trailing container silently replaces `root`, and the rejection comes from the slot
+  check instead; the input that does exercise the guard is an **unbalanced** one. Both are cases now.
+  The same round's "not `#` + six hex digits" wording contradicted its own "use `normalizeHex`" (see
+  adjudication 7).
+
 ## Packaging & distribution
 
 Goal: a double-clickable, signed `Musaeum.app` (DMG) that runs without a
@@ -397,6 +605,13 @@ project **`musaeum`**.
 - **`deleteBook` FK restriction (pre-existing)**: deleting a book that has
   `device_history` rows throws (FK has no ON DELETE and `deleteBook` doesn't
   handle history). Found while building `replaceAllBooks` (2026-07-17).
+- **`text-gold-200` / `bg-gold-200` emit no CSS rule at all** — `gold-200` was never defined in
+  `tailwind.config.js` (`gold` is 300/400/500/600), so the four sites that use it
+  (`SelectionPanel.tsx:77`, `ListView.tsx:88, 207, 211`) get an inherited colour instead of gold.
+  Live in the running app: the selected-row tick computes to `rgb(125,114,96)`
+  (`parchment-faint`), while the same element's `bg-gold-500/30` tint works. Present since
+  `6ed5fc7` (multi-book selection). The fix is owned by the theming work — see the Theming
+  section above, J5. (Found 2026-09-15.)
 - **`requirements.md` now overlaps `docs/architecture.md`** (2026-09-15). The
   485-line original spec is still the better record of *why* the pieces are
   shaped the way they are, but its architecture, schema and IPC sections

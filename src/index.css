@@ -3,6 +3,38 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * The palette, as CSS custom properties. Space-separated sRGB channels: no `rgb()`
+   * wrapper and no `#`, because Tailwind composes them as
+   * `rgb(var(--ink-950) / <alpha-value>)`. These are the pre-theming defaults; a theme
+   * re-writes them at runtime.
+   */
+  :root {
+    --ink-950: 13 11 9;
+    --ink-900: 20 17 13;
+    --ink-850: 25 21 17;
+    --ink-800: 32 27 21;
+    --ink-700: 43 36 28;
+    --ink-600: 59 50 38;
+    --ink-500: 79 68 51;
+    --parchment: 233 225 210;
+    --parchment-dim: 179 167 143;
+    --parchment-faint: 125 114 96;
+    --gold-300: 232 201 135;
+    --gold-400: 212 162 78;
+    --gold-500: 192 143 58;
+    --gold-600: 156 112 40;
+    --on-accent: 13 11 9;
+    /* Byte-equal to ink-950 by design: the veils are pixel-identical until they migrate */
+    --scrim: 13 11 9;
+    /* Shadow strengths, consumed by the boxShadow tokens in tailwind.config.js */
+    --shadow-a1: 0.5;
+    --shadow-a2: 0.35;
+    --shadow-a3: 0.6;
+    /* The app's own scheme. The book iframe declares its own separately. */
+    color-scheme: dark;
+  }
+
   html,
   body,
   #root {

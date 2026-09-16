@@ -70,8 +70,10 @@ Musaeum/
 ├── electron-builder.yml          # DMG packaging (see invariants/packaging-and-python.md)
 ├── tailwind.config.js / postcss.config.js / eslint.config.mjs
 ├── vitest.config.ts              # main-process test config (@shared/electron aliases)
-├── test/                         # shared vitest fixtures only: helpers/ + the
-│                                 # electron mock (tests are colocated *.test.ts)
+├── test/                         # shared vitest fixtures only: helpers/, the
+│                                 # electron mock and fixtures/theme/ (the two
+│                                 # .itermcolors provider fixtures); tests are
+│                                 # colocated *.test.ts
 ├── index.html                    # renderer entry (CSP: self + musaeum: + blob:)
 ├── vendor/foliate-js/            # VENDORED reader engine — never edited; see
 │                                 # its VENDORED.md (the npm package is a
@@ -113,7 +115,14 @@ Musaeum/
 │   │   │   ├── book-bytes.ts     # musaeum://book path resolution + containment
 │   │   │   ├── reading-state.ts  # tiered position writes + quit flush
 │   │   │   ├── quit.ts           # before-quit handshake (flush, then teardown)
-│   │   │   └── apple-books.ts    # open -a Books
+│   │   │   ├── apple-books.ts    # open -a Books
+│   │   │   └── theme/            # theming (palette only, never layout)
+│   │   │       ├── index.ts      #   loader + barrel; THEME_ENGINE_VERSION
+│   │   │       ├── color.ts      #   colour maths — sRGB/Oklab, contrast, mixes
+│   │   │       ├── derive.ts     #   palette → derived tokens, floors enforced
+│   │   │       ├── parse/        #   base16.ts + itermcolors.ts (hand-rolled,
+│   │   │       │                 #   no new dependency)
+│   │   │       └── builtin/      #   vendored scheme corpus — see its VENDORED.md
 │   │   └── schema/migrations/
 │   │       ├── 001_initial.sql   # includes FTS5 sync triggers + indices
 │   │       ├── 002_sort_keys.sql # backfills sort_title / author_sort
@@ -140,8 +149,9 @@ Musaeum/
 │   ├── lib/                      # renderer-side pure logic: selection, metadata-feedback,
 │   │                             # metadata-refresh, notify
 │   └── types/                    # SHARED contracts: book / device / metadata /
-│                                 # settings / api (MusaeumAPI + IPCResult) —
-│                                 # imported by main and preload via @shared
+│                                 # settings / api (MusaeumAPI + IPCResult) /
+│                                 # theme (IR + derived tokens) — imported by
+│                                 # main and preload via @shared
 │
 └── sidecar/                      # Python sidecar (venv at sidecar/.venv)
     ├── requirements.txt
