@@ -1,6 +1,6 @@
 """Full hydration pipeline: fetch, merge, score covers.
 
-Order (per CLAUDE.md):
+Order (per docs/invariants/metadata-hydration.md):
   1. embedded EPUB metadata
   2. known identifiers (already merged into `known` by the caller)
   3. Google Books + OpenLibrary in parallel

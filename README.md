@@ -4,7 +4,8 @@ Personal ebook library management for macOS — replaces Calibre for a 7000+ boo
 NAS-hosted library. Electron + React + TypeScript, with a Python sidecar for
 metadata hydration and format conversion.
 
-- [CLAUDE.md](CLAUDE.md) — architecture, data contracts, conventions
+- [CLAUDE.md](CLAUDE.md) — project brief: invariants, conventions, where to look
+- [docs/](docs/) — architecture, data contracts, and per-subsystem invariants
 - [tasks.md](tasks.md) — roadmap, known issues, backlog
 - [CHANGELOG.md](CHANGELOG.md) — release history
 

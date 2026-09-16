@@ -397,6 +397,11 @@ project **`musaeum`**.
 - **`deleteBook` FK restriction (pre-existing)**: deleting a book that has
   `device_history` rows throws (FK has no ON DELETE and `deleteBook` doesn't
   handle history). Found while building `replaceAllBooks` (2026-07-17).
+- **`requirements.md` now overlaps `docs/architecture.md`** (2026-09-15). The
+  485-line original spec is still the better record of *why* the pieces are
+  shaped the way they are, but its architecture, schema and IPC sections
+  duplicate the docs. Decide whether to fold it in so there is one architecture
+  source, or annotate it as historical and leave it alone.
 
 ## Post-MVP (unchanged from spec — do not implement yet)
 

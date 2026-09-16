@@ -57,6 +57,32 @@ the app is packaged.
   reports why it stopped — cancelled, or the share dropping under it.
 - **Errors from the detail panel and the context menu are reported on screen**
   rather than in a blocking OS alert dialog.
+- **`CLAUDE.md` is now an index; the payload moved to `docs/`.** It had grown to
+  1390 lines, and 72% of its words were a per-subsystem lessons log — every
+  session paid for the Kindle `.sdr`-folder war story, the dock-tile measurement
+  and the foliate `goTo()` quirk whether or not it went near a device, a window
+  or a reader. The brief keeps what must always be in context (overview, status,
+  quickstart, stack, conventions, perf targets, resolved decisions) and gains the
+  two things it never had: an escalation policy, and a subagent roster. A
+  twelve-entry invariants list replaces the prose that used to carry those rules,
+  and a routing table at the top says which file to read before touching what.
+  Everything else moved **verbatim** into `docs/architecture.md`,
+  `docs/data-contracts.md` and twelve `docs/invariants/*.md` files; the only
+  content edits are eight cross-references that pointed at a section now living
+  in another file, plus two corrections carried in from the old file
+  (`components/shared/icons.tsx` is really `src/components/shared/icons.tsx`, and
+  `test/` holds shared fixtures rather than a test suite). Verified by diffing
+  the union of the new files against the original: 1127 of its 1137 content
+  lines are present verbatim, and the remaining ten are exactly those edits.
+- **`.claude/agents/` is Musaeum's roster, not COHERENCE's.** All eight agents in
+  it were whitespace-only copies of the game project's: they owned
+  `packages/sim`, `packages/content`, `packages/ui` and `apps/desktop`, none of
+  which exist here, and their descriptions would have routed Musaeum work to a
+  `ui-engineer` looking for a Pixi canvas. Replaced by eight that sit on this
+  repo's real boundaries — `main-engineer`, `renderer-engineer`,
+  `sidecar-engineer`, `contracts-engineer`, `packaging-engineer`, `test-author`,
+  `spec-writer`, `reviewer` — each carrying its own read-first doc list and the
+  same escalation rule as the brief.
 
 ### Fixed
 - **Resolving a title conflict now renames the book's files.** Every other path

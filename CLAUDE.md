@@ -1,5 +1,44 @@
 # Musaeum — Claude Code Project Brief
 
+This file loads at the start of every session and is the **index**, not the
+manual: what the project is, the rules that must never bend, where to look, and
+when to stop and hand back. The payload lives in `docs/` and is loaded on
+demand — see Companion files below.
+
+@.claude/rules/orchestration.md
+
+**Companion files:**
+
+- `docs/architecture.md` — process model, directory layout, path aliases, perf targets
+- `docs/data-contracts.md` — `metadata.json`, SQLite schema, sidecar RPC, preload API
+- `docs/invariants/*.md` — one file per subsystem: the rules, and the reasoning behind them
+
+| Read this | Before you touch |
+|---|---|
+| `docs/architecture.md` | process structure, directory layout, path aliases, perf targets |
+| `docs/data-contracts.md` | `metadata.json`, a SQLite migration, a sidecar method, the preload surface |
+| `docs/invariants/nas-and-catalog.md` | NAS detection, offline mode, `catalog.json`, the catalog ⇄ SQLite sync |
+| `docs/invariants/metadata-hydration.md` | the hydration pipeline, identifier precedence, the conflict policy, cover scoring |
+| `docs/invariants/conflicts-and-series.md` | the conflict queue, series display |
+| `docs/invariants/device-transfer.md` | Kindle detection, sends, on-device presence, removal |
+| `docs/invariants/library-views.md` | grid, list, sort SQL, virtualization, `BookCard` |
+| `docs/invariants/selection-and-keyboard.md` | selection state, keyboard handling, ⌘A |
+| `docs/invariants/reader.md` | the reader, foliate-js, `musaeum://book`, reading position |
+| `docs/invariants/refresh-feedback.md` | what a re-fetch reports, the toast surface, the bulk job |
+| `docs/invariants/files-and-deletion.md` | on-disk filenames, deletion, bulk actions, duplicate gating |
+| `docs/invariants/settings-and-editing.md` | `app_config`, persisted UI state, the metadata editor |
+| `docs/invariants/packaging-and-python.md` | `electron-builder.yml`, the Python bootstrap, the bundle |
+| `docs/invariants/menu-and-branding.md` | the native menu, the app name, the dock icon |
+| `tasks.md` · `CHANGELOG.md` · `requirements.md` | roadmap · history · original product spec |
+| `docs/superpowers/specs/` · `docs/superpowers/plans/` | feature designs and their implementation plans |
+
+Each invariant file carries the *why* — the measurement, the failure it was
+written to prevent, the approach that was tried and rejected. That reasoning is
+what stops a later change from re-breaking it, so read the file your slice
+touches before editing, not after.
+
+---
+
 ## Project Overview
 
 Musaeum is a macOS Electron application for personal ebook library management,
@@ -11,6 +50,8 @@ clean organization, and frictionless device delivery.
 aesthetic: warm near-black surfaces, amber/gold accents, serif display type
 for book titles, covers as the hero element. Design tokens live in
 `tailwind.config.js` (`ink`, `parchment`, `gold` palettes; `font-display`).
+
+---
 
 ## Status
 
@@ -42,9 +83,7 @@ to inspect with the sqlite3 CLI while the app runs).
 
 ---
 
-## Architecture
-
-### Stack
+## Stack
 
 | Layer            | Technology                        |
 |------------------|-----------------------------------|
@@ -58,1288 +97,96 @@ to inspect with the sqlite3 CLI while the app runs).
 | Format Conversion| Calibre CLI (ebook-convert)       |
 | IPC              | Electron contextBridge + ipcMain  |
 
-### Process Model
-
-```
-Electron Main Process (Node.js)
-├── IPC handlers (all file, DB, device, NAS operations)
-├── SMB mount manager + health check (30s interval)
-├── File watcher (chokidar) on /imports/
-├── USB device detection (Kindle)
-├── SQLite cache manager (better-sqlite3)
-├── Transfer queue manager
-└── Python sidecar process manager
-
-Electron Renderer Process (React)
-├── Library views (Grid, List, Detail)
-├── Search + filter sidebar
-├── Metadata conflict resolution UI
-├── Device panel
-└── Migration wizard
-
-Python Sidecar (spawned by main process)
-├── EPUB internal metadata extractor
-├── Calibre metadata.db reader (migration only)
-├── Metadata fetchers (Google Books, OpenLibrary)
-├── Cover image scorer + downloader
-├── Goodreads series scraper
-├── Calibre migration orchestrator
-└── ebook-convert wrapper
-```
-
-### Directory Structure (as built)
-
-```
-Musaeum/
-├── CLAUDE.md / README.md / tasks.md / CHANGELOG.md
-├── package.json / tsconfig*.json / electron.vite.config.ts
-├── electron-builder.yml          # DMG packaging (see Packaging below)
-├── tailwind.config.js / postcss.config.js / eslint.config.mjs
-├── vitest.config.ts              # main-process test config (@shared/electron aliases)
-├── test/                         # vitest suite + mocks/ (electron stub, helpers)
-├── index.html                    # renderer entry (CSP: self + musaeum: + blob:)
-├── vendor/foliate-js/            # VENDORED reader engine — never edited; see
-│                                 # its VENDORED.md (the npm package is a
-│                                 # stale third-party republish)
-├── scripts/
-│   ├── dev-app-branding.mjs      # postinstall: name + icon the dev Electron bundle
-│   └── make-icons.mjs            # build/icon.png → build/icon.icns (npm run icons)
-│
-├── electron/
-│   ├── main/
-│   │   ├── index.ts              # app lifecycle, window, musaeum:// protocol
-│   │   ├── env.d.ts              # *.sql?raw module declaration
-│   │   ├── api/
-│   │   │   └── rest.ts           # REST stub — disabled via rest_api_enabled
-│   │   ├── ipc/
-│   │   │   ├── handle.ts         # IPCResult wrapper — all handlers use this
-│   │   │   ├── library.ts        # book CRUD + import handlers
-│   │   │   ├── metadata.ts       # conflict queue, resolve, rehydrate
-│   │   │   ├── device.ts         # devices, transfers, Apple Books
-│   │   │   ├── nas.ts            # status, reconnect, choose library root
-│   │   │   ├── settings.ts       # get/save app_config, executable pickers
-│   │   │   ├── reader.ts         # saveProgress (tiered reading-state write)
-│   │   │   └── migration.ts      # scan, start, progress, cutover
-│   │   ├── services/             # ALL business logic lives here
-│   │   │   ├── events.ts         # main → renderer broadcast helper
-│   │   │   ├── db.ts             # connection, migrations, queries, config
-│   │   │   ├── nas-manager.ts    # mount detection, backoff reconnect
-│   │   │   ├── file-watcher.ts   # chokidar on {root}/imports/
-│   │   │   ├── importer.ts       # import pipeline + metadata.json writer
-│   │   │   ├── device-manager.ts # /Volumes polling, Kindle detection
-│   │   │   ├── transfer-queue.ts # serial queue, conversion, copy progress
-│   │   │   ├── sidecar.ts        # python spawn, JSON-RPC, notifications
-│   │   │   ├── python-env.ts     # interpreter resolution + first-run venv bootstrap
-│   │   │   ├── migration.ts      # migration orchestration (node side)
-│   │   │   ├── catalog.ts        # catalog.json read/write/upsert + rebuild walk
-│   │   │   ├── library-sync.ts   # catalog ⇄ SQLite cache (adopt, refresh, rebuild)
-│   │   │   ├── settings.ts       # app_config reads/writes + validation
-│   │   │   ├── menu.ts           # native application menu (⌘, ⌘1 ⌘2)
-│   │   │   ├── book-bytes.ts     # musaeum://book path resolution + containment
-│   │   │   ├── reading-state.ts  # tiered position writes + quit flush
-│   │   │   ├── quit.ts           # before-quit handshake (flush, then teardown)
-│   │   │   └── apple-books.ts    # open -a Books
-│   │   └── schema/migrations/
-│   │       ├── 001_initial.sql   # includes FTS5 sync triggers + indices
-│   │       ├── 002_sort_keys.sql # backfills sort_title / author_sort
-│   │       └── 003_reading_state.sql # reading_position/percent/updated_at
-│   └── preload/
-│       └── index.ts              # window.Musaeum contextBridge surface
-│
-├── src/                          # Renderer (React)
-│   ├── main.tsx / App.tsx / index.css
-│   ├── components/
-│   │   ├── layout/               # Sidebar, Toolbar, StatusBar
-│   │   ├── library/              # GridView, ListView, BookCard, BookDetail, ImportOverlay
-│   │   ├── metadata/             # ConflictQueue, ConflictResolver
-│   │   ├── device/               # DevicePanel, TransferQueue
-│   │   ├── migration/            # MigrationWizard
-│   │   ├── settings/             # SettingsModal
-│   │   ├── reader/               # ReaderView, ReaderEngine, ReaderToc,
-│   │   │                         # ReaderPrefsPopover
-│   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, Toasts,
-│   │                             # icons
-│   ├── stores/                   # library / device / nas / ui / reader zustand stores
-│   ├── hooks/                    # useLibrary, useDevice, useNASStatus, useDragDrop,
-│   │                             # useMenuCommands
-│   ├── lib/                      # renderer-side pure logic: selection, metadata-feedback,
-│   │                             # metadata-refresh, notify
-│   └── types/                    # SHARED contracts: book / device / metadata /
-│                                 # settings / api (MusaeumAPI + IPCResult) —
-│                                 # imported by main and preload via @shared
-│
-└── sidecar/                      # Python sidecar (venv at sidecar/.venv)
-    ├── requirements.txt
-    ├── requirements-dev.txt      # pytest, for `sidecar/tests/`
-    ├── main.py                   # JSON-RPC over stdio, thread pool dispatch
-    ├── extractors/               # epub_metadata.py, pdf_metadata.py, calibre_db.py
-    ├── fetchers/                 # google_books.py, openlibrary.py, goodreads.py
-    ├── pipeline/                 # hydration.py, conflict.py, cover.py, migrate.py,
-    │                             # topup.py (Calibre PDF top-up)
-    ├── conversion/               # converter.py (ebook-convert wrapper)
-    └── tests/                    # pytest — pdf_metadata, hydration_pdf, topup
-```
-
-Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*`
-(all three layers), `@vendor/*` → `vendor/*` (renderer only — the reader
-engine). Configured in `electron.vite.config.ts` and both tsconfigs.
+Fixed; do not substitute. Process model, directory layout and path aliases are
+in `docs/architecture.md`.
 
 ---
 
-## Key Behaviors
-
-### NAS / Storage
-
-- Library root is configurable; stored in `app_config` key `library_root`
-- SMB share for auto-reconnect: `app_config` key `smb_url` (default `smb://ohnas`)
-- On launch: check if NAS volume is mounted
-  - If mounted: proceed normally (also ensures `books/`, `imports/`, `exports/` exist)
-  - If not mounted: attempt auto-reconnect via `open -g smb://…`
-  - If reconnect fails: enter **offline/read-only mode**
-    - SQLite cache serves all browse and search operations
-    - Write operations throw via `nas.assertOnline()` with clear UI feedback
-    - Reconnection retried on exponential backoff: 5s → 15s → 60s
-    - Non-blocking status banner shown; user can manually retry
-- NAS health checked every 30 seconds while app is running
-- No hardcoded NAS paths stored in SQLite — all paths relative to library root
-- Cover images are served to the renderer via the custom
-  **`musaeum://cover/{bookId}/{thumb|full}`** protocol — the renderer never
-  gets raw `file://` access (CSP enforces this)
-- **Multi-machine**: `catalog.json` at the library root is a derived cache of
-  every book's `metadata.json` (which stays canonical). Every metadata write
-  upserts it (bulk ops batch one write) — a deliberate edit or hydration
-  upserts the whole record, but a background push like reading position
-  field-merges only its own fields onto the existing entry, so finishing a
-  chapter on one machine can't clobber an edit made on another; on connect
-  and on "Refresh Library" the local SQLite cache is transactionally replaced
-  from it; "Rebuild Catalog" re-walks `books/*/metadata.json` as recovery.
-  Last-write-wins, one machine at a time. (`services/catalog.ts`,
-  `services/library-sync.ts`)
-
-### Book Storage Structure (NAS)
-
-```
-{library_root}/
-  catalog.json                     # derived cache of all metadata.json (multi-machine)
-  books/
-    {uuid}/
-      {sanitized-title}.epub
-      {sanitized-title}.mobi       # cached, generated on demand
-      {sanitized-title}.azw3       # cached, generated on demand
-      {sanitized-title}.pdf        # original import or Calibre top-up; never converted
-      cover_full.jpg               # 600px
-      cover_thumb.jpg              # 200px
-      metadata.json
-  exports/                         # ephemeral; cleared post-transfer
-  imports/                         # drag-drop landing zone (watched)
-```
-
-### Metadata Hydration Pipeline
-
-Triggered automatically on every book import. Non-blocking: the book is
-inserted into the library immediately after copy; hydration continues async
-(`importer.hydrate` is fire-and-forget from the import path — it *returns* what
-it did, and the explicit re-fetch described under "Metadata refresh feedback"
-is the one caller that waits for that value).
-
-```
-1. Extract embedded metadata (EPUB OPF, or PDF Info dict + page-1 render as
-   an 'embedded' cover candidate)
-2. Known identifiers (from Calibre during migration) merged in
-3. Parallel fetch: Google Books API + OpenLibrary API
-4. Series data: Goodreads scrape when a Goodreads ID is known (any source)
-5. Conflict resolution (see policy below)
-6. Cover fetch + scoring (formula below)
-7. Write metadata.json to NAS + update SQLite cache
-```
-
-**Identifier precedence (learned in testing):** identifiers baked into the
-file or seeded from Calibre are definitive and always override fetched ones —
-online fetches may match a different *edition* of the same work.
-(`sidecar/pipeline/hydration.py`)
-
-**Conflict policy** (`sidecar/pipeline/conflict.py`):
-- `title`, `author`, `series` — best candidate applied immediately AND a
-  review conflict queued when sources disagree (book is never left blank)
-- `publisher`, `published_date`, `language` — auto-resolved by source
-  priority, never queued
-- `description` — longest candidate wins, never queued
-- `cover` — top-scored applied; a review conflict is queued when the top two
-  score within 15% (candidate values are image URLs)
-- Source priority: google_books > openlibrary/goodreads > calibre > embedded,
-  biased by the user's past resolutions (`db.getSourcePreferences()`)
-
-Cover scoring formula:
-```
-score = (resolution × 0.4) + (aspect_ratio × 0.3)
-      + (source_priority × 0.2) + (file_size × 0.1)
-```
-
-Google Books API key: read from the `GOOGLE_BOOKS_API_KEY` environment
-variable (optional for normal use; required before bulk migration). Secrets
-live in the Infisical project `musaeum`; inject them for dev/build by wrapping
-the command — `infisical run -- npm run dev`. A packaged `.app` can't use
-`infisical run`; the planned path is to move the key into `app_config` via
-Settings (see tasks.md → Packaging & distribution).
-
-### Conflict Resolution UI
-
-- Surfaced as a review queue (badge count in sidebar → modal)
-- Never blocks import flow
-- Per-conflict: side-by-side candidate comparison, click to choose
-- "Accept all from Source X" shortcut
-- Resolutions logged (`metadata_conflicts.chosen_source`) and fed back into
-  auto-resolution scoring on future hydrations
-
-### Series Convention
-
-```json
-{
-  "series_name": "The Expanse",
-  "series_index": 1.0,
-  "series_total": 9,
-  "series_display": "The Expanse #1"
-}
-```
-
-- `series_index` is float (supports 0.5, 1.5 for novellas)
-- Display format: drop `.0` for whole numbers — use the shared
-  `seriesDisplay()` helper in `src/types/book.types.ts`
-- `series_total` from Goodreads where available
-
-### Kindle Transfer (USB)
-
-- Detect Kindle by polling `/Volumes` every 5s (name contains "kindle", or
-  volume has both `documents/` and `system/` dirs)
-- Format preference: azw3 → mobi; converts to azw3 via `ebook-convert` when
-  neither is cached, and caches the result on the NAS. PDF-only books
-  transfer as PDF — never converted (Kindles render PDF natively;
-  `ebook-convert` is never invoked for PDFs)
-- Copy to `/documents/` on Kindle volume with streamed progress events. The
-  destination is named `sanitizeTitle(book.title) + ext`, **not** the source
-  file's basename — renaming a book never renames its NAS files, and presence
-  matches the current title against device file stems, so copying under the
-  on-disk name left a retitled book reading "Send to Kindle" even immediately
-  after a successful send. `copyWithProgress` opens the source fd itself (`autoClose: false`) and
-  swallows a `close()` failure — macOS's SMB client returns EBADF closing some
-  files it has just read in full, which used to fail transfers that had in fact
-  completed byte-for-byte. Write-side errors still propagate, and the
-  destination size is verified before a book is reported as sent, so a
-  truncated copy is still an error.
-- Log to `device_history` table (including failures, with error text)
-- Transfers run serially through `transfer-queue.ts`
-- **On-device presence** is derived by *scanning* the connected Kindle's
-  `documents/` folder (not from `device_history`): `device-manager` walks it
-  (depth 2) into a `stem → paths` map, and `getOnDeviceBookIds` matches books
-  whose `sanitizeTitle(title)` equals a file stem (extension-agnostic).
-  Surfaced as a badge on `BookCard` and an "On {device}" state on the
-  detail-panel send button. Presence = f(device files, book set), so the
-  renderer recomputes it on **both** triggers: `deviceContentsChanged` (device
-  side) and `libraryChanged` (book-set side — the on-connect catalog sync loads
-  books asynchronously and can finish *after* the device scan, so recomputing
-  only on the device event left presence stale at cold start). The 5s device
-  poll re-scans a known device's `documents/` and re-broadcasts only when the
-  stem set changed (`keysEqual` guard), so presence self-heals when files change
-  on the device outside Musaeum or a first scan ran before the volume settled.
-  The walk **skips `{book}.sdr` sidecar folders** — the Kindle names the files
-  inside them after the book, so descending into one reports a book as present
-  from its leftovers alone. Renaming a book renames its NAS files and names
-  future sends from the current title, so presence keeps up — but a copy
-  *already* on the device keeps the name it was sent under and reads as a
-  different book until it is removed and re-sent.
-- **Removing from a device** (`removeBookFromDevice`) is the inverse of
-  presence and matches the same way — sanitized title against file stems — so
-  it deletes exactly what made the book read as "on device". Each matched file
-  takes its `._` AppleDouble sibling and its `{book}.sdr` folder with it, which
-  is what deleting on the Kindle itself does; reading position and annotations
-  go with them. It **re-scans instead of trusting the cached contents** (which
-  are up to one poll interval stale — a file added since would survive and keep
-  the book present), and refuses paths that resolve outside `documents/`.
-  Entry points: the detail panel's trash button beside an "On {device}" button,
-  and a "Remove from {device}…" context-menu item; both open
-  `RemoveFromDeviceDialog`. The library copy is never touched — removal is
-  undone by sending again.
-
-### Sort keys
-
-`books.sort_title` / `books.author_sort` drive the title and author sorts
-(`COALESCE(sort_title, title)`, `COALESCE(author_sort, author)`), so a book
-that arrives without them sorts under the wrong letter — "Seth Dickinson"
-under S, invisible among the D's. Only Calibre migration and some EPUBs supply
-them, so every other path derives them with `sortableTitle()` /
-`sortableAuthor()` from `book.types.ts` (shared, so main and renderer agree):
-import, `applyHydration`, `metadataJsonToBook`, and **catalog reads**. The
-catalog one is load-bearing — adoption replaces the local cache wholesale, so
-a catalog lacking sort keys would undo any backfill on every connect.
-Migration 002 backfills existing rows by calling the same two functions,
-registered on the connection as `musaeum_sort_title` / `musaeum_author_sort`
-(see `registerFunctions` in `db.ts`) rather than reimplementing them in SQL.
-
-### Sorting & Search
-
-One `BookSort` in the library store drives every list: the toolbar dropdown
-and the clickable list-view column headers both write to it, so they can never
-disagree. Sort SQL lives in `db.SORT_SQL` — each field maps to an **array** of
-expressions and the direction is applied to every one, so descending `series`
-fully reverses the ordering instead of only flipping the index within a
-series. Entries are parameterised by table prefix because the FTS join exposes
-`books_fts.title`/`author` too, and an unqualified reference is ambiguous.
-
-List-view headers: click to sort, click the active column again to flip.
-First-click direction comes from `defaultSortDirection()` — ascending for text,
-descending for `date_added`/`rating`, which is what "newest"/"best" means.
-Formats has no sensible ordering and is deliberately not sortable. Labels for
-every field/direction pair come from `sortLabel()` in `book.types.ts`, shared
-so the dropdown can name a combination a header produced (it appends the
-current sort when it isn't one of its curated shortcuts).
-
-`searchBooks(query, sort?)` orders matches by the sort when given, falling back
-to FTS relevance `rank` when omitted. The renderer always passes the active
-sort, so the sort controls stay live during a search — the trade-off is that
-relevance rank no longer decides display order there, only which books match.
-
-### Card format chip
-
-`BookCard` labels every cover with the book's **primary format** — the one the
-reader would open — plus a count of the rest (`EPUB +1`), the full list being
-the chip's tooltip. It sits in the bottom-left of the cover, the one corner no
-other badge owns (top-left device, top-right read dot, bottom-right delete on
-hover) and shares that corner with the re-fetch spinner as a flex row rather
-than stacking on it, so neither element has to move.
-
-`primaryFormat` / `orderedFormats` in `book.types.ts` own the preference order
-(epub → azw3 → mobi → pdf) and exist because **nothing may read `formats[0]`
-directly**: the array holds whatever order the writing source left, and the
-real library stores `["epub","mobi"]` and `["mobi","epub"]` in nearly equal
-numbers. PDF sorts last but is never dropped — a PDF-only book is the case most
-worth seeing from across the grid, since it is never converted and has no
-in-app reader.
-
-The chip is fixed at 16px tall and absolutely positioned over the cover, so it
-costs the row math below nothing; making it content-sized would put card height
-back in the DOM.
-
-### Rendering (virtualized views)
-
-Both library views render only the rows overlapping the viewport.
-`hooks/useVirtualRows.ts` provides the two pieces: `useScrollMetrics` (a
-callback ref + scroll listener + `ResizeObserver` reporting `scrollTop` /
-`viewport` / `width`) and the pure `rowWindow()`, which returns `{start, end,
-padTop, padBottom}`. Views render a top spacer, the slice, and a bottom spacer
-— no absolute positioning, so the grid stays a CSS grid and the list stays a
-real `<table>` (spacers are `<tr>`s with a `colSpan` cell). react-window was
-rejected for exactly that reason.
-
-**Row height is computed, not measured**, so it must stay uniform:
-- `GridView` derives the column count the way `auto-fill`/`minmax` would, then
-  card width → row height, from constants that mirror its Tailwind classes.
-  `BookCard`'s meta block is therefore fixed-height (`CARD_META_HEIGHT` /
-  `CARD_META_MARGIN`, exported for that math) rather than content-sized.
-- `ListView` pins `ROW_HEIGHT` (37 = 16px padding + a 20px line + the 1px
-  collapsed border, which sits *outside* the height set on the `<tr>`) and
-  offsets `scrollTop` by the sticky `<thead>`. Every cell needs explicit
-  leading and a **block-level** child — an inline child picks up the table's
-  own line strut and silently grows the row (this is what the rating em-dash
-  fallback did).
-
-A style change that alters real row height without updating these constants
-shows up as scroll drift, not a build error.
-
-**The grid anchors on a book, not a pixel** (`useAnchoredScroll` in
-`useVirtualRows.ts`). Column count and row height are functions of container
-width, so the same `scrollTop` addresses different books after the detail panel
-opens or closes — measured: deleting a book with the panel open moved the
-viewport from books 105–126 to 148–168. The hook records the top-most visible
-book on every scroll and restores that book to the top when the geometry
-changes. `useBookNavigation`'s ensure-visible pass is a plain effect and so runs
-*after* this layout effect, letting the selection have the final say; keep that
-order (both hooks are called from `GridView`, anchored scroll last).
-
-**Both scrollers must carry `.no-scroll-anchor`** (`overflow-anchor: none`,
-defined in `index.css`). Spacer virtualization resizes the content *above* the
-viewport, and Chrome's scroll anchoring answers by adjusting `scrollTop` to
-hold its anchor node still — which feeds back into the next window, moving the
-spacer again. Measured in the live app: deleting a book with the detail panel
-open (panel closes → grid gets 360px wider → different column count and row
-height at a non-zero `scrollTop`) ran the grid from 9000px to the bottom of the
-list in ~500ms. `rowWindow` also clamps `scrollTop` to the real maximum, so the
-frame where metrics still describe the old geometry shows the last rows instead
-of an empty window under a full-height spacer.
-
-### Selection & keyboard navigation
-
-Selection lives in `ui.store`, not in either view, so it survives a grid↔list
-switch — but scroll position doesn't, since each view mounts its own scroller.
-`hooks/useBookNavigation.ts` closes that gap for both views: on mount it centres
-the cursor book in the viewport, later moves only nudge it back into view, and
-arrow keys walk the same geometry the virtualizer uses (`columns` = 1 for the
-list; the list also passes its sticky header as `contentTop`/`stickyTop`).
-Home/End, PageUp/Down, ⇧+arrows (extend the range), and Escape (clear selection)
-are handled too. The handler is a window listener that bails when a modal,
-context menu, or text field owns the keyboard — those close themselves on
-Escape.
-
-Selection is a `Selection` (`src/lib/selection.ts`): a `Set` of ids plus an
-**anchor** (the range pivot, set by plain and ⌘ clicks) and a **cursor** (the
-keyboard focus, moved by ⇧ clicks and ⇧ arrows). Two fields, because a single
-"lead" cannot express both — repeated ⇧-clicks must re-range from one pivot
-rather than creep. The grammar lives in that pure module and is unit-tested
-there; views call `select(id, modifiersFrom(event))` and never do set math.
-`selectedBookId` survives as a **derived** selector — the id when exactly one
-book is selected, null otherwise — which is why the detail panel, the metadata
-editor and the single-book delete dialog needed no changes.
-
-`useLibrary` prunes the selection to the loaded books on every library change.
-Without it, selecting twelve books and then searching leaves them selected but
-invisible, and "Delete 12 books" would delete books the user cannot see. The
-cost — narrowing a filter drops the selection — is deliberate.
-
-**⌘A is a menu command, not a key listener.** The Edit menu's
-`{ role: 'selectAll' }` owns that accelerator, so `menu.ts` replaces it with a
-custom item and `useMenuCommands` routes by focus: an input or textarea gets
-`select()`, anything else selects every loaded book.
-
-Both views show membership the same way (gold ring on a card, gold row tint);
-the list adds a **checkbox column** with a tri-state select-all header, whose
-cell must keep a 20px line and a block-level child like every other cell — the
-row pitch is still exactly `ROW_HEIGHT` (measured: 37px pitch, 36px on the
-`<tr>` plus the collapsed border).
-
-### Application menu
-
-`services/menu.ts`, installed on `whenReady`. It replaces Electron's default
-menu, which is why the Edit submenu is spelled out — every ⌘C/⌘V/⌘Z the
-metadata editor needs comes from there, not for free.
-
-Items never act; they `broadcast('menuCommand', …)` and the renderer
-(`hooks/useMenuCommands.ts`) maps each to the same store action the on-screen
-control uses, so a menu item and its button can't drift apart. Commands today:
-Settings (**⌘,**, the shortcut macOS users expect and the only reason the menu
-is load-bearing rather than cosmetic), grid (⌘1), list (⌘2).
-
-The menu is built once and never rebuilt — nothing in it reflects renderer
-state (no checkmarks on the view items), because keeping checked state in sync
-would mean touching the native menu on every view switch.
-
-**The app name in the menu bar comes from the running bundle's
-`CFBundleName`**, not `app.name` — so in development it reads "Electron" no
-matter what the app calls itself. `scripts/dev-app-branding.mjs` (postinstall)
-renames the dev Electron bundle to `productName`; `npm install` restores the
-stock plist, which is why it runs there. Packaged builds get the name from
-`package.json`. `app.setAboutPanelOptions` covers the About panel's *name*.
-
-### Packaging
-
-`electron-builder.yml` → `npm run pack` (DMG) / `npm run pack:dir` (unpacked
-`.app`). **Needs Node 20.19+**: electron-builder 26 `require()`s an ESM-only
-dependency, so on Node 18 the pack step dies with `ERR_REQUIRE_ESM` *after*
-electron-vite has already built — which reads as a build failure but isn't.
-
-Three things in that config are load-bearing:
-
-- **`files` is an allowlist** (`out/**`, `package.json`). Production
-  `dependencies` are collected by electron-builder's own node_modules pass, not
-  by this glob, so better-sqlite3 still ships; devDependencies never do.
-- **`asarUnpack: '**/*.node'`** — a `.node` binary can't be loaded from inside
-  an asar. smartUnpack already detects this; it's spelled out because the
-  failure (packaged app dies opening the DB, dev is fine) is expensive to find.
-- **`mac.identity: null`** — without it electron-builder signs with whatever
-  Developer ID is in the keychain, making the build machine-dependent. Removing
-  this line is step one of enabling signing.
-
-`build/` is the default `buildResources` dir, which is both why `icon.icns` is
-picked up with no `mac.icon` entry and why `build/` isn't copied into the app.
-
-**Python in a packaged build** (`services/python-env.ts`). The bundle ships
-`sidecar/` as source but never `sidecar/.venv` — it's built against one
-machine's interpreter with absolute paths baked in, and nothing may write
-inside a signed bundle. So on first launch the app builds its own venv in
-`userData/sidecar-venv` from the bundled `requirements.txt` (~20s, needs
-network), then skips it forever after.
-
-- **The marker is the whole re-run policy.** `sidecar-venv/.musaeum-requirements`
-  holds a sha256 of `requirements.txt`, written *after* a successful install —
-  so an interrupted install retries, and editing requirements re-installs,
-  without ever asking pip to resolve the world on a normal launch.
-- **`resolvePython()` order is a contract**: configured → bundled runtime →
-  dev venv → managed venv → bare system python. The bundled-runtime slot
-  (`Resources/python/bin/python3`) is empty today and exists so shipping a
-  standalone CPython later is one `extraResources` entry, not a refactor.
-- **Interpreters are searched by absolute path as well as by name.** launchd
-  hands a double-clicked `.app` a minimal `PATH` (`/usr/bin:/bin:…`), so a
-  Homebrew python that resolves fine from a terminal is invisible from Finder.
-  Test packaged launches with `env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin`.
-- **The sidecar starts only after the bootstrap settles** (`index.ts`).
-  Starting first fell through to a bare `python3` and crash-looped on
-  `import PIL` three times before giving up — which is what a packaged build
-  did before this existed. A *failed* bootstrap still starts the sidecar:
-  globally installed dependencies are a setup this can't detect but the
-  sidecar can still use.
-- Version rules (`MIN_PYTHON`, `parseVersion`, `meetsMinimum`) live here and
-  are imported by `settings.ts`, so validating a hand-picked interpreter and
-  auto-choosing one can't disagree. `sidecar.ts` re-exports `resolvePython` so
-  Settings still asks it, per the rule below.
-
-### App icon
-
-`build/icon.png` (1024², committed) is the master; `npm run icons`
-(`scripts/make-icons.mjs`) renders the 10 iconset sizes with `sips` and packs
-them with `iconutil` into **`build/icon.icns`** — electron-builder's default
-lookup path, so packaging will pick it up with no config once it exists.
-
-In development the icon has the same problem as the name above: macOS reads it
-from the running bundle (the one in `node_modules/electron/dist/`), so each
-surface needs covering separately — and no two are quite the same fix.
-
-- **About panel** — draws `NSApp.applicationIconImage`, which comes from the
-  bundle's `CFBundleIconFile`. `setAboutPanelOptions` cannot touch it (its
-  `iconPath` is Linux/Windows only), so `dev-app-branding.mjs` overwrites
-  `Contents/Resources/electron.icns` in place and touches the `.app` to
-  invalidate macOS's mtime-keyed icon cache. It overwrites rather than
-  repointing the plist key so a stock `npm install` cleanly undoes it. This is
-  why `npm run icons` also re-runs the branding script.
-- **Dock** — covered by the bundle patch, but `setDevDockIcon` in
-  `electron/main/index.ts` also sets it at runtime (dev-only, `app.isPackaged`
-  guard). Deliberate redundancy: the runtime call bypasses the icon cache
-  entirely and needs no reinstall, so editing `icon.png` shows up on the next
-  `npm run dev` even if the postinstall hook never ran.
-- **Dock tile label** (the tooltip, and the name in the ⌘-Tab switcher) — comes
-  from the **bundle directory's filename**, minus `.app`, and nothing else, so
-  `dev-app-branding.mjs` renames `dist/Electron.app` to `dist/Musaeum.app` and
-  points the `electron` package's `path.txt` at the new location.
-- **Packaged builds** need none of this — the bundle is ours.
-
-That last one cost several failed attempts, so the measurement is worth
-keeping. It is **not** CFBundleName, CFBundleDisplayName, CFBundleExecutable,
-the bundle identifier, or LaunchServices: with all five patched to "Musaeum" —
-`lsappinfo info -only name` and `NSRunningApplication.localizedName` both
-answering "Musaeum" — the tile still read "Electron". Copying the
-byte-identical bundle to a path macOS had never seen isolated it: named
-`Musaeum.app` the label was "Musaeum", named `Electron.app` it was "Electron".
-(To measure it yourself, ask the Dock what it renders rather than trusting the
-plist: `osascript -e 'tell application "System Events" to tell process "Dock"
-to get name of every UI element of list 1'`.)
-
-An earlier attempt renamed **`Contents/MacOS/Electron`** instead. That does
-nothing for the Dock and **flips `app.isPackaged` to `true` in development** —
-Electron derives the flag from `basename(process.execPath) !== 'electron'` and
-nothing else. Three features read that flag and all three broke:
-
-- `sidecarDir()` took the packaged branch (`process.resourcesPath/sidecar`),
-  missed the venv, fell through to a bare `python3.12`, and crashed the app on
-  startup with `spawn python3.12 ENOENT` — which is Node's message for a
-  **cwd** that doesn't exist, not a missing interpreter
-- `setDevDockIcon()` early-returned, undoing the Dock icon
-- the View menu lost Reload/DevTools
-
-The branding script now restores the stock executable name if it finds a
-renamed one, so `app.isPackaged` is honest again in dev. Don't rename the
-executable to chase a label — rename the directory. Main-process code should
-still read `isPackaged` from `services/runtime.ts` (keyed off
-`process.defaultApp`), which is immune to the executable's name either way.
-
-Two traps when testing any of this from a shell: `npm test` sets
-`ELECTRON_RUN_AS_NODE=1`, and if it leaks into a later `npm run dev` the app
-starts in Node mode and dies on `app.setPath` with `app` undefined (that is the
-leaked variable, not a broken bundle — `env -u ELECTRON_RUN_AS_NODE` confirms).
-And `npx asar extract-file … /dev/stdout` ignores the destination and writes
-the extracted file into the cwd, which is how a stray `main.js` can land in the
-project root and fail lint.
-
-### Remembered UI state
-
-View mode (`ui.store`) and sort (`library.store`) survive a restart, persisted
-per machine to `localStorage` under `musaeum.ui` / `musaeum.library` via
-zustand's `persist`. Deliberately *not* persisted: selection, modals, and the
-search query and filters — reopening to a filtered library that looks like a
-much smaller one is state whose cause the user can't see.
-
-Both stores `merge` through a validator (`isBookSort` in `book.types.ts`, a
-literal check for the view) rather than trusting storage: it was written by
-whatever build ran last, and a sort field that no longer exists would reach
-`db.SORT_SQL` with no expression to match. Note that `localStorage` is keyed
-by origin, so a dev server on a different port starts from defaults; packaged
-builds load from `file://` and are stable.
-
-### Settings
-
-`components/settings/SettingsModal.tsx` over `services/settings.ts` — the only
-way to change `app_config` from the UI. Reached from the sidebar's NAS status
-row (or **⌘,**), so "Not configured" leads to where it's fixed.
-
-Two rules shape the service:
-- **It never re-implements detection.** What python and ebook-convert resolve
-  to is asked of `sidecar.ts` (`resolvePython` / `resolveEbookConvert`, which
-  return a `ToolResolution` carrying `configured | auto | none`) — the module
-  that actually spawns them. Settings reporting a path the app doesn't use
-  would be worse than showing nothing.
-- **A bad value is rejected at save time**, before anything is written, so a
-  failed save changes nothing. Blank always means "back to auto-detection":
-  the field is `deleteConfig`'d rather than stored as `''`, because every
-  reader treats *missing* as the signal to auto-detect. Each field's
-  placeholder is what it resolves to today, so clearing one visibly falls
-  back instead of breaking a feature.
-
-`python_path` and `google_books_api_key` are read at **spawn** time, so
-changing either calls `sidecar.restart()` — skipped when the value didn't
-actually change, so a no-op re-save can't bounce the sidecar mid-hydration.
-`restart()` is why the exit handler checks `proc !== p` before tearing state
-down: the old process's exit event arrives *after* its replacement is running
-and would otherwise null out the successor.
-
-The Google Books key resolves from `app_config` first and `process.env`
-second, so a key set here survives a double-clicked `.app` while
-`infisical run -- npm run dev` still works with nothing configured. It is
-returned to the renderer in `values` (to edit) but only ever masked in
-`resolved`.
-
-Library root keeps its own flow (`nas.chooseLibraryRoot`) rather than joining
-the batched save — picking a root can adopt an existing catalog, which is a
-question the user has to answer as it happens.
-
-### Editing metadata by hand
-
-`components/library/BookEditor.tsx` — a modal over `library.updateBook`, which
-already writes metadata.json and upserts the catalog, so the editor needs no
-main-process work of its own. Opened from the detail panel's pencil button or
-the context menu; mounted in `App.tsx` keyed on `ui.store.editingBookId`.
-
-Two rules keep it from doing damage: it sends **only changed fields**, so a
-save can't clobber what hydration wrote meanwhile; and a sort key equal to its
-derived form is shown as a live placeholder rather than a value, so renaming a
-book re-derives the sort title instead of stranding the old one (a genuinely
-custom key is shown and left alone). Renaming a book **does** rename its files
-(see File naming below).
-
-### Metadata refresh feedback
-
-Pressing **Re-fetch metadata** (the detail panel's ↻ button, or the context
-menu) reports three things it used to leave to inference: that a fetch is
-running, what it changed, and why it failed. The button's own state covers the
-first (`ui.store.refreshingBooks`, subscribed as a boolean per book, so only
-the book being refreshed re-renders — plus a spinner chip on its card, which is
-the only sign left when the panel has moved on to another book), and the other
-two arrive as a **toast** when the fetch settles.
-
-- **`importer.hydrate` returns what it did** (`HydrateOutcome` in
-  `src/types/metadata.types.ts`) rather than only logging it: `{ok: true,
-  changed, conflicts}` or `{ok: false, error}`. Still never throws — a failed
-  hydration is non-fatal by design — so import and the bulk job ignore the
-  value, while the re-fetch reports it.
-- **Only a real change counts as a change.** `applyHydration` diffs against the
-  row before writing and reports the user-facing field each changed column
-  belongs to (`HYDRATED_KEY_FIELD` → `HydratedField`). Two exclusions carry
-  that: `sort_title`/`author_sort` are derived companions and are *not* in the
-  map (a backfilled sort key is not a title change, and reporting it would put
-  "Title" on every refresh of a book that arrived without one); and the cover
-  hangs on the sidecar's byte comparison, not the row's path — the paths are
-  fixed names (`cover_full.jpg`), so `select_cover` hashes what it is about to
-  write against what is there and returns `changed`. Without that, the most
-  visible change a refresh can make would be the one thing never reported.
-- **"Nothing changed" is the answer most worth giving**, and it is a different
-  toast from success (`No new metadata found` / "already has the latest
-  details"). A refresh that finds nothing new used to look identical to one
-  that did nothing at all.
-- **A conflict queues a review offer**, not a claim of success: the toast
-  carries a *Review* action that opens the conflict queue.
-- **The single-book path is the one awaited hydration.** Import and the bulk
-  job keep the non-blocking contract; this one is a user action with a person
-  waiting, and the panel that launched it can be gone by the time the answer
-  arrives — which is why the report goes to the store rather than to component
-  state. Everything funnels through `lib/metadata-refresh.ts`, so the button and
-  the context menu cannot drift.
-- **Failures keep their own words.** Pre-flight rejections (offline, no
-  metadata engine, no EPUB/MOBI/AZW3 to read) and in-flight sidecar errors are
-  passed through as the toast's detail line rather than flattened into "failed".
-
-`components/shared/Toasts.tsx` is the surface: bottom-centre (never over the
-detail panel's action row, which is where these are triggered), at `z-[60]` —
-above the modals, because a completion report must not be hidden behind a panel
-opened while the job ran. The store owns dismissal (`notify`/`dismissToast`,
-3 on screen, errors last longest, an identical message refreshing the toast
-instead of stacking a twin). It also replaces the two `alert()` calls that used
-to interrupt with an OS dialog.
-
-The **bulk** job reports itself once at the end, through the same surface: the
-status-bar counter simply disappears when the run ends, which is the least
-informative moment of a job that may have been cancelled or cut short by the
-share dropping. `BulkHydrateProgress` therefore carries `updated` (books that
-actually changed), `stopped: 'cancelled' | 'offline'`, and `lastError` — and
-`failed` is now a real number: `hydrate` returning its failure is what let the
-loop stop counting a dead fetch as a finished one.
-
-### File naming on disk
-
-`services/book-files.ts` → `renameToTitle(bookDir, title)` keeps a book's
-format files named `{sanitizeTitle(title)}.{ext}`. Files are named once at
-import, but the title keeps moving afterwards — hydration rewrites it, and so
-does the metadata editor — which used to leave the folder holding a book under
-whatever it was first mistaken for (an EPUB with the wrong OPF metadata named
-its files after a different book entirely). Called from **every** place the
-title settles: `importer.hydrate` after `applyHydration`, the
-`library:updateBook` handler, and `metadata:resolveConflict` (resolving a title
-conflict is a settled title too — without it, renaming a book back to its
-embedded title left the Google-matched name on its files).
-
-- **Title-derived, not diff-driven.** It renames anything whose stem doesn't
-  match, so it repairs drift from any cause, not just the edit that called it.
-  That makes it idempotent and safe to call on every update.
-- **Never throws, and always runs after the canonical write.** Nothing reads
-  these names — every lookup is by extension (`findFormatFile`, `deleteFormats`,
-  `file-access`) — so a failed rename costs tidiness and must never cost an
-  edit that metadata.json has already recorded.
-- **It will not rename one file onto another of the same format.** Renaming is
-  cosmetic; losing a file is not, so a same-extension collision is skipped.
-
-Covers and metadata.json have fixed names and are untouched. Renaming does not
-reach a copy already sitting on a device — that keeps the name it was sent
-under until it is removed and re-sent.
-
-### Deletion
-
-`services/book-delete.ts` owns both paths; the IPC handlers are thin wrappers.
-- `deleteBook` — removes the NAS folder, the cache row, and the catalog entry
-- `deleteFormats` — removes files **by extension** (not by canonical name, so
-  a book renamed after import still matches), then rewrites metadata.json and
-  upserts the catalog. Selecting every format is not a special UI case: it
-  falls through to `deleteBook` and returns `bookDeleted: true`, since a book
-  with no files left is not worth keeping. Formats the book doesn't have are
-  ignored; an entirely non-matching selection throws.
-
-Entry points, all funneling into one `DeleteBookDialog` (mounted in `App.tsx`,
-keyed on the target book so each open starts with everything selected):
-right-click a book in the grid or list (`BookContextMenu`), the hover trash
-button on `BookCard`, or the detail-panel trash button. The card's delete
-button is a *sibling* of the card `<button>` inside an overlay that mirrors
-the cover box — nested buttons are invalid HTML.
-
-### Bulk actions
-
-Three, and deliberately not symmetric — the services under them are not.
-
-- **Delete** — `book-delete.deleteBooks(ids)`. Not a loop over `deleteBook`:
-  that removes each book from the catalog individually, and every one of those
-  enqueues a whole-file rewrite of `catalog.json` over SMB plus a
-  `libraryChanged` broadcast that reloads the library. This does the per-book
-  work with no catalog contact and finishes with one `writeFullCatalog()`. A
-  single failure never aborts the rest; the result carries `failed` and those
-  books stay selected so the report doubles as the retry.
-- **Send to device** — no main-process work at all. `sendToDevice` returns as
-  soon as the job is enqueued and the transfer queue is already serial, so
-  `device.store.sendBooksToDevice` loops the existing IPC and `StatusBar`
-  counts the jobs for free. Books already on the device are skipped, using the
-  same scanned presence map the card badge uses.
-- **Re-hydrate** — `services/bulk-hydrate.ts`, a real job: sequential (the
-  sidecar's thread pool would otherwise fan out concurrent hydrations at
-  rate-limited APIs), cancellable, and batched via a `batched` option on
-  `importer.hydrate` that suppresses its per-book `upsertCatalog` and
-  `libraryChanged` so the job can write the catalog once at the end. Cancelling
-  stops the loop, not the book in flight. Progress and Cancel live in
-  `StatusBar`, because the job outlives the selection; the run's outcome arrives
-  as a toast when it ends (see Metadata refresh feedback).
-
-`findHydratableFile` is shared between the bulk job and the single-book
-`metadata:rehydrateBook` handler so the two cannot disagree about what a book
-can be hydrated from. PDF-only books have nothing, and are skipped, not failed.
-
-The surface is `SelectionPanel` (the detail slot, same 360px width so the grid
-never re-flows when the selection changes size), a selection-scoped context
-menu, and `DeleteSelectionDialog`. Per-book actions are *absent* from the
-multi-selection menu rather than disabled — silently applying "Read" to one
-book of twelve is worse than not offering it.
-
-### Duplicate Detection
-
-On import, a duplicate **gates** the pipeline: an ISBN-13 match (checked
-first) OR a normalized title+author match pauses the import between the
-extract and copy steps and forces a decision in the import overlay
-(`importer.importOne` awaits a `pendingDecisions` resolver keyed by `jobId`;
-resolved via `import.resolveDuplicate` IPC). Three actions:
-- **Skip** — abort; no book created (watched `imports/` file is still removed)
-- **Add as new** — proceed with a fresh UUID + folder + hydration
-- **Add format to existing** — copy the file into the matched book's folder,
-  add the format, rewrite metadata.json + catalog; no new book, no hydration.
-  Deletes any existing file of that extension first so `findFormatFile` can't
-  ship a stale copy.
-
-The pending-decision map is keyed by `jobId` because the file-watcher fans out
-`importOne` concurrently; `abortPendingDecisions()` (on `will-quit`) resolves
-any open gate as Skip so shutdown never hangs.
-
-### Opening files outside Musaeum
-
-`services/file-access.ts` hands a book's files to the OS, so a PDF can be read
-in Preview without importing it anywhere:
-- `revealBook` — `shell.showItemInFolder` on one of the book's files (the
-  requested format, else the first), so Finder opens the book's folder with
-  the file selected rather than the parent with a folder icon selected. Falls
-  back to `shell.openPath` on the folder when the book has no files.
-- `openBookFile` — `shell.openPath` on one format's file.
-
-Both resolve files **by extension** (like `deleteFormats`), so a book renamed
-after import still opens. Surfaced in the context menu ("Open EPUB" per format
-+ "Show in Finder"), and in the detail panel, where the format badges are
-buttons that open that file and a folder button sits in the actions row.
-
-### Reading in the app
-
-`components/reader/ReaderView.tsx` over a **vendored** foliate-js
-(`vendor/foliate-js/`). EPUB, MOBI and AZW3; PDF is a later phase and falls
-through to `files.openBookFile` today, as does anything the engine rejects, so
-every entry point does something for every book. The entry points — double-click
-in either view, the detail panel's Read button, the context menu — are
-deliberately **not** gated on the NAS being online, unlike every sibling action
-in that row: reading is not a write, and the reader's error state (which offers
-"Open externally") explains a failure that a disabled button only hides.
-
-**The engine is vendored, and the npm package is a trap.** Upstream publishes
-nothing to the registry; the `foliate-js` package there is a stale third-party
-republish. Provenance is recorded in `vendor/foliate-js/VENDORED.md`, and the
-tree is never edited — every divergence lives in our code or in
-`src/types/foliate-js.d.ts`.
-
-Four places the engine's real behaviour contradicted the design and the type
-declarations, each found only by running it:
-
-- `view.open()` needs a **`File`**, not a `Blob` — its format sniffing reads
-  `file.name`, so every book failed until the fetched bytes were wrapped
-- `open()` alone renders nothing; a book with no saved position needs an
-  explicit `renderer.next()` to paint its first page
-- `goTo()` returns `undefined` rather than rejecting, so a `.catch()` fallback
-  around it is dead code — the percent fallback has to be reached another way
-- page-turn keys must **also** be bound inside each section document: the
-  book's iframe takes focus on the first click and the window listener stops
-  hearing anything
-
-`vendor/foliate-js/pdf.js` is **excluded from the renderer bundle** (`external`
-in `electron.vite.config.ts`). Vite's asset-import-meta-url plugin rewrites
-foliate's dynamic asset URL into a glob it then rejects, aborting the build;
-excluding it is safe because `readableFormat` never returns pdf, so the module
-is unreachable. A PDF phase that renders through foliate's own pdf.js has to
-revisit that line.
-
-CSP `style-src` includes **`blob:`** because an EPUB's own stylesheets arrive as
-blob URLs — without it books render with none of their typography. `script-src`
-stays `'self'`, so book content never executes, and no directive permits a
-remote host, so remote `@import`, backgrounds and fonts are still refused.
-
-The reader sits at **`z-[45]`**: above the library chrome (ImportOverlay's drop
-overlay is `z-40`) and below every modal, dialog and context menu (`z-50`). It
-shared `z-50` with them at first and painted *through* an open Settings panel —
-observed on screen, not theorised. Correct painting must not depend on mount
-order in `App.tsx`. Its keyboard handler bails for whatever is on top of it, via
-the same `isTypingTarget` guard `useBookNavigation` uses.
-
-Book bytes reach the renderer over **`musaeum://book/{bookId}/{format}`**,
-resolved by `services/book-bytes.ts` — **by extension**, like every other file
-lookup, so a book renamed after import still opens. The path rules live in that
-service rather than in the protocol handler so they can be tested without
-Electron. They realpath **both** the library root and the candidate before
-comparing: resolving only one side 404s every book under a symlinked root, which
-on macOS is the common case (`/tmp` is a symlink to `/private/tmp`, which is
-where every test builds its library).
-
-Typography lives in `stores/reader.store.ts`, persisted per machine like the
-other remembered UI state and re-validated on read (`sanitizePrefs`) rather than
-trusted: typeface, size, line height, page theme, and a control labelled
-**Spacing**. It is not called Margin because foliate spends the value on vertical
-inset and column gutter — the left text edge does not move — and a label that
-promises what the control doesn't do is worse than a vaguer one. The underlying
-field is still `prefs.margin`; genuine side margins need foliate's
-`max-column-width`/`gap` attributes and are a follow-up in tasks.md.
-
-Two races in the vendored paginator are known and not ours to fix without
-editing vendor source: an unguarded `this.#view` inside a `requestAnimationFrame`
-in `setStyles`, and a ResizeObserver firing on a mid-navigation document. Both
-are non-fatal, and recorded here so they are recognised rather than re-diagnosed.
-
-### Reading position
-
-**Tiered, because the three stores cost wildly different amounts**
-(`services/reading-state.ts`, which owns the whole policy):
-
-| trigger | SQLite | metadata.json | catalog.json |
-|---|---|---|---|
-| page turn (debounced 2s) | yes | if >30s since last | no |
-| reader close, app quit | yes | yes | yes |
-
-`catalog.json` is a whole-library rewrite, so piggybacking it on the 30s
-throttle would push ~10MB over SMB every half minute of reading. Position is
-therefore machine-local between sessions and syncs at session boundaries, which
-is what the one-machine-at-a-time model already assumes.
-
-`position` is **opaque** — an EPUB CFI, whatever mobi.js yields, a page number
-for a future PDF engine — and `percent` is the portable fallback for when a
-position no longer resolves. That is what lets one schema serve every engine.
-
-`read_status` **only ever advances** (`unread → reading` on the first save,
-`reading → read` at ≥98%, never back), which is what makes a manual override
-stick.
-
-Offline is deliberately **not** an error here: NAS writes are skipped and the
-report is held in memory while SQLite keeps recording. Unlike `updateBook`, this
-path does not `assertOnline()` — interrupting someone mid-chapter because a
-share dropped is the wrong trade.
-
-That tolerance is only safe because **adoption reconciles instead of
-overwriting**. Every `db.replaceAllBooks` in `library-sync.ts` first keeps local
-reading state that is strictly newer than the incoming record's, and pushes
-those books back to the catalog. Without it, quitting while the NAS was offline
-lost the session outright: the position existed only in SQLite, and the next
-launch's catalog adoption replaced the row wholesale. The same helper stops
-another machine's stale catalog from overwriting fresher local progress, which
-last-write-wins otherwise permits. **`rebuildCatalog` preserves too** —
-metadata.json is deliberately the trailing store for position, so letting a
-recovery walk win would turn "Rebuild Catalog" into a position-eraser.
-
-**Quitting flushes before the database closes** (`services/quit.ts`).
-`before-quit` fires *before* `will-quit` and used to call `closeDb()`, so the
-flush ran against a closed database and, on a synchronous handler, could not
-finish its write in any case. The handshake is now explicit: `preventDefault()`
-→ await the flush → set a guard flag → `quit()` again → teardown. The flag is
-the whole trick — `quit()` re-fires `before-quit`, and without it the handler
-would `preventDefault` forever. It is bounded by a **3s timeout**, because the
-flush writes over SMB and a dead share must never wedge the app on exit; losing
-that write is recoverable (SQLite holds the position and the adoption reconcile
-brings it back), a hang is not.
-
-Reading state rides in `metadata.json` and therefore through `catalog.json`, so
-`metadataJsonToBook` and `replaceAllBooks` must carry it — the same load-bearing
-propagation the sort keys need, and with the same failure mode if missed: silent
-erasure on the next connect.
-
-### Apple Books Export
-
-`open -a Books {epub}` — right-click/detail-panel action. No deep integration.
+## Invariants — never break these
+
+Each one is load-bearing and has a doc carrying the full reasoning. If a change
+would require bending one, that is an escalation (below), not a judgement call.
+
+1. **`metadata.json` is canonical; `catalog.json` is derived.** Never make the
+   catalog authoritative, and never write it from a path that has not already
+   written `metadata.json`. (`invariants/nas-and-catalog.md`)
+2. **Every file lookup resolves by extension**, never by canonical filename —
+   a book renamed after import must still open, hydrate, delete and transfer.
+   (`invariants/files-and-deletion.md`)
+3. **Nothing may read `formats[0]`.** Use `primaryFormat()` / `orderedFormats()`
+   — the array holds whatever order the writing source left.
+   (`invariants/library-views.md`)
+4. **Sort keys are derived at every write path** via `sortableTitle()` /
+   `sortableAuthor()`: import, `applyHydration`, `metadataJsonToBook`, and
+   catalog reads. A path that forgets strands books under the wrong letter.
+   (`invariants/library-views.md`)
+5. **Reading state must survive the round trip.** `metadataJsonToBook` and
+   `replaceAllBooks` carry it, and adoption *reconciles* — strictly newer local
+   progress wins — rather than overwriting. (`invariants/reader.md`)
+6. **A settled title renames its files**, on all three paths:
+   `importer.hydrate`, `library:updateBook`, `metadata:resolveConflict`.
+   (`invariants/files-and-deletion.md`)
+7. **Row height is computed, not measured.** `ROW_HEIGHT` / `CARD_META_HEIGHT` /
+   `CARD_META_MARGIN` must match real DOM geometry, and every list cell needs a
+   **block-level** child. Drift shows up as scroll jank, not a build error.
+   (`invariants/library-views.md`)
+8. **Business logic lives in `electron/main/services/`.** IPC handlers are thin
+   wrappers through `handle()`. (`data-contracts.md`)
+9. **The renderer never gets `file://`.** Covers and book bytes go through
+   `musaeum://`, realpathing *both* the library root and the candidate.
+   (`invariants/reader.md`)
+10. **`app.isPackaged` must stay honest.** Never rename
+    `Contents/MacOS/Electron` to chase a label; read `isPackaged` from
+    `services/runtime.ts`. (`invariants/menu-and-branding.md`)
+11. **`vendor/foliate-js/` is never edited.** Divergences live in our code or in
+    `src/types/foliate-js.d.ts`. (`invariants/reader.md`)
+12. **Failures stay non-fatal where the doc says so.** NAS errors degrade to
+    offline mode; a failed hydration keeps embedded metadata and never throws.
+    (`invariants/nas-and-catalog.md`, `invariants/refresh-feedback.md`)
 
 ---
 
-## Data Schemas
+## Escalate — stop and hand back — when
 
-### metadata.json (per book, stored on NAS)
+- The task needs a design decision this brief does not settle.
+- One of the **Invariants** above would have to bend.
+- The work exceeds roughly 10 files, or crosses a boundary you were not given
+  (`electron/main` ⇄ `src` ⇄ `sidecar`).
+- Two consecutive repair attempts fail on the same test.
 
-```json
-{
-  "id": "uuid-v4",
-  "title": "Leviathan Wakes",
-  "sort_title": "Leviathan Wakes",
-  "authors": [
-    { "name": "James S.A. Corey", "sort": "Corey, James S.A." }
-  ],
-  "publisher": "Orbit",
-  "published_date": "2011-06-02",
-  "language": "en",
-  "description": "...",
-  "identifiers": {
-    "isbn_10": "0316129089",
-    "isbn_13": "9780316129084",
-    "goodreads": "8855321",
-    "openlibrary": "OL24950539M"
-  },
-  "series": {
-    "name": "The Expanse",
-    "index": 1.0,
-    "total": 9
-  },
-  "tags": ["science fiction", "space opera"],
-  "cover": {
-    "full": "cover_full.jpg",
-    "thumb": "cover_thumb.jpg",
-    "source": "google_books",
-    "width": 800,
-    "height": 1200
-  },
-  "formats": ["epub", "mobi", "pdf"],
-  "rating": null,
-  "read_status": "reading",
-  "reading_state": {
-    "position": "epubcfi(/6/14!/4/2/8/1:0)",
-    "percent": 0.42,
-    "updated_at": "2025-01-16T22:04:11Z"
-  },
-  "date_added": "2025-01-15T10:30:00Z",
-  "last_modified": "2025-01-15T10:31:00Z",
-  "metadata_sources": {
-    "google_books": {
-      "fetched_at": "2025-01-15T10:30:05Z",
-      "match_confidence": 0.97
-    },
-    "openlibrary": {
-      "fetched_at": "2025-01-15T10:30:06Z",
-      "match_confidence": 0.94
-    }
-  }
-}
-```
-
-This is the canonical data contract (iOS companion depends on it). The writer
-is `importer.writeMetadataJson`. Known gap: cover `source`/`width`/`height`
-are not persisted yet (see tasks.md).
-
-### SQLite Schema
-
-Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the
-original spec plus: FTS5 sync triggers (insert/update/delete), indices on
-`isbn_13` / series / author, `device_history.error` column, and a partial
-index on unresolved conflicts. Schema versioning via `PRAGMA user_version`;
-new migrations are appended to the `MIGRATIONS` array in `services/db.ts`.
-
-```sql
-CREATE TABLE books (
-  id                TEXT PRIMARY KEY,
-  title             TEXT NOT NULL,
-  sort_title        TEXT,
-  author            TEXT,
-  author_sort       TEXT,
-  publisher         TEXT,
-  published_date    TEXT,
-  language          TEXT,
-  description       TEXT,
-  isbn_10           TEXT,
-  isbn_13           TEXT,
-  goodreads_id      TEXT,
-  openlibrary_id    TEXT,
-  series_name       TEXT,
-  series_index      REAL,
-  series_total      INTEGER,
-  cover_thumb_path  TEXT,
-  cover_full_path   TEXT,
-  formats           TEXT,          -- JSON array
-  tags              TEXT,          -- JSON array
-  rating            INTEGER,       -- 1-5, user-set
-  date_added        TEXT,
-  last_modified     TEXT,
-  file_size_bytes   INTEGER,
-  read_status       TEXT DEFAULT 'unread',
-  nas_path          TEXT,          -- relative to library root
-  reading_position  TEXT,          -- opaque to us: CFI, engine locator, page
-  reading_percent   REAL,          -- 0–1; the portable fallback
-  reading_updated_at TEXT          -- compared on adoption; newer local wins
-);
-
-CREATE VIRTUAL TABLE books_fts USING fts5(
-  title, author, series_name, tags, description,
-  content='books', content_rowid='rowid'
-);
-
-CREATE TABLE collections (
-  id    TEXT PRIMARY KEY,
-  name  TEXT NOT NULL,
-  color TEXT
-);
-
-CREATE TABLE book_collections (
-  book_id       TEXT REFERENCES books(id),
-  collection_id TEXT REFERENCES collections(id),
-  PRIMARY KEY (book_id, collection_id)
-);
-
-CREATE TABLE device_history (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  book_id     TEXT REFERENCES books(id),
-  device_id   TEXT,
-  device_name TEXT,
-  sent_at     TEXT,
-  format_sent TEXT,
-  error       TEXT
-);
-
-CREATE TABLE metadata_conflicts (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  book_id       TEXT REFERENCES books(id),
-  field         TEXT,
-  candidates    TEXT,    -- JSON array of {source, value} objects
-  resolved      INTEGER DEFAULT 0,
-  resolved_at   TEXT,
-  chosen_source TEXT
-);
-
-CREATE TABLE app_config (
-  key   TEXT PRIMARY KEY,
-  value TEXT
-);
-```
-
-`app_config` keys in use: `library_root`, `smb_url`, `python_path`,
-`ebook_convert_path`, `google_books_api_key`, `rest_api_enabled`. All but
-`rest_api_enabled` are editable in Settings; a key is deleted rather than
-blanked when cleared (see Settings above).
+Hand back what you found rather than a partial guess. A stopped task is cheap; a
+plausible change that quietly breaks an invariant is not.
 
 ---
 
-## Python Sidecar Communication
+## Main session only
 
-JSON-RPC over stdio, newline-delimited JSON. All calls are async from Node's
-perspective (`sidecar.call(method, params, timeoutMs)`), dispatched on a
-thread pool in Python so long calls don't serialize.
+If you are the main session — not a subagent — you are also the orchestrator:
+read and follow `.claude/rules/orchestration.md`. It owns the
+`deep-reasoner` / `fast-worker` delegation contract, the superpowers-coexistence
+rules, and its own precedence note. It is `@`-imported above, so it is already
+in context.
 
-### Message Format
+Subagents ignore this section; you own your one slice and hand back.
 
-```json
-// Request (Node → Python)
-{ "id": "req-123", "method": "hydrate_metadata", "params": { ... } }
+**Repo agents** (`.claude/agents/`) sit on the layer boundaries, so a slice
+routes by where it lands:
 
-// Response (Python → Node)
-{ "id": "req-123", "result": { ... }, "error": null }
+| Agent | Owns |
+|---|---|
+| `spec-writer` | a checkable spec before implementation, into `docs/superpowers/specs/` |
+| `main-engineer` | `electron/main/` — services, IPC, DB + migrations |
+| `renderer-engineer` | `src/` — components, stores, hooks, lib |
+| `sidecar-engineer` | `sidecar/` — extractors, fetchers, pipeline, conversion |
+| `contracts-engineer` | `src/types/` + `schema/migrations/` + the `metadata.json` shape |
+| `packaging-engineer` | `electron-builder.yml`, the Python bootstrap, the bundle |
+| `test-author` | `test/` (vitest) and `sidecar/tests/` (pytest) |
+| `reviewer` | the pre-merge gate against the invariants list |
 
-// Notification (Python → Node, no id) — e.g. migration progress
-{ "method": "migration_progress", "params": { "job_id": "...", ... } }
-```
-
-### Sidecar Methods
-
-| Method                  | Description                                      |
-|-------------------------|--------------------------------------------------|
-| `extract_epub_metadata` | Parse OPF from EPUB file                         |
-| `extract_pdf_metadata`  | Parse PDF Info dict (title/author)               |
-| `read_calibre_db`       | Extract records from Calibre metadata.db (read-only, immutable open) |
-| `hydrate_metadata`      | Full pipeline: fetch, merge, score, write covers |
-| `fetch_cover`           | Download a specific cover URL (conflict resolution path) |
-| `convert_format`        | Wrap ebook-convert for format conversion         |
-| `migrate_library`       | Full Calibre migration; streams `migration_progress` notifications |
-| `topup_pdfs`            | Re-runnable Calibre PDF top-up; streams `migration_progress` |
-
-Python resolution order (`services/python-env.ts`, and see Packaging above):
-`app_config.python_path` → bundled runtime → `sidecar/.venv/bin/python` →
-`userData/sidecar-venv/bin/python` → a system `python3.12`/`3.11`/`3` found by
-name *or absolute path* and version-checked against 3.11. The sidecar
-auto-restarts on crash (max 3 attempts); when unavailable the app degrades
-gracefully (imports fall back to filename metadata).
-
----
-
-## IPC API Surface (preload → renderer)
-
-Exposed via contextBridge as `window.Musaeum`. Full contract:
-`src/types/api.types.ts` (`MusaeumAPI`). Every handler returns an
-`IPCResult<T>` envelope which the preload unwraps — renderer code sees plain
-promises that reject with the error message.
-
-```typescript
-interface MusaeumAPI {
-  library: {
-    getBooks(filters?: BookFilters): Promise<Book[]>
-    getBook(id: string): Promise<Book>
-    searchBooks(query: string, sort?: BookSort): Promise<Book[]>  // sort ?? rank
-    updateBook(id: string, updates: Partial<Book>): Promise<void>
-    deleteBook(id: string): Promise<void>
-    deleteFormats(id: string, formats: BookFormat[]): Promise<{ bookDeleted: boolean }>
-    deleteBooks(ids: string[]): Promise<BulkDeleteResult>  // batched; partial-tolerant
-    getFacets(): Promise<LibraryFacets>          // filter sidebar counts
-    refreshLibrary(): Promise<{ books: number }>   // re-read catalog.json into cache
-    rebuildCatalog(): Promise<{ books: number }>   // recovery: walk metadata.json files
-  }
-  import: {
-    addFiles(filePaths: string[]): Promise<ImportResult[]>
-    getImportProgress(jobId: string): Promise<ImportProgress | null>
-  }
-  metadata: {
-    getConflictQueue(): Promise<MetadataConflict[]>
-    resolveConflict(conflictId: number, choices: ConflictChoices): Promise<void>
-    /**
-     * Re-fetch one book's metadata and report what it did (`HydrateOutcome`).
-     * Rejects only for the pre-flight failures — offline, no metadata engine,
-     * nothing hydratable in the book's folder.
-     */
-    rehydrateBook(bookId: string): Promise<HydrateOutcome>
-    rehydrateBooks(bookIds: string[]): Promise<void>  // sequential job; events report
-    cancelRehydrate(): Promise<void>             // stops after the book in flight
-  }
-  devices: {
-    getConnectedDevices(): Promise<Device[]>
-    sendToDevice(bookId: string, deviceId: string): Promise<TransferJob>
-    getTransferProgress(jobId: string): Promise<TransferProgress | null>
-    exportToAppleBooks(bookId: string): Promise<void>
-    getOnDeviceBookIds(deviceId: string): Promise<string[]>
-    removeFromDevice(bookId, deviceId): Promise<{ removed: number }>  // deletes off device
-  }
-  nas: {
-    getStatus(): Promise<NASStatus>
-    reconnect(): Promise<boolean>
-    setLibraryRoot(path: string): Promise<void>
-    chooseLibraryRoot(): Promise<string | null>  // native folder picker
-  }
-  settings: {
-    get(): Promise<SettingsView>                 // values + what each resolves to
-    save(updates: Partial<EditableSettings>): Promise<void>  // validates, may restart sidecar
-    chooseExecutable(kind: ExecutableKind): Promise<string | null>
-  }
-  migration: {
-    scanCalibreLibrary(path: string): Promise<MigrationScan>
-    startMigration(options: MigrationOptions): Promise<MigrationJob>
-    getMigrationProgress(jobId: string): Promise<MigrationProgress | null>
-    startPdfTopUp(calibrePath: string): Promise<MigrationJob>  // re-runnable PDF attach/import
-    confirmCutover(): Promise<void>
-    chooseCalibrePath(): Promise<string | null>  // native folder picker
-  }
-  files: {
-    getPathForFile(file: File): string           // dropped File → path (webUtils)
-    revealBook(bookId, format?): Promise<void>   // Finder, file selected
-    openBookFile(bookId, format): Promise<void>  // system default app
-  }
-  reader: {
-    saveProgress(report: ProgressReport): Promise<void>  // tiered write; see above
-  }
-  on: {                                          // all return an Unsubscribe fn
-    nasStatusChanged(cb): Unsubscribe
-    deviceConnected(cb): Unsubscribe
-    deviceDisconnected(cb): Unsubscribe
-    importProgress(cb): Unsubscribe
-    conflictQueueUpdated(cb): Unsubscribe        // payload: unresolved count
-    transferProgress(cb): Unsubscribe
-    libraryChanged(cb): Unsubscribe              // any book data changed → reload
-    catalogRebuildProgress(cb): Unsubscribe      // {completed, total} during rebuild
-    bulkHydrateProgress(cb): Unsubscribe         // bulk re-hydrate; running:false ends it
-    menuCommand(cb): Unsubscribe                 // native menu → UI action
-    pythonEnvProgress(cb): Unsubscribe           // first-run venv bootstrap
-  }
-}
-```
-
----
-
-## Performance Targets
-
-| Metric                              | Target       |
-|-------------------------------------|--------------|
-| Library load (7000 books)           | < 2 seconds  |
-| Search response time                | < 100ms      |
-| App cold start                      | < 3 seconds  |
-| Metadata hydration per book         | < 5 seconds  |
-| NAS reconnection detection          | < 5 seconds  |
-| Format conversion (epub → mobi)     | < 30 seconds |
-| Memory footprint (typical use)      | < 500MB      |
-
-Both library views are virtualized (see Rendering below); measured against a
-synthetic 7000-book library at ~1000 DOM nodes, 32MB heap, 115ms `getBooks`,
-18ms search.
-
----
-
-## External Dependencies
-
-- **Calibre** (host install) — for `ebook-convert` only; detected at
-  `/Applications/calibre.app/Contents/MacOS/ebook-convert`, overridable via
-  `app_config.ebook_convert_path`. No Calibre GUI is launched.
-- **Python 3.11+** — sidecar venv at `sidecar/.venv` (see README).
-- Sidecar deps: `sidecar/requirements.txt` (isbnlib, requests, bs4, lxml, Pillow,
-  pypdf, pypdfium2). Dev deps: `sidecar/requirements-dev.txt` (pytest).
-- Node deps: see `package.json`.
-
----
-
-## iOS Companion — Architecture Staging
-
-In place as of Phase 1:
-
-1. SQLite schema contains no UI-coupled fields
-2. `metadata.json` is the canonical data contract (documented above)
-3. REST API module stubbed at `electron/main/api/rest.ts` — disabled via
-   `app_config` flag `rest_api_enabled = false`
-4. All book file paths stored as relative paths from library root
-5. Covers at two resolutions: `cover_thumb.jpg` (200px), `cover_full.jpg` (600px)
-6. All data access goes through the service layer (IPC handlers contain no
-   business logic) so extraction to a standalone API server stays cheap
+**Handoffs name their docs.** A subagent starts with no memory of the session
+that dispatched it, so every dispatch carries the `docs/invariants/*.md` path(s)
+the work touches — not just the file to edit. That is what the routing table at
+the top of this file is for.
 
 ---
 
@@ -1358,8 +205,8 @@ In place as of Phase 1:
   events are wired into stores once, in the `src/hooks/use*.ts` hooks mounted
   by `App.tsx`
 - Never call NAS/file operations directly from renderer — always via IPC
-- Icons are the hand-rolled inline SVG set in `components/shared/icons.tsx` —
-  no icon library
+- Icons are the hand-rolled inline SVG set in `src/components/shared/icons.tsx`
+  — no icon library
 
 ### Error Handling
 
@@ -1375,6 +222,40 @@ In place as of Phase 1:
 - React components: PascalCase (`BookCard.tsx`)
 - Services, hooks, stores: camelCase / kebab (`nas-manager.ts`, `useLibrary.ts`)
 - Python modules: snake_case (`epub_metadata.py`)
+
+---
+
+## Performance Targets
+
+| Metric                              | Target       |
+|-------------------------------------|--------------|
+| Library load (7000 books)           | < 2 seconds  |
+| Search response time                | < 100ms      |
+| App cold start                      | < 3 seconds  |
+| Metadata hydration per book         | < 5 seconds  |
+| NAS reconnection detection          | < 5 seconds  |
+| Format conversion (epub → mobi)     | < 30 seconds |
+| Memory footprint (typical use)      | < 500MB      |
+
+Both library views are virtualized (see `docs/invariants/library-views.md`);
+measured against a synthetic 7000-book library at ~1000 DOM nodes, 32MB heap,
+115ms `getBooks`, 18ms search.
+
+---
+
+## iOS Companion — Architecture Staging
+
+In place as of Phase 1:
+
+1. SQLite schema contains no UI-coupled fields
+2. `metadata.json` is the canonical data contract (documented in
+   `docs/data-contracts.md`)
+3. REST API module stubbed at `electron/main/api/rest.ts` — disabled via
+   `app_config` flag `rest_api_enabled = false`
+4. All book file paths stored as relative paths from library root
+5. Covers at two resolutions: `cover_thumb.jpg` (200px), `cover_full.jpg` (600px)
+6. All data access goes through the service layer (IPC handlers contain no
+   business logic) so extraction to a standalone API server stays cheap
 
 ---
 

@@ -43,8 +43,8 @@ export default defineConfig({
         // template into an `import.meta.glob('vendor/pdfjs/*', …)`, and
         // that generated glob lacks the leading './' the glob-import
         // plugin requires, which aborts the build. Musaeum never opens
-        // PDFs through the in-app reader (see CLAUDE.md — PDFs open via
-        // the system default app), so pdf.js is excluded from bundling
+        // PDFs through the in-app reader (see docs/invariants/reader.md —
+        // PDFs open via the system default app), so pdf.js is excluded
         // rather than worked around; nothing in the app's reader path
         // reaches it. Do not edit vendor/foliate-js/pdf.js to fix this —
         // it is vendored source.
