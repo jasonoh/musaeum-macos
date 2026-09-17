@@ -23,6 +23,19 @@ the app is packaged.
 - **A PDF cover that cannot be rendered says so** instead of failing silently —
   a missing or broken PDF rendering dependency used to degrade with no trace at
   all. A failed render is still non-fatal; the book keeps its other metadata.
+- **The Kindle's free space is the Kindle's.** The device row read 73.2 GB free
+  for a Kindle with 21.3 GB, because `statfs` answers about whichever filesystem
+  contains a path — a `/Volumes/Kindle` with no volume on it reports the boot
+  disk — and the figure was taken once, when the device was recognized, and never
+  again. It is now read only from a real mount point and re-read on every poll.
+- **"Send to Kindle" says what it is doing.** The button was bound to the call
+  that queues a transfer, which returns immediately, so it re-enabled itself
+  while the book was still copying and read "Send to Kindle" for a book that had
+  just been sent — clicking again put a byte-identical duplicate on the device.
+  It now reads "Sending to Kindle…" until the job resolves, "On Kindle" when it
+  lands, and "Couldn't send — retry" with the reason when it fails. A send also
+  records the name it wrote, so a book renamed after sending stops reading as
+  absent.
 
 ### Added
 - **Your own colour schemes, not just the ones we ship.** Musaeum's palette used
