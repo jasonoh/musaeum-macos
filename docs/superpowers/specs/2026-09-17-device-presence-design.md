@@ -1,10 +1,18 @@
 # Design: Kindle presence by the book's own title, not the filename
 
 **Date:** 2026-09-17
-**Status:** Draft — measured, not implemented. Prepped for a fresh session.
+**Status:** Implemented and verified 2026-09-17 (AC1–AC9). Two readings from the
+run worth carrying forward: the device holds **1,555** book files rather than
+1,556 (the Nerd Reich duplicate was removed in `eb67b6c`, after this was
+measured), and the census's bucket B lands at **2** rather than 0 — two files
+whose title is duplicated in the library and whose EXTH 100 names only one of two
+co-authors, which the uniqueness guard refuses by design. A+B = **1,343**
+exactly, which is the number this design promised; the guard costs 2 of them, and
+the app's book-level answer (1,347) matches the census's mirror of the rule.
 **Scope:** `electron/main/services/device-manager.ts` (scan, presence, removal) and
-the send path that consumes it. No schema change is required; no renderer change
-beyond what a correct presence already drives.
+the send path that consumes it. Adds one derived table (migration 004,
+`device_file_identity`); no renderer change beyond what a correct presence
+already drives.
 **Instrument:** `scripts/device-presence-census.py` — re-run it to reproduce every
 number here. Read-only, works while the app is running.
 

@@ -7,6 +7,26 @@ the app is packaged.
 ## [Unreleased] — 2026-09-15
 
 ### Fixed
+- **"On Kindle" is true for the books that are actually on it.** Presence
+  matched a book's title against the *filenames* the device holds, which only
+  sees books Musaeum wrote itself — Calibre names its files
+  `{author_sort}/{title} - {authors}.ext`, so **86 of the Kindle's 1,555 book
+  files** were recognized and "Send to Kindle" was offered for ~1,400 books that
+  were already there. Each file's own title and author are read out of its header
+  and matched instead: the running app now answers **1,347 of 6,460 books** on
+  the device. Two library books sharing a title are left absent rather than
+  guessed at, and files whose header cannot be read (KFX, PDF) keep the filename
+  rule. One `open` per file is the cost — a pass over all 1,555 took **73 s** off
+  this mount (12 readers, the census instrument) — so it is not something a
+  connect can wait on: the facts are cached by path + size + mtime (a file
+  replaced under the same name has different ones, so it is read again rather
+  than believed), the 5 s device poll still never opens a book, and presence
+  settles as batches land — **3.9 s** from launch, measured in the app.
+- **A book the app calls "On Kindle" can now come off it.** Removal matched the
+  same way presence did, so a book whose device file Calibre named would have
+  refused to be deleted from a device the app said it was on. It removes what
+  made the book read as present — the file's own title and author as well as its
+  name — with the count the dialog reports.
 - **Searching no longer strands you at the bottom of the results.** Narrowing a
   big library kept the scroll offset it had: scroll to the end of 6459 books,
   search for `the`, and you were parked at the bottom of a result set you had

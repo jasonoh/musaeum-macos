@@ -70,8 +70,12 @@
 - Transfers run serially through `transfer-queue.ts`
 - **On-device presence** is derived by _scanning_ the connected Kindle's
   `documents/` folder (not from `device_history`): `device-manager` walks it
-  (depth 2) into a `stem → paths` map, and `getOnDeviceBookIds` matches books
-  whose `sanitizeTitle(title)` equals a file stem (extension-agnostic).
+  (depth 2) into a `stem → paths` map, and `getOnDeviceBookIds` matches a book
+  three ways — `sanitizeTitle(title)` against a file stem (extension-agnostic),
+  the **title and author inside the file**, and the title inside it alone where
+  the library holds exactly one book with that title. The filename reading is
+  what keeps a book Musaeum sent visible when its own header cannot be read; the
+  content readings are what see a device another tool filled (below).
   Surfaced as a badge on `BookCard` and an "On {device}" state on the
   detail-panel send button. Presence = f(device files, book set), so the
   renderer recomputes it on **both** triggers: `deviceContentsChanged` (device
@@ -102,22 +106,54 @@
   retitle _plus_ an unplug leaves the book reading as absent again — closing that
   means persisting the name (`device_history` has no filename column today) or
   matching on identity (EXTH 113, which the covers already use), and neither is in.
-- **Presence cannot see most of a Calibre-filled device.** Matching is by
-  sanitized title against file _stems_, and Calibre wrote its books as
-  `{author_sort}/{title} - {authors}.ext`. Measured 2026-09-17 on this Kindle:
-  of 1,567 book files, **86** matched a library title, **384** matched once the
-  trailing ` - {author}` was stripped, and **1,097** matched no library title at
-  all — Calibre's own spellings ("Algebraist, The" for "The Algebraist"), plus
-  the user guide and dictionaries, which are not library books. The app reports
-  ~90 books as on-device for a device holding 1,567 files, so "Send to {device}"
-  is offered for books that are already there and the badge is silent for them.
-  The way out is to match on what the file says about _itself_ — the title and
-  author in its own header — rather than on the name a host gave it; no code path
-  does that yet, and the send receipt above only covers books we sent ourselves.
-  Designed, with the byte layout and the acceptance criteria:
-  `docs/superpowers/specs/2026-09-17-device-presence-design.md`; reproduce the
-  numbers here with `scripts/device-presence-census.py` (matching the title inside
-  each file reaches 1,343 of those 1,556).
+  Content matching (below) does not close it either, and is not meant to: a
+  retitle rewrites the library's files, not the bytes of the copy already on the
+  device, so that copy's own title still says the old one.
+- **Presence matches what the file says about _itself_, not the name a host gave
+  it.** Matching by sanitized title against file _stems_ only sees books Musaeum
+  wrote itself, and Calibre writes `{author_sort}/{title} - {authors}.ext` with
+  its own spellings ("Algebraist, The" for "The Algebraist"). Measured 2026-09-17
+  on this Kindle: the filename rule recognized **86** of 1,555 book files; the
+  title each file carries inside it reaches **1,343** (86%). So the badge was
+  silent for most of the library and "Send to {device}" was offered for ~1,400
+  books already there — including one that then landed twice, byte-identical.
+  A library book is present when a device file's own title and author are the
+  book's (`authorKey` is order-insensitive, so Calibre's "Banks, Iain M." is the
+  library's "Iain M. Banks"), or when the file's title is the book's and exactly
+  one library book has that normalized title. **The uniqueness guard is
+  load-bearing**: without it two library books sharing a title would both claim
+  one file, and a false positive (the badge claiming a book that is not there)
+  costs more than the re-send a false negative costs. A `.mobi`/`.azw3` header is
+  read per the layout in the design's appendix — 78 bytes, the record table, then
+  record 0 *sized from that table* (a fixed 16 KB window loses the title on 67
+  files) — and EXTH is detected by its magic, not by its flag. KFX, PDF and
+  EPUB keep the filename rule; nothing reads them yet.
+- **Reading those headers is asynchronous, and it cannot be otherwise.** One
+  `open` per file is the mount's per-file latency, not the bytes: a full pass
+  over 1,555 files measures **73 s** (12 readers, the census instrument, cold
+  mount). Three rules follow, and all three are load-bearing:
+  1. **The 5 s poll stays readdir-only.** It walks `documents/` and compares
+     stems; it never opens a book. Header reads happen *after* the scan, in the
+     background, on a bounded pool (8).
+  2. **Keys are cached in SQLite by `path + size + mtime`** (`device_file_identity`,
+     migration 004). Re-reading on every connect is not acceptable, and a file
+     *replaced under the same name* has a different size/mtime — so it is read
+     again rather than believed. A same-name replacement is otherwise invisible:
+     the poll compares stems. The table is derived data — deleting every row
+     costs one pass and nothing else.
+  3. **Presence is allowed to settle.** `getOnDeviceBookIds` answers with the
+     identities that have landed, and the pass broadcasts `deviceContentsChanged`
+     as batches of 100 arrive — the event the renderer already recomputes
+     presence on, so no new channel. Measured in the app: 1,347 books answered
+     **3.9 s** from launch with a warm cache. With an *empty* identity cache the
+     same launch answered in ~21 s, but the mount's own page cache was hot from
+     the reads this slice had just done — the figure to plan against is the
+     73 s above, not 21 s.
+  The scan half still decides what *exists*: an identity whose file is no longer
+  in the current scan is ignored, so a file removed a moment ago stops counting
+  before the pass that would prune it has run. Reproduce the numbers with
+  `scripts/device-presence-census.py` (read-only, re-runnable while the app runs;
+  it grades the app's rule — see its bucket definitions for what B means).
 - **The send button reports what the transfer is doing**, not what the call that
   started it returned: `sendToDevice` resolves the moment the job is _queued_, so
   a button bound to that promise re-enables during the copy. `sendStateFor` reads
@@ -128,16 +164,48 @@
   Try again. This is the half that made the duplicate above _visible_; the receipt
   is the half that made it impossible.
 - **Removing from a device** (`removeBookFromDevice`) is the inverse of
-  presence and matches the same way — sanitized title against file stems — so
-  it deletes exactly what made the book read as "on device". Each matched file
-  takes its `._` AppleDouble sibling and its `{book}.sdr` folder with it, which
-  is what deleting on the Kindle itself does; reading position and annotations
-  go with them. It **re-scans instead of trusting the cached contents** (which
-  are up to one poll interval stale — a file added since would survive and keep
-  the book present), and refuses paths that resolve outside `documents/`.
+  presence and matches the same way — sanitized title against file stems, the
+  names of files we sent under a previous title, and the title and author inside
+  each file — so it deletes exactly what made the book read as "on device". The
+  content half is not optional: without it a book Calibre wrote reads "On
+  {device}" and then refuses to come off, which is the same inconsistency the send
+  receipt had to fix, in the other direction. Ambiguity follows the match rule, so
+  a title two library books share removes the file that made either read present,
+  and the count returned is what the dialog reports. Each matched file takes its
+  `._` AppleDouble sibling and its `{book}.sdr` folder with it, which is what
+  deleting on the Kindle itself does; reading position and annotations go with
+  them. It **re-scans instead of trusting the cached contents** (which are up to
+  one poll interval stale — a file added since would survive and keep the book
+  present) and refuses paths that resolve outside `documents/`.
   Entry points: the detail panel's trash button beside an "On {device}" button,
   and a "Remove from {device}…" context-menu item; both open
   `RemoveFromDeviceDialog`. The library copy is never touched — removal is
   undone by sending again.
+
+## Testing this area
+
+`electron/main/services/device-manager.test.ts` points `scan()`'s filesystem
+calls at a throwaway directory standing in for `/Volumes`, so a fake Kindle can
+be plugged in and unplugged without touching the machine's real volumes.
+
+**Every call production code can make has to be rehomed by that stand-in — the
+destructive ones first.** It covered `readdir`/`access`/`stat`/`statfs` but not
+`fs.rm`, and a test fixture named after a file the attached Kindle really holds
+(`Against a Dark Background - Iain M. Banks.azw3`, copied out of the census
+output) was deleted off the real device by a passing run. `rm`/`open`/`readFile`
+are rehomed now, and fixtures use titles (`The Fixture Codex`) that cannot exist
+on a real device while keeping the *shape* the test is about (Calibre's
+`{author_sort}/{title} - {authors}.ext`). Two more traps worth knowing:
+
+- `exists()` in that file reads the throwaway `mount` dir the walk tests use, not
+  the fake volume the presence tests use — so an
+  `expect(await exists(x)).toBe(false)` about a removal passes without anything
+  having been deleted. Ask for the volume explicitly.
+- Header fixtures are built as **real MOBI bytes** (`test/helpers/mobi.ts`), never
+  by mocking the parser: the offsets are the thing under test. The fixture carries
+  the shapes the device really has — header lengths 232/248/256/264, EXTH values
+  NUL-padded to a 4-byte boundary (3,788 of 36,259 records on this device), record
+  0 past 16 KB — and `sanitizeTitle` is what strips the padding, at comparison
+  time.
 
 ---

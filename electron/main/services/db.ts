@@ -15,8 +15,9 @@ import type { ConflictCandidate, MetadataConflict } from '@shared/metadata.types
 import migration001 from '../schema/migrations/001_initial.sql?raw'
 import migration002 from '../schema/migrations/002_sort_keys.sql?raw'
 import migration003 from '../schema/migrations/003_reading_state.sql?raw'
+import migration004 from '../schema/migrations/004_device_file_identity.sql?raw'
 
-const MIGRATIONS: string[] = [migration001, migration002, migration003]
+const MIGRATIONS: string[] = [migration001, migration002, migration003, migration004]
 
 let db: Database.Database | null = null
 
@@ -541,6 +542,106 @@ export function getSourcePreferences(): Record<string, Record<string, number>> {
     prefs[r.field][r.chosen_source] = r.n
   }
   return prefs
+}
+
+// --- Device file identity cache ---
+
+/**
+ * What one device file said about itself, and the file version it said it
+ * about. `size`/`mtimeMs` are the cache key's other half: a file replaced under
+ * the same name has different ones, so its stale facts are re-read rather than
+ * believed.
+ */
+export interface DeviceFileIdentityRecord {
+  path: string
+  size: number
+  mtimeMs: number
+  title: string | null
+  author: string | null
+  uuid: string | null
+  cdetype: string | null
+}
+
+interface DeviceFileIdentityRow {
+  path: string
+  size: number
+  mtime_ms: number
+  title: string | null
+  author: string | null
+  uuid: string | null
+  cdetype: string | null
+}
+
+/**
+ * Cached identities for these paths, at whatever version they were read. The
+ * caller compares the stored size/mtime against the file's own before using
+ * one — this answers "have we ever read it", not "is this still true".
+ */
+export function getDeviceFileIdentities(paths: string[]): Map<string, DeviceFileIdentityRecord> {
+  const found = new Map<string, DeviceFileIdentityRecord>()
+  if (!paths.length) return found
+  const d = getDb()
+  const statement = d.prepare(
+    'SELECT path, size, mtime_ms, title, author, uuid, cdetype FROM device_file_identity WHERE path = ?'
+  )
+  d.transaction(() => {
+    for (const path of paths) {
+      const row = statement.get(path) as DeviceFileIdentityRow | undefined
+      if (!row) continue
+      found.set(row.path, {
+        path: row.path,
+        size: row.size,
+        mtimeMs: row.mtime_ms,
+        title: row.title,
+        author: row.author,
+        uuid: row.uuid,
+        cdetype: row.cdetype
+      })
+    }
+  })()
+  return found
+}
+
+/** Record what a batch of files said about themselves — one write per batch. */
+export function putDeviceFileIdentities(records: DeviceFileIdentityRecord[]): void {
+  if (!records.length) return
+  const d = getDb()
+  const statement = d.prepare(
+    `INSERT INTO device_file_identity (path, size, mtime_ms, title, author, uuid, cdetype, read_at)
+     VALUES (?,?,?,?,?,?,?,?)
+     ON CONFLICT(path) DO UPDATE SET
+       size = excluded.size, mtime_ms = excluded.mtime_ms, title = excluded.title,
+       author = excluded.author, uuid = excluded.uuid, cdetype = excluded.cdetype,
+       read_at = excluded.read_at`
+  )
+  const readAt = new Date().toISOString()
+  d.transaction(() => {
+    for (const r of records) {
+      statement.run(r.path, r.size, r.mtimeMs, r.title, r.author, r.uuid, r.cdetype, readAt)
+    }
+  })()
+}
+
+/**
+ * Drop cached facts for files that are no longer on the device. A row is keyed
+ * by absolute path, so a file renamed on the device would otherwise keep its
+ * entry for good — the table has to stay a report about what is there.
+ */
+export function deleteDeviceFileIdentities(paths: string[]): void {
+  if (!paths.length) return
+  const d = getDb()
+  const statement = d.prepare('DELETE FROM device_file_identity WHERE path = ?')
+  d.transaction(() => {
+    for (const path of paths) statement.run(path)
+  })()
+}
+
+/** Cached paths under `prefix` — how a device's stale rows are found. */
+export function deviceFileIdentityPathsUnder(prefix: string): string[] {
+  const rows = getDb()
+    .prepare('SELECT path FROM device_file_identity WHERE path LIKE ? ESCAPE ?')
+    .all(`${prefix.replace(/[%_\\]/g, '\\$&')}%`, '\\') as { path: string }[]
+  return rows.map((r) => r.path)
 }
 
 // --- Device history ---

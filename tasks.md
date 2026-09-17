@@ -169,7 +169,12 @@ environment and devDeps; EBADF-on-SMB is only reproducible on real hardware.
       file keeps its original `sanitizeTitle` name, so the scan stem no longer
       equals `sanitizeTitle(currentTitle)`) — only self-corrects on re-send.
       Revisit if it bites; a rename-the-file-on-title-change pass would fix it
-      broadly. (Shipped 2026-07-27.)
+      broadly. (Shipped 2026-07-27.) **Content matching (2026-09-17) does not
+      close this either**, and is not meant to: the copy on the device carries
+      the title it was converted with, so after a retitle *both* its name and its
+      own title are stale. The send receipt covers books we sent in this session;
+      across an unplug the fix is still to persist the send filename or match on
+      EXTH 113.
 - [x] `books.file_size_bytes` is set at import and never recalculated, so it
       is wrong after `deleteFormats` removes a file (and after "Add format to
       existing"). **Fixed 2026-09-16** — owner chose recompute over dropping the
@@ -769,15 +774,32 @@ app is running).
       it yet, so a fresh send still lands without a cover. Amazon destroys these
       entries (Calibre keeps a restore cache for exactly that), so writing once at
       send time is not enough.
-- [ ] **Presence by the file's own title, not the filename** — the design above.
-      Presence sees 86 of 1,556 files on the real device; matching the title each
-      file carries inside it reaches 1,343 (86%). This is the answer to "is it on
-      the Kindle?", and it retires the "Send to {device}" offer for ~1,400 books
-      that are already there.
-- [ ] **Cache the content keys in SQLite** (`path + size + mtime` → title/author)
-      — a full device read measures ~72 s, so an un-cached read cannot sit in the
-      connect path. Part of the presence slice if it fits, else its immediate
-      follow-up.
+- [x] **Presence by the file's own title, not the filename** — shipped
+      2026-09-17. A book is present when a device file's own title and author
+      agree with it (`authorKey` is order-insensitive, so Calibre's
+      "Banks, Iain M." is the library's "Iain M. Banks"), or when the file's
+      title is the book's and the library holds exactly one book with it; the
+      filename rule stays as the fallback for files whose header cannot be read.
+      Measured on the real Kindle: the filename rule alone recognized 86 of 1,555
+      files and presence answered **1,347 of 6,460 books** in the running app
+      (3.9 s from launch, warm cache). Byte layout and pitfalls:
+      `docs/invariants/device-transfer.md`.
+- [x] **Cache the content keys in SQLite** (`path + size + mtime` → title/author)
+      — shipped with the slice above (`device_file_identity`, migration 004). The
+      5 s poll stays readdir-only; headers are read behind the scan by a bounded
+      pool and presence settles as batches land. Measured: **3.9 s** from launch
+      with a warm cache; an empty identity cache answered in ~21 s, but with the
+      mount's page cache hot from this session's own reads — plan against the
+      census's **73 s** for a cold mount, not 21 s.
+- [ ] **A co-author the library splits, or the file names only partly.** Two
+      files on this device carry one of two co-authors in EXTH 100
+      (`Jason Mendelson` against a library author `Brad Feld & Jason Mendelson`),
+      and both of their titles are duplicated in the library — so the uniqueness
+      guard refuses them and the books read as absent. The guard is doing what it
+      was designed to do (a re-send is cheap, a false positive is not), but an
+      author rule that accepts *the file's author as a subset of the book's* while
+      still refusing a genuinely ambiguous title would recover both. A design
+      decision, not a bug — not taken here.
 - [ ] **Device report / browser** — parked, deliberately. The case for it shrank
       when presence went content-based; what is left is the residual 212 files
       whose own titles match no library book (user guide, dictionaries, edition
