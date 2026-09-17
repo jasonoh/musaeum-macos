@@ -114,6 +114,10 @@
   The way out is to match on what the file says about _itself_ — the title and
   author in its own header — rather than on the name a host gave it; no code path
   does that yet, and the send receipt above only covers books we sent ourselves.
+  Designed, with the byte layout and the acceptance criteria:
+  `docs/superpowers/specs/2026-09-17-device-presence-design.md`; reproduce the
+  numbers here with `scripts/device-presence-census.py` (matching the title inside
+  each file reaches 1,343 of those 1,556).
 - **The send button reports what the transfer is doing**, not what the call that
   started it returned: `sendToDevice` resolves the moment the job is _queued_, so
   a button bound to that promise re-enables during the copy. `sendStateFor` reads

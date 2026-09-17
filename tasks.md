@@ -747,6 +747,46 @@ Notes and named debt left by this slice:
   The same round's "not `#` + six hex digits" wording contradicted its own "use `normalizeHex`" (see
   adjudication 7).
 
+## Kindle presence (design: `docs/superpowers/specs/2026-09-17-device-presence-design.md` — measured 2026-09-17)
+
+The device half of the app, after a session that measured it end to end.
+Instrument: `scripts/device-presence-census.py` (read-only, re-runnable while the
+app is running).
+
+- [x] **Send-button states + send receipt** — landed `a6d7bbc`. The button reads
+      the transfer queue ("Sending to {device}…" / "On {device}" /
+      "Couldn't send — retry") because `sendToDevice` resolves when the job is
+      *queued*; a finished send now also records the name it wrote, so a book
+      retitled afterwards stops reading as absent. That combination sent a
+      byte-identical duplicate (same EXTH 113, same md5) to a real Kindle.
+- [x] **Covers measured, and the device backfilled by hand (2026-09-17)** — the
+      firmware no longer generates covers for new files; the entry is
+      `system/thumbnails/thumbnail_<EXTH 113>_<cdetype>_portrait.jpg` and the
+      stale `…jpg.tmp.partial` beside it must go too (both required — 148 books
+      here were carrying a cover a 0-byte marker was hiding). Backfill: 77
+      written, 224 markers cleared.
+- [ ] **Write covers on send, and re-apply on connect** — nothing in the app does
+      it yet, so a fresh send still lands without a cover. Amazon destroys these
+      entries (Calibre keeps a restore cache for exactly that), so writing once at
+      send time is not enough.
+- [ ] **Presence by the file's own title, not the filename** — the design above.
+      Presence sees 86 of 1,556 files on the real device; matching the title each
+      file carries inside it reaches 1,343 (86%). This is the answer to "is it on
+      the Kindle?", and it retires the "Send to {device}" offer for ~1,400 books
+      that are already there.
+- [ ] **Cache the content keys in SQLite** (`path + size + mtime` → title/author)
+      — a full device read measures ~72 s, so an un-cached read cannot sit in the
+      connect path. Part of the presence slice if it fits, else its immediate
+      follow-up.
+- [ ] **Device report / browser** — parked, deliberately. The case for it shrank
+      when presence went content-based; what is left is the residual 212 files
+      whose own titles match no library book (user guide, dictionaries, edition
+      drift), which is a reporting question rather than a browsing one. Do not
+      start it before the presence slice lands.
+- [ ] **The redundant Nerd Reich file** — two byte-identical copies on the device
+      (`The Nerd Reich.azw3` and the long-titled one). Removing either is safe;
+      the long-named orphan is the one to delete.
+
 ## Packaging & distribution
 
 Goal: a double-clickable, signed `Musaeum.app` (DMG) that runs without a
