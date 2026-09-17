@@ -438,7 +438,12 @@ async function addFormatToExisting(
   }
   await fs.copyFile(srcPath, join(bookDir, `${sanitizeTitle(existing.title)}${ext}`))
   const formats = [...new Set([...existing.formats, format])]
-  db.updateBook(existing.id, { formats })
+  // Recompute rather than add: file_size_bytes is set at import and never
+  // revisited otherwise, so an increment on top of a possibly-stale value would
+  // just carry the drift forward. Non-fatal — a readdir/stat failure on a flaky
+  // share keeps the previous value rather than failing the import.
+  const fileSizeBytes = (await bookFiles.computeFileSizeBytes(bookDir)) ?? existing.fileSizeBytes
+  db.updateBook(existing.id, { formats, fileSizeBytes })
   const updated = db.getBook(existing.id)!
   await writeMetadataJson(bookDir, updated)
   librarySync.upsertCatalog([updated])

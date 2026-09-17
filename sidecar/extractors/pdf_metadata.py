@@ -6,6 +6,7 @@ pdfium at ~2x, JPEG-encoded — fed to pipeline.cover._write_cover by callers.
 """
 
 import io
+import sys
 from typing import Optional
 
 from PIL import Image
@@ -43,5 +44,16 @@ def render_pdf_cover(file_path: str) -> Optional[bytes]:
         buf = io.BytesIO()
         image.save(buf, "JPEG", quality=90)
         return buf.getvalue()
-    except Exception:
+    except ImportError as exc:
+        print(
+            f"pdf_metadata: pypdfium2 not available, skipping cover render for "
+            f"'{file_path}': {exc}",
+            file=sys.stderr,
+        )
+        return None
+    except Exception as exc:
+        print(
+            f"pdf_metadata: cover render failed for '{file_path}': {exc}",
+            file=sys.stderr,
+        )
         return None

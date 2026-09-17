@@ -1,7 +1,7 @@
 """Full hydration pipeline: fetch, merge, score covers.
 
 Order (per docs/invariants/metadata-hydration.md):
-  1. embedded EPUB metadata
+  1. embedded metadata (EPUB or PDF)
   2. known identifiers (already merged into `known` by the caller)
   3. Google Books + OpenLibrary in parallel
   4. Goodreads series scrape (when a Goodreads id is known)
@@ -88,7 +88,7 @@ def hydrate_metadata(
     if identifiers:
         merged.setdefault("identifiers", {}).update(identifiers)
 
-    # 6. Cover candidates: online sources + embedded EPUB cover
+    # 6. Cover candidates: online sources + embedded cover (EPUB or PDF)
     candidates = []
     if google and google.get("cover_url"):
         candidates.append({"source": "google_books", "url": google["cover_url"]})

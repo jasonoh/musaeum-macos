@@ -1,8 +1,9 @@
 import { promises as fs } from 'fs'
 import type { Dirent } from 'fs'
-import { extname, join } from 'path'
+import { join } from 'path'
 import type { Book, BookFormat, ReadingState, ReadStatus } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
+import { computeFileSizeBytes } from './book-files'
 
 export const CATALOG_FILENAME = 'catalog.json'
 export const CATALOG_VERSION = 1
@@ -272,17 +273,7 @@ export async function metadataJsonToBook(
   bookDir: string
 ): Promise<Book> {
   // metadata.json doesn't carry file sizes — sum the book files on disk
-  let fileSizeBytes: number | null = null
-  try {
-    let total = 0
-    for (const f of await fs.readdir(bookDir)) {
-      if (!VALID_FORMATS.has(extname(f).toLowerCase().slice(1))) continue
-      total += (await fs.stat(join(bookDir, f))).size
-    }
-    fileSizeBytes = total > 0 ? total : null
-  } catch {
-    // unreadable dir — size stays unknown
-  }
+  const fileSizeBytes = await computeFileSizeBytes(bookDir)
 
   return {
     id: json.id || dirName,

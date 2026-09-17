@@ -60,3 +60,13 @@ def test_render_cover_returns_none_for_corrupt_file(tmp_path):
     bad = tmp_path / "not_a.pdf"
     bad.write_bytes(b"junk")
     assert render_pdf_cover(str(bad)) is None
+
+
+def test_render_cover_logs_failure_for_corrupt_file(tmp_path, capsys):
+    bad = tmp_path / "not_a.pdf"
+    bad.write_bytes(b"junk")
+    result = render_pdf_cover(str(bad))
+    assert result is None
+    err = capsys.readouterr().err
+    assert "pdf_metadata" in err
+    assert str(bad) in err

@@ -117,6 +117,46 @@ export function useAnchoredScroll(
   }, [node, ids, columns, rowHeight, contentTop, scrollTop])
 }
 
+/**
+ * Reset the scroll container to the top when the result-set identity — the
+ * query/filters/sort tuple in `library.store`, summarized by
+ * `resultSetKey()` — changes. Without this, `scrollTop` is a pixel offset
+ * left over from whatever was previously loaded: scroll to the bottom of a
+ * 7000-book library, search down to 1072 matches, and the container is left
+ * parked near the bottom of a result set it has never shown.
+ *
+ * Keyed on the identity, not on `books` itself or its length — a metadata
+ * edit, a single-book delete, or a re-fetch of the same query all replace
+ * `books` without changing the identity, and the anchor/ensure-visible
+ * behaviour for *that* case is deliberate (see `useAnchoredScroll` and
+ * `useBookNavigation`) and must not be touched by this hook.
+ *
+ * A layout effect, so it runs before paint and before every other effect
+ * that reads `node.scrollTop` this commit. In particular it must run before
+ * `useAnchoredScroll` (call it first) so that hook's next anchor is recorded
+ * against the *new* scrollTop of 0 — otherwise it would record an anchor
+ * computed from a stale offset that may not even exist in the new, shorter
+ * list. It intentionally does not try to out-race `useBookNavigation`'s
+ * ensure-visible pass, which is a plain `useEffect` and therefore runs
+ * after every layout effect in this commit: if the previously selected book
+ * survives into the new result set, ensure-visible legitimately scrolls it
+ * back into view after this hook resets to the top. That composes with the
+ * rest of selection's behaviour (selection is pruned to survivors, not
+ * cleared by a narrower query — see `useLibrary`) rather than fighting it.
+ * With nothing selected, or a selection that didn't survive, there is
+ * nothing for ensure-visible to do and the reset to the top is final.
+ */
+export function useResetScrollOnResultChange(node: HTMLElement | null, resultKey: string): void {
+  const previous = useRef(resultKey)
+
+  useLayoutEffect(() => {
+    if (node && previous.current !== resultKey) {
+      setScrollTop(node, 0)
+    }
+    previous.current = resultKey
+  }, [node, resultKey])
+}
+
 export interface RowWindow {
   /** First row to render. */
   start: number

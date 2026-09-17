@@ -115,6 +115,18 @@ describe('deleteFormats', () => {
   it('throws for an unknown book', async () => {
     await expect(deleteFormats('missing', ['epub'])).rejects.toThrow(/not found/)
   })
+
+  it('recomputes file_size_bytes from the surviving format, not the stale stored value', async () => {
+    const dir = await seed('g', ['epub', 'pdf'])
+    // seed() writes each format file's content as its own extension name, so
+    // 'epub' (4 bytes) and 'pdf' (3 bytes) are unequal — the stale stored value
+    // (never set here, so null) must not survive.
+
+    await deleteFormats('g', ['pdf'])
+
+    const survivor = await fs.stat(join(dir, 'Book g.epub'))
+    expect(getBook('g')?.fileSizeBytes).toBe(survivor.size)
+  })
 })
 
 describe('deleteBooks', () => {

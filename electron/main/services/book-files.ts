@@ -55,3 +55,31 @@ export async function renameToTitle(bookDir: string, title: string): Promise<num
   }
   return renamed
 }
+
+/**
+ * Sum the sizes of a book's surviving format files in its NAS folder.
+ *
+ * `file_size_bytes` is set once at import and never revisited otherwise, so it
+ * silently goes stale the moment a format is added or removed — this is the
+ * single source of truth every such write recomputes from. Resolves files by
+ * extension, like every other lookup here, not by canonical name, so a book
+ * renamed after import is still measured correctly.
+ *
+ * Non-fatal: a `readdir`/`stat` failure (a flaky share) logs and returns `null`
+ * rather than throwing. Callers that need to preserve a previous value fall back
+ * to it themselves, since "unknown" and "genuinely empty" need different
+ * fallbacks depending on the call site.
+ */
+export async function computeFileSizeBytes(bookDir: string): Promise<number | null> {
+  try {
+    let total = 0
+    for (const entry of await fs.readdir(bookDir)) {
+      if (!BOOK_EXTENSIONS.has(extname(entry).toLowerCase())) continue
+      total += (await fs.stat(join(bookDir, entry))).size
+    }
+    return total > 0 ? total : null
+  } catch (err) {
+    console.warn(`[files] cannot recompute size for ${bookDir}:`, err)
+    return null
+  }
+}

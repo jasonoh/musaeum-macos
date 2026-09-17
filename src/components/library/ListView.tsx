@@ -5,7 +5,8 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
-import { rowWindow, useScrollMetrics } from '@/hooks/useVirtualRows'
+import { rowWindow, useResetScrollOnResultChange, useScrollMetrics } from '@/hooks/useVirtualRows'
+import { resultSetKey } from '@/lib/resultSetIdentity'
 import { CheckIcon, SortArrowIcon, StarIcon } from '@/components/shared/icons'
 
 /**
@@ -232,6 +233,9 @@ function Spacer({ height }: { height: number }) {
 
 export function ListView() {
   const books = useLibraryStore((s) => s.books)
+  const resultKey = useLibraryStore((s) =>
+    resultSetKey({ query: s.query, filters: s.filters, sort: s.sort })
+  )
   const { ref, node, metrics } = useScrollMetrics<HTMLDivElement>()
   const { start, end, padTop, padBottom } = rowWindow(
     books.length,
@@ -249,6 +253,11 @@ export function ListView() {
     stickyTop: HEADER_HEIGHT,
     ready: books.length > 0
   })
+  // See useResetScrollOnResultChange's comment on GridView's copy of this call
+  // — the list has no anchor hook to order against, but the same
+  // selection-wins composition with useBookNavigation's ensure-visible pass
+  // applies here too.
+  useResetScrollOnResultChange(node, resultKey)
 
   return (
     <div ref={ref} className="no-scroll-anchor h-full overflow-y-auto">

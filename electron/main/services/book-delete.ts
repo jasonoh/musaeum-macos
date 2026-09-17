@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import { extname, join } from 'path'
 import type { BulkDeleteResult } from '@shared/api.types'
 import type { BookFormat } from '@shared/book.types'
+import { computeFileSizeBytes } from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
 import { writeMetadataJson } from './importer'
@@ -53,7 +54,13 @@ export async function deleteFormats(
         await fs.rm(join(bookDir, entry), { force: true })
       }
     }
-    db.updateBook(id, { formats: remaining })
+    // Recompute rather than subtract: file_size_bytes is set at import and
+    // never revisited otherwise, so trusting the stored value here would just
+    // carry forward whatever drift already existed. Non-fatal — a readdir/stat
+    // failure on a flaky share keeps the previous value rather than failing the
+    // delete.
+    const fileSizeBytes = (await computeFileSizeBytes(bookDir)) ?? book.fileSizeBytes
+    db.updateBook(id, { formats: remaining, fileSizeBytes })
     const updated = db.getBook(id)!
     await writeMetadataJson(bookDir, updated)
     librarySync.upsertCatalog([updated])

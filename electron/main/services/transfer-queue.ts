@@ -5,6 +5,7 @@ import { Transform } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { BookFormat } from '@shared/book.types'
 import type { TransferJob } from '@shared/device.types'
+import { computeFileSizeBytes } from './book-files'
 import * as db from './db'
 import { getDevice, refreshDeviceContents } from './device-manager'
 import { broadcast } from './events'
@@ -107,7 +108,10 @@ async function runTransfer(job: TransferJob): Promise<void> {
         )
         sourceFile = target
         const formats = [...new Set([...book.formats, format])]
-        db.updateBook(book.id, { formats })
+        // The converted file is cached on the NAS permanently, so it belongs in
+        // file_size_bytes like any other format the book gains.
+        const fileSizeBytes = (await computeFileSizeBytes(bookDir)) ?? book.fileSizeBytes
+        db.updateBook(book.id, { formats, fileSizeBytes })
         broadcast('libraryChanged')
       } else {
         // PDF-only book: Kindles render PDF natively; conversion output is

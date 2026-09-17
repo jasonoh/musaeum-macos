@@ -239,7 +239,24 @@ export function getBooks(filters?: BookFilters): Book[] {
   return (getDb().prepare(sql).all(...params) as BookRow[]).map(rowToBook)
 }
 
-/** ORDER BY body for a sort; falls back to title ascending on an unknown field. */
+/**
+ * ORDER BY body for a sort; falls back to title ascending on an unknown field.
+ *
+ * A tied primary sort (same author, same rating, same read_status, ...)
+ * otherwise leaves the remaining order to SQLite, which is free to answer from
+ * a different physical row order call to call (e.g. after a row is rewritten),
+ * so a virtualized view can visibly reshuffle equal rows on reload with nothing
+ * about the *data* having changed. `id` is appended as a final, always-present
+ * tiebreak so ties always resolve the same way.
+ *
+ * The tiebreak is deliberately pinned ascending rather than following `dir`:
+ * direction is applied to every key *of the requested sort* because those keys
+ * carry meaning (descending 'series' means "show the series in reverse", not
+ * just "flip the index"), but `id` carries no such meaning — it is an arbitrary
+ * uniqueness key, not a field the user chose to sort by. Pinning it also means
+ * flipping a sort's direction and flipping it back returns tied rows to the
+ * order they started in.
+ */
 function orderClause(
   sort: BookSort = { field: 'title', direction: 'asc' },
   tablePrefix = ''
@@ -247,9 +264,9 @@ function orderClause(
   const dir = sort.direction === 'desc' ? 'DESC' : 'ASC'
   // Direction applies to every key, so descending 'series' fully reverses
   // series order rather than only flipping the index within each series
-  return (SORT_SQL[sort.field] ?? SORT_SQL.title)(tablePrefix)
-    .map((expr) => `${expr} ${dir}`)
-    .join(', ')
+  const keys = (SORT_SQL[sort.field] ?? SORT_SQL.title)(tablePrefix).map((expr) => `${expr} ${dir}`)
+  keys.push(`${tablePrefix}id ASC`)
+  return keys.join(', ')
 }
 
 export function getBook(id: string): Book | null {

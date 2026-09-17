@@ -83,6 +83,28 @@ describe('sorting', () => {
     const sort = { field: 'nonsense' as never, direction: 'asc' } as const
     expect(getBooks({ sort }).map((b) => b.title)).toEqual(['Alpha', 'Bravo', 'Charlie'])
   })
+
+  it('breaks ties in a fixed order across separate calls, even after physical row order changes', () => {
+    // All three tie on author, so nothing in SORT_SQL.author distinguishes
+    // them; only the id tiebreak should decide the order.
+    insertBook({ ...makeBook('b', 'Bravo'), author: 'Same', rating: 3 })
+    insertBook({ ...makeBook('a', 'Alpha'), author: 'Same', rating: 3 })
+    insertBook({ ...makeBook('c', 'Charlie'), author: 'Same', rating: 3 })
+
+    const first = getBooks({ sort: { field: 'author', direction: 'asc' } }).map((b) => b.id)
+
+    // Simulate a rewrite that changes physical row order without touching any
+    // sort-relevant column — e.g. a re-hydrate that rewrites a row. Without an
+    // explicit tiebreak, ties fall back to physical scan order, which this
+    // changes; with the id tiebreak the result must not move.
+    getDb().prepare('DELETE FROM books WHERE id = ?').run('b')
+    insertBook({ ...makeBook('b', 'Bravo'), author: 'Same', rating: 3 })
+
+    const second = getBooks({ sort: { field: 'author', direction: 'asc' } }).map((b) => b.id)
+
+    expect(first).toEqual(['a', 'b', 'c'])
+    expect(second).toEqual(first)
+  })
 })
 
 describe('searchBooks ordering', () => {

@@ -1,7 +1,13 @@
 import { useMemo } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
-import { rowWindow, useAnchoredScroll, useScrollMetrics } from '@/hooks/useVirtualRows'
+import {
+  rowWindow,
+  useAnchoredScroll,
+  useResetScrollOnResultChange,
+  useScrollMetrics
+} from '@/hooks/useVirtualRows'
+import { resultSetKey } from '@/lib/resultSetIdentity'
 import { BookCard, CARD_META_HEIGHT, CARD_META_MARGIN } from './BookCard'
 import { BookIcon } from '@/components/shared/icons'
 
@@ -43,6 +49,9 @@ function EmptyLibrary({ query }: { query: string }) {
 export function GridView() {
   const books = useLibraryStore((s) => s.books)
   const query = useLibraryStore((s) => s.query)
+  const resultKey = useLibraryStore((s) =>
+    resultSetKey({ query: s.query, filters: s.filters, sort: s.sort })
+  )
   const bookIds = useMemo(() => books.map((b) => b.id), [books])
   const { ref, node, metrics } = useScrollMetrics<HTMLDivElement>()
 
@@ -63,6 +72,10 @@ export function GridView() {
     contentTop: PAD_TOP,
     ready: contentWidth > 0 && books.length > 0
   })
+  // Must run before useAnchoredScroll below — see useResetScrollOnResultChange's
+  // comment — so a result-set change's anchor is recorded against the reset
+  // scrollTop, not a stale one.
+  useResetScrollOnResultChange(node, resultKey)
   useAnchoredScroll(node, bookIds, columns, rowHeight, PAD_TOP, metrics.scrollTop)
 
   return (

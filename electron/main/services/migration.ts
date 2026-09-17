@@ -8,6 +8,7 @@ import type {
   MigrationProgress,
   MigrationScan
 } from '@shared/metadata.types'
+import { computeFileSizeBytes } from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
 import * as librarySync from './library-sync'
@@ -245,9 +246,18 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
           console.error(`[migration] topup attached book ${a.book_id} not found in cache`)
           continue
         }
+        // Recompute from disk rather than add the sidecar-reported PDF size on
+        // top of the stored value: that stored value is exactly the "never
+        // revisited" snapshot this recompute policy exists to stop trusting, so
+        // an increment on top of it just carries forward whatever drift already
+        // existed. Falls back to the increment only if the recompute itself
+        // fails (flaky share).
+        const bookDir = join(libraryRoot, book.nasPath ?? join('books', book.id))
+        const fileSizeBytes =
+          (await computeFileSizeBytes(bookDir)) ?? (book.fileSizeBytes ?? 0) + a.file_size_bytes
         db.updateBook(a.book_id, {
           formats: [...new Set<BookFormat>([...book.formats, 'pdf'])],
-          fileSizeBytes: (book.fileSizeBytes ?? 0) + a.file_size_bytes
+          fileSizeBytes
         })
       }
       // Self-heal: a folder that already had a PDF (e.g. from a crash-
