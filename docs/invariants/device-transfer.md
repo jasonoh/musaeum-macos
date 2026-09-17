@@ -44,6 +44,28 @@
   completed byte-for-byte. Write-side errors still propagate, and the
   destination size is verified before a book is reported as sent, so a
   truncated copy is still an error.
+- **Covers are a device-side cache entry, and the device no longer generates
+  them — a send has to write one.** The cover is not read out of the book when
+  the library is drawn. The Kindle looks up
+  `system/thumbnails/thumbnail_<EXTH 113>_<EXTH 501>_portrait.jpg` (~330×500,
+  22–47 KB), keyed by the identity *inside* the file, not by its name. Measured
+  2026-09-17 against 1,567 on-device books: of the 91 books copied since Calibre's
+  last connect, none got a cover from the device — every attempt left a 0-byte
+  `…_portrait.jpg.tmp.partial`, for azw3 and mobi alike, so the format is not the
+  lever. The `.mobi` sends that looked like they worked were showing thumbnails
+  written *before* the copy existed (2019–2026-05 timestamps), which only works
+  because a re-copy of an identical file keeps its EXTH 113. Calibre does not rely
+  on the device either: its Kindle driver writes the entry itself (`upload_cover`
+  → `system/thumbnails`) and keeps a cache at `/amazon-cover-bug/` that it
+  restores on each connect — "Restored N cover thumbnails that were destroyed by
+  Amazon". Two things are required and neither works alone (verified on the
+  device): write the entry, **and** delete the stale `…jpg.tmp.partial` beside
+  it, which otherwise hides a cover that is already there — 148 books on this
+  device were carrying a cover the marker was hiding. The device neither
+  regenerates on its own nor wipes a written entry across a power cycle. **No
+  Musaeum code path writes one yet**: the existing library was backfilled by hand
+  on 2026-09-17 (77 entries written, 148 markers cleared), and a fresh send still
+  leaves its book without a cover.
 - Log to `device_history` table (including failures, with error text)
 - Transfers run serially through `transfer-queue.ts`
 - **On-device presence** is derived by *scanning* the connected Kindle's
