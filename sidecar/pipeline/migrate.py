@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
@@ -70,7 +71,7 @@ def migrate_library(job_id: str, calibre_path: str, target_root: str, hydrate: b
                 books_out.append(book)
         except Exception as exc:
             stats["noMetadata"] += 1
-            print(f"migration: failed on '{title}': {exc}", flush=True)
+            print(f"migration: failed on '{title}': {exc}", file=sys.stderr, flush=True)
 
     if hydrate:
         for i, book in enumerate(books_out):
@@ -197,7 +198,7 @@ def _hydrate_one(book: dict, target_root: str, stats: dict) -> None:
             stats["needsReview"] += 1
         _write_metadata_json(book_dir, book, datetime.now(timezone.utc).isoformat())
     except Exception as exc:
-        print(f"migration: hydration failed for '{book['title']}': {exc}", flush=True)
+        print(f"migration: hydration failed for '{book['title']}': {exc}", file=sys.stderr, flush=True)
 
 
 def _write_metadata_json(book_dir: str, book: dict, now: str) -> None:

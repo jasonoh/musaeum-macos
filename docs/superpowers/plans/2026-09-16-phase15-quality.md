@@ -1,17 +1,57 @@
 # Phase 1.5 — quality upgrade (fixes + tests)
 
-**OUTCOME (2026-09-16): landed, uncommitted, pending consent on three slices.**
-F1–F5 all landed and verified; T1–T3 landed (sidecar conflict/EPUB fixtures,
-main `sanitizeTitle` + the duplicate GATE). Main gate **typecheck 0 / lint 0 /
-`npm test` 568 passed / 25 files** (baseline 513/23); **pytest 64 passed**
-(baseline 18). Two extra defects were found and fixed on the way: a live
-worktree broke `npm run lint` on the whole tree (now ignored), and F6's
-"protocol corruption" claim was measured false. **Still parked pending owner
-consent for the dispatches:** T4 (conflict-resolution extraction, invariant 8),
-T5/T6 (device presence, `transfer-queue`), F6 (the five stdout log sites).
-One self-inflicted error worth recording: reverting a mutation with
-`git checkout -- <file>` restored HEAD and silently discarded that slice's fix —
-revert mutations from a file backup, never from git.
+**OUTCOME (2026-09-16, final): all four slices landed; wave 1 is committed, wave 2
+is not.** Owner consent for the second wave is recorded in the session (the
+clarify form, answer "All four, T4 first"), not out of band.
+
+- **Committed (three per-slice commits):** `d3303bc` fixes F1–F5, `76f2ec1`
+  coverage T1–T3, `ec1eaa4` eslint/worktree + docs.
+- **Landed uncommitted:** T4 (conflict resolution extracted to
+  `services/conflicts.ts`, handler now 4 insertions/67 deletions), T5/T6
+  (device presence + `transfer-queue` tests, 16 cases), F6 (five stdout log
+  sites moved to stderr), and the review repairs below.
+- **Gate:** typecheck 0 / lint 0 / **`npm test` 593 passed, 27 files** /
+  **pytest 65 passed**. Every decider in this file was reproduced by the
+  orchestrator by mutating the source and watching the named case redden, then
+  restoring from a *file backup* (never `git checkout -- <file>`, which reverts
+  to HEAD and silently discards the fix — that error cost F4 once here).
+
+**Read-only review pass (2026-09-16).** Verdict: no invariant broken, no contract
+drift on `metadata:resolveConflict`, no pre-existing test weakened or skipped.
+Four findings acted on:
+1. **FIX-NOW — this file and `tasks.md` had gone false**: they described T4/F6/T5-T6
+   as parked after the slices landed. Corrected here and in `tasks.md`.
+2. **A filter click during a search spuriously reset the scroll.** The reviewer
+   caught that `resultSetKey` counted filters unconditionally while
+   `library.store.load():63-65` passes them to `getBooks` only when *browsing*
+   (`searchBooks(query, sort)` takes none during a search) — so a facet click
+   that changes no rows threw away the reader's place, against the hook's own
+   docstring. Fixed in the key, and the three existing filter cases that had
+   encoded the false premise (`BASE` has `query: 'dune'`) were rebuilt on a
+   browsing base with a new search-state case.
+3. **`book-delete.test.ts`'s size case could not catch "only fill a missing
+   value"** — its fixture's stored value was `null`. Now seeded with a wrong
+   value (`999_999`); measured, the `?? ` mutation that the old fixture would
+   have *passed* now reddens it.
+4. **The `node_modules` symlink a worktree creates is not gitignored**
+   (`.gitignore`'s `node_modules/` matches directories, not the symlink), so a
+   `git add -A` inside a worktree would stage an absolute-path symlink. Two
+   agents flagged it independently; the slash-less form is now added.
+
+**Named gaps this pass did NOT close** (recorded, not absorbed):
+- **Three of the four `computeFileSizeBytes` call sites are unguarded**: only
+  `deleteFormats` has a case; `add_format`, the Kindle conversion cache and the
+  PDF top-up attach have none (`rg fileSizeBytes` across the suite returns one
+  hit). The class is implemented once, so the risk is a site forgetting the
+  call, not the maths.
+- **`conflicts.test.ts` names a broadcast it never asserts**, and no case reads
+  `metadata.json` back after a resolution; the cover/series/tags branches
+  (`conflicts.ts:38-56`) are uncovered.
+- **The renderer half of the cold-start presence fix** (`useDevice.ts`) stays
+  untested: covering it needs a DOM environment and React testing devDeps, which
+  is a `package.json` decision, not a test-file one.
+- **EBADF on SMB `close()`** has no local analogue; the handling is pinned, the
+  OS behaviour is not — only real hardware closes that.
 
 Date: 2026-09-16. Owner-approved scope: **fixes + tests**. Two adjudications taken
 before any code moved (recorded here rather than in conversation):
@@ -65,6 +105,16 @@ anchor hook and must keep composing.
 Each new test must come with a **decider the author reports and the orchestrator
 reproduces by hand**: mutate the source, the named case reddens, restore the file
 byte-identical. A case that cannot be reddened is not coverage.
+
+- **Workflow trap found while dispatching the second wave (2026-09-16):**
+  `claude -w <name>` bases its worktree on **`origin/main`, not local HEAD**. With
+  the three commits of this pass unpushed, all three slices were dispatched into
+  trees at `f41a51a` — `computeFileSizeBytes` and
+  `useResetScrollOnResultChange` measurably absent. T4/F6 are disjoint from the
+  pass's files so they land cleanly; T5/T6 read `transfer-queue.ts` and F6 was
+  told `pdf_metadata.py`'s stderr convention "just changed", so both must be
+  reconciled at landing rather than trusted. Check
+  `git -C .claude/worktrees/<n> rev-parse --short HEAD` right after a dispatch.
 
 ## Findings recorded while executing (2026-09-16)
 

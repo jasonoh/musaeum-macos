@@ -1,4 +1,9 @@
 node_modules/
+# A `claude -w` worktree may carry `node_modules` as a *symlink* to the main
+# checkout. The slash form above matches directories only, so git sees the
+# symlink as an ordinary untracked blob and `git add -A` inside that worktree
+# would stage an absolute path from this machine.
+node_modules
 out/
 dist/
 build/icon.iconset/

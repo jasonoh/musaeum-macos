@@ -11,6 +11,7 @@ duplicates.
 
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
@@ -162,7 +163,7 @@ def topup_pdfs(
                 # Multiple library entries share this key — attaching would
                 # risk the wrong book, importing would risk a duplicate.
                 stats["skipped"] += 1
-                print(f"topup: ambiguous match for '{record.get('title')}', skipped", flush=True)
+                print(f"topup: ambiguous match for '{record.get('title')}', skipped", file=sys.stderr, flush=True)
             elif entry is not None:
                 status, size = _attach_pdf(pdf_path, entry, target_root)
                 if status == "attached":
@@ -175,6 +176,7 @@ def topup_pdfs(
                     print(
                         f"topup: book dir missing for '{record.get('title')}' "
                         f"({entry['nas_path']}), skipped",
+                        file=sys.stderr,
                         flush=True,
                     )
                     stats["skipped"] += 1
@@ -188,7 +190,7 @@ def topup_pdfs(
                     stats["skipped"] += 1
         except Exception as exc:
             stats["errors"] += 1
-            print(f"topup: failed on '{record.get('title')}': {exc}", flush=True)
+            print(f"topup: failed on '{record.get('title')}': {exc}", file=sys.stderr, flush=True)
 
     progress(phase="done", total=total, completed=total, currentTitle=None, **stats)
     return {

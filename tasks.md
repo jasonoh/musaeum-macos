@@ -109,13 +109,34 @@ boundaries. **Landed uncommitted**; gate on main **typecheck 0 / lint 0 /
   `pipeline/hydration.py:37-43`'s guard that keeps hydration non-fatal — and the
   sidecar suite was 18 tests, not the 14 previously recorded here.
 
-**Parked, needs a decision (not silent debt):** the conflict-resolution
-extraction (T4 — the ~50-line body still lives in `ipc/metadata.ts:27-79`,
-invariant 8, and is the reason that path has no test), the device-presence and
-`transfer-queue` tests (T5/T6), and the five stdout log sites in
-`pipeline/topup.py`/`migrate.py` (F6 — misrouted, *not* protocol corruption:
-`services/sidecar.ts:160-165` tolerates and relabels them). Each is a separate
-dispatch that was blocked pending consent.
+**Second wave landed 2026-09-16** (owner consent: the clarify form, "All four,
+T4 first") and then reviewed read-only by the repo's `reviewer` agent:
+
+- **T4 — conflict resolution moved out of the handler.** `services/conflicts.ts`
+  holds `resolveConflict` as a verbatim move; `ipc/metadata.ts` is now a thin
+  wrapper (4 insertions, 67 deletions), channel/arguments/return unchanged, and
+  7 cases cover it. The review confirmed no contract drift and no invariant bent;
+  it is invariant 8 being *kept*, not bent.
+- **T5/T6 — device presence and `transfer-queue`** (16 cases: the `keysEqual`
+  self-heal, the cold-start recompute, Kindle format preference, PDF passthrough,
+  and the destination size verification the 2026-08-11 EBADF fix never had).
+- **F6 — the five stdout log sites** in `pipeline/topup.py` / `migrate.py` now go
+  to stderr, with a case asserting the message is on stderr *and not* stdout.
+- **Review repairs:** `resultSetKey` no longer counts filters during a search
+  (`library.store.ts:63-65` ignores them there, so a facet click during a search
+  was resetting the scroll for a control that changes nothing); the three old
+  filter cases that encoded that false premise were rebuilt on a browsing base;
+  and `book-delete.test.ts`'s size fixture was strengthened from `null` to a
+  wrong value, because `null` could not catch a "only fill a missing value"
+  implementation (measured — that mutation passes the old fixture, fails the new
+  one).
+
+**Still open, named rather than absorbed:** three of the four
+`computeFileSizeBytes` call sites have no case (only `deleteFormats` does);
+`conflicts.test.ts` names a broadcast it never asserts and never reads
+`metadata.json` back; the renderer half of the cold-start fix needs a DOM
+environment and devDeps; EBADF-on-SMB is only reproducible on real hardware.
+
 
 ## Phase 1.5 — quality (pre-existing backlog)
 

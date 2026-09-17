@@ -25,11 +25,22 @@ export interface ResultSetIdentity {
  *   `Set` with no guaranteed iteration order — toggling two facets in either
  *   order must compare equal, and toggling the same one on and off must
  *   round-trip to the original key.
+ *
+ * One asymmetry is not a normalization but the store's real behaviour: while a
+ * query is active the filters are **not part of the result set at all**.
+ * `load()` calls `searchBooks(query, sort)` when a query is present and only
+ * passes `filters` to `getBooks` when browsing
+ * (`src/stores/library.store.ts:63-65`), so a facet click during a search
+ * changes no rows and must not be read as a result-set change — otherwise the
+ * reader's place is thrown away for a control that visibly does nothing.
+ * Filters therefore enter the key only when they are actually applied. If that
+ * branch in `load()` ever changes, this is the second place to change.
  */
 export function resultSetKey(identity: ResultSetIdentity): string {
+  const query = identity.query.trim()
   return JSON.stringify({
-    query: identity.query.trim(),
-    filters: normalizeFilters(identity.filters),
+    query,
+    filters: query ? null : normalizeFilters(identity.filters),
     sort: { field: identity.sort.field, direction: identity.sort.direction }
   })
 }

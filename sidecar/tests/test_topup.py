@@ -160,6 +160,20 @@ def test_topup_ambiguous_title_without_author_is_skipped(tmp_path, monkeypatch):
         assert not any(f.endswith(".pdf") for f in os.listdir(folder))
 
 
+def test_topup_ambiguous_match_logs_to_stderr_not_stdout(tmp_path, monkeypatch, capsys):
+    """The ambiguous-match trace must land on stderr — the sidecar's one
+    diagnostic channel — never on stdout, which carries only JSON-RPC
+    response frames. A stray stdout line gets misread by the Node-side
+    reader as an unparseable message instead of routed to the log."""
+    calibre_root, target, index = _ambiguous_setup(tmp_path, monkeypatch, None)
+    topup_pdfs(job_id="j-amb", calibre_path=calibre_root,
+               target_root=target, library_index=index,
+               notify=lambda m, p: None)
+    captured = capsys.readouterr()
+    assert "ambiguous match" in captured.err
+    assert "ambiguous match" not in captured.out
+
+
 def test_topup_title_author_disambiguates_shared_title(tmp_path, monkeypatch):
     calibre_root, target, index = _ambiguous_setup(tmp_path, monkeypatch, "Author Two")
     result = topup_pdfs(job_id="j-dis", calibre_path=calibre_root,

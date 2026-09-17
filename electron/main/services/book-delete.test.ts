@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { deleteBook, deleteBooks, deleteFormats } from './book-delete'
 import { readCatalog, writeCatalog } from './catalog'
-import { closeDb, getBook, getBooks, insertBook } from './db'
+import { closeDb, getBook, getBooks, insertBook, updateBook } from './db'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 
@@ -118,9 +118,13 @@ describe('deleteFormats', () => {
 
   it('recomputes file_size_bytes from the surviving format, not the stale stored value', async () => {
     const dir = await seed('g', ['epub', 'pdf'])
+    // A *wrong* stored value, not an absent one: the point is that the write
+    // replaces a stale number, not merely that it fills in a null (which an
+    // implementation that only writes when the old value was missing would
+    // also pass).
+    updateBook('g', { fileSizeBytes: 999_999 })
     // seed() writes each format file's content as its own extension name, so
-    // 'epub' (4 bytes) and 'pdf' (3 bytes) are unequal — the stale stored value
-    // (never set here, so null) must not survive.
+    // 'epub' (4 bytes) and 'pdf' (3 bytes) are unequal.
 
     await deleteFormats('g', ['pdf'])
 
