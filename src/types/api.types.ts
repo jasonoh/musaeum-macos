@@ -27,7 +27,7 @@ import type {
   PythonEnvProgress,
   SettingsView
 } from './settings.types'
-import type { ThemeView } from './theme.types'
+import type { ThemeImportResult, ThemeView } from './theme.types'
 
 /**
  * All IPC results cross the bridge as IPCResult — handlers never throw
@@ -173,6 +173,26 @@ export interface MusaeumAPI {
      * stored pair alone.
      */
     set(id: string): Promise<ThemeView>
+    /**
+     * Import provider files by path. Partial success is normal: a malformed
+     * member is a *rejection row*, never a rejection of the call, so four good
+     * themes in a batch of five are still imported (AC4.2). Applying is not
+     * implied — importing adds rows, clicking one applies it (AC4.5).
+     */
+    importPaths(paths: string[]): Promise<ThemeImportResult>
+    /** Native multi-select picker. A cancelled dialog imports nothing. */
+    importFromDialog(): Promise<ThemeImportResult>
+    /**
+     * Re-scan the drop-box directory and import whatever is new. Read-only:
+     * nothing is copied, normalized or moved, so the folder's contents are the
+     * user's and hash-identical before and after (AC4.3).
+     */
+    scanFolder(): Promise<ThemeImportResult>
+    /**
+     * Reveal the drop-box directory in Finder, creating it when it does not
+     * exist yet. The app creates the folder; it never writes files into it.
+     */
+    openFolder(): Promise<void>
   }
 
   on: {

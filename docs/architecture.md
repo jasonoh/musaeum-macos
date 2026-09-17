@@ -122,8 +122,11 @@ Musaeum/
 │   │   │       ├── color.ts      #   colour maths — sRGB/Oklab, contrast, mixes
 │   │   │       ├── derive.ts     #   palette → derived tokens, floors enforced
 │   │   │       ├── store.ts      #   the app_config keys: read+validate, write in one
-│   │   │       │                 #   transaction, the inlined built-in registry
+│   │   │       │                 #   transaction, the inlined built-in registry,
+│   │   │       │                 #   the imported library + its resolve ladder
 │   │   │       │                 #   (store.test.ts holds its pins)
+│   │   │       ├── importer.ts   #   a provider file → the library row: read, parse,
+│   │   │       │                 #   derive, validate, upsert; the drop-box scan
 │   │   │       ├── parse/        #   base16.ts + itermcolors.ts (hand-rolled,
 │   │   │       │                 #   no new dependency)
 │   │   │       └── builtin/      #   vendored scheme corpus — see its VENDORED.md
@@ -142,7 +145,8 @@ Musaeum/
 │   │   ├── metadata/             # ConflictQueue, ConflictResolver
 │   │   ├── device/               # DevicePanel, TransferQueue
 │   │   ├── migration/            # MigrationWizard
-│   │   ├── settings/             # SettingsModal
+│   │   ├── settings/             # SettingsModal, AppearanceSection (the theme
+│   │   │                         # picker: rows, drop zone, the themes folder)
 │   │   ├── reader/               # ReaderView, ReaderEngine, ReaderToc,
 │   │   │                         # ReaderPrefsPopover
 │   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, Toasts,

@@ -90,12 +90,33 @@ come with them, and none of them applies to the other `app_config` keys:
   `sanitizePrefs` and the stores' `merge` validators, for the same reason: a row
   written by another build (or edited by hand) must not be able to render an
   unreadable app.
-- **`theme_library` is the picker's.** Slice 3 preserves it byte-identically and
-  reads nothing from it; the appearance picker's importer is its only writer and its
-  first reader, so its own validation rule arrives with that slice.
+- **`theme_library` is the picker's, and it follows both rules above.** Slice 4
+  (2026-09-16) made the appearance picker its writer and its first reader, and it
+  inherits the two rules rather than getting its own: it is an array of records in
+  exactly `theme_tokens`' shape, re-validated on **every** read (an entry the
+  reader refuses is dropped with the reason logged and left in the key for the user
+  to fix — a row the reader would refuse can never be applied), and written by one
+  read-modify-write transaction that upserts by id. It is never read while writing
+  `theme_tokens`: `theme.set` does not touch it, so a pick cannot lose the library.
+  Two narrow writers: the importer's `upsertLibrary` (add and update) and the
+  ladder's re-derive arm (rewrite one entry in place).
+- **The importer is the only path from a file to a row.** `theme/importer.ts` reads
+  → parses → derives → validates → upserts, per file and independently, so a batch
+  of five files with one malformed member imports four and reports the fifth by
+  path and reason. Importing never activates a theme, and the *derived values* are
+  what is stored — nothing is ever copied, moved or normalized beside the source
+  file, which is what lets an imported theme still be applied after its file has
+  been moved away.
+- **The drop-box folder (`userData/themes`) is the user's.** A scan is
+  `readdirSync`, non-recursive, limited to `.yaml`/`.yml`/`.itermcolors`; anything
+  else in it is ignored silently. The app never writes a *file* into it — the one
+  thing it may do *to* it is create the directory, so *Reveal in Finder* works
+  before the first import, and that `mkdir` lives in the IPC layer rather than on
+  the read path (a missing folder is an empty scan, not an error).
 
 `theme_tokens` carries `engineVersion`. A mismatch is **not** a validation failure:
-an id that can be re-derived from the inlined built-in corpus is re-derived and the
+an id that can be re-derived — from the inlined built-in corpus, or for an imported
+theme from its `sourcePath` when that file is still readable — is re-derived and the
 row rewritten, otherwise the stored values are kept and the view reports `stale` so
 the picker can flag the row as derived by an older engine rather than the app losing
 a theme it can still render. That ladder makes a theme *read* able to write — the one

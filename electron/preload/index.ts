@@ -81,7 +81,11 @@ const api: MusaeumAPI = {
   },
   theme: {
     get: () => invoke('theme:get'),
-    set: (id) => invoke('theme:set', id)
+    set: (id) => invoke('theme:set', id),
+    importPaths: (paths) => invoke('theme:importPaths', paths),
+    importFromDialog: () => invoke('theme:importFromDialog'),
+    scanFolder: () => invoke('theme:scanFolder'),
+    openFolder: () => invoke('theme:openFolder')
   },
   on: {
     nasStatusChanged: (cb) => listen(EVENT_CHANNELS.nasStatusChanged, cb),

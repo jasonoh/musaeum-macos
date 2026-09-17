@@ -408,10 +408,12 @@ measured on 8 palettes × 11 audits, 0 failures, including the two rules added f
 Named, with owners — none of these is a defect in what slice 3 shipped; each is a hole a *later*
 slice would otherwise meet without warning.
 
-- **Slice 4 (the picker is the first consumer):** `theme_library` has no validation rule yet — slice
-  3 preserves it and reads nothing from it, so a hand-edited `theme_library` is undefined behaviour
-  the moment slice 4 parses it. Its importer owns the rule, on the same
-  storage-is-untrustworthy basis as `theme_tokens`.
+- **~~Slice 4 (the picker is the first consumer):~~ paid by slice 4.** `theme_library` has no
+  validation rule yet — slice 3 preserves it and reads nothing from it, so a hand-edited
+  `theme_library` is undefined behaviour the moment slice 4 parses it. Its importer owns the rule, on
+  the same storage-is-untrustworthy basis as `theme_tokens`. *(Closed 2026-09-16: `readLibrary`
+  re-validates every entry and drops what `recordProblem` refuses, with the reason logged; the
+  rule is recorded in `docs/invariants/settings-and-editing.md`.)*
 - **Slice 4 or later (needs a renderer harness):** `src/hooks/useTheme.ts` and its `App.tsx` mount
   line are exercised only by a source walk, because the vitest environment is Node with no DOM and
   no React testing library. Subscribing once and applying on change is asserted textually.
@@ -432,10 +434,67 @@ slice would otherwise meet without warning.
   switch" is therefore currently owned by nobody. Slice 5 should land it with a criterion, not just
   the sentence.
 
-- [ ] **Slice 4 — import and picker.** File import, a themes drop-box directory, and an Appearance
-      section in the settings modal. Owed at this slice: the **CHANGELOG entry** (slice 1 is
-      invisible; this is the first user-visible change) and the `docs/architecture.md` directory
-      listing for the new `src/lib/theme/` files.
+- [x] **Slice 4 — import and picker.** File import (native multi-select), a themes drop-box
+      directory scanned on demand, a drop onto the Appearance section itself, and the picker in the
+      settings modal. Landed 2026-09-16 from the annex in
+      `docs/superpowers/plans/2026-09-16-theming-slice4.md` (13 adjudicated decisions), which is
+      where the deviations from §2.4 are recorded: imported ids are **stem**-derived (`base16:<stem>`
+      / `iterm:<stem>`) rather than §2.3's `base16:<slug>` — 1 of the 13 vendored files carries a
+      slug — and every import answer carries the whole `ThemeView` (`ThemeImportResult.view`) so the
+      rows on screen and the files just imported are one answer. **Gate:** typecheck 0 / lint 0 /
+      build 0, and **508 passed, 23 files** (baseline 452/22 at slice 3). **File count: 11 code files
+      + 2 test files**, one over `CLAUDE.md`'s ~10-file bound, with §5's named absorber
+      (`AppearanceSection`'s rows folding into `SettingsModal.tsx`) deliberately **not** taken —
+      recorded rather than absorbed silently, as A30 was. **Owed and paid here:** the `CHANGELOG`
+      entry (slice 1–3 were invisible to the user; this is the first visible change), the
+      `docs/architecture.md` listing, and `theme_library`'s read-validation rule (slice 3's debt).
+      **Verified by the orchestrator on the running app**, not from the reports: the folder's
+      contents are **hash-identical** before and after a scan (AC4.3, with a `.css` and a `README.md`
+      present and silently ignored); a batch of five files with one malformed member imports **4 and
+      rejects 1** by path and reason, and each of the four then applies with its own derived canvas
+      (AC4.2); one click on a row repaints `--ink-950` in **19 ms** with the modal still open and no
+      ⌘↵ (AC4.5); a `.yaml` dropped on the library produces **0** `importProgress` events where a
+      control `.epub` produces 2 (AC4.4); and the imported library survives a restart (AC4.1's rows
+      still there, still five swatches each). Four orchestrator mutations each reddened their own
+      criterion.
+      **A read-only pre-merge review then found one FIX-NOW defect, two undecided rules and a tail of
+      nits; all but the tail are fixed** (spec amendment round 4, A41–A45). The FIX-NOW: the three
+      import handlers composed their answer inline as `{ view: getThemeView(), ...importPaths(paths) }`,
+      and left-to-right property evaluation read the view *before* the import — so a freshly imported
+      theme was **absent from the picker**, and pressing Refresh replaced the good list with the same
+      stale snapshot each time. No test could see it (the handler layer has no harness) and no live
+      check caught it, because every one read the view back with a separate `theme.get()`. The
+      composition moved into the service as `withThemeView(batch)`, where it has a deciding case; the
+      same instrument now measures the row appearing **17 ms** after one press of the refresh control
+      and applying in **21 ms**. The other two: a per-file *write* failure (reverting it left all 20
+      importer cases green) and AC4.1's Obsidian arm (nothing filled a row from an `obsidian`-provider
+      record) each gained a case. **Final gate: typecheck 0 / lint 0 / build 0, 513 passed / 23
+      files.**
+### Slice-4 debt handed on (2026-09-16)
+
+- **Distinguish *new* from *refreshed* in an import report** (spec A39). A scan re-derives and
+  re-upserts every theme file it finds, so a rescan of three unchanged themes reports "3 imported" —
+  true, but it reads as if three were added, and a folder of thirty says thirty every time. The fix
+  is a third array on `ThemeImportResult` (`updated`) plus one line in `AppearanceSection`'s report;
+  it is a contract change, which is why it did not ride into slice 4.
+- **The picker has no renderer test harness.** `AppearanceSection`'s rendering, its `onDrop` and its
+  click-to-apply path are decided by source walks (the extension filter, "no `settings.save` in the
+  path") plus the slice's live CDP pass — nothing renders the component in the suite, because the
+  vitest environment is Node with no DOM. A refactor that keeps the strings those walks match and
+  breaks the wiring would pass. Same standing as the `useTheme` note above. **This is what let the
+  ordering bug through** (spec A41–A43's repair round): the handler layer is equally unharnassed, so
+  anything the handlers *compose* is invisible to the suite. A recorded-handler mock for
+  `test/mocks/electron.ts` would close both holes at once and is the cheapest next instrument.
+- **One transaction per imported file** (spec A44). A folder of *n* themes costs *n*
+  read-modify-writes over a JSON array that grows to *n* records on every Refresh. Accepted for
+  D6's per-member atomicity — a batch that loses the first four files because the fifth could not be
+  written is worse — and bounded by the user's own folder. The condition that would change it: a
+  folder in the hundreds, or a scan the user can feel.
+- **The theme-file extension set lives in four places** (spec A45): the dialog's filter, the scan's
+  `SCANNABLE_EXTENSIONS`, `loadThemeText`'s dispatch, and the section's drop filter. Slice 6 adding
+  `.css` must find all four, or a dropped `.css` is silently ignored by the scan and by the drop
+  handler while the dialog offers it.
+
 - [ ] **Slice 5 — reader convergence and the light flip.** The reader's own `PALETTE` table
       (`src/components/reader/ReaderEngine.tsx:48-50`) becomes derived, under two hard constraints: its
       injected stylesheet must carry **resolved literals, never variable references** — foliate's

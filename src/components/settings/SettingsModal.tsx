@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { EditableSettings, ExecutableKind, SettingsView } from '@shared/settings.types'
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
+import { AppearanceSection } from './AppearanceSection'
 import { EyeIcon, SpinnerIcon } from '@/components/shared/icons'
 
 /**
@@ -158,6 +159,11 @@ export function SettingsModal() {
           </div>
         ) : (
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-4">
+            {/* First, and applying on click rather than on save: it is what this
+                dialog is opened for, and the only control here that is its own
+                feedback loop (AC4.5) */}
+            <AppearanceSection />
+
             <Section title="Library">
               <div className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2.5">
                 <div className="flex items-center gap-3">

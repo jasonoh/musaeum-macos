@@ -2,17 +2,22 @@ import { mkdirSync, readdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { StoredTheme, ThemeTokens } from '@shared/theme.types'
+import type { StoredTheme, ThemeOption, ThemeTokens } from '@shared/theme.types'
 import { closeDb, deleteConfig, getConfig, getDb, setConfig } from '../db'
-import { deriveTheme, loadThemeText, THEME_ENGINE_VERSION } from './index'
+import { deriveTheme, loadThemeFile, loadThemeText, THEME_ENGINE_VERSION } from './index'
 import {
   activeTheme,
   BUILTIN_THEME_SOURCES,
+  builtinOptionRows,
   DEFAULT_THEME_ID,
   getThemeView,
   MUSAEUM_DEFAULT_TOKENS,
+  readLibrary,
   setTheme,
+  storedRecordOf,
   THEME_LIBRARY_KEY,
+  themeFolder,
+  upsertLibrary,
   windowBackgroundColor
 } from './store'
 
@@ -700,5 +705,435 @@ describe('D3 — theme_library survives every write path', () => {
     setConfig(THEME_LIBRARY_KEY, LIBRARY)
     setConfig(THEME_LIBRARY_KEY, `${LIBRARY} `)
     expect(getConfig(THEME_LIBRARY_KEY)).not.toBe(LIBRARY)
+  })
+})
+
+// --- D3, slice 4: the library's read rule -------------------------------------
+
+const ITERM_GRUVBOX = join(process.cwd(), 'test', 'fixtures', 'theme', 'gruvbox.itermcolors')
+const ITERM_NORD = join(process.cwd(), 'test', 'fixtures', 'theme', 'nord.itermcolors')
+
+/**
+ * The record an import of this file would have written — assembled through the
+ * same engine function the importer uses, so a case asserts on the *content* of
+ * a library row without restating how one is put together.
+ */
+function recordFromFile(path: string, id: string, sourcePath: string | null = path): StoredTheme {
+  const loaded = loadThemeFile(path)
+  if (!loaded.ok) throw new Error(`${path} did not load: ${loaded.reason}`)
+  const built = storedRecordOf(loaded.ir, id, sourcePath)
+  if (!built.ok) throw new Error(`${id} did not derive: ${built.reason}`)
+  return built.theme
+}
+
+/** One row of the view, or a failure naming what is missing. */
+function rowOf(id: string): ThemeOption {
+  const row = getThemeView().options.find((option) => option.id === id)
+  if (!row) throw new Error(`no option row for ${id}`)
+  return row
+}
+
+/** What a read logged, taken from the log — a degraded read reports, never throws. */
+function warningsFrom(read: () => void): string {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  read()
+  const logged = warn.mock.calls.map((call) => String(call[0])).join('\n')
+  warn.mockRestore()
+  return logged
+}
+
+describe('D3 — readLibrary validates every row and never throws', () => {
+  it('is empty for a key that was never written', () => {
+    expect(getConfig(THEME_LIBRARY_KEY)).toBeNull()
+    expect(readLibrary()).toEqual([])
+  })
+
+  it.each([
+    ['not json', 'is not JSON'],
+    ['{"id":"iterm:gruvbox"}', 'is not an array'],
+    ['null', 'is not an array'],
+    ['42', 'is not an array']
+  ])('reads %j as an empty library, naming the reason', (raw, fragment) => {
+    setConfig(THEME_LIBRARY_KEY, raw)
+    let library: StoredTheme[] | undefined
+    const logged = warningsFrom(() => {
+      library = readLibrary()
+    })
+    expect(library).toEqual([])
+    expect(logged).toContain(fragment)
+  })
+
+  it('drops a row the reader refuses, naming the reason, and keeps the valid ones', () => {
+    const good = recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')
+    setConfig(
+      THEME_LIBRARY_KEY,
+      JSON.stringify([good, { ...good, id: 'iterm:tokens', tokens: {} }, 'iterm:not-a-record'])
+    )
+
+    let read: StoredTheme[] | undefined
+    const logged = warningsFrom(() => {
+      read = readLibrary()
+    })
+
+    // A row the reader would reject can never be applied, so it is not handed
+    // out at all — the failure would otherwise move to the click.
+    expect(read?.map((theme) => theme.id)).toEqual(['iterm:gruvbox'])
+    expect(logged).toContain('tokens.ink')
+    expect(logged).toContain('is not an object')
+  })
+
+  it('leaves the rows it drops in the key, for the user to fix', () => {
+    const good = recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')
+    const raw = JSON.stringify([good, { ...good, id: 'iterm:tokens', tokens: {} }])
+    setConfig(THEME_LIBRARY_KEY, raw)
+
+    warningsFrom(() => readLibrary())
+
+    // Dropped means "not offered", not "deleted": a read that pruned storage
+    // would destroy a hand-edited row on the boot path.
+    expect(getConfig(THEME_LIBRARY_KEY)).toBe(raw)
+  })
+
+  it('is total: an unopenable database reads as empty rather than throwing', () => {
+    // The same shape as invariant 12's case for the active theme, because
+    // `readLibrary` runs inside `getThemeView` — which the boot path reaches
+    // before the window exists, where a throw means no theme at all.
+    const dbPath = join(app.getPath('userData'), 'musaeum.db')
+    closeDb()
+    rmSync(dbPath, { force: true })
+    mkdirSync(dbPath)
+    try {
+      let read: StoredTheme[] | undefined
+      let view: ReturnType<typeof getThemeView> | undefined
+      const logged = warningsFrom(() => {
+        read = readLibrary()
+        view = getThemeView()
+      })
+
+      expect(read).toEqual([])
+      if (!view) throw new Error('the view did not return')
+      expect(view.active.tokens).toEqual(MUSAEUM_DEFAULT_TOKENS)
+      expect(view.options[0].id).toBe(DEFAULT_THEME_ID)
+      expect(logged).toContain('[theme]')
+    } finally {
+      closeDb()
+      rmSync(dbPath, { recursive: true, force: true })
+    }
+  })
+})
+
+// --- D3, slice 4: the library's write rule ------------------------------------
+
+describe('D3 — upsertLibrary is one transaction, validate then write', () => {
+  const gruvbox = (): StoredTheme => recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')
+  const nord = (): StoredTheme => recordFromFile(ITERM_NORD, 'iterm:nord')
+
+  /**
+   * Refuse any write to `theme_library` whose value mentions `id`. One record's
+   * id is enough to tell "one transaction" from "one statement per record": an
+   * autocommitted first write has already landed when the second is refused, and
+   * the key is then left holding half the call.
+   */
+  function poisonLibraryWritesFor(id: string): void {
+    const when = `NEW.key = 'theme_library' AND NEW.value LIKE '%${id}%'`
+    getDb().exec(
+      `CREATE TRIGGER library_insert_poison BEFORE INSERT ON app_config WHEN ${when} BEGIN SELECT RAISE(ABORT, 'poisoned by the test'); END;
+       CREATE TRIGGER library_update_poison BEFORE UPDATE ON app_config WHEN ${when} BEGIN SELECT RAISE(ABORT, 'poisoned by the test'); END;`
+    )
+  }
+
+  it('replaces in place and appends when new, keeping the stored order', () => {
+    upsertLibrary([gruvbox(), nord()])
+    expect(readLibrary().map((theme) => theme.id)).toEqual(['iterm:gruvbox', 'iterm:nord'])
+
+    upsertLibrary([{ ...gruvbox(), name: 'Gruvbox from ProtonDrive' }])
+    const after = readLibrary()
+    // Replaced *in place*: an append would move the row behind nord, and the
+    // picker would reorder itself every time a dropped file was re-scanned.
+    expect(after.map((theme) => theme.id)).toEqual(['iterm:gruvbox', 'iterm:nord'])
+    expect(after[0].name).toBe('Gruvbox from ProtonDrive')
+
+    upsertLibrary([recordFromFile(join(BUILTIN, 'nord.yaml'), 'base16:nord')])
+    expect(readLibrary().map((theme) => theme.id)).toEqual([
+      'iterm:gruvbox',
+      'iterm:nord',
+      'base16:nord'
+    ])
+  })
+
+  it('refuses the whole call when one incoming record is invalid, writing nothing', () => {
+    const good = gruvbox()
+    const bad: StoredTheme = { ...good, id: 'iterm:bad', tokens: { ...good.tokens, shadow: 2 } }
+
+    expect(() => upsertLibrary([good, bad])).toThrow(/tokens\.shadow/)
+
+    // Validate-before-write, the ordering `setTheme` uses for the same reason:
+    // the good record beside the bad one is not written either.
+    expect(getConfig(THEME_LIBRARY_KEY)).toBeNull()
+    expect(readLibrary()).toEqual([])
+  })
+
+  it('writes every record in one transaction', () => {
+    const first = gruvbox()
+    const second = nord()
+    poisonLibraryWritesFor(second.id)
+
+    expect(() => upsertLibrary([first, second])).toThrow()
+
+    expect(getConfig(THEME_LIBRARY_KEY)).toBeNull()
+    expect(readLibrary()).toEqual([])
+
+    // Non-vacuity: the trigger refuses only the poisoned value, so the database
+    // is still usable and the two assertions above are not "the key was never
+    // written for some other reason".
+    upsertLibrary([first])
+    expect(readLibrary().map((theme) => theme.id)).toEqual(['iterm:gruvbox'])
+  })
+
+  it('does not create the key when there is nothing to write', () => {
+    upsertLibrary([])
+    expect(getConfig(THEME_LIBRARY_KEY)).toBeNull()
+  })
+})
+
+// --- D4: the ladder's library arm --------------------------------------------
+
+describe('D4 — the ladder resolves a library id, and re-derives the one it can', () => {
+  it('resolves an imported id out of the library', () => {
+    const record = recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')
+    upsertLibrary([record])
+
+    const result = setTheme('iterm:gruvbox')
+    if (!result.ok) throw new Error(`the imported id was rejected: ${result.reason}`)
+    expect(result.view.active.id).toBe('iterm:gruvbox')
+    expect(result.view.active.tokens).toEqual(record.tokens)
+    expect(result.view.active.sourcePath).toBe(ITERM_GRUVBOX)
+    expect(result.view.stale).toBe(false)
+    expect(getConfig('theme_id')).toBe('iterm:gruvbox')
+    // Setting a row does not disturb its neighbours.
+    expect(readLibrary()).toEqual([record])
+  })
+
+  it('re-derives a record whose engine version is old, and rewrites it in place', () => {
+    const record = recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')
+    const neighbour = recordFromFile(ITERM_NORD, 'iterm:nord')
+    upsertLibrary([{ ...record, engineVersion: 0 }, neighbour])
+
+    // Not applied yet: the row says its values are old and nothing has rewritten
+    // them behind the user's back (D9) — building the list is not the moment to
+    // re-derive 13 rows.
+    expect(rowOf('iterm:gruvbox').stale).toBe(true)
+    expect(readLibrary()[0].engineVersion).toBe(0)
+
+    const result = setTheme('iterm:gruvbox')
+    if (!result.ok) throw new Error(`the imported id was rejected: ${result.reason}`)
+    expect(result.view.stale).toBe(false)
+    expect(result.view.active.engineVersion).toBe(THEME_ENGINE_VERSION)
+
+    const library = readLibrary()
+    // Rewritten in place, and to exactly what this engine derives today — the
+    // re-derive path and the import path are the same mapping.
+    expect(library.map((theme) => theme.id)).toEqual(['iterm:gruvbox', 'iterm:nord'])
+    expect(library[0]).toEqual(record)
+    expect(rowOf('iterm:gruvbox').stale).toBe(false)
+  })
+
+  it('keeps the stored values, and flags them stale, when the source file is gone', () => {
+    const gone = join(app.getPath('userData'), 'themes', 'moved.itermcolors')
+    const record = { ...recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox', gone), engineVersion: 0 }
+    upsertLibrary([record])
+    const before = getConfig(THEME_LIBRARY_KEY)
+
+    let result: ReturnType<typeof setTheme> | undefined
+    let stale = false
+    const logged = warningsFrom(() => {
+      result = setTheme('iterm:gruvbox')
+      stale = rowOf('iterm:gruvbox').stale
+    })
+
+    if (!result) throw new Error('setTheme did not return')
+    if (!result.ok) throw new Error(`expected the stored values to be kept: ${result.reason}`)
+    // J4: applying must not depend on a file that may have moved, and the values
+    // stored are what the app has been rendering.
+    expect(result.view.active.tokens).toEqual(record.tokens)
+    expect(result.view.stale).toBe(true)
+    expect(stale).toBe(true)
+    expect(getConfig(THEME_LIBRARY_KEY)).toBe(before)
+    expect(logged).toContain('could not re-read')
+  })
+
+  it('keeps the values of a record with no source file at all, without reporting a failure', () => {
+    const record = { ...recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox', null), engineVersion: 0 }
+    upsertLibrary([record])
+
+    let result: ReturnType<typeof setTheme> | undefined
+    const logged = warningsFrom(() => {
+      result = setTheme('iterm:gruvbox')
+    })
+
+    if (!result) throw new Error('setTheme did not return')
+    if (!result.ok) throw new Error(`expected the stored values to be kept: ${result.reason}`)
+    expect(result.view.stale).toBe(true)
+    expect(result.view.active.tokens).toEqual(record.tokens)
+    // There is no file to look for, so there is nothing to report.
+    expect(logged).toBe('')
+  })
+
+  it('names an id that is in neither the registry nor the library', () => {
+    upsertLibrary([recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')])
+
+    const before = { id: getConfig('theme_id'), tokens: getConfig('theme_tokens') }
+    for (const id of ['base16:nope', 'iterm:nope', 'obsidian:Nope']) {
+      const result = setTheme(id)
+      if (result.ok) throw new Error(`expected ${id} to be rejected`)
+      expect(result.reason).toBe(`No such theme: ${id}`)
+    }
+    expect({ id: getConfig('theme_id'), tokens: getConfig('theme_tokens') }).toEqual(before)
+  })
+
+  it('refuses an id whose library row the reader dropped', () => {
+    const good = recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')
+    setConfig(THEME_LIBRARY_KEY, JSON.stringify([{ ...good, variant: 'sepia' }]))
+
+    let result: ReturnType<typeof setTheme> | undefined
+    let view: ReturnType<typeof getThemeView> | undefined
+    warningsFrom(() => {
+      result = setTheme('iterm:gruvbox')
+      view = getThemeView()
+    })
+
+    if (!result) throw new Error('setTheme did not return')
+    if (result.ok) throw new Error('expected the dropped row to be unresolvable')
+    expect(result.reason).toBe('No such theme: iterm:gruvbox')
+    if (!view) throw new Error('the view did not return')
+    expect(view.options.some((row) => row.id === 'iterm:gruvbox')).toBe(false)
+  })
+})
+
+// --- D9/D10: the view's rows and folder --------------------------------------
+
+describe('D9/D10 — the view carries the picker’s rows and the drop-box folder', () => {
+  const corpus = Object.keys(BUILTIN_THEME_SOURCES)
+
+  it('offers the default first, then the corpus, then the library', () => {
+    upsertLibrary([recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')])
+
+    const { options } = getThemeView()
+    expect(options).toHaveLength(corpus.length + 2)
+    expect(options[0].id).toBe(DEFAULT_THEME_ID)
+    expect(options.slice(1, corpus.length + 1).map((row) => row.id)).toEqual(
+      corpus.map((stem) => `builtin:${stem}`)
+    )
+    expect(options[options.length - 1].id).toBe('iterm:gruvbox')
+  })
+
+  it('fills a row from a record of any provider, Obsidian included', () => {
+    // AC4.1 asks for the three provider types and slice 4 can only import two of
+    // them (Obsidian's adapter is slice 6), so the obligation this decides is the
+    // shape: a row is filled from a *record*, whoever wrote it. Without this case
+    // the obsidian arm of AC4.1 is decided by nothing — the only obsidian coverage
+    // is three rejections of ids that do not resolve.
+    const record: StoredTheme = {
+      ...recordFromFile(ITERM_GRUVBOX, 'obsidian:Vault'),
+      provider: 'obsidian',
+      sourcePath: null
+    }
+    setConfig(THEME_LIBRARY_KEY, JSON.stringify([record]))
+
+    const row = rowOf('obsidian:Vault')
+    expect(row.provider).toBe('obsidian')
+    expect(row.variant).toBe('dark')
+    expect(row.swatches).toHaveLength(5)
+    expect(row.swatches.every((hex) => /^#[0-9a-f]{6}$/.test(hex))).toBe(true)
+    // And it applies like any other stored record, with no source file to re-read.
+    const applied = setTheme('obsidian:Vault')
+    expect(applied.ok).toBe(true)
+  })
+
+  it('marks exactly one row active, and it is the one the app is on', () => {
+    upsertLibrary([recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')])
+    expect(
+      getThemeView()
+        .options.filter((row) => row.active)
+        .map((row) => row.id)
+    ).toEqual([DEFAULT_THEME_ID])
+
+    setTheme('iterm:gruvbox')
+    const view = getThemeView()
+    expect(view.options.filter((row) => row.active).map((row) => row.id)).toEqual(['iterm:gruvbox'])
+    expect(view.options.every((row) => row.active === (row.id === view.active.id))).toBe(true)
+  })
+
+  it('gives every row five #rrggbb swatches, a provider and a variant', () => {
+    upsertLibrary([recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')])
+    const { options } = getThemeView()
+
+    expect(options.length).toBeGreaterThan(14)
+    for (const row of options) {
+      expect(row.swatches).toHaveLength(5)
+      for (const swatch of row.swatches) expect(swatch).toMatch(/^#[0-9a-f]{6}$/)
+      expect(row.name.length).toBeGreaterThan(0)
+      expect(['base16', 'itermcolors', 'obsidian', 'native']).toContain(row.provider)
+      expect(['dark', 'light']).toContain(row.variant)
+      expect(Array.isArray(row.notes)).toBe(true)
+      expect(typeof row.stale).toBe('boolean')
+    }
+
+    const [defaultRow] = options
+    expect(defaultRow.provider).toBe('native')
+    expect(defaultRow.variant).toBe('dark')
+    expect(defaultRow.sourcePath).toBeNull()
+    expect(defaultRow.notes).toEqual([])
+    expect(defaultRow.swatches).toEqual([
+      MUSAEUM_DEFAULT_TOKENS.ink['950'],
+      MUSAEUM_DEFAULT_TOKENS.ink['800'],
+      MUSAEUM_DEFAULT_TOKENS.parchment.parchment,
+      MUSAEUM_DEFAULT_TOKENS.gold['400'],
+      MUSAEUM_DEFAULT_TOKENS.gold['500']
+    ])
+    // The corpus rows are real derivations, not the default restated 13 times.
+    expect(
+      new Set(options.slice(1, corpus.length + 1).map((row) => row.swatches.join())).size
+    ).toBe(corpus.length)
+  })
+
+  it('derives the built-in rows once per process (D11)', () => {
+    // `theme:get` is awaited before the first paint and a row is a derivation.
+    // The witness is the *identity* of the memoized array — the same instance
+    // across calls — which is why it is frozen: a caller that stamped `active`
+    // onto it would poison every later view.
+    const first = builtinOptionRows()
+    expect(first).toHaveLength(corpus.length)
+    expect(builtinOptionRows()).toBe(first)
+    expect(Object.isFrozen(first)).toBe(true)
+    for (const row of first) expect(Object.isFrozen(row)).toBe(true)
+    expect(() => {
+      ;(first as ThemeOption[]).push({} as ThemeOption)
+    }).toThrow()
+
+    // The view still hands out its own copies, because `active` differs per view.
+    const view = getThemeView()
+    expect(view.options.find((row) => row.id === `builtin:${corpus[0]}`)).not.toBe(first[0])
+    expect(view.options.find((row) => row.id === `builtin:${corpus[0]}`)).toEqual(first[0])
+  })
+
+  it('reports the drop-box folder under userData', () => {
+    // The renderer shows it and reveals it; the app never writes a file into it.
+    expect(getThemeView().folder).toBe(join(app.getPath('userData'), 'themes'))
+    expect(themeFolder()).toBe(getThemeView().folder)
+  })
+
+  it('keeps working, on the default, when theme_library is garbage', () => {
+    setConfig(THEME_LIBRARY_KEY, 'not json')
+
+    let view: ReturnType<typeof getThemeView> | undefined
+    const logged = warningsFrom(() => {
+      view = getThemeView()
+    })
+
+    if (!view) throw new Error('the view did not return')
+    expect(view.active.tokens).toEqual(MUSAEUM_DEFAULT_TOKENS)
+    expect(view.options).toHaveLength(corpus.length + 1)
+    expect(logged).toContain('[theme]')
   })
 })

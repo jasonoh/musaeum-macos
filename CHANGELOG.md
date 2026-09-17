@@ -7,6 +7,32 @@ the app is packaged.
 ## [Unreleased] — 2026-09-15
 
 ### Added
+- **Your own colour schemes, not just the ones we ship.** Musaeum's palette used
+  to be compiled in. It now comes from a theme, and you can import one from the
+  tool you already theme: Settings → Appearance lists the built-in schemes plus
+  everything you have imported, and **clicking a row applies it immediately** — no
+  Save, no ⌘↵, because a colour choice is its own feedback loop and putting it
+  behind the dialog's save chord is how a settings screen hides the thing you are
+  looking at. Three ways in: the *Import…* button (native picker, multi-select), a
+  drop anywhere on the Appearance section, or the drop-box folder at
+  `~/Library/Application Support/Musaeum/themes` with a *Reveal in Finder* and a
+  *rescan* control beside it. **base16 (`.yaml`) and iTerm2 (`.itermcolors`) files
+  both work**, and every row names the provider it came from — the same scheme via
+  two providers is genuinely two palettes (gruvbox's base16 `base05` is `#d5c4a1`
+  where its iTerm foreground is `#ebdbb2`), and the label is what makes that
+  visible instead of confusing.
+- **An imported theme keeps working after its file is gone.** What gets stored is
+  the *derived* palette, never a reference to the file, so the values survive the
+  source being moved, renamed or deleted — the themes folder is yours to organize
+  and nothing is ever copied into it or normalized beside it. A row also says what
+  its derivation had to approximate (a scheme with no surface ramp gets one
+  inferred, and the row discloses which stops were invented) rather than silently
+  guessing.
+- **A theme that cannot be made readable is refused with its reason, in its own
+  row**, and the app keeps the palette it already had. A malformed file, an
+  unreadable one and a palette that cannot hold a legible contrast are each
+  reported per file: importing five files with one bad one still imports the other
+  four, and the folder rescan reports what it could not read instead of failing.
 - **A metadata re-fetch now says what it did.** Pressing Re-fetch metadata used
   to return instantly and report nothing: a successful fetch announced itself by
   quietly redrawing the card, and a failed one said nothing at all. The button

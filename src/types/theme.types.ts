@@ -13,14 +13,7 @@ export type ThemeProvider = 'base16' | 'itermcolors' | 'obsidian' | 'native'
 export type InkStep = '950' | '900' | '850' | '800' | '700' | '600' | '500'
 export type GoldStep = '300' | '400' | '500' | '600'
 export type AccentSlot =
-  | 'red'
-  | 'orange'
-  | 'yellow'
-  | 'green'
-  | 'cyan'
-  | 'blue'
-  | 'purple'
-  | 'brown'
+  'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'brown'
 export type StatusFamily = 'danger' | 'ok' | 'warn'
 
 /** An sRGB triple, each channel 0..1 — the prototype's own representation. */
@@ -157,6 +150,74 @@ export interface StoredTheme {
 }
 
 /**
+ * The five derived values a picker row shows, in this order:
+ * `ink-950`, `ink-800`, `parchment`, `gold-400`, `gold-500`.
+ *
+ * Five, not seventeen: they are enough to tell two dark themes apart in a list
+ * without rendering a preview, and the order is fixed so a row is comparable
+ * with the row above it. A tuple rather than `string[]` so "five" is a type and
+ * not a promise a row-builder can quietly stop keeping.
+ */
+export type ThemeSwatches = [string, string, string, string, string]
+
+/**
+ * One row the picker can offer. Built-in rows are derived from the inlined
+ * corpus; imported rows come from `theme_library`'s stored values, so a row
+ * survives its source file being moved or deleted (J4).
+ */
+export interface ThemeOption {
+  /** `builtin:<stem>`, `base16:<stem>`, `iterm:<stem>` — the id `theme.set` takes. */
+  id: string
+  name: string
+  author: string
+  provider: ThemeProvider
+  variant: ThemeVariant
+  swatches: ThemeSwatches
+  active: boolean
+  /**
+   * The values in this row were written by another engine
+   * (`engineVersion !== THEME_ENGINE_VERSION`). They still render, and applying
+   * the theme re-derives them from its source file if that file is still readable
+   * — whether it is is decided at that moment, not here, because building the
+   * picker must not go and stat every row's source. A row that cannot be brought
+   * up to date still applies, from the values it already has.
+   */
+  stale: boolean
+  /** The lossy steps this theme's own derivation had to take. */
+  notes: string[]
+  /** Display only — never re-read to render. Null for the inlined built-ins. */
+  sourcePath: string | null
+}
+
+/** A file that was imported and derived. */
+export interface ImportedTheme {
+  id: string
+  name: string
+  provider: ThemeProvider
+  variant: ThemeVariant
+}
+
+/** A file that was not imported, with the reason the engine gave. */
+export interface RejectedTheme {
+  path: string
+  reason: string
+}
+
+/**
+ * What an import reports. **The view rides along** so the rows the user is
+ * looking at and the files that were just imported are one answer rather than
+ * two that can disagree — the same reasoning that puts `theme_id` and
+ * `theme_tokens` in one transaction. Partial success is normal and not an error:
+ * a batch of five files with one malformed member reports four imported and one
+ * rejected, and never aborts on the first failure (AC4.2).
+ */
+export interface ThemeImportResult {
+  view: ThemeView
+  imported: ImportedTheme[]
+  rejected: RejectedTheme[]
+}
+
+/**
  * What the renderer is handed. `stale` is true only when stored values were kept
  * across an engine-version mismatch — the picker flags the row with it.
  */
@@ -164,4 +225,15 @@ export interface ThemeView {
   active: StoredTheme
   defaultId: string
   stale: boolean
+  /**
+   * Every theme the picker can offer: the built-in default first, then the
+   * vendored corpus, then whatever has been imported.
+   */
+  options: ThemeOption[]
+  /**
+   * The drop-box directory (`userData/themes`). The picker shows it and can
+   * reveal it; nothing is ever copied or written *into* it — the app derives a
+   * theme's values and stores those, so a missing source file is not an error.
+   */
+  folder: string
 }

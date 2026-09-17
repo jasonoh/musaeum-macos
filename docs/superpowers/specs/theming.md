@@ -141,6 +141,79 @@ the annex's file table**: the `app_config` census and the quoted `MusaeumAPI` bl
 rule), `CLAUDE.md`'s "Design tokens live in `tailwind.config.js`" line, and `tasks.md`. **Still owed:**
 `CHANGELOG.md` at slice 4 (slice 3 is invisible to the user), and `docs/invariants/reader.md` at slice 5.
 
+### Amendment round 4 — 2026-09-16 (slice 4 landed)
+
+Slice 4 was implemented from the contract annex (`docs/superpowers/plans/2026-09-16-theming-slice4.md`,
+13 adjudicated decisions), then checked three ways: the orchestrator's own mutation run against the
+shipped tree (four mutations, each reddening only its own criterion), a **live pass** on an isolated
+`MUSAEUM_USER_DATA` instance driven over CDP, and a read-only pre-merge review whose brief was to
+falsify the implementation and its tests. Nine sentences lost; each is amended in place at its site
+as well, and nothing here re-opens a product decision — J1–J11 stand.
+
+| # | What changed | Why |
+|---|---|---|
+| A31 | **Imported base16 ids are stem-keyed, not slug-keyed.** §2.3's spelling was `base16:<slug>`; the landed form is `base16:<stem>`, uniform with `iterm:<stem>` and with the built-ins' `builtin:<stem>`. | Measured: the vendored corpus carries a `slug:` key in **1 of 13** files, so a slug-keyed id would be a branch that is dead for nearly every file the owner has — and importing the same palette with a slug and without one would produce two rows. Stem-keying is also what makes D2 structural rather than a check: every imported id starts `base16:`/`iterm:` and every built-in starts `builtin:`, so a file named `musaeum.yaml` cannot replace the default. *Reversal:* if renaming files in place turns out to be common, adopt slug-when-present. |
+| A32 | **The import methods answer with `ThemeImportResult`, which carries the whole `ThemeView`.** Supersedes §2.3's `importPaths → ImportResult` and `scanFolder → ThemeView`. | The rows on screen and the files just imported are then one answer instead of two that can disagree — the same reasoning that puts `theme_id` and `theme_tokens` in one transaction — the picker needs one round trip rather than two, and a scan's rejections have somewhere to be displayed, which a `ThemeView`-only return cannot do. |
+| A33 | **`ThemeView.options` and `ThemeView.folder` are landed**, closing A29. A row is `{ id, name, author, provider, variant, swatches[5], active, stale, notes[], sourcePath }`. | A29 predicted them; slice 4 is where the picker needs them. `swatches` is a 5-tuple rather than `string[]` so "five" is a type and not a promise a row-builder can stop keeping. |
+| A34 | **The folder sentence is read as "no *file* is written into it".** `openFolder()` creates the directory when absent (`mkdirSync`, recursive) before `shell.openPath`. | *Reveal in Finder* has to work before the first import, or the control is dead on a fresh install. The AC4.3 measurement (hash-identical before and after a scan) is about what a scan does, and the scan still writes nothing. *Reversal:* if the owner would rather the app never create it, the control becomes disabled until the folder exists. |
+| A35 | **The scan ignores non-theme entries silently — `.css` included.** Only a supported file that fails to *parse* is reported. | A folder listing that explains why `README.md`, `.DS_Store` or a directory is not a theme is noise; a `.css` is slice 6's and its reason arrives with that adapter. The load-bearing half: a `.yaml`/`.itermcolors` the user put there for this purpose and which the engine cannot read **is** reported by path and reason. |
+| A36 | **Slice 4 is 11 code files + 2 test files, one over the ~10-file bound; the named absorber is not taken.** §2.4's own file-budget paragraph and §5's row are corrected at their sites. | `store.ts` (the resolve ladder and the view's rows), `src/types/theme.types.ts` (the row contract) and `src/stores/theme.store.test.ts` cannot be avoided. The absorber would fold a drop zone, a folder control, 14+ rows and a per-row reason disclosure into a 404-line modal. Recorded rather than absorbed silently, as A30 was. |
+| A37 | **The per-row `stale` flag means "written by another engine", not "written by another engine *and* its source is gone"** (D9 as dispatched). Whether a row can still be brought up to date is decided when it is applied: `resolveId` re-derives from `sourcePath` if the file is readable and rewrites the entry, else the stored values are kept and the *view* reports `stale`. | The list path costs no `fs` — building the picker cannot go and stat 20 files — and the flag is set before any apply has happened, so "and its source is gone" would have been a claim the row cannot make at that moment. The row's tooltip says what is true instead. |
+| A38 | **The picker's import controls sit *above* the theme list.** §2.4 did not specify an order; the first implementation put them below. | Measured by looking at the running app: with 13 built-ins plus five imports the list runs past a screen, and the folder — which §2.4 itself calls the way that *matters* — was ~1200 px down the modal body, behind the whole list. Reordered after the live pass; the drag feedback moved with it (the hint line swaps to *Release to import*, because the panel that used to highlight on drag can be a screen below the pointer). |
+| A39 | **A re-scan reports files it already has as imported.** Three unchanged files in the folder and a rescan says "3 imported, 1 rejected" — which is true (they are re-derived and re-upserted) but reads as if three themes were added. | Registered, not fixed: distinguishing *new* from *refreshed* is a third array on `ThemeImportResult` plus its UI and tests, and AC4.2 fixes the shape as `{ imported, rejected }`. `tasks.md` carries it as debt with the shape change named. |
+| A40 | **The live measurements are in §7's ledger** (AC4.2/4.3/4.5 by run, AC4.4 by a controlled drop), with the one residual: *Reveal in Finder* was not exercised live, because the only way to exercise it opens a Finder window on the owner's desktop. | Six of this slice's claims are about a running app. A criterion decided by a run has to record the run. |
+
+**Repair round (2026-09-16, after the pre-merge review).** The read-only review of the landed tree
+found one defect worth blocking a release for, one rule with no decider, one criterion with no
+decider, and a tail of nits; all but the tail are now fixed, each with a deciding case and a
+mutation the orchestrator reproduced by hand.
+
+**The FIX-NOW, and it is the only thing in this slice that a user could see and not explain.** The
+three import handlers composed their answer inline —
+`return { view: getThemeView(), ...importPaths(paths) }` — and an object literal's properties
+evaluate **left to right**, so the view was read *before* the import ran. The returned snapshot
+predated the row it was reporting on, `theme.store` replaced the list with it, and the user's freshly
+imported theme was therefore **absent from the picker**; pressing Refresh made it worse rather than
+better, because the stale snapshot replaced the good list every time, so the row only appeared when
+some *later* interaction happened to re-read the view. Nothing caught it: the handler layer has no
+harness (`ipcMain.handle` is a no-op in the Electron mock, so a handler's return value is invisible
+to the suite) and **every live check in this slice read the view back with a separate `theme.get()`,
+which of course agreed**. The composition now lives in the service as `withThemeView(batch)` — where
+`importer.test.ts` can decide it, and where a handler cannot get the order wrong because the batch is
+its argument — and the three handlers are one line each. Measured on the same instrument, before and
+after: the id was absent from the returned view (and the row never appeared in the UI after a
+Refresh) and is now present, with the row appearing **17 ms** after one press of the refresh control
+and applying in **21 ms** with no key chord. *Reversal:* none — the ordering is now structural.
+
+The rest of the round:
+
+| # | What changed | Why |
+|---|---|---|
+| A41 | **A per-file *write* failure has a decider.** `importPaths`' per-file `catch` (D6's arm) was replaced with `throw err` by the review and **all 20 importer cases stayed green**: read and parse failures were decided, a write that cannot land was not. A case now poisons only the second file's `theme_library` write (the trigger `store.test.ts` already had) and asserts the first file is imported and usable while the second is reported by path. | Same defect class as A14/A19: a rule the implementation has and the tests cannot falsify. The arm is what makes a batch *not* one transaction — the property the case now pins. |
+| A42 | **AC4.1's Obsidian arm has a decider.** The provider is slice 6's, so this slice's obligation is only that a row is filled from a *record* whoever wrote it — and nothing decided that: the only `obsidian` coverage was three rejections of unresolvable ids. A case now stores an `obsidian`-provider record and asserts the row carries `provider: 'obsidian'`, a variant, five `#rrggbb` swatches, and applies. | A criterion whose third arm is decided by nothing is the shape A19 was landed to prevent. |
+| A43 | **The renderer's trusted-shape guard moved to the service, and two nits with it:** `importPaths` treats a non-array as an empty batch and coerces a non-string member with `String(path)`; a successful import now clears `themeError`; the `ThemeOption.stale` doc comment says what the flag means (A37) instead of "and its source is gone"; `readLibrary`'s comment says the dropped row survives only until the next write (which rebuilds the key from the rows the reader accepts). | The non-string member was the sharp one: it became a `RejectedTheme` whose `path` is not a string, which the picker then `basename()`s and uses as a React key — a render-time throw instead of a report. Unreachable from the app's own callers, which is not the same as safe. |
+| A44 | **Two more nits recorded rather than fixed.** `ThemeOption.sourcePath` is shipped to the renderer and read by nothing yet (it is display-only by contract, and slice 6's resolver is its likely first consumer); and `importPaths` runs one transaction *per file*, so a folder of *n* themes costs *n* read-modify-writes over a JSON array that grows to *n* records. | The first is a field with no consumer, not an invariant risk. The second is the price of D6's per-member atomicity, bounded by the user's own folder; it is carried in `tasks.md` with the condition that would change it (a folder in the hundreds, or a scan the user can feel). |
+| A45 | **The extension set is named as four sites.** `ipc/theme.ts`'s dialog filter, `importer.ts`'s `SCANNABLE_EXTENSIONS`, `index.ts`'s dispatch and `AppearanceSection.tsx`'s drop filter must agree, and slice 6 adding `.css` has to find all four or a dropped `.css` is silently ignored. | A35's rule is "the scan ignores what it cannot read", which is only true while the four agree. Cheaper to write down than to debug in slice 6. |
+
+---
+
+**Measured on the returned tree, by the orchestrator, not self-reported by the implementers.** Gate:
+typecheck 0, lint 0, `npm test` **513 passed / 23 files** (slice 3's baseline 452/22 — the slice landed
+at 508 and the repair round above added five cases), `npm run build` 0.
+Live, on an isolated profile: a batch of five files with one malformed member imports **4 and rejects
+1** with the engine's own reason, and each of the four then applies with its own canvas (`iterm:nord`
+`#2e3440`, `iterm:gruvbox` `#1d2021`, `base16:kanagawa-verify` `#1f1f28`, `base16:dracula-verify`
+`#282a36`); a folder holding three themes plus a `README.md`, a `.css` and a malformed `.yaml` scans
+to **three rows and one rejection**, leaves the directory **byte-identical** (sha256 over name, size
+and mtime of every entry), and is idempotent on a second scan; **one click** on a row repaints
+`--ink-950` in **19 ms** with the modal still open and no ⌘↵ anywhere in the path; a `.yaml` dropped
+on the library grid produces **0** `importProgress` events where a control `.epub` produces 2; and the
+imported library survives a restart (five rows, five swatches each, the active one still active).
+Four mutations, each reddening only its own criterion: the per-row `stale` flag forced false (2 tests
+in `store.test.ts`), `readLibrary` accepting an invalid row (3 tests), `scanFolder` writing a marker
+file into the folder (AC4.3's hash test), and the library arm of the ladder never re-deriving an
+old-engine record (the two J3 tests). Every mutated file was restored byte-identically.
+
 ---
 
 ## 1. The problem, and what is true today
@@ -666,7 +739,7 @@ Two `app_config` keys — **amended (A21, slice 3 landed): three**, `theme_id` /
 
 | Key | Value |
 |---|---|
-| `theme_id` | the active theme's stable id (`builtin:musaeum`, `builtin:gruvbox-dark-hard`, `base16:<slug>`, `iterm:<stem>`, `obsidian:<folder>`); **absent means the built-in default**, which is slice 1's `:root` block |
+| `theme_id` | the active theme's stable id (`builtin:musaeum`, `builtin:gruvbox-dark-hard`, `base16:<stem>`, `iterm:<stem>`, `obsidian:<folder>`); **absent means the built-in default**, which is slice 1's `:root` block. **[A31 — `base16:<slug>` when this row was written; the landed spelling is `<stem>`, see the round-4 trail.]** |
 | `theme_tokens` | JSON: the resolved theme — `{ id, name, provider, author, variant, sourcePath, tokens: { ink{…}, parchment{…}, gold{…}, onAccent, scrim, shadowStrength }, audits[], adjustments[], notes[] }` (`scrim` added in amendment round 1, A2). **Amended (A22, slice 3 landed):** the shipped spelling is `on_acc` / `shadow`, `tokens` also carries `status` and `dark`, and `engineVersion` rides the record. The read-validation rule is therefore *every value the derivation emits* — 7 ink + 3 parchment + 4 gold + `on_acc` + `scrim` + `shadow` + `dark`, with `status` optional because the built-in default predates 7a's `:root` values. |
 | `theme_library` | **Added (A21, slice 3 landed).** JSON array of resolved records for themes that are not active. It exists because AC4.1 requires five swatches per imported theme while this section itself says an imported `.itermcolors` "may not be on disk any more at all": the derived values must be stored somewhere, and only the active theme's fit in `theme_tokens`. Slice 3 preserves it byte-identically; slice 4's importer is its only writer and its first reader. |
 
@@ -707,13 +780,22 @@ render an unreadable app.
 theme: {
   get(): Promise<ThemeView>                    // { active, options, defaultId, folder }
   set(id: string): Promise<ThemeView>          // derive → validate → write both keys → broadcast
-  importPaths(paths: string[]): Promise<ImportResult>   // { imported[], rejected[{path, reason}] }
-  importFromDialog(): Promise<ImportResult>    // native picker, multi-select
-  scanFolder(): Promise<ThemeView>             // re-read ~/Library/Application Support/Musaeum/themes/
-  openFolder(): Promise<void>                  // shell.openPath — nothing is ever written into it
+  importPaths(paths: string[]): Promise<ThemeImportResult>   // { view, imported[], rejected[{path, reason}] }
+  importFromDialog(): Promise<ThemeImportResult>    // native picker, multi-select
+  scanFolder(): Promise<ThemeImportResult>             // re-read ~/Library/Application Support/Musaeum/themes/
+  openFolder(): Promise<void>                  // mkdir when absent, then shell.openPath — no file is ever written into it
 }
 // EVENT_CHANNELS gains: themeChanged: 'event:theme-changed'
 ```
+
+**[A32 — the three import-shaped methods landed as `ThemeImportResult`, which carries the whole
+`ThemeView` rather than only the files touched (`importPaths → ImportResult` and
+`scanFolder → ThemeView` above are the superseded shapes).** One answer, not two: the rows the
+user is looking at and the files just imported cannot disagree, and the picker needs one round
+trip instead of two. It also gives a scan's rejections somewhere to be displayed, which the
+`ThemeView`-only shape had no room for. **[A33 — `ThemeView.options`/`folder` are landed
+(A29 predicted them); each option row is `{ id, name, author, provider, variant, swatches[5],
+active, stale, notes[], sourcePath }`.]**
 
 `ThemeView.active` is the resolved theme (or the built-in default descriptor);
 `ThemeView.options` is the merged list — built-ins first, imported second, each with
@@ -751,6 +833,15 @@ directory would have found nothing. So:
   section shows the path, with a "Reveal in Finder" control. **The app never writes into
   this folder** — a theme that needs deriving is derived and its *values* are stored, so a
   missing or moved source file is not an error (`sourcePath` is recorded for display only).
+  **[A34/A35 — landed reading of that sentence: the app never writes a *file* into the folder;
+  it may create the directory itself (the `mkdir` in `openFolder`), because *Reveal in Finder*
+  has to work before the first import, and a missing folder is an empty scan rather than an
+  error. The scan is `readdirSync`, non-recursive, limited to `.yaml`/`.yml`/`.itermcolors`:
+  a `README.md`, a `.DS_Store`, a directory or a `.css` sitting in there is ignored
+  **silently**, because a listing full of reasons about files the app cannot read yet is
+  noise — whereas a supported file that fails to parse **is** reported by path and reason.
+  What the folder is not is a place the app copies anything to; measured live, a scan leaves
+  the directory hash-identical (AC4.3).]**
 - **A drop onto the Appearance section** — the section owns its own `onDrop`, resolving
   paths through the existing preload `files.getPathForFile` (`useDragDrop.ts:35` is the
   precedent for that call). `useDragDrop.ts` itself needs **no change**: its
@@ -780,6 +871,15 @@ themes.
 
 **File budget:** 8 code files (§5). Overrun absorber: `AppearanceSection`'s row rendering
 folds into `SettingsModal.tsx`.
+**[A36 — superseded: the landed count is 11 code files + 2 test files, one over
+`CLAUDE.md`'s ~10-file bound, and the absorber was deliberately not taken.** `store.ts` had
+to be opened (the `resolveId` library arm and the view's rows are its business, not the
+importer's), `src/types/theme.types.ts` had to be opened (`ThemeOption` and the view's two
+new fields — the row shape §2.4 requires is a contract), and `src/stores/theme.store.test.ts`
+grew with the store. The absorber folds a drop zone, a folder control, 14+ rows and a
+per-row reason disclosure into a modal that is already 404 lines; taking it would put two
+concerns in one file to satisfy a count. Recorded rather than absorbed silently — same
+handling as A30.]**
 
 ### 2.5 Slice 5 — Reader convergence and the light flip
 
@@ -1571,7 +1671,7 @@ slice 2's base16 fixture corpus so no second copy exists in the repo.
 | 1. Token plumbing | 2 (`tailwind.config.js`, `src/index.css`) — **unchanged by A4/A5, and this is the point**: the root `color-scheme` declaration and the `--scrim` default are both lines inside `src/index.css`, a file this slice already owns, so slice 1 gains no third file | 1 (default-conversion assertion, AC1.4 — may live in an existing renderer test file) | — | none needed; a third CSS file folds into `src/index.css` |
 | 2. Derivation core | 6 (`src/types/theme.types.ts`, `theme/color.ts`, `theme/derive.ts`, `theme/parse/base16.ts`, `theme/parse/itermcolors.ts`, `theme/index.ts`) | 2 (`theme/derive.test.ts`, `theme/parse.test.ts`) | `test/fixtures/theme/*.itermcolors` (2) + `builtin/*.yaml` (**13**, vendored — A15; the round-1 figure of 10 was the curated set's size as counted then) | `parse/base16.ts` + `parse/itermcolors.ts` → one `parse.ts` |
 | 3. Persistence + boot | 9 (`theme/store.ts`, `ipc/theme.ts`, `main/index.ts`, `src/types/api.types.ts`, `electron/preload/index.ts`, `src/stores/theme.store.ts`, `src/hooks/useTheme.ts`, `src/lib/theme/css.ts`, `src/main.tsx`) | 2 (`theme/store.test.ts`, `src/lib/theme/css.test.ts`) + `test/mocks/electron.ts` extended (shared infra) | — | `src/main.tsx` merges into `src/lib/theme/css.ts` (8) |
-| 4. Import + picker | 7 (`theme/importer.ts`, `ipc/theme.ts`, `preload/index.ts`, `src/types/api.types.ts`, `src/components/settings/AppearanceSection.tsx`, `SettingsModal.tsx`, `src/stores/theme.store.ts`) | 1 (`theme/importer.test.ts`) | — | `AppearanceSection` row rendering folds into `SettingsModal.tsx` |
+| 4. Import + picker | **11 landed** (§2.4's count was 7: the row above always undercounted `store.ts`, `src/types/theme.types.ts` and the renderer store test — see A36) | 2 (`theme/importer.test.ts` new, `theme/store.test.ts` and `src/stores/theme.store.test.ts` extended) | — | `AppearanceSection` row rendering folds into `SettingsModal.tsx` — **named, deliberately not taken** (A36) |
 | 5. Reader + flip | 6 (`src/lib/theme/reader-palette.ts`, `ReaderEngine.tsx`, `src/stores/reader.store.ts`, `ReaderPrefsPopover.tsx`, `main/index.ts`, `theme/store.ts`) + `tailwind.config.js` if the shadow vars are touched | 2 (`reader-palette.test.ts` new, `reader.store.test.ts` extended) | — | `reader-palette.ts` folds into `src/lib/theme/css.ts` |
 | 6. Obsidian resolver | 3 (`theme/resolve-css.ts`, `theme/parse/obsidian.ts`, `theme/index.ts`) + `theme/importer.ts` | 1 (`theme/obsidian.test.ts`, with synthetic CSS fixtures inline — **do not vendor a user's theme file**) | — | `parse/obsidian.ts` folds into `theme/index.ts` |
 | **7. Status + scrim + hairline — COMMITTED, staged 7a (bounded) and 7b (the sweep) (§2.7)** | **15 at its widest**, **10 with the named absorber** (`theme/derive.ts`, `src/types/theme.types.ts`, `theme/store.ts`, `src/lib/theme/css.ts`, `tailwind.config.js` + the ten components that invert: the eight modal files, `BookCard.tsx`, `BookDetail.tsx`) | 1 (`theme/derive.test.ts` extended — no new test file) | — | **`src/components/library/BookDetail.tsx`**: its single hairline site leaves first (cosmetic — the cover is already edged by `shadow-cover`), then the status sites in files the slice does not otherwise open leave as debt (§2.7a) |
@@ -1674,10 +1774,67 @@ Expected, not only observed. Each is here so it is recognised rather than re-dia
     scoping is the only thing keeping the gate honest. If an implementer takes the before/after
     captures in light OS appearance and sees a diff, the correct response is *not* to drop the
     declaration — it is to re-take the capture in the state the criterion names (§2.1, AC1.7).
+16. **A re-scan reports files it already has as imported** (A39). Three unchanged themes in the
+    drop-box and a rescan says *3 imported* — true (they are re-derived and re-upserted) but it
+    reads as if three themes were added, and on a folder of thirty it says thirty every time.
+    The fix is a third array on `ThemeImportResult` (*new* vs *refreshed*), which is a contract
+    change and is carried as debt in `tasks.md` rather than smuggled into slice 4.
+17. **Nothing on the picker's path has a renderer test harness.** There is no DOM in the vitest
+    environment and no React testing library, so `AppearanceSection`'s rendering, its drop
+    handler and its click path are decided by source walks plus a live run; a refactor that
+    keeps the strings its tests match but breaks the wiring would pass the suite. The live pass
+    is the compensating instrument, and it is per-slice, not per-commit.
 
 ---
 
 ## 7. Measurement ledger
+
+### Executed — slice 4 (2026-09-16, same machine, isolated profile)
+
+- `npm run typecheck` → exit 0. `npm run lint` → exit 0. `npm run build` → exit 0.
+- `npm test` → **513 passed, 23 files** (508 before the repair round; slice 3's landed figure was
+  452/22, and the baseline before the theming feature was 356/19).
+- **The repair round, measured on one instrument before and after.** A new provider file was added to
+  the running app's `themes/` folder and the section's own refresh control was pressed once:
+  - before: the imported id was **absent** from the view the import call returned, and the row never
+    appeared in the picker (not after that press, and not after a second one);
+  - after: present in the answered view, the row on screen **17 ms** after the single press, and
+    applying it repainted `--ink-950` in **21 ms** (`29 32 33` = gruvbox's `#1d2021`) with the modal
+    open and no key chord.
+  Both mutations that reintroduce the defect (`ipc/theme.ts` composing inline again; the per-file
+  write failure re-thrown) redden exactly their own new case and nothing else.
+- Live, `MUSAEUM_USER_DATA=/tmp/ms4/profile`, `npx electron . --remote-debugging-port=9222`,
+  driven through `Runtime.evaluate` on the renderer target (the `cdp.mjs` from
+  `musaeum-app-verification`). The pid listening on 9222 was verified to be the run's own before
+  anything below was trusted:
+  - baseline view: `{ active: 'builtin:musaeum', options: 14, folder: '<userData>/themes' }`,
+    exactly one row `active`, every row's `swatches.length === 5`.
+  - AC4.2: `importPaths` over five real files with a malformed member (position 3) →
+    `{ imported: 4, rejected: 1 }`, the rejection naming the path and the base16 parser's own
+    reason; all four then resolved through `set()` and each rendered its own `ink-950`
+    (`#2e3440` / `#1d2021` / `#1f1f28` / `#282a36`). Mixed batch with an unreadable path and a
+    `.css` → 1 imported, 2 rejected, two distinct reasons.
+  - AC4.3: three `.itermcolors` plus `README.md`, `obsidian-theme.css` and a malformed `.yaml` in
+    `userData/themes` → `scanFolder()` imported 3, rejected 1 (the `.yaml`), ignored the other two
+    silently; `shasum` over `name:size:mtime` of every entry **identical before and after**; a
+    second scan changed nothing (`options` 14 → 17 → 17).
+  - AC4.5: clicking a row in the live modal moved `--ink-950` from `40 42 54` to `46 52 64` in
+    **19 ms**, with the modal still open and no key chord dispatched anywhere in the run;
+    `--gold-500` moved with it.
+  - AC4.4: a synthetic `drop` of a `.yaml` on the library grid → **0** `importProgress` events and
+    no toast; the control run (a `.epub` through the same instrument) → **2** events, which is what
+    makes the zero evidence rather than a dead instrument.
+  - Persistence across a restart: the five imported rows were still there after a relaunch, each
+    with five swatches, with the active one still active.
+- Four mutations (orchestrator's own, each restored byte-identically): `optionRow`'s `stale` forced
+  false → 2 tests red; `readLibrary` keeping an invalid row → 3 red; `scanFolder` writing a marker
+  into the folder → AC4.3's hash case red; the ladder's library arm never re-deriving an old-engine
+  record → the two J3 cases red.
+- **Residual, declared:** the *Reveal in Finder* control was **not** exercised live — the only way
+  to exercise it opens a Finder window on the owner's desktop, which is an intrusive side effect
+  for a two-line handler (`mkdirSync` + `shell.openPath`, whose non-empty return becomes a thrown
+  reason). AC4.1's per-provider rows are decided for base16 and iTerm2; Obsidian's row is slice 6's
+  and its shape is decided here only insofar as the row builder fills from a `StoredTheme`.
 
 ### Executed (I ran it, on this machine, 2026-09-15)
 
