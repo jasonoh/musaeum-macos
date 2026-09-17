@@ -609,6 +609,26 @@ slice would otherwise meet without warning.
       `rgb(125,114,96)` — an inherited `parchment-faint` — while the same element's `bg-gold-500/30`
       tint works correctly. Fix: the three text sites → `gold-300`, and the mark at
       `ListView.tsx:211` → `bg-gold-400`.
+- [ ] **Follow-up (owner request 2026-09-17) — compartmentalize the Appearance section.**
+      Settings → Appearance is now the tallest thing in the dialog and growing: the whole
+      built-in corpus plus everything imported renders as rows (swatches, name, provider,
+      notes disclosure), and the modal body is a single `overflow-y-auto`
+      (`SettingsModal.tsx:163-165`), so the section pushes Library / Transfer / Advanced below
+      the fold. Slice 6 (Obsidian) adds imports and the user's own folder can hold hundreds.
+      **Two constraints this section already carries, both reasoned — a compartmentalization
+      that ignores them re-breaks something deliberately decided:**
+      (a) the way in comes first, because "burying [the folder] under a hundred rows is how a
+      picker hides its own import" (`AppearanceSection.tsx:121-124`) — collapsing the *list* is
+      fine, collapsing the *import control + drop-box row* is not; and
+      (b) the drag feedback is a sentence at the top rather than a highlight on the rows panel,
+      because that panel "can be a screen below the pointer while the file is over the window"
+      (`:206-209`) — so anything that scrolls or folds the rows away must keep that property.
+      Candidates, none decided: the active theme summarized in a collapsed header; a "Manage
+      themes…" sub-view or second modal; a swatch grid rather than full rows; built-ins behind a
+      disclosure (they are the fixed half — the user's imports are the variable one); a filter
+      box over the rows. Acceptance must include both constraints above, AC4.5 (one click
+      applies, no ⌘↵), and drop-anywhere-on-the-section. Interacts with slices 6 and 7a, both of
+      which edit this component — sequence it after them, or accept the rebase.
 
 Decisions already closed — **do not re-litigate**; each carries its rejected alternative and a reversal
 condition in the spec's adjudication block (J1–J11): palette-only (never layout); scheme-native accent
