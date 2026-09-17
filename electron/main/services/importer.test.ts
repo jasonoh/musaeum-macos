@@ -4,10 +4,18 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Book, ImportProgress, ImportResult } from '@shared/book.types'
 import { makeBook } from '../../../test/helpers/book'
 import { writeCatalog } from './catalog'
-import { closeDb, getBook, getConflictQueue, insertBook, updateBook } from './db'
-import { hydrate, writeMetadataJson } from './importer'
+import { closeDb, getBook, getBooks, getConflictQueue, insertBook, updateBook } from './db'
+import * as events from './events'
+import {
+  abortPendingDecisions,
+  addFiles,
+  hydrate,
+  resolveDuplicate,
+  writeMetadataJson
+} from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import * as sidecar from './sidecar'
@@ -17,7 +25,7 @@ import * as sidecar from './sidecar'
  * `assertAvailable` starts a Python process, and here the fetch itself is what
  * is being scripted anyway.
  */
-vi.mock('./sidecar', () => ({ call: vi.fn(), assertAvailable: vi.fn() }))
+vi.mock('./sidecar', () => ({ call: vi.fn(), assertAvailable: vi.fn(), isAvailable: vi.fn() }))
 
 let bookDir: string
 beforeEach(() => {
@@ -215,5 +223,426 @@ describe('hydrate — the outcome it reports', () => {
       error: 'Sidecar call hydrate_metadata timed out after 300000ms'
     })
     expect(getBook('a')?.title).toBe('Book a')
+  })
+})
+
+/**
+ * The duplicate GATE (`docs/invariants/files-and-deletion.md` → "Duplicate
+ * Detection"). An ISBN-13 match, else a normalized title+author match, pauses
+ * `importOne` between the extract and the copy and waits for a decision keyed
+ * by `jobId` — the watcher fans imports out concurrently, so the key is what
+ * keeps two open gates apart. The three branches are not symmetric: only
+ * `add_new` creates a book and hydrates; `add_format` writes into the matched
+ * book's folder and hydrates nothing; `skip` leaves the library untouched.
+ *
+ * These tests drive the gate the way the app does: kick off `addFiles`, wait
+ * for the `awaiting_dedup_decision` progress event to learn the jobId, then
+ * answer it — which is also the only way to reach `importOne`, since it is not
+ * exported.
+ */
+describe('the import duplicate gate', () => {
+  let root: string
+  let inbox: string
+  /** Every importProgress payload broadcast during the test, in order. */
+  let progress: ImportProgress[]
+
+  /** The extraction reply (null = sidecar unavailable, so title comes from the filename). */
+  function scriptSidecar(extracted: Record<string, unknown> | null): void {
+    vi.mocked(sidecar.isAvailable).mockReturnValue(extracted !== null)
+    vi.mocked(sidecar.call).mockImplementation(((method: string) =>
+      Promise.resolve(
+        method === 'hydrate_metadata' ? reply({ title: 'Dune' }) : (extracted ?? {})
+      )) as typeof sidecar.call)
+  }
+
+  async function seed(book: Book): Promise<string> {
+    insertBook(book)
+    const dir = join(root, book.nasPath!)
+    await fs.mkdir(dir, { recursive: true })
+    return dir
+  }
+
+  /** Start an import and block until its gate is open; resolves to the jobId. */
+  async function startImport(
+    name: string
+  ): Promise<{ settled: Promise<ImportResult[]>; jobId: string }> {
+    const src = join(inbox, name)
+    await fs.writeFile(src, 'ebook bytes')
+    const settled = addFiles([src])
+    const jobId = await vi.waitFor(() => {
+      const gate = progress.find((p) => p.step === 'awaiting_dedup_decision')
+      expect(gate).toBeDefined()
+      return gate!.jobId
+    })
+    return { settled, jobId }
+  }
+
+  const PENDING = Symbol('pending')
+  /** True while `p` has not settled — `p` is raced first so a settled one wins. */
+  async function stillPending(p: Promise<unknown>): Promise<boolean> {
+    await new Promise((r) => setImmediate(r))
+    return (await Promise.race([p, Promise.resolve(PENDING)])) === PENDING
+  }
+
+  /** Wait for the async hydration `add_new` kicks off to finish emitting. */
+  async function settleHydration(): Promise<void> {
+    await vi.waitFor(() => expect(progress.map((p) => p.step)).toContain('done'))
+  }
+
+  beforeEach(async () => {
+    closeDb()
+    const userData = app.getPath('userData')
+    for (const f of ['musaeum.db', 'musaeum.db-wal', 'musaeum.db-shm']) {
+      rmSync(join(userData, f), { force: true })
+    }
+    librarySync.resetForTests()
+    root = mkdtempSync(join(tmpdir(), 'musaeum-dedup-'))
+    progress = []
+    vi.spyOn(events, 'broadcast').mockImplementation((channel, payload) => {
+      if (channel === 'importProgress') progress.push({ ...(payload as ImportProgress) })
+    })
+    await nas.setLibraryRoot(root)
+    await writeCatalog(root, [])
+    // setLibraryRoot's health check creates books/ imports/ exports/
+    inbox = join(root, 'imports')
+    scriptSidecar(null)
+  })
+
+  afterEach(async () => {
+    // Any gate a failing test left open would otherwise hold a promise forever
+    abortPendingDecisions()
+    vi.restoreAllMocks()
+    await librarySync.flushForTests()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  describe('what opens the gate', () => {
+    it('blocks on an ISBN-13 match even when title and author look unrelated', async () => {
+      await seed({
+        ...makeBook('existing', 'Dune'),
+        author: 'Frank Herbert',
+        isbn13: '9780441013593'
+      })
+      scriptSidecar({
+        title: 'Melange: A Scan',
+        authors: [{ name: 'Unknown Scanner' }],
+        identifiers: { isbn_13: '9780441013593' }
+      })
+
+      const { settled, jobId } = await startImport('some-scan.epub')
+
+      expect(progress.find((p) => p.step === 'awaiting_dedup_decision')?.duplicate).toEqual({
+        existingBookId: 'existing',
+        existingTitle: 'Dune',
+        existingAuthor: 'Frank Herbert',
+        matchType: 'isbn'
+      })
+      // The gate really blocks — nothing has been copied or inserted yet
+      expect(await stillPending(settled)).toBe(true)
+      expect(getBooks()).toHaveLength(1)
+      expect(await fs.readdir(join(root, 'books'))).toEqual(['existing'])
+
+      resolveDuplicate(jobId, { action: 'skip' })
+      await settled
+    })
+
+    it('falls back to a normalized title+author match when nothing carries an ISBN', async () => {
+      await seed(makeBook('existing', 'The Dispossessed'))
+      // No sidecar, so the title is derived from the filename: underscores and
+      // dots become spaces, and findByTitleAuthor normalizes case/punctuation
+      const { settled, jobId } = await startImport('the_dispossessed.epub')
+
+      expect(progress.find((p) => p.step === 'awaiting_dedup_decision')?.duplicate).toMatchObject({
+        existingBookId: 'existing',
+        matchType: 'title_author'
+      })
+
+      resolveDuplicate(jobId, { action: 'skip' })
+      await settled
+    })
+
+    it('prefers the ISBN match when a different book also matches on title+author', async () => {
+      await seed({
+        ...makeBook('by-isbn', 'An Unrelated Title'),
+        isbn13: '9780441013593'
+      })
+      await seed({ ...makeBook('by-title', 'Dune'), author: 'Frank Herbert' })
+      scriptSidecar({
+        title: 'Dune',
+        authors: [{ name: 'Frank Herbert' }],
+        identifiers: { isbn_13: '9780441013593' }
+      })
+
+      const { settled, jobId } = await startImport('dune.epub')
+
+      // ISBN is checked first and wins; the title+author book is never consulted
+      expect(progress.find((p) => p.step === 'awaiting_dedup_decision')?.duplicate).toMatchObject({
+        existingBookId: 'by-isbn',
+        matchType: 'isbn'
+      })
+
+      resolveDuplicate(jobId, { action: 'skip' })
+      await settled
+    })
+
+    it('lets a non-duplicate straight through without a gate', async () => {
+      await seed(makeBook('existing', 'A Different Book'))
+
+      const src = join(inbox, 'Dune.epub')
+      await fs.writeFile(src, 'ebook bytes')
+      const [result] = await addFiles([src])
+
+      expect(result.success).toBe(true)
+      expect(progress.map((p) => p.step)).not.toContain('awaiting_dedup_decision')
+      expect(getBooks()).toHaveLength(2)
+      await settleHydration()
+    })
+  })
+
+  describe('skip', () => {
+    it('aborts the import: no book, no folder, and a result that says it was skipped', async () => {
+      await seed(makeBook('existing', 'Dune'))
+      const { settled, jobId } = await startImport('Dune.epub')
+
+      resolveDuplicate(jobId, { action: 'skip' })
+      const [result] = await settled
+
+      expect(result).toEqual({
+        jobId,
+        fileName: 'Dune.epub',
+        success: false,
+        skipped: true,
+        action: 'skip'
+      })
+      expect(getBooks()).toHaveLength(1)
+      expect(await fs.readdir(join(root, 'books'))).toEqual(['existing'])
+      expect(progress.at(-1)?.step).toBe('skipped')
+    })
+
+    it('leaves the matched book exactly as it was', async () => {
+      const dir = await seed({ ...makeBook('existing', 'Dune'), formats: ['epub'] })
+      const { settled, jobId } = await startImport('Dune.mobi')
+
+      resolveDuplicate(jobId, { action: 'skip' })
+      await settled
+
+      expect(getBook('existing')?.formats).toEqual(['epub'])
+      expect(await fs.readdir(dir)).toEqual([])
+    })
+  })
+
+  describe('add_new', () => {
+    it('creates a second book with its own id and folder, leaving the original alone', async () => {
+      await seed({ ...makeBook('existing', 'Dune'), formats: ['epub'] })
+      const { settled, jobId } = await startImport('Dune.epub')
+
+      resolveDuplicate(jobId, { action: 'add_new' })
+      const [result] = await settled
+      await settleHydration()
+
+      expect(result).toMatchObject({ jobId, fileName: 'Dune.epub', success: true })
+      expect(result.bookId).not.toBe('existing')
+      expect(getBooks()).toHaveLength(2)
+      // Its own folder, named from the imported title
+      expect(await fs.readdir(join(root, 'books', result.bookId!))).toEqual(
+        expect.arrayContaining(['Dune.epub', 'metadata.json'])
+      )
+      // The matched book gained nothing
+      expect(getBook('existing')?.formats).toEqual(['epub'])
+      expect(await fs.readdir(join(root, 'books', 'existing'))).toEqual([])
+    })
+
+    it('runs the full pipeline, hydration included', async () => {
+      await seed(makeBook('existing', 'Dune'))
+      const { settled, jobId } = await startImport('Dune.epub')
+
+      resolveDuplicate(jobId, { action: 'add_new' })
+      const [result] = await settled
+      await settleHydration()
+
+      // add_new is the *unchanged* pipeline: copy, insert, then hydrate
+      expect(progress.map((p) => p.step)).toEqual(
+        expect.arrayContaining(['copying', 'hydrating', 'done'])
+      )
+      expect(sidecar.call).toHaveBeenCalledWith(
+        'hydrate_metadata',
+        expect.objectContaining({ book_id: result.bookId }),
+        expect.any(Number)
+      )
+    })
+  })
+
+  describe('add_format', () => {
+    it('adds the format to the matched book instead of creating a second one', async () => {
+      const dir = await seed({ ...makeBook('existing', 'Dune'), formats: ['epub'] })
+      const { settled, jobId } = await startImport('Dune.mobi')
+
+      resolveDuplicate(jobId, { action: 'add_format' })
+      const [result] = await settled
+
+      expect(result).toEqual({
+        jobId,
+        fileName: 'Dune.mobi',
+        success: true,
+        bookId: 'existing',
+        action: 'add_format'
+      })
+      expect(getBooks()).toHaveLength(1)
+      expect(getBook('existing')?.formats).toEqual(['epub', 'mobi'])
+      expect(await fs.readdir(join(root, 'books'))).toEqual(['existing'])
+      // metadata.json is canonical, so the new format has to reach it
+      const written = JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')) as {
+        formats: string[]
+      }
+      expect(written.formats).toEqual(['epub', 'mobi'])
+    })
+
+    it('names the copy after the existing book, not after the incoming file', async () => {
+      const dir = await seed({
+        ...makeBook('existing', 'Dune: Special Edition'),
+        isbn13: '9780441013593'
+      })
+      // A PDF, so the sidecar extraction runs and can supply the matching ISBN
+      scriptSidecar({ title: 'whatever', identifiers: { isbn_13: '9780441013593' } })
+      const { settled, jobId } = await startImport('dune-import.pdf')
+
+      resolveDuplicate(jobId, { action: 'add_format' })
+      await settled
+
+      // sanitizeTitle(existing.title) — the colon goes, the existing title stays
+      expect(await fs.readdir(dir)).toContain('Dune Special Edition.pdf')
+      expect(await fs.readdir(dir)).not.toContain('dune-import.pdf')
+    })
+
+    it('deletes every existing file of that extension first, so no stale copy survives', async () => {
+      const dir = await seed({ ...makeBook('existing', 'Dune'), formats: ['epub', 'mobi'] })
+      // A file left under an older title — findFormatFile picks by extension and
+      // would choose between the two nondeterministically
+      await fs.writeFile(join(dir, 'Old Mistaken Title.mobi'), 'stale')
+      await fs.writeFile(join(dir, 'Dune.epub'), 'untouched')
+
+      const { settled, jobId } = await startImport('Dune.mobi')
+      resolveDuplicate(jobId, { action: 'add_format' })
+      await settled
+
+      const files = await fs.readdir(dir)
+      expect(files.filter((f) => f.endsWith('.mobi'))).toEqual(['Dune.mobi'])
+      expect(await fs.readFile(join(dir, 'Dune.mobi'), 'utf8')).toBe('ebook bytes')
+      // Only the matching extension is cleared — the EPUB is not collateral
+      expect(await fs.readFile(join(dir, 'Dune.epub'), 'utf8')).toBe('untouched')
+    })
+
+    it('does not add a duplicate entry when the book already has that format', async () => {
+      await seed({ ...makeBook('existing', 'Dune'), formats: ['epub'] })
+      const { settled, jobId } = await startImport('Dune.epub')
+
+      resolveDuplicate(jobId, { action: 'add_format' })
+      await settled
+
+      expect(getBook('existing')?.formats).toEqual(['epub'])
+    })
+
+    it('never hydrates — the matched book keeps the metadata it already has', async () => {
+      await seed({ ...makeBook('existing', 'Dune'), author: 'Frank Herbert' })
+      const { settled, jobId } = await startImport('Dune.mobi')
+
+      resolveDuplicate(jobId, { action: 'add_format' })
+      await settled
+
+      expect(sidecar.call).not.toHaveBeenCalledWith(
+        'hydrate_metadata',
+        expect.anything(),
+        expect.anything()
+      )
+      expect(progress.map((p) => p.step)).not.toContain('hydrating')
+      expect(progress.at(-1)).toMatchObject({ step: 'done', bookId: 'existing' })
+      expect(getBook('existing')?.author).toBe('Frank Herbert')
+    })
+  })
+
+  describe('resolveDuplicate', () => {
+    it('ignores a jobId it has no gate for, rather than throwing', async () => {
+      await seed(makeBook('existing', 'Dune'))
+      const { settled, jobId } = await startImport('Dune.epub')
+
+      expect(() => resolveDuplicate('not-a-real-job', { action: 'add_new' })).not.toThrow()
+      // and the gate it was not addressed to is still waiting — the map is keyed
+      // by jobId because the watcher fans imports out concurrently
+      expect(await stillPending(settled)).toBe(true)
+
+      resolveDuplicate(jobId, { action: 'skip' })
+      expect((await settled)[0]).toMatchObject({ skipped: true })
+    })
+
+    it('ignores a second answer for a gate that has already been resolved', async () => {
+      await seed(makeBook('existing', 'Dune'))
+      const { settled, jobId } = await startImport('Dune.epub')
+
+      resolveDuplicate(jobId, { action: 'skip' })
+      await settled
+
+      expect(() => resolveDuplicate(jobId, { action: 'add_new' })).not.toThrow()
+      expect(getBooks()).toHaveLength(1)
+    })
+
+    it('keeps two concurrent gates apart', async () => {
+      await seed(makeBook('one', 'Dune'))
+      await seed(makeBook('two', 'Neuromancer'))
+
+      const first = await startImport('Dune.epub')
+      progress.length = 0 // so the next waitFor sees only the second gate
+      const second = await startImport('Neuromancer.epub')
+
+      resolveDuplicate(second.jobId, { action: 'skip' })
+      expect((await second.settled)[0]).toMatchObject({
+        fileName: 'Neuromancer.epub',
+        skipped: true
+      })
+      expect(await stillPending(first.settled)).toBe(true)
+
+      resolveDuplicate(first.jobId, { action: 'skip' })
+      expect((await first.settled)[0]).toMatchObject({ fileName: 'Dune.epub', skipped: true })
+    })
+  })
+
+  describe('abortPendingDecisions', () => {
+    it('resolves every open gate as skip, so a quit never hangs on one', async () => {
+      await seed(makeBook('one', 'Dune'))
+      await seed(makeBook('two', 'Neuromancer'))
+      const first = await startImport('Dune.epub')
+      progress.length = 0
+      const second = await startImport('Neuromancer.epub')
+
+      abortPendingDecisions()
+
+      // Both unwind, and neither leaves a book behind
+      expect((await first.settled)[0]).toMatchObject({
+        success: false,
+        skipped: true,
+        action: 'skip'
+      })
+      expect((await second.settled)[0]).toMatchObject({
+        success: false,
+        skipped: true,
+        action: 'skip'
+      })
+      expect(getBooks()).toHaveLength(2)
+      expect((await fs.readdir(join(root, 'books'))).sort()).toEqual(['one', 'two'])
+    })
+
+    it('is a no-op when nothing is waiting', () => {
+      expect(() => abortPendingDecisions()).not.toThrow()
+    })
+
+    it('leaves no gate behind, so a later answer for the same job does nothing', async () => {
+      await seed(makeBook('existing', 'Dune'))
+      const { settled, jobId } = await startImport('Dune.epub')
+
+      abortPendingDecisions()
+      await settled
+
+      expect(() => resolveDuplicate(jobId, { action: 'add_new' })).not.toThrow()
+      expect(getBooks()).toHaveLength(1)
+    })
   })
 })
