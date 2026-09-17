@@ -783,9 +783,15 @@ app is running).
       whose own titles match no library book (user guide, dictionaries, edition
       drift), which is a reporting question rather than a browsing one. Do not
       start it before the presence slice lands.
-- [ ] **The redundant Nerd Reich file** — two byte-identical copies on the device
-      (`The Nerd Reich.azw3` and the long-titled one). Removing either is safe;
-      the long-named orphan is the one to delete.
+- [x] **The redundant Nerd Reich file** — removed 2026-09-17. The two copies were
+      byte-identical (md5 `ded086345c4a…`, EXTH 113 `640e81af…`), so the
+      long-titled orphan went with its `._` AppleDouble sibling — no `.sdr`
+      existed, so no reading position was involved — and the survivor kept its
+      bytes and the cover entry, which is keyed by the shared uuid. Presence for
+      the book is unchanged: verified in the running app afterwards,
+      `getOnDeviceBookIds` still answers true for it.
+      The deletion was gated on the two being identical rather than on the
+      filename: nothing unique could be lost by removing either one.
 
 ## Packaging & distribution
 
