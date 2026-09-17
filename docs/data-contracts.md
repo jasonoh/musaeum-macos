@@ -156,9 +156,22 @@ CREATE TABLE app_config (
 ```
 
 `app_config` keys in use: `library_root`, `smb_url`, `python_path`,
-`ebook_convert_path`, `google_books_api_key`, `rest_api_enabled`. All but
-`rest_api_enabled` are editable in Settings; a key is deleted rather than
-blanked when cleared (see Settings above).
+`ebook_convert_path`, `google_books_api_key`, `rest_api_enabled`, and the theming
+trio `theme_id` / `theme_tokens` / `theme_library` (slice 3, 2026-09-16). All but
+`rest_api_enabled` are editable in Settings; a key is deleted rather than blanked when
+cleared (see Settings above). The theming trio is the exception to that editability:
+a theme is not a path and has no auto-detection, so it keeps its own keys and its own
+save path (§2.3 — no theme key in `EditableSettings`), and the Appearance picker
+(slice 4) is what writes `theme_id`.
+
+The theme keys are the first *main-process-visible* preference of this kind —
+`createWindow()` reads them to colour the window before the renderer exists — and
+they carry three rules the rest of `app_config` does not: both keys are written in
+one transaction by `theme/store.ts` (the only legal states are "both absent" and
+"both present and agreeing"), `theme_tokens` is re-validated on *every* read with a
+failure degrading to the built-in default rather than throwing, and `theme_library`
+is preserved untouched until the picker (slice 4) becomes its only writer.
+`docs/invariants/settings-and-editing.md` carries the reasoning.
 
 ---
 
@@ -271,6 +284,10 @@ interface MusaeumAPI {
     confirmCutover(): Promise<void>
     chooseCalibrePath(): Promise<string | null>  // native folder picker
   }
+  theme: {                                      // slice 3
+    get(): Promise<ThemeView>                   // { active, defaultId, stale }
+    set(id: string): Promise<ThemeView>         // derive → validate → write → broadcast
+  }                                             // options/folder + import arrive in slice 4
   files: {
     getPathForFile(file: File): string           // dropped File → path (webUtils)
     revealBook(bookId, format?): Promise<void>   // Finder, file selected
@@ -291,6 +308,7 @@ interface MusaeumAPI {
     bulkHydrateProgress(cb): Unsubscribe         // bulk re-hydrate; running:false ends it
     menuCommand(cb): Unsubscribe                 // native menu → UI action
     pythonEnvProgress(cb): Unsubscribe           // first-run venv bootstrap
+    themeChanged(cb): Unsubscribe                // the active theme changed (slice 3)
   }
 }
 ```

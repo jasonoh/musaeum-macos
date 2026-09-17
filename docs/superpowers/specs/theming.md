@@ -83,6 +83,64 @@ own criterion.
 | A18 | **Two sentences the pre-merge review found undecidable as written, corrected in place**: §2.2's fail-closed paragraph cited `docs/invariants/refresh-feedback.md`, which carries no theming rule (the rule is `CLAUDE.md` #12; the doc is the *precedent* for the shape); and AC2.6's second clause — "nothing lands in `app_config` and the app's active theme is unchanged" — has no decider in slice 2, which owns no storage, and belongs to **AC3.3**. | Same defect class as A14: a sentence a reader takes for coverage that nothing decides. Naming the owning criterion is cheaper than leaving an untested claim standing. |
 | A17 | **Three prose defects in §2.2's derivation table, annotated in place**: the ladder's `mix(…, 'linear')` is a componentwise sRGB interpolation, *not* an interpolation in linear light; the status `400` floor is 4.5, not 3.0; and `600` is a bare `adjust_light(base, 0.30, false)` carrying no foreground, while `on_fill` is a `max` rather than a walk. | Each is a sentence an implementer could follow *instead of* the reference implementation — and the reference is what the tests pin. Swapping the ladder's mix for Oklab, or for real linear-light, moves nine tests. |
 
+### Amendment round 3 — 2026-09-16 (slice 3 landed)
+
+Slice 3 was implemented from a contract annex that settled the design questions §2.3 left open, then
+checked two ways: an independent read-only audit whose brief was to falsify that annex, and the
+orchestrator's own mutation run against the shipped tree. Ten sentences lost. Each is amended in
+place below with the superseded text still visible at its site.
+
+| # | What changed | Why |
+|---|---|---|
+| A21 | **A third `app_config` key, `theme_library`.** §2.3 says "two keys"; AC4.1 requires five swatches per imported theme, and §2.3 itself says an imported `.itermcolors` "may not be on disk any more at all". The acceptance criterion outranks the prose. Slice 3 reads and preserves the key (proved byte-identically); slice 4's importer is its only writer and its first reader, so its validation rule arrives with that slice. *Reversal:* if slice 4 finds the collection unnecessary, delete the key rather than leaving it unread. | A picker row that loses its swatches on the second write is worse than a third key. |
+| A22 | **The persisted token set is the shipped `DerivedTokens` shape, not §2.3's spelling.** Shipped is `on_acc` / `shadow`, and it carries `status`; §2.3's `{ onAccent, shadowStrength }` was written before slice 2 landed the family. The read-validation rule is therefore "**every value the derivation emits**" — 7 ink + 3 parchment + 4 gold + `on_acc` + `scrim` + `shadow` + `dark`, with `status` optional because the built-in default predates 7a's `:root` values. | The code is the authority; the prose predates it. |
+| A23 | **The built-in default is an authored token constant pinned to `:root`, not "absence".** §2.3 said only that an absent `theme_id` means "slice 1's `:root` block"; nothing said where the *values* live. Applied through the same path as any theme, so `windowBackgroundColor(MUSAEUM_DEFAULT_TOKENS) === '#0d0b09'` and the literal leaves `index.ts`. A test parses `src/index.css`'s `:root` and asserts every channel, the scrim identity and the shadow strength, so the duplicated palette cannot drift. *Rejected:* default = no values written (keeps one copy, but forces a null branch through apply, the window colour and slice 5's `readerPalette`, and re-introduces a hardcoded `#0d0b09` on the default path — the exact mutation AC3.1 is written against). | The default is the one theme every user sees first; leaving its values to live nowhere means the window colour needs a literal again, and slice 5's reader palette has no token set to read. |
+| A24 | **"byte-equal to `:root`" is a category error for the shadow** (D1 as dispatched). `:root` carries three authored alphas (0.5/0.35/0.6); the token set carries one strength (0.55 dark / 0.16 light). The bridge is slice 5's `aN = clamp(0,1, baseN × strength / 0.55)`, which is exactly why the default still renders today's pixels. The landed pin asserts `shadow === 0.55` and asserts it is *not* equal to any of the three alphas. | A pin that has to re-implement a later slice's formula to pass is either unsatisfiable or vacuous. |
+| A25 | **AC3.1's second clause changes decider.** The spec asked for the test mock's `BrowserWindow` to record constructor options; `createWindow` is unexported and importing `electron/main/index.ts` inside vitest exits 1 — measured: the failure is an unhandled rejection from the `whenReady` microtask reaching `services/menu.ts`, one frame before `createWindow` is ever called, so recording options alone would decide nothing. The clause is decided by `windowBackgroundColor`'s unit test plus a source walk over `index.ts` (both mutation-verified), with a **declared residual**: the native window's own colour is not observable over CDP, because Electron answers `Browser.getWindowForTarget` with `-32601` and a screenshot covers web contents only. | The instrument named by the criterion does not exist on this platform; the honest move is to say so and name what does decide it. |
+| A26 | **AC3.4's "(15 values missing)" is arithmetically wrong — the named row supplies 1 of 17, so 16 are missing**, and its real subject is that the record is also missing `id`, `variant`, `name` and `engineVersion`. Corrected in place. | It is the parenthetical a later reader uses to reconstruct the case's intent. |
+| A27 | **AC3.5 is decided by measurement, and its mechanism carries a named residual.** Measured in the running app with a derived light theme stored: tokens applied **19.6 ms** after document-start, first paint at **44 ms**; cold launch DOMContentLoaded 131 ms / first paint 160 ms. The first painted frame is themed, with ~24 ms of headroom. The residual: the guarantee is "applied before the browser's first paint opportunity", not "before any paint at all" — a pathological delay in the theme IPC (it is one `getConfig` round trip on an already-open database) could still expose `:root`'s dark body, and the instrument that would catch that is the same document-start probe used here. | §2.3's model — the window background covers pre-JS, the await covers pre-React — is right in effect and was never measured before this round. |
+| A28 | **`--status-*` names are frozen now, so 7a cannot invent different ones**: `--status-<family>-<step>` with step ∈ {400, 500, 600, on}, written **only when the stored set carries a status family** — the built-in default carries none, because 7a owns `:root`'s status block. The one place the answer moves is `src/lib/theme/css.ts`'s naming plus 7a's `:root` block. | Otherwise a themed status colour is written to a property nothing consumes, and the app silently renders `:root`'s. |
+| A29 | **`ThemeView` gains `stale`.** §2.3 fixes `{ active, options, defaultId, folder }`; slice 3 lands `{ active, defaultId, stale }` and slice 4 adds `options`/`folder` with the picker it belongs to. J3 said "flag the theme **in the picker row**" — the flag has to exist in the view before a row can carry it. | A divergence declared now rather than discovered in slice 4. |
+| A30 | **Slice 3's file budget is 12 code files, not 9.** The spec's count was short by `electron/main/env.d.ts` (the `*.yaml?raw` declaration §4's own inlining decision needs), `src/types/theme.types.ts` (the shared persisted/view shapes) and `src/App.tsx` (the hook mount). That exceeds `CLAUDE.md`'s ~10-file escalation bound; recorded rather than absorbed silently, since each addition is forced by a mechanism the spec itself mandates and none bends an invariant. | A dispatch that silently exceeds the repo's own escalation threshold is the one governance rule this slice could break with every test green. |
+
+**Repair round (2026-09-16, after the pre-merge review).** The read-only review of the landed tree
+found one BLOCK and four fix-now defects; all five are fixed and each carries a deciding case plus a
+mutation the orchestrator reproduced by hand. **The BLOCK, because it changes what AC3.4's threat
+model means:** `BUILTIN_THEME_SOURCES` is a plain object literal, so a stored `theme_id` of
+`builtin:__proto__` (or `constructor`, `hasOwnProperty`, `toString`, `valueOf`) resolved
+`Object.prototype` rather than `undefined`, the registry's miss-guard never fired, and
+`loadThemeText` threw `TypeError: text.match is not a function` — out of `resolveId` → `readStored` →
+`activeRead` → `activeTheme()`, which is called from `createWindow()`. So a hand-edited row **opened
+no window at all**, falsifying `CLAUDE.md` #12 on the exact threat model AC3.4 exists for. The
+registry now has one sanctioned lookup (`builtinSource`, an own-key check plus a `typeof` re-check).
+The second fatal-class fix is the same shape: `activeRead` guarded *return values*, not exceptions, so
+a database that could not be opened was fatal to startup where before slice 3 `createWindow()` touched
+no database at all — the read is now total and logs instead of throwing. The other three: `applyTokens`
+could only *set* properties, so switching from a status-carrying theme back to the default left 12
+stale `--status-*` channels on `documentElement` (it now reconciles against a frozen list of the 28
+names it owns, and touches none of slice 5's); `ThemeView.defaultId` was decided by no test at all
+(`'builtin:nonsense'` left the suite green); and `useTheme`'s effect applied tokens unguarded, so the
+one path that could throw into React was the theme *change*, not the boot. `applyTokens` is now a
+total function that returns a reason instead of throwing, which is what lets both call sites be
+guarded by the same pure case.
+
+**One rejected repair, recorded so it is not re-attempted:** making an unresolvable `builtin:` id a
+*validation* failure (so `builtin:__proto__` degrades to the default rather than taking J3's
+keep-and-flag arm). *Rejected* because a builtin dropped from the corpus in a later release produces
+exactly the same read-time shape — an id no longer in the registry — and J3's arm is right for that
+one: the user keeps the theme they chose, from its stored tokens, flagged instead of lost. The two are
+indistinguishable at read time, so the rule would fix a hand-edit at the cost of a real regression.
+*Reversal:* if the picker (slice 4) ever needs to tell "removed scheme" from "never existed", that is
+a corpus-provenance record, not a validation rule.
+
+
+**Documentation debts paid in this round** (§4's list): `docs/architecture.md` (ipc/theme.ts, `*.yaml?raw`,
+the stores/hooks/lib listings), `docs/data-contracts.md` (**added to the list — it was in neither §4 nor
+the annex's file table**: the `app_config` census and the quoted `MusaeumAPI` block both move),
+`docs/invariants/settings-and-editing.md` (the three keys, the one-transaction rule, the read-validation
+rule), `CLAUDE.md`'s "Design tokens live in `tailwind.config.js`" line, and `tasks.md`. **Still owed:**
+`CHANGELOG.md` at slice 4 (slice 3 is invisible to the user), and `docs/invariants/reader.md` at slice 5.
+
 ---
 
 ## 1. The problem, and what is true today
@@ -111,6 +169,11 @@ Consequences, all measured — three from the first pass, one added in amendment
 2. **Main process paints a colour the renderer may not agree with.**
    `electron/main/index.ts:94` is `backgroundColor: '#0d0b09'` — the only hex literal
    anywhere under `electron/` — so any light theme flashes near-black at window creation.
+   **Amended (A23, slice 3 landed):** the literal is gone. It is now
+   `backgroundColor: windowBackgroundColor(activeTheme().tokens)` at `index.ts:100`, and the hex
+   survives only as `MUSAEUM_DEFAULT_TOKENS`, which a test pins against `src/index.css`'s `:root`.
+   The paragraph's *diagnosis* is what slice 3 answers; its present-tense reading of the code is
+   no longer true.
 3. **The token names are shape, not role.** `ink` / `parchment` / `gold` describe today's
    particular aesthetic. They keep their names in v1 (product decision 6), which is
    fortunate for a different reason: the CSS variable names and the derived-value keys can
@@ -598,12 +661,14 @@ precedent distinctly, so a reader who opens the doc expecting a theming invarian
 
 ### 2.3 Slice 3 — Persistence and apply-on-boot
 
-Two `app_config` keys, no migration (F9), and one window colour.
+Two `app_config` keys — **amended (A21, slice 3 landed): three**, `theme_id` / `theme_tokens` /
+`theme_library` — no migration (F9), and one window colour.
 
 | Key | Value |
 |---|---|
 | `theme_id` | the active theme's stable id (`builtin:musaeum`, `builtin:gruvbox-dark-hard`, `base16:<slug>`, `iterm:<stem>`, `obsidian:<folder>`); **absent means the built-in default**, which is slice 1's `:root` block |
-| `theme_tokens` | JSON: the resolved theme — `{ id, name, provider, author, variant, sourcePath, tokens: { ink{…}, parchment{…}, gold{…}, onAccent, scrim, shadowStrength }, audits[], adjustments[], notes[] }` (`scrim` added in amendment round 1, A2) |
+| `theme_tokens` | JSON: the resolved theme — `{ id, name, provider, author, variant, sourcePath, tokens: { ink{…}, parchment{…}, gold{…}, onAccent, scrim, shadowStrength }, audits[], adjustments[], notes[] }` (`scrim` added in amendment round 1, A2). **Amended (A22, slice 3 landed):** the shipped spelling is `on_acc` / `shadow`, `tokens` also carries `status` and `dark`, and `engineVersion` rides the record. The read-validation rule is therefore *every value the derivation emits* — 7 ink + 3 parchment + 4 gold + `on_acc` + `scrim` + `shadow` + `dark`, with `status` optional because the built-in default predates 7a's `:root` values. |
+| `theme_library` | **Added (A21, slice 3 landed).** JSON array of resolved records for themes that are not active. It exists because AC4.1 requires five swatches per imported theme while this section itself says an imported `.itermcolors` "may not be on disk any more at all": the derived values must be stored somewhere, and only the active theme's fit in `theme_tokens`. Slice 3 preserves it byte-identically; slice 4's importer is its only writer and its first reader. |
 
 **Storing the derived values rather than re-deriving at boot is the load-bearing decision.**
 Main needs one colour *before* the window exists and cannot await a derivation (which for an
@@ -1172,12 +1237,19 @@ byte-identical to their values before the call.
 bad theme then leaves the app pointing at a theme it cannot render, and the assertion fails.
 
 **AC3.4 — storage is not trusted.** *Case:* with `theme_tokens` set to each of `''`,
-`'not json'`, `'{"tokens":{"ink":{"950":"#0d0b09"}}}'` (15 values missing) and a record whose
+`'not json'`, `'{"tokens":{"ink":{"950":"#0d0b09"}}}'` (**amended, A26: this row supplies 1 of the
+17 values, so 16 are missing — and it is rejected first for carrying no `id`, `variant`, `name` or
+`engineVersion`, which is the part a reader reconstructing the case's intent needs**) and a record whose
 `variant` is `'sepia'`, `theme.get()` returns the built-in default and the app renders today's
 pixels.
 *Mutation that fails it:* skip read validation — the second case throws inside the renderer's
 apply path and the app renders a blank body, which is the same class of failure
 `sanitizePrefs` exists to prevent.
+**Amended (A26, slice 3 landed):** the blank-body outcome is not what the shipped code does.
+`src/main.tsx` wraps the read *and* the apply in one `try`/`catch`, so the boot path logs and keeps
+`:root`; a throw was reachable only through `src/hooks/useTheme.ts`'s unguarded effect — a theme
+*change*, not a boot — and the repair round that followed the pre-merge review guards that site too.
+The mutation still reddens the criterion where it is decided, in the service's own validation cases.
 
 **AC3.5 — no flash.** *Case:* launching with a light theme stored, a frame captured as early
 as CDP allows shows a light canvas and the window's own background is light.
@@ -1505,6 +1577,14 @@ slice 2's base16 fixture corpus so no second copy exists in the repo.
 | **7. Status + scrim + hairline — COMMITTED, staged 7a (bounded) and 7b (the sweep) (§2.7)** | **15 at its widest**, **10 with the named absorber** (`theme/derive.ts`, `src/types/theme.types.ts`, `theme/store.ts`, `src/lib/theme/css.ts`, `tailwind.config.js` + the ten components that invert: the eight modal files, `BookCard.tsx`, `BookDetail.tsx`) | 1 (`theme/derive.test.ts` extended — no new test file) | — | **`src/components/library/BookDetail.tsx`**: its single hairline site leaves first (cosmetic — the cover is already edged by `shadow-cover`), then the status sites in files the slice does not otherwise open leave as debt (§2.7a) |
 
 Every *approved* slice is inside the bound, and slices 3 and 5 sit right at it.
+**Amended (A30, slice 3 landed):** the slice-3 row above is short by three files it cannot avoid —
+`electron/main/env.d.ts` (the `*.yaml?raw` declaration §4's own inlining decision needs, which is
+what makes `files: [out/**, package.json]` sufficient), `src/types/theme.types.ts` (the shared
+persisted and view shapes) and `src/App.tsx` (mounting the hook, per `CLAUDE.md`'s convention that
+main-process events are wired into stores in `src/hooks/use*.ts` mounted by `App.tsx`). The honest
+count is **12 code files**, which is over `CLAUDE.md`'s ~10-file escalation bound; each addition is
+forced by a mechanism this spec already mandates and none bends an invariant. Slice 5's row is
+unaffected. A count corrected in the trail does not correct the sentence that states it.
 **Amended (A10): the committed slice 7 is the exception** — drawn at its widest (every one of the
 53 status sites) it is 15 code files + 1 test, five past the bound, which is exactly why it is
 **staged into 7a (10 files, at the bound once the named absorber is taken) and 7b (the status sweep)**
@@ -1562,6 +1642,13 @@ Expected, not only observed. Each is here so it is recognised rather than re-dia
     honest fix is a `theme_engine_version` key and a re-derive on mismatch; it is *not* in
     scope, and the weak spot is recorded so that the first time a rule changes, whoever
     changes it knows stored themes are stale rather than broken.
+    **Superseded (J3, landed with slice 3, A22):** the fix *is* in scope and shipped —
+    `theme_tokens` carries `engineVersion`, and a mismatch re-derives where the id is a built-in
+    (rewriting both keys) and otherwise keeps the stored values and reports `stale` so the picker
+    can flag the row. The weak spot this entry records is closed; it is kept above because the
+    *reversal condition* it implies still stands — a rule change that moves derived values now
+    lands against stored themes from the previous engine, and the ladder's re-derive arm is the
+    only thing that notices.
 11. **The `gold-200` defect is live and will look like a theming bug.** Four sites name a step
     that does not exist (§1.3 C1), so they paint nothing — and the first person to try a light
     theme will see a selection panel that "lost its gold" and blame the theme. It is not the

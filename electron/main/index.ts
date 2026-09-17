@@ -12,6 +12,7 @@ import { registerMigrationHandlers } from './ipc/migration'
 import { registerNASHandlers } from './ipc/nas'
 import { registerReaderHandlers } from './ipc/reader'
 import { registerSettingsHandlers } from './ipc/settings'
+import { registerThemeHandlers } from './ipc/theme'
 import { resolveBookFile } from './services/book-bytes'
 import { closeDb, getBook } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
@@ -26,6 +27,7 @@ import { createBeforeQuitHandler } from './services/quit'
 import * as readingState from './services/reading-state'
 import { isPackaged } from './services/runtime'
 import * as sidecar from './services/sidecar'
+import { activeTheme, windowBackgroundColor } from './services/theme/store'
 
 // Isolated profile for verification/e2e runs — macOS Electron resolves the
 // default userData via the account's home, so a $HOME override is ignored
@@ -91,7 +93,11 @@ function createWindow(): BrowserWindow {
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    backgroundColor: '#0d0b09',
+    // The stored theme's canvas, from the theme service — a function of the
+    // tokens and nothing else, so "it is still hardcoded" is visible to a test.
+    // This is what covers the frame before any JS runs; the renderer's own
+    // pre-paint apply (src/main.tsx) handles the body.
+    backgroundColor: windowBackgroundColor(activeTheme().tokens),
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { ...TRAFFIC_LIGHT_POSITION },
     webPreferences: {
@@ -131,6 +137,7 @@ app.whenReady().then(() => {
   registerFileHandlers()
   registerSettingsHandlers()
   registerReaderHandlers()
+  registerThemeHandlers()
 
   const win = createWindow()
   setMainWindow(win)

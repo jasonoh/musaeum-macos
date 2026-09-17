@@ -48,8 +48,14 @@ clean organization, and frictionless device delivery.
 
 **Beauty is a first-class requirement.** The UI follows a "dark library"
 aesthetic: warm near-black surfaces, amber/gold accents, serif display type
-for book titles, covers as the hero element. Design tokens live in
-`tailwind.config.js` (`ink`, `parchment`, `gold` palettes; `font-display`).
+for book titles, covers as the hero element. The palette is consumed through
+design tokens: `tailwind.config.js` defines them as
+`rgb(var(--x) / <alpha-value>)` over CSS custom properties, and the properties'
+*default* lives in `src/index.css`'s `:root` (`ink`, `parchment`, `gold`; plus
+`font-display`). Since slice 3 of the theming feature a stored theme re-writes
+those properties at runtime, so `tailwind.config.js` is the palette's *shape* and
+`:root` is its default, not its identity — a colour decision that lives outside
+both (a literal in a component, a stock Tailwind hue) is invisible to theming.
 
 ---
 

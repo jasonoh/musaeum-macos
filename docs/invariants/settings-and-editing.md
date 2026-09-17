@@ -29,8 +29,11 @@ builds load from `file://` and are stable.
 ## Settings
 
 `components/settings/SettingsModal.tsx` over `services/settings.ts` — the only
-way to change `app_config` from the UI. Reached from the sidebar's NAS status
-row (or **⌘,**), so "Not configured" leads to where it's fixed.
+way to change the four *editable* `app_config` fields (`smb_url`, `python_path`,
+`ebook_convert_path`, `google_books_api_key`) from the UI. The theming keys are
+edited by the Appearance picker instead (see the theme section below). Reached
+from the sidebar's NAS status row (or **⌘,**), so "Not configured" leads to where
+it's fixed.
 
 Two rules shape the service:
 - **It never re-implements detection.** What python and ebook-convert resolve
@@ -61,6 +64,50 @@ returned to the renderer in `values` (to edit) but only ever masked in
 Library root keeps its own flow (`nas.chooseLibraryRoot`) rather than joining
 the batched save — picking a root can adopt an existing catalog, which is a
 question the user has to answer as it happens.
+
+---
+
+## The theme's `app_config` keys
+
+Slice 3 (2026-09-16) added three keys — `theme_id`, `theme_tokens`, `theme_library`
+— and they are the first *main-process-visible* user preference: `createWindow()`
+reads `theme_tokens` to colour the window before a renderer exists. Three rules
+come with them, and none of them applies to the other `app_config` keys:
+
+- **`theme/store.ts` is the only writer, and it writes both keys in one
+  transaction.** Derive and validate *first*, then open the transaction. The only
+  legal states are "both keys absent" (the built-in default is active) and "both
+  present and agreeing on `id`" — `theme.set(DEFAULT_THEME_ID)` therefore deletes
+  the pair rather than storing the default's values, because two representations of
+  "default" is a class of state bug for no benefit. The natural order — write the id,
+  derive second — is what leaves the app pointing at a theme it cannot render.
+- **Storage is not trusted, on every read.** `theme_tokens` is re-parsed and
+  re-validated: every value the derivation emits — the 16 colours (7 ink, 3 parchment,
+  4 gold, `on_acc`, `scrim`) plus `shadow` and `dark`, and the status family when the set
+  carries one. Anything short of that is
+  treated as *no theme* — the default applies, the reason is logged, the row is left
+  in place for the user to fix, and the app keeps running. This is the same rule as
+  `sanitizePrefs` and the stores' `merge` validators, for the same reason: a row
+  written by another build (or edited by hand) must not be able to render an
+  unreadable app.
+- **`theme_library` is the picker's.** Slice 3 preserves it byte-identically and
+  reads nothing from it; the appearance picker's importer is its only writer and its
+  first reader, so its own validation rule arrives with that slice.
+
+`theme_tokens` carries `engineVersion`. A mismatch is **not** a validation failure:
+an id that can be re-derived from the inlined built-in corpus is re-derived and the
+row rewritten, otherwise the stored values are kept and the view reports `stale` so
+the picker can flag the row as derived by an older engine rather than the app losing
+a theme it can still render. That ladder makes a theme *read* able to write — the one
+place where this service is not side-effect free, and the reason its rewrite is
+wrapped so a refusing database cannot fail the read (it is called from
+`createWindow()`, where a throw means no window at all).
+
+The built-in schemes are inlined into the main bundle with `?raw` imports
+(`theme/builtin/*.yaml`, the `db.ts`-and-its-migrations precedent) rather than read
+from disk: main is *bundled* to `out/main/index.js` and `electron-builder.yml`'s
+`files` allowlist ships only `out/**` + `package.json`, so a runtime
+`readFileSync` on a source path cannot work in a packaged build.
 
 ---
 

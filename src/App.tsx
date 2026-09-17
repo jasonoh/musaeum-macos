@@ -23,6 +23,7 @@ import { useLibrary } from '@/hooks/useLibrary'
 import { useMenuCommands } from '@/hooks/useMenuCommands'
 import { useNASStatus } from '@/hooks/useNASStatus'
 import { usePythonEnv } from '@/hooks/usePythonEnv'
+import { useTheme } from '@/hooks/useTheme'
 import { useUIStore } from '@/stores/ui.store'
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
   useDragDrop()
   useMenuCommands()
   usePythonEnv()
+  useTheme()
 
   const viewMode = useUIStore((s) => s.viewMode)
   const modal = useUIStore((s) => s.modal)

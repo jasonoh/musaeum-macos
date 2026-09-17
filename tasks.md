@@ -349,11 +349,89 @@ measured on 8 palettes × 11 audits, 0 failures, including the two rules added f
       gate: typecheck 0 / lint 0 / **356 passed, 19 files**; corpus pins (13 files, 240 audit rows, all
       meeting their floors) and every AC2.1 literal unchanged; the differential re-run after each round,
       **identical to `derive.py` both times** — neither round moved a single derived value.
-- [ ] **Slice 3 — persistence and apply-on-boot.** An `app_config` theme key (no SQL migration needed:
-      `app_config` is `key`/`value`), `backgroundColor` at window creation (hardcoded today at
-      `electron/main/index.ts:94`), and a renderer theme store. Carry a `theme_engine_version`: stored
-      derived values are unversioned, so a later rule change would leave every stored theme silently
-      rendering by the old rules with nothing to notice it.
+- [x] **Slice 3 — persistence and apply-on-boot** (landed 2026-09-16, **uncommitted**).
+      `app_config` gains `theme_id`, `theme_tokens` and — **a third key, `theme_library`** (A21) —
+      because AC4.1 wants five swatches per imported theme while §2.3 itself says an imported
+      `.itermcolors` may no longer be on disk: the values must be stored, and only the active
+      theme's fit in `theme_tokens`. `theme/store.ts` is the only writer; it derives and validates
+      *before* it opens a `getDb().transaction(...)`, then writes the pair inside it, so the only
+      legal states are "both absent" (the built-in default) and "both present and agreeing".
+      Every read re-validates **every value the derivation emits** and degrades to the default with
+      a logged reason (`CLAUDE.md` #12); `engineVersion` rides the record, and a mismatch
+      re-derives where the id is a built-in and otherwise keeps the values and reports `stale` (J3).
+      `electron/main/index.ts`'s hardcoded `#0d0b09` becomes
+      `windowBackgroundColor(activeTheme().tokens)`; `src/main.tsx` reads and applies the stored
+      theme before `createRoot(...).render(...)`; `src/lib/theme/css.ts` emits channel triplets,
+      never a hex, and deliberately leaves `--shadow-*` and `color-scheme` to slice 5 (so a light
+      theme applied in slice 4 keeps dark shadow alphas until slice 5 lands — the two ship together
+      in this stream). The 13 built-in schemes are inlined into the main bundle with static
+      `*.yaml?raw` imports. **Measured:** `grep -c base05 out/main/index.js` went **0 → 14** after
+      `npm run build` — a runtime `readFileSync` on `theme/builtin/` could never have worked, since
+      main runs from `out/main/index.js` in dev *and* packaged and `electron-builder.yml` ships only
+      `out/**` + `package.json`.
+      **Gate:** typecheck 0 / lint 0 / build 0, and **452 passed, 22 files** at the final revision
+      (431 at first landing, before the pre-merge review; baseline 356/19).
+      **A read-only pre-merge review then found one BLOCK and four fix-now defects, all fixed with a
+      deciding case and a mutation the orchestrator reproduced by hand.** The BLOCK: a stored
+      `theme_id` naming an inherited object key (`builtin:__proto__`, `constructor`, `toString`, …)
+      resolved `Object.prototype` instead of `undefined`, so the registry's miss-guard never fired and
+      `loadThemeText` threw — out of `activeTheme()`, which `createWindow()` calls, meaning a
+      hand-edited row **opened no window at all**. Same class, second instance: `activeRead` guarded
+      return values rather than exceptions, so an unopenable database was fatal to startup where
+      before slice 3 the window path touched no database. Three smaller ones: `applyTokens` could only
+      *set* properties (12 stale `--status-*` survived a switch back to the default — it now
+      reconciles against a frozen list of the 28 names it owns), `ThemeView.defaultId` was decided by
+      nothing, and `useTheme`'s effect applied unguarded (the theme *change* was the path that could
+      throw into React, not the boot). `applyTokens` is now total — it returns a reason instead of
+      throwing — which is what lets both call sites be guarded by one pure case.
+      **Verified by the orchestrator on the returned tree, not self-reported:** 6 mutations
+      reproduced by hand — restoring the `#0d0b09` literal, dropping the transaction wrapper,
+      skipping read validation, misspelling one CSS variable, retuning one `:root` channel, and
+      removing the pre-paint apply each reddened its own case; and one **NO-KILL** found a real
+      hole — the "every value the derivation emits" rule was implemented but asserted nowhere, and
+      **two of its three family walks (parchment and gold) could be deleted with the suite green** (the
+      ink walk was already caught, incidentally, by an existing uppercase-hex case; the first witness
+      written for this was itself inert — a whole-family deletion degrades on the `isObject` guard
+      *above* the walk — which is why the landed cases drop one step *inside* a present family). Now
+      closed by three cases that each kill one walk. **AC3.5's no-flash half measured in the running app:** with a
+      real derived light theme stored (`builtin:solarized-light`, `ink-950 #fdf6e3`) in an isolated
+      `MUSAEUM_USER_DATA` profile, the tokens are applied **19.6 ms after document-start and the
+      first paint lands at 44 ms**; a cold launch gives DOMContentLoaded 131 ms / first paint
+      160 ms, so the first painted frame is already themed. AC3.1's *window*-colour clause is decided
+      by its unit test plus a source walk, with a **declared residual**: Electron implements no
+      `Browser.getWindowForTarget` (`-32601`, measured) and a CDP screenshot covers web contents
+      only, so the native window's own colour is not observable from an automated run here.
+      **Slice 3's budget is 12 code files, not the spec's 9** (A30) — over `CLAUDE.md`'s ~10-file
+      bound, each addition forced and named rather than absorbed.
+### Slice-3 debt handed on (2026-09-16, from the pre-merge review)
+
+Named, with owners — none of these is a defect in what slice 3 shipped; each is a hole a *later*
+slice would otherwise meet without warning.
+
+- **Slice 4 (the picker is the first consumer):** `theme_library` has no validation rule yet — slice
+  3 preserves it and reads nothing from it, so a hand-edited `theme_library` is undefined behaviour
+  the moment slice 4 parses it. Its importer owns the rule, on the same
+  storage-is-untrustworthy basis as `theme_tokens`.
+- **Slice 4 or later (needs a renderer harness):** `src/hooks/useTheme.ts` and its `App.tsx` mount
+  line are exercised only by a source walk, because the vitest environment is Node with no DOM and
+  no React testing library. Subscribing once and applying on change is asserted textually.
+- **Slice 7a:** the `--status-*` property names are frozen by A28 (`--status-<family>-<step>`, step ∈
+  {400, 500, 600, on}) and written by the apply path, but nothing consumes them until 7a wires
+  `:root` and `tailwind.config.js`. If 7a chooses other names, a themed status colour is written to a
+  property nothing reads and the app silently renders `:root`'s. 7a must adopt these names or change
+  them in `src/lib/theme/css.ts` in the same pass, **and** give `MUSAEUM_DEFAULT_TOKENS` a status
+  family (or author the values in `:root`) — the apply path clears the 12 names when the incoming set
+  has no status, so the default currently relies on `:root`'s values showing through, which today is
+  a no-op because there are none.
+- **Whoever next touches the theme tests:** three test files parse `src/index.css`'s `:root`
+  independently (`theme/store.test.ts`, `lib/theme/css.test.ts`, and `theme/derive.test.ts`'s AC1.4
+  pin). The AC1.4 pin is the authority; the other two are second reads of the same file, and a shared
+  helper would remove the drift risk. Not worth a file on its own.
+- **Slice 5:** `win.setBackgroundColor(...)` on a theme *change* is in §2.5's prose but carries no
+  acceptance criterion in any slice — §4's promise that "the window's background changes on a theme
+  switch" is therefore currently owned by nobody. Slice 5 should land it with a criterion, not just
+  the sentence.
+
 - [ ] **Slice 4 — import and picker.** File import, a themes drop-box directory, and an Appearance
       section in the settings modal. Owed at this slice: the **CHANGELOG entry** (slice 1 is
       invisible; this is the first user-visible change) and the `docs/architecture.md` directory

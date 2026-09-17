@@ -85,7 +85,7 @@ Musaeum/
 ├── electron/
 │   ├── main/
 │   │   ├── index.ts              # app lifecycle, window, musaeum:// protocol
-│   │   ├── env.d.ts              # *.sql?raw module declaration
+│   │   ├── env.d.ts              # *.sql?raw / *.yaml?raw module declarations
 │   │   ├── api/
 │   │   │   └── rest.ts           # REST stub — disabled via rest_api_enabled
 │   │   ├── ipc/
@@ -96,6 +96,7 @@ Musaeum/
 │   │   │   ├── nas.ts            # status, reconnect, choose library root
 │   │   │   ├── settings.ts       # get/save app_config, executable pickers
 │   │   │   ├── reader.ts         # saveProgress (tiered reading-state write)
+│   │   │   ├── theme.ts          # theme get/set (thin over services/theme/store)
 │   │   │   └── migration.ts      # scan, start, progress, cutover
 │   │   ├── services/             # ALL business logic lives here
 │   │   │   ├── events.ts         # main → renderer broadcast helper
@@ -120,6 +121,9 @@ Musaeum/
 │   │   │       ├── index.ts      #   loader + barrel; THEME_ENGINE_VERSION
 │   │   │       ├── color.ts      #   colour maths — sRGB/Oklab, contrast, mixes
 │   │   │       ├── derive.ts     #   palette → derived tokens, floors enforced
+│   │   │       ├── store.ts      #   the app_config keys: read+validate, write in one
+│   │   │       │                 #   transaction, the inlined built-in registry
+│   │   │       │                 #   (store.test.ts holds its pins)
 │   │   │       ├── parse/        #   base16.ts + itermcolors.ts (hand-rolled,
 │   │   │       │                 #   no new dependency)
 │   │   │       └── builtin/      #   vendored scheme corpus — see its VENDORED.md
@@ -143,11 +147,11 @@ Musaeum/
 │   │   │                         # ReaderPrefsPopover
 │   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, Toasts,
 │   │                             # icons
-│   ├── stores/                   # library / device / nas / ui / reader zustand stores
+│   ├── stores/                   # library / device / nas / ui / reader / theme zustand stores
 │   ├── hooks/                    # useLibrary, useDevice, useNASStatus, useDragDrop,
-│   │                             # useMenuCommands
+│   │                             # useMenuCommands, useTheme
 │   ├── lib/                      # renderer-side pure logic: selection, metadata-feedback,
-│   │                             # metadata-refresh, notify
+│   │                             # metadata-refresh, notify, theme/ (css var apply path)
 │   └── types/                    # SHARED contracts: book / device / metadata /
 │                                 # settings / api (MusaeumAPI + IPCResult) /
 │                                 # theme (IR + derived tokens) — imported by

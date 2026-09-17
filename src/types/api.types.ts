@@ -27,6 +27,7 @@ import type {
   PythonEnvProgress,
   SettingsView
 } from './settings.types'
+import type { ThemeView } from './theme.types'
 
 /**
  * All IPC results cross the bridge as IPCResult — handlers never throw
@@ -161,6 +162,19 @@ export interface MusaeumAPI {
     saveProgress(report: ProgressReport): Promise<void>
   }
 
+  theme: {
+    /** The active theme, the built-in default's id, and whether the row is stale. */
+    get(): Promise<ThemeView>
+    /**
+     * Switch the active theme. Rejects with the reason when the id cannot be
+     * resolved — a theme the user picked that cannot be read is a value with a
+     * reason at the service boundary (`CLAUDE.md` #12), surfaced as this
+     * rejection — and never for a write: a write that cannot happen leaves the
+     * stored pair alone.
+     */
+    set(id: string): Promise<ThemeView>
+  }
+
   on: {
     nasStatusChanged(cb: (status: NASStatus) => void): Unsubscribe
     deviceConnected(cb: (device: Device) => void): Unsubscribe
@@ -174,6 +188,7 @@ export interface MusaeumAPI {
     deviceContentsChanged(cb: (deviceId: string) => void): Unsubscribe
     menuCommand(cb: (command: MenuCommand) => void): Unsubscribe
     pythonEnvProgress(cb: (progress: PythonEnvProgress) => void): Unsubscribe
+    themeChanged(cb: (view: ThemeView) => void): Unsubscribe
   }
 }
 
@@ -190,5 +205,6 @@ export const EVENT_CHANNELS = {
   bulkHydrateProgress: 'event:bulk-hydrate-progress',
   deviceContentsChanged: 'event:device-contents-changed',
   menuCommand: 'event:menu-command',
-  pythonEnvProgress: 'event:python-env-progress'
+  pythonEnvProgress: 'event:python-env-progress',
+  themeChanged: 'event:theme-changed'
 } as const

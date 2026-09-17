@@ -121,3 +121,47 @@ export type DeriveResult =
 
 /** A provider file, read. A malformed one is reported with a named reason. */
 export type LoadedTheme = { ok: true; ir: ThemeIr } | { ok: false; reason: string }
+
+/**
+ * A token set as persisted and applied: the derivation with the status family
+ * optional.
+ *
+ * `DerivedTokens` is untouched — a derivation always emits `status`. The one set
+ * that does not is the built-in default (`MUSAEUM_DEFAULT_TOKENS`), which is
+ * `src/index.css`'s `:root` restated, and `:root` has no status values yet:
+ * slice 7a owns them, so nothing may pre-commit them here. The apply path writes
+ * a status variable only when the set carries one.
+ */
+export interface ThemeTokens extends Omit<DerivedTokens, 'status'> {
+  status?: Record<StatusFamily, StatusRamp>
+}
+
+/**
+ * One resolved theme, as stored. `engineVersion` is the `THEME_ENGINE_VERSION`
+ * that produced `tokens`, so a set written by older rules can be told from one
+ * this engine would derive today. `sourcePath` is for display only — never
+ * re-read to render: an imported `.itermcolors` may not be on disk any more.
+ */
+export interface StoredTheme {
+  id: string
+  name: string
+  author: string
+  provider: ThemeProvider
+  variant: ThemeVariant
+  sourcePath: string | null
+  engineVersion: number
+  tokens: ThemeTokens
+  audits: ThemeAudit[]
+  adjustments: string[]
+  notes: string[]
+}
+
+/**
+ * What the renderer is handed. `stale` is true only when stored values were kept
+ * across an engine-version mismatch — the picker flags the row with it.
+ */
+export interface ThemeView {
+  active: StoredTheme
+  defaultId: string
+  stale: boolean
+}
