@@ -5,6 +5,7 @@ import { useDeviceStore } from '@/stores/device.store'
 export function useDevice(): void {
   const refresh = useDeviceStore((s) => s.refresh)
   const addDevice = useDeviceStore((s) => s.addDevice)
+  const updateDevice = useDeviceStore((s) => s.updateDevice)
   const removeDevice = useDeviceStore((s) => s.removeDevice)
   const upsertTransfer = useDeviceStore((s) => s.upsertTransfer)
   const removeTransfer = useDeviceStore((s) => s.removeTransfer)
@@ -14,6 +15,9 @@ export function useDevice(): void {
     void refresh()
     const unsubs = [
       window.Musaeum.on.deviceConnected(addDevice),
+      // The row's free space moves as books are sent; the device is the same
+      // one, so this restates it rather than re-asking for its contents
+      window.Musaeum.on.deviceChanged(updateDevice),
       window.Musaeum.on.deviceDisconnected(removeDevice),
       window.Musaeum.on.transferProgress((job) => {
         upsertTransfer(job)
@@ -32,5 +36,13 @@ export function useDevice(): void {
       })
     ]
     return () => unsubs.forEach((u) => u())
-  }, [refresh, addDevice, removeDevice, upsertTransfer, removeTransfer, refreshDeviceContents])
+  }, [
+    refresh,
+    addDevice,
+    updateDevice,
+    removeDevice,
+    upsertTransfer,
+    removeTransfer,
+    refreshDeviceContents
+  ])
 }

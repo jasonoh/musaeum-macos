@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, type PathLike } from 'fs'
+import { mkdtempSync, rmSync, type PathLike, type Stats, type StatsFs } from 'fs'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -117,15 +117,44 @@ describe('removeFilesWithStem', () => {
 /**
  * The presence layer sits on top of the scan, and reaching it means reaching
  * `scan()` — which is private and polls the real `/Volumes`. These tests point
- * the three filesystem calls that `scan()` makes at a throwaway directory
- * standing in for `/Volumes`, so a fake Kindle can be plugged in and unplugged
- * without touching the machine's real volumes. Everything else — the walk, the
- * matching, the broadcasts, the database — is the real code.
+ * the filesystem calls that `scan()` makes at a throwaway directory standing in
+ * for `/Volumes`, so a fake Kindle can be plugged in and unplugged without
+ * touching the machine's real volumes. The stand-in also decides which volumes
+ * are *mounted*, because that is the whole difference between a free-space
+ * reading about the device and one about the disk underneath it. Everything
+ * else — the walk, the matching, the broadcasts, the database — is real code.
  */
 const VOLUMES = '/Volumes'
-const realFs = { readdir: fs.readdir, access: fs.access, statfs: fs.statfs }
+const realFs = { readdir: fs.readdir, access: fs.access, stat: fs.stat, statfs: fs.statfs }
 
 let volumes: string
+/**
+ * Volume names the stand-in answers as mounted, and the free space each
+ * reports. A name that is not in here behaves the way a bare `/Volumes`
+ * directory does on the real machine: it is a directory, so `statfs` answers
+ * about the filesystem that contains it.
+ */
+let mountedVolumes: Set<string>
+let volumeFreeBytes: Map<string, number>
+
+function mountVolume(name: string, free: number): void {
+  mountedVolumes.add(name)
+  volumeFreeBytes.set(name, free)
+}
+
+/** Free space a mounted volume reports from now on — a book was sent. */
+function setVolumeFreeBytes(name: string, free: number): void {
+  volumeFreeBytes.set(name, free)
+}
+
+/** The volume name when `target` is a volume root itself — `/Volumes/Kindle`. */
+function volumeRoot(target: PathLike): string | null {
+  const p = String(target)
+  if (!p.startsWith(`${VOLUMES}/`)) return null
+  const rest = p.slice(VOLUMES.length + 1)
+  return rest.length > 0 && !rest.includes('/') ? rest : null
+}
+
 /** Filesystem calls started through the stand-in and not yet finished. */
 let inFlight = 0
 
@@ -146,10 +175,40 @@ async function tracked<T>(run: () => Promise<T>): Promise<T> {
 
 function mountVolumesStandIn(): void {
   const readdir = realFs.readdir as unknown as (p: PathLike, o?: unknown) => Promise<unknown>
+  const stat = realFs.stat as unknown as (p: PathLike, o?: unknown) => Promise<Stats>
+  const statfs = realFs.statfs as unknown as (p: PathLike) => Promise<StatsFs>
   Object.assign(fs, {
     readdir: (p: PathLike, o?: unknown) => tracked(() => readdir(rehome(p), o)),
     access: (p: PathLike, mode?: number) => tracked(() => realFs.access(rehome(p), mode)),
-    statfs: (p: PathLike) => tracked(() => realFs.statfs(rehome(p)))
+    // A mounted volume lives on a different device from its parent directory;
+    // an unmounted one is just a directory the parent filesystem still answers
+    // for. Only `dev` is read off this, and only for volume roots.
+    stat: (p: PathLike, o?: unknown) =>
+      tracked(async () => {
+        const real = await stat(rehome(p), o)
+        const vol = volumeRoot(p)
+        if (vol && mountedVolumes.has(vol)) return { dev: real.dev + 1 } as unknown as Stats
+        return real
+      }),
+    statfs: (p: PathLike) =>
+      tracked(async () => {
+        const vol = volumeRoot(p)
+        if (vol && mountedVolumes.has(vol)) {
+          const bytes = volumeFreeBytes.get(vol) ?? 0
+          // bsize 1 makes `bavail * bsize` exactly the number the test set
+          return {
+            type: 0,
+            bsize: 1,
+            frsize: 1,
+            blocks: bytes,
+            bfree: bytes,
+            bavail: bytes,
+            files: 0,
+            ffree: 0
+          } as unknown as StatsFs
+        }
+        return statfs(rehome(p))
+      })
   })
 }
 
@@ -164,7 +223,7 @@ function mountVolumesStandIn(): void {
  */
 async function poll(): Promise<void> {
   startDeviceDetection()
-  for (let quiet = 0; quiet < 5; ) {
+  for (let quiet = 0; quiet < 5;) {
     await new Promise((r) => setImmediate(r))
     quiet = inFlight === 0 ? quiet + 1 : 0
   }
@@ -190,6 +249,8 @@ describe('on-device presence', () => {
       rmSync(join(userData, f), { force: true })
     }
     volumes = mkdtempSync(join(tmpdir(), 'musaeum-volumes-'))
+    mountedVolumes = new Set()
+    volumeFreeBytes = new Map()
     mountVolumesStandIn()
   })
 
@@ -206,6 +267,7 @@ describe('on-device presence', () => {
 
   it('announces a newly connected volume and the contents it scanned', async () => {
     await putOnDevice('Kindle', 'Leviathan Wakes.azw3')
+    mountVolume('Kindle', 8_000_000_000)
     const spy = vi.spyOn(events, 'broadcast')
 
     await poll()
@@ -216,12 +278,58 @@ describe('on-device presence', () => {
         kind: 'kindle',
         name: 'Kindle',
         mountPath: '/Volumes/Kindle',
-        freeBytes: expect.any(Number)
+        freeBytes: 8_000_000_000
       }
     ])
     // Contents are announced on connect too: the renderer has nothing to ask
     // about until it hears the device exists, and presence is a second answer
     expect(channels(spy)).toEqual(['deviceConnected', 'deviceContentsChanged'])
+  })
+
+  /**
+   * A `/Volumes` entry with no filesystem on it — a mount point left behind by an
+   * unclean unplug, or the volume in the moment before macOS has attached it —
+   * is not a volume, and `statfs` answers about the filesystem that *contains*
+   * it, which is the boot disk. Trusting that reading is how the device row came
+   * to show 73.2 GB free for a Kindle with 21.3 GB: one number, read once, off
+   * by an entire filesystem.
+   */
+  it('reports no free space for a /Volumes entry that is not a mounted volume', async () => {
+    await putOnDevice('Kindle', 'Leviathan Wakes.azw3')
+
+    await poll()
+
+    expect(getConnectedDevices()).toEqual([
+      {
+        id: 'kindle:Kindle',
+        kind: 'kindle',
+        name: 'Kindle',
+        mountPath: '/Volumes/Kindle',
+        freeBytes: null
+      }
+    ])
+  })
+
+  it('re-reads free space every poll and announces the change', async () => {
+    mountVolume('Kindle', 8_000_000_000)
+    await putOnDevice('Kindle', 'Leviathan Wakes.azw3')
+    await poll()
+    expect(getConnectedDevices()[0].freeBytes).toBe(8_000_000_000)
+
+    // A book was sent: the same device, with less room on it
+    setVolumeFreeBytes('Kindle', 7_500_000_000)
+    const spy = vi.spyOn(events, 'broadcast')
+
+    await poll()
+
+    expect(getConnectedDevices()[0].freeBytes).toBe(7_500_000_000)
+    expect(channels(spy)).toEqual(['deviceChanged'])
+    expect(spy.mock.calls[0][1]).toMatchObject({ id: 'kindle:Kindle', freeBytes: 7_500_000_000 })
+
+    // An unchanged reading is not news
+    spy.mockClear()
+    await poll()
+    expect(channels(spy)).toEqual([])
   })
 
   it('matches a book by its sanitized title, case-folded and extension-agnostic', async () => {

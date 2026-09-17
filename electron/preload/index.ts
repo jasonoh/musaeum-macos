@@ -91,6 +91,7 @@ const api: MusaeumAPI = {
     nasStatusChanged: (cb) => listen(EVENT_CHANNELS.nasStatusChanged, cb),
     deviceConnected: (cb) => listen(EVENT_CHANNELS.deviceConnected, cb),
     deviceDisconnected: (cb) => listen(EVENT_CHANNELS.deviceDisconnected, cb),
+    deviceChanged: (cb) => listen(EVENT_CHANNELS.deviceChanged, cb),
     importProgress: (cb) => listen(EVENT_CHANNELS.importProgress, cb),
     conflictQueueUpdated: (cb) => listen(EVENT_CHANNELS.conflictQueueUpdated, cb),
     transferProgress: (cb) => listen(EVENT_CHANNELS.transferProgress, cb),

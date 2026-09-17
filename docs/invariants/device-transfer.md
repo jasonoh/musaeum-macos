@@ -13,6 +13,22 @@
 
 - Detect Kindle by polling `/Volumes` every 5s (name contains "kindle", or
   volume has both `documents/` and `system/` dirs)
+- **Free space is read from the device's own filesystem, and re-read every
+  poll.** `statfs` answers about whichever filesystem *contains* the path, so a
+  `/Volumes/Kindle` that is a bare directory — a mount point left behind by an
+  unclean unplug, or the volume in the moment before macOS has attached it —
+  reports the *boot disk's* free space (measured: 72.45 GiB from a plain
+  directory in `/tmp`, against 21.31 GiB from the mounted Kindle). The name test
+  in `looksLikeKindle` matches without touching the filesystem, so such a
+  directory can be recognised as a device, and because the figure was read once,
+  at recognition, the row showed 73.2 GB free for a Kindle with 21.3 GB and
+  never corrected itself. `freeBytes` now returns null unless the path is a
+  mount point (its device differs from its parent directory's), the reading is
+  retaken on every poll like the content scan, and a change is broadcast as
+  `deviceChanged` — the renderer restates the device rather than re-asking for
+  its contents, because a space reading does not change which books are on it.
+  A volume that is not actually mounted therefore shows no figure rather than a
+  foreign one, and the real number appears within a poll once macOS attaches it.
 - Format preference: azw3 → mobi; converts to azw3 via `ebook-convert` when
   neither is cached, and caches the result on the NAS. PDF-only books
   transfer as PDF — never converted (Kindles render PDF natively;

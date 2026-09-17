@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import type { Device, TransferJob } from '@shared/device.types'
 
+/** The device with this id, restated in place, or appended — keyed by id. */
+function withDevice(devices: Device[], device: Device): Device[] {
+  return [...devices.filter((d) => d.id !== device.id), device]
+}
+
 interface DeviceState {
   devices: Device[]
   transfers: Record<string, TransferJob>
@@ -8,6 +13,8 @@ interface DeviceState {
 
   refresh(): Promise<void>
   addDevice(device: Device): void
+  /** A known device, restated — its details moved, its contents did not. */
+  updateDevice(device: Device): void
   removeDevice(deviceId: string): void
   upsertTransfer(job: TransferJob): void
   removeTransfer(jobId: string): void
@@ -34,9 +41,15 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
   },
 
   addDevice: (device) => {
-    set((s) => ({ devices: [...s.devices.filter((d) => d.id !== device.id), device] }))
+    set((s) => ({ devices: withDevice(s.devices, device) }))
     void get().refreshDeviceContents(device.id)
   },
+
+  /**
+   * Deliberately not `addDevice`: that one also re-asks for the contents, and
+   * nothing about a free-space reading changes which books are on the device.
+   */
+  updateDevice: (device) => set((s) => ({ devices: withDevice(s.devices, device) })),
 
   removeDevice: (deviceId) => set((s) => ({ devices: s.devices.filter((d) => d.id !== deviceId) })),
 

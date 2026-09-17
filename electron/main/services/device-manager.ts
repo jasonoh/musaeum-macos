@@ -39,8 +39,25 @@ async function looksLikeKindle(mountPath: string, name: string): Promise<boolean
   }
 }
 
+/**
+ * Free space on the device's own volume, or null when `mountPath` is not a
+ * mounted volume.
+ *
+ * `statfs` answers about whichever filesystem *contains* the path, so a
+ * `/Volumes/Kindle` that is a bare directory — a mount point left behind by an
+ * unclean unplug, or the volume in the moment before macOS has attached it —
+ * reports the free space of the boot disk. That is how the device row came to
+ * show 73.2 GB free for a Kindle with 21.3 GB: `looksLikeKindle` matched the
+ * name, the row was created from the directory, and one reading was all it ever
+ * got. A directory is a mount point only when its device differs from its
+ * parent's, which is cheap to check and the only way to know the number is
+ * about the device at all.
+ */
 async function freeBytes(mountPath: string): Promise<number | null> {
   try {
+    const [dir, parent] = await Promise.all([fs.stat(mountPath), fs.stat(dirname(mountPath))])
+    if (dir.dev === parent.dev) return null
+
     const s = await fs.statfs(mountPath)
     return s.bavail * s.bsize
   } catch {
@@ -203,6 +220,17 @@ async function scan(): Promise<void> {
       if (!prev || !keysEqual(prev, next)) {
         deviceContents.set(id, next)
         broadcast('deviceContentsChanged', id)
+      }
+      // Free space is re-read every poll, like the contents above: it is
+      // measured at recognition, which is a moment the volume may not have been
+      // mounted for yet, and it moves on its own as books are sent. Announced
+      // only when it changes, so the renderer hears about the device and not
+      // about the poll.
+      const device = devices.get(id)!
+      const free = await freeBytes(mountPath)
+      if (free !== device.freeBytes) {
+        device.freeBytes = free
+        broadcast('deviceChanged', { ...device })
       }
       continue
     }

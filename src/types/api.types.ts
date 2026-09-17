@@ -199,6 +199,7 @@ export interface MusaeumAPI {
     nasStatusChanged(cb: (status: NASStatus) => void): Unsubscribe
     deviceConnected(cb: (device: Device) => void): Unsubscribe
     deviceDisconnected(cb: (deviceId: string) => void): Unsubscribe
+    deviceChanged(cb: (device: Device) => void): Unsubscribe
     importProgress(cb: (progress: ImportProgress) => void): Unsubscribe
     conflictQueueUpdated(cb: (count: number) => void): Unsubscribe
     transferProgress(cb: (progress: TransferProgress) => void): Unsubscribe
@@ -217,6 +218,7 @@ export const EVENT_CHANNELS = {
   nasStatusChanged: 'event:nas-status-changed',
   deviceConnected: 'event:device-connected',
   deviceDisconnected: 'event:device-disconnected',
+  deviceChanged: 'event:device-changed',
   importProgress: 'event:import-progress',
   conflictQueueUpdated: 'event:conflict-queue-updated',
   transferProgress: 'event:transfer-progress',
