@@ -93,7 +93,7 @@ export async function scanDocuments(mountPath: string): Promise<Map<string, stri
         if (isSidecarDir(entry.name)) continue
         if (depth < MAX_SCAN_DEPTH) await walk(full, depth + 1)
       } else if (entry.isFile()) {
-        const stem = entry.name.replace(/\.[^.]+$/, '').toLowerCase()
+        const stem = fileStem(entry.name)
         const paths = stems.get(stem)
         if (paths) paths.push(full)
         else stems.set(stem, [full])
@@ -107,6 +107,11 @@ export async function scanDocuments(mountPath: string): Promise<Map<string, stri
     return new Map()
   }
   return stems
+}
+
+/** The key a device file is matched under: lowercased, extension stripped. */
+function fileStem(name: string): string {
+  return name.replace(/\.[^.]+$/, '').toLowerCase()
 }
 
 function isSidecarDir(name: string): boolean {
@@ -127,6 +132,42 @@ export async function refreshDeviceContents(deviceId: string): Promise<void> {
   broadcast('deviceContentsChanged', deviceId)
 }
 
+/**
+ * Files we wrote to the device ourselves, per device and book: the one
+ * book-keeping fact a device file cannot give back once the title moves on.
+ *
+ * The destination name is built from the title *at send time*, and the file
+ * keeps it for good — so a book retitled after a send used to read as absent
+ * and invite a second one, which is how a byte-identical duplicate of "The
+ * Nerd Reich" (same EXTH 113, same md5) ended up on a real device. We know the
+ * pair exactly when we write it and verify the bytes, so it is recorded here.
+ *
+ * Only ever a *match key*: the file still has to be in the scan for the claim to
+ * hold, so deleting or renaming it on the device drops the book like any other.
+ * Cleared with the device — a receipt is about this connection's sends.
+ */
+const sentFiles = new Map<string, Map<string, string[]>>()
+
+/** Record the name a book was written under, at the moment it is written. */
+export function noteSentFile(deviceId: string, bookId: string, filename: string): void {
+  const byBook = sentFiles.get(deviceId) ?? new Map<string, string[]>()
+  sentFiles.set(deviceId, byBook)
+
+  const names = byBook.get(bookId)
+  if (!names) byBook.set(bookId, [filename])
+  else if (!names.includes(filename)) names.push(filename)
+}
+
+/**
+ * Whether this book still holds a file we sent it, under the name we sent it —
+ * the match rule that survives a retitle.
+ */
+function holdsFileWeSent(deviceId: string, bookId: string, stems: Map<string, string[]>): boolean {
+  const names = sentFiles.get(deviceId)?.get(bookId)
+  if (!names) return false
+  return names.some((name) => stems.get(fileStem(name))?.some((p) => basename(p) === name))
+}
+
 /** Book IDs whose sanitized title matches a file present on the device. */
 export function getOnDeviceBookIds(deviceId: string): string[] {
   const stems = deviceContents.get(deviceId)
@@ -134,9 +175,26 @@ export function getOnDeviceBookIds(deviceId: string): string[] {
   const books = db.getBooks()
   const ids: string[] = []
   for (const book of books) {
-    if (stems.has(sanitizeTitle(book.title).toLowerCase())) ids.push(book.id)
+    if (
+      stems.has(sanitizeTitle(book.title).toLowerCase()) ||
+      holdsFileWeSent(deviceId, book.id, stems)
+    ) {
+      ids.push(book.id)
+    }
   }
   return ids
+}
+
+/**
+ * The stems a book answers to on the device: its sanitized title, plus the
+ * stems of any file we sent it under an older one. Removal matches what made the
+ * book read as present, so it has to cover both — otherwise a book the app says
+ * is on the device refuses to come off it.
+ */
+function stemsForBook(deviceId: string, bookId: string, title: string): string[] {
+  const stems = new Set([sanitizeTitle(title).toLowerCase()])
+  for (const name of sentFiles.get(deviceId)?.get(bookId) ?? []) stems.add(fileStem(name))
+  return [...stems]
 }
 
 /**
@@ -176,9 +234,10 @@ export async function removeFilesWithStem(mountPath: string, stem: string): Prom
 /**
  * Delete a book's files from a connected device.
  *
- * The book is located the same way presence is — by sanitized title against
- * the scan's file stems — so this removes exactly what made it read as "on
- * device", and nothing a rename could have pointed at by accident.
+ * The book is located the same way presence is — by sanitized title against the
+ * scan's file stems, and by the names of files we sent it under a previous title
+ * — so this removes exactly what made it read as "on device", and nothing a
+ * rename could have pointed at by accident.
  */
 export async function removeBookFromDevice(
   bookId: string,
@@ -189,10 +248,10 @@ export async function removeBookFromDevice(
   const book = db.getBook(bookId)
   if (!book) throw new Error('Book not found')
 
-  const removed = await removeFilesWithStem(
-    device.mountPath,
-    sanitizeTitle(book.title).toLowerCase()
-  )
+  let removed = 0
+  for (const stem of stemsForBook(deviceId, bookId, book.title)) {
+    removed += await removeFilesWithStem(device.mountPath, stem)
+  }
   if (removed === 0) throw new Error(`“${book.title}” is not on ${device.name}`)
 
   await refreshDeviceContents(deviceId)
@@ -258,6 +317,9 @@ async function scan(): Promise<void> {
       } catch {
         devices.delete(id)
         deviceContents.delete(id)
+        // A send receipt is about this connection: the files it names may well
+        // be gone with it, and the next scan decides afresh
+        sentFiles.delete(id)
         broadcast('deviceDisconnected', id)
       }
     }

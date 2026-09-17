@@ -7,7 +7,7 @@ import type { BookFormat } from '@shared/book.types'
 import type { TransferJob } from '@shared/device.types'
 import { computeFileSizeBytes } from './book-files'
 import * as db from './db'
-import { getDevice, refreshDeviceContents } from './device-manager'
+import { getDevice, noteSentFile, refreshDeviceContents } from './device-manager'
 import { broadcast } from './events'
 import * as nas from './nas-manager'
 import { sanitizeTitle } from './sanitize'
@@ -137,6 +137,10 @@ async function runTransfer(job: TransferJob): Promise<void> {
     )
 
     db.logDeviceTransfer(job.bookId, job.deviceId, job.deviceName, format!)
+    // The name it went out under, remembered against the book: the destination
+    // filename is built from the title *now*, and once the device holds the file
+    // nothing on the device says which book it was once the title moves on.
+    noteSentFile(job.deviceId, job.bookId, deviceName)
     emit(job, { status: 'done', progress: 1 })
     await refreshDeviceContents(job.deviceId)
   } catch (err) {
@@ -192,7 +196,11 @@ async function copyWithProgress(
         callback(null, chunk)
       }
     })
-    await pipeline(handle.createReadStream({ autoClose: false }), counter, createWriteStream(target))
+    await pipeline(
+      handle.createReadStream({ autoClose: false }),
+      counter,
+      createWriteStream(target)
+    )
   } finally {
     await handle.close().catch((err) => {
       console.warn(`[transfer] ignoring close() failure on ${source}:`, err)

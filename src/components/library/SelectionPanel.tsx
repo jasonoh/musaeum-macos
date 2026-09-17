@@ -1,9 +1,16 @@
 import { useMemo } from 'react'
-import { useDeviceStore } from '@/stores/device.store'
+import { failedSendCount, liveSendCount, useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
-import { CloseIcon, RefreshIcon, SendIcon, TrashIcon } from '@/components/shared/icons'
+import {
+  CloseIcon,
+  RefreshIcon,
+  SendIcon,
+  SpinnerIcon,
+  TrashIcon,
+  WarningIcon
+} from '@/components/shared/icons'
 
 const PREVIEW_TITLES = 5
 
@@ -22,6 +29,7 @@ export function SelectionPanel() {
   const online = useNASStore((s) => s.status?.state === 'connected')
   const devices = useDeviceStore((s) => s.devices)
   const onDevice = useDeviceStore((s) => s.onDevice)
+  const transfers = useDeviceStore((s) => s.transfers)
   const sendBooksToDevice = useDeviceStore((s) => s.sendBooksToDevice)
 
   // In display order, so the preview matches what the user is looking at
@@ -64,24 +72,45 @@ export function SelectionPanel() {
       </div>
 
       <div className="shrink-0 space-y-2 border-t border-ink-800 p-4">
-        {sends.map(({ device, sendable }) => (
-          <button
-            key={device.id}
-            disabled={!online || sendable.length === 0}
-            onClick={() =>
-              void sendBooksToDevice(
-                sendable.map((b) => b.id),
-                device.id
-              )
-            }
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-gold-500/20 px-3 py-2 text-[13px] text-gold-200 hover:bg-gold-500/30 disabled:opacity-40"
-          >
-            <SendIcon className="h-4 w-4" />
-            {sendable.length === 0
-              ? `All on ${device.name}`
-              : `Send ${sendable.length} to ${device.name}`}
-          </button>
-        ))}
+        {sends.map(({ device, sendable }) => {
+          // Counted from the queue, not the click: the loop in `sendBooksToDevice`
+          // resolves per book, and the button has to stay frozen while jobs are
+          // still copying or a second click sends the whole selection again
+          const live = liveSendCount(transfers, device.id)
+          const failed = failedSendCount(transfers, device.id) > 0 && sendable.length > 0
+          return (
+            <button
+              key={device.id}
+              disabled={!online || sendable.length === 0 || live > 0}
+              onClick={() =>
+                void sendBooksToDevice(
+                  sendable.map((b) => b.id),
+                  device.id
+                )
+              }
+              className={
+                failed
+                  ? 'flex w-full items-center justify-center gap-2 rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-[13px] text-red-400 hover:bg-red-500/20 disabled:opacity-40'
+                  : 'flex w-full items-center justify-center gap-2 rounded-md bg-gold-500/20 px-3 py-2 text-[13px] text-gold-200 hover:bg-gold-500/30 disabled:opacity-40'
+              }
+            >
+              {live > 0 ? (
+                <SpinnerIcon className="h-4 w-4" />
+              ) : failed ? (
+                <WarningIcon className="h-4 w-4" />
+              ) : (
+                <SendIcon className="h-4 w-4" />
+              )}
+              {live > 0
+                ? `Sending ${live} to ${device.name}…`
+                : failed
+                  ? `Retry ${sendable.length} to ${device.name}`
+                  : sendable.length === 0
+                    ? `All on ${device.name}`
+                    : `Send ${sendable.length} to ${device.name}`}
+            </button>
+          )
+        })}
         <button
           disabled={!online}
           onClick={() => void window.Musaeum.metadata.rehydrateBooks(selected.map((b) => b.id))}

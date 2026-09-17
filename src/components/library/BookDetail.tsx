@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReadStatus } from '@shared/book.types'
 import { readableFormat, seriesDisplay } from '@shared/book.types'
-import { useDeviceStore } from '@/stores/device.store'
+import { sendErrorFor, sendStateFor, useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useReaderStore } from '@/stores/reader.store'
@@ -17,7 +17,8 @@ import {
   SendIcon,
   SpinnerIcon,
   StarIcon,
-  TrashIcon
+  TrashIcon,
+  WarningIcon
 } from '@/components/shared/icons'
 import { refreshBookMetadata } from '@/lib/metadata-refresh'
 import { notifyError } from '@/lib/notify'
@@ -37,6 +38,7 @@ export function BookDetail() {
   const load = useLibraryStore((s) => s.load)
   const devices = useDeviceStore((s) => s.devices)
   const onDevice = useDeviceStore((s) => s.onDevice)
+  const transfers = useDeviceStore((s) => s.transfers)
   const sendToDevice = useDeviceStore((s) => s.sendToDevice)
   const online = useNASStore((s) => s.status?.state === 'connected')
   const requestDelete = useUIStore((s) => s.requestDelete)
@@ -188,19 +190,50 @@ export function BookDetail() {
       <div className="shrink-0 space-y-2 border-t border-ink-800 p-4">
         {devices.map((d) => {
           const present = onDevice[d.id]?.includes(book.id) ?? false
+          const send = sendStateFor(transfers, book.id, d.id)
+          const sending = send === 'sending'
+          const failed = send === 'failed'
+          // A send that just finished counts as on the device: the device scan
+          // follows within a moment, and in between the button must not offer to
+          // send the same book a second time
+          const on = present || send === 'sent'
           return (
             <div key={d.id} className="flex gap-2">
               <button
-                disabled={!online || busy !== null}
+                disabled={!online || busy !== null || sending}
                 onClick={() => void run('send', () => sendToDevice(book.id, d.id))}
-                title={present ? `Send to ${d.name} again` : undefined}
-                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-gold-500 px-3 py-2 text-[13px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40"
+                title={
+                  failed
+                    ? sendErrorFor(transfers, book.id, d.id)
+                    : on
+                      ? `Send to ${d.name} again`
+                      : undefined
+                }
+                className={
+                  failed
+                    ? 'flex flex-1 items-center justify-center gap-2 rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-[13px] font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-40'
+                    : 'flex flex-1 items-center justify-center gap-2 rounded-md bg-gold-500 px-3 py-2 text-[13px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40'
+                }
               >
-                {present ? <CheckIcon className="h-4 w-4" /> : <SendIcon className="h-4 w-4" />}
-                {present ? `On ${d.name}` : `Send to ${d.name}`}
+                {sending ? (
+                  <SpinnerIcon className="h-4 w-4" />
+                ) : failed ? (
+                  <WarningIcon className="h-4 w-4" />
+                ) : on ? (
+                  <CheckIcon className="h-4 w-4" />
+                ) : (
+                  <SendIcon className="h-4 w-4" />
+                )}
+                {sending
+                  ? `Sending to ${d.name}…`
+                  : failed
+                    ? `Couldn't send — retry`
+                    : on
+                      ? `On ${d.name}`
+                      : `Send to ${d.name}`}
               </button>
               {/* Removal needs no NAS — it only touches the device */}
-              {present && (
+              {on && (
                 <button
                   disabled={busy !== null}
                   onClick={() => requestDeviceRemoval({ bookId: book.id, deviceId: d.id })}

@@ -28,7 +28,11 @@ vi.mock('./sidecar', () => ({ call: vi.fn(), ebookConvertPath: vi.fn() }))
  * queue itself decides — format, name, bytes — still runs for real, against a
  * temp directory standing in for the mounted Kindle.
  */
-vi.mock('./device-manager', () => ({ getDevice: vi.fn(), refreshDeviceContents: vi.fn() }))
+vi.mock('./device-manager', () => ({
+  getDevice: vi.fn(),
+  refreshDeviceContents: vi.fn(),
+  noteSentFile: vi.fn()
+}))
 
 const DEVICE_ID = 'kindle:Kindle'
 const TITLE = 'Leviathan Wakes'
@@ -109,6 +113,10 @@ describe('format choice', () => {
     // file stems, so a book retitled after import has to land under the title
     expect(await documents()).toEqual([`${TITLE}.azw3`])
     expect(await delivered(`${TITLE}.azw3`)).toBe('azw3 bytes')
+    // And the name it went out under is remembered against the book: the file
+    // keeps it whatever the title does next, and nothing on the device can say
+    // which book it was once the title moves
+    expect(deviceManager.noteSentFile).toHaveBeenCalledWith(DEVICE_ID, 'a', `${TITLE}.azw3`)
   })
 
   it('falls through to mobi when no azw3 is cached, without converting anything', async () => {

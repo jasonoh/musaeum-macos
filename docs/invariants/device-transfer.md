@@ -14,10 +14,10 @@
 - Detect Kindle by polling `/Volumes` every 5s (name contains "kindle", or
   volume has both `documents/` and `system/` dirs)
 - **Free space is read from the device's own filesystem, and re-read every
-  poll.** `statfs` answers about whichever filesystem *contains* the path, so a
+  poll.** `statfs` answers about whichever filesystem _contains_ the path, so a
   `/Volumes/Kindle` that is a bare directory — a mount point left behind by an
   unclean unplug, or the volume in the moment before macOS has attached it —
-  reports the *boot disk's* free space (measured: 72.45 GiB from a plain
+  reports the _boot disk's_ free space (measured: 72.45 GiB from a plain
   directory in `/tmp`, against 21.31 GiB from the mounted Kindle). The name test
   in `looksLikeKindle` matches without touching the filesystem, so such a
   directory can be recognised as a device, and because the figure was read once,
@@ -48,12 +48,12 @@
   them — a send has to write one.** The cover is not read out of the book when
   the library is drawn. The Kindle looks up
   `system/thumbnails/thumbnail_<EXTH 113>_<EXTH 501>_portrait.jpg` (~330×500,
-  22–47 KB), keyed by the identity *inside* the file, not by its name. Measured
+  22–47 KB), keyed by the identity _inside_ the file, not by its name. Measured
   2026-09-17 against 1,567 on-device books: of the 91 books copied since Calibre's
   last connect, none got a cover from the device — every attempt left a 0-byte
   `…_portrait.jpg.tmp.partial`, for azw3 and mobi alike, so the format is not the
   lever. The `.mobi` sends that looked like they worked were showing thumbnails
-  written *before* the copy existed (2019–2026-05 timestamps), which only works
+  written _before_ the copy existed (2019–2026-05 timestamps), which only works
   because a re-copy of an identical file keeps its EXTH 113. Calibre does not rely
   on the device either: its Kindle driver writes the entry itself (`upload_cover`
   → `system/thumbnails`) and keeps a cache at `/amazon-cover-bug/` that it
@@ -68,7 +68,7 @@
   leaves its book without a cover.
 - Log to `device_history` table (including failures, with error text)
 - Transfers run serially through `transfer-queue.ts`
-- **On-device presence** is derived by *scanning* the connected Kindle's
+- **On-device presence** is derived by _scanning_ the connected Kindle's
   `documents/` folder (not from `device_history`): `device-manager` walks it
   (depth 2) into a `stem → paths` map, and `getOnDeviceBookIds` matches books
   whose `sanitizeTitle(title)` equals a file stem (extension-agnostic).
@@ -76,7 +76,7 @@
   detail-panel send button. Presence = f(device files, book set), so the
   renderer recomputes it on **both** triggers: `deviceContentsChanged` (device
   side) and `libraryChanged` (book-set side — the on-connect catalog sync loads
-  books asynchronously and can finish *after* the device scan, so recomputing
+  books asynchronously and can finish _after_ the device scan, so recomputing
   only on the device event left presence stale at cold start). The 5s device
   poll re-scans a known device's `documents/` and re-broadcasts only when the
   stem set changed (`keysEqual` guard), so presence self-heals when files change
@@ -85,8 +85,44 @@
   inside them after the book, so descending into one reports a book as present
   from its leftovers alone. Renaming a book renames its NAS files and names
   future sends from the current title, so presence keeps up — but a copy
-  *already* on the device keeps the name it was sent under and reads as a
-  different book until it is removed and re-sent.
+  _already_ on the device keeps the name it was sent under, which a title change
+  afterwards cannot move. That is what the send receipt below is for: before it,
+  such a copy read as a _different_ book, and the only way out was to remove it
+  and send it again.
+- **A send records the name it wrote** (`noteSentFile`), because that is the one
+  fact a device file cannot give back once the title moves on. `getOnDeviceBookIds`
+  matches on that name as well as on the sanitized title, so a book retitled after
+  its send stays "on device" rather than reading as absent and inviting a second
+  send — measured on a real Kindle as a byte-identical duplicate (same EXTH 113,
+  same md5) sent three minutes after the first. It is only ever a second _match
+  key_: the file still has to be in the scan, so deleting or renaming it on the
+  device drops the claim with everything else, and `removeBookFromDevice` matches
+  both keys or a book the app calls present would refuse to come off. Cleared with
+  the connection, since a receipt is about the sends made over it. **Known gap:**
+  retitle _plus_ an unplug leaves the book reading as absent again — closing that
+  means persisting the name (`device_history` has no filename column today) or
+  matching on identity (EXTH 113, which the covers already use), and neither is in.
+- **Presence cannot see most of a Calibre-filled device.** Matching is by
+  sanitized title against file _stems_, and Calibre wrote its books as
+  `{author_sort}/{title} - {authors}.ext`. Measured 2026-09-17 on this Kindle:
+  of 1,567 book files, **86** matched a library title, **384** matched once the
+  trailing ` - {author}` was stripped, and **1,097** matched no library title at
+  all — Calibre's own spellings ("Algebraist, The" for "The Algebraist"), plus
+  the user guide and dictionaries, which are not library books. The app reports
+  ~90 books as on-device for a device holding 1,567 files, so "Send to {device}"
+  is offered for books that are already there and the badge is silent for them.
+  The way out is to match on what the file says about _itself_ — the title and
+  author in its own header — rather than on the name a host gave it; no code path
+  does that yet, and the send receipt above only covers books we sent ourselves.
+- **The send button reports what the transfer is doing**, not what the call that
+  started it returned: `sendToDevice` resolves the moment the job is _queued_, so
+  a button bound to that promise re-enables during the copy. `sendStateFor` reads
+  the queue instead — "Sending to {device}…" (disabled) while a job for that book
+  is live, "On {device}" from the moment it lands (which is also what covers the
+  gap before the scan catches up), and a failed job shows `Couldn't send — retry`
+  with the error in its tooltip, alongside the queue panel's own error text and
+  Try again. This is the half that made the duplicate above _visible_; the receipt
+  is the half that made it impossible.
 - **Removing from a device** (`removeBookFromDevice`) is the inverse of
   presence and matches the same way — sanitized title against file stems — so
   it deletes exactly what made the book read as "on device". Each matched file

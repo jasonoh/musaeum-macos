@@ -9,6 +9,8 @@ import { closeDb, insertBook } from './db'
 import {
   getConnectedDevices,
   getOnDeviceBookIds,
+  noteSentFile,
+  removeBookFromDevice,
   removeFilesWithStem,
   scanDocuments,
   startDeviceDetection,
@@ -376,6 +378,49 @@ describe('on-device presence', () => {
     expect(getOnDeviceBookIds('kindle:Kindle')).toEqual([])
     insertBook(makeBook('a', 'Leviathan Wakes'))
     expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
+  })
+
+  /**
+   * The file keeps the name it was sent under, and the title keeps moving after
+   * that. A book retitled since its send used to read as absent — inviting a
+   * second send, which is how a byte-identical duplicate (same EXTH 113, same
+   * md5) ended up on a real Kindle. The name we wrote is the one fact the device
+   * cannot give back, so the send records it.
+   */
+  it('keeps a book present when the file still carries the name it was sent under', async () => {
+    const sentAs = 'The Nerd Reich Silicon Valley Fascism and the War on Democracy.azw3'
+    await putOnDevice('Kindle', sentAs)
+    insertBook(makeBook('a', 'The Nerd Reich'))
+
+    await poll()
+    expect(getOnDeviceBookIds('kindle:Kindle')).toEqual([])
+
+    noteSentFile('kindle:Kindle', 'a', sentAs)
+
+    expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
+  })
+
+  it('drops that claim again when the file it names is gone from the device', async () => {
+    await putOnDevice('Kindle', 'Old Title.azw3')
+    insertBook(makeBook('a', 'New Title'))
+    noteSentFile('kindle:Kindle', 'a', 'Old Title.azw3')
+    await poll()
+    expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
+
+    rmSync(join(volumes, 'Kindle/documents/Old Title.azw3'))
+    await poll()
+
+    expect(getOnDeviceBookIds('kindle:Kindle')).toEqual([])
+  })
+
+  it('removes a book whose file is still under the title it was sent with', async () => {
+    await putOnDevice('Kindle', 'Old Title.azw3')
+    insertBook(makeBook('a', 'New Title'))
+    noteSentFile('kindle:Kindle', 'a', 'Old Title.azw3')
+    await poll()
+
+    expect(await removeBookFromDevice('a', 'kindle:Kindle')).toEqual({ removed: 1 })
+    expect(await exists('Old Title.azw3')).toBe(false)
   })
 
   it('stays quiet when a re-scan finds the same stems', async () => {

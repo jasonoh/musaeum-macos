@@ -116,3 +116,62 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
 export function bookOnDevices(state: DeviceState, bookId: string): string[] {
   return state.devices.filter((d) => state.onDevice[d.id]?.includes(bookId)).map((d) => d.name)
 }
+
+/** How one book's send to one device is going, from the transfer that owns it. */
+export type SendState = 'idle' | 'sending' | 'sent' | 'failed'
+
+/**
+ * The send button's state, read from the transfer queue rather than from the
+ * call that starts a job.
+ *
+ * `sendToDevice` resolves as soon as the job is *queued*, so a button bound to
+ * that promise re-enables itself while the copy is still running and offers to
+ * send the same book again — how a byte-identical duplicate ended up on a real
+ * Kindle. `sent` is not the same fact as presence: it holds the button through
+ * the moment between the copy finishing and the device scan catching up, and it
+ * is what a book sent under an older title relies on when the scan cannot match
+ * it by name.
+ *
+ * The newest job wins — jobs are appended in click order — so a retry reads as
+ * `sending` rather than inheriting the failure that prompted it.
+ */
+export function sendStateFor(
+  transfers: Record<string, TransferJob>,
+  bookId: string,
+  deviceId: string
+): SendState {
+  let state: SendState = 'idle'
+  for (const job of Object.values(transfers)) {
+    if (job.bookId !== bookId || job.deviceId !== deviceId) continue
+    state = job.status === 'error' ? 'failed' : job.status === 'done' ? 'sent' : 'sending'
+  }
+  return state
+}
+
+/** Why this book's last send to this device failed, for the button's tooltip. */
+export function sendErrorFor(
+  transfers: Record<string, TransferJob>,
+  bookId: string,
+  deviceId: string
+): string | undefined {
+  let error: string | undefined
+  for (const job of Object.values(transfers)) {
+    if (job.bookId !== bookId || job.deviceId !== deviceId) continue
+    error = job.status === 'error' ? job.error : undefined
+  }
+  return error
+}
+
+/** How many sends to this device are still running — the bulk button's count. */
+export function liveSendCount(transfers: Record<string, TransferJob>, deviceId: string): number {
+  return Object.values(transfers).filter(
+    (job) => job.deviceId === deviceId && job.status !== 'done' && job.status !== 'error'
+  ).length
+}
+
+/** How many sends to this device came back failed and are still on screen. */
+export function failedSendCount(transfers: Record<string, TransferJob>, deviceId: string): number {
+  return Object.values(transfers).filter(
+    (job) => job.deviceId === deviceId && job.status === 'error'
+  ).length
+}
