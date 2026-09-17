@@ -62,7 +62,62 @@ Blockers before pointing the app at the full 7000-book NAS library:
       needs-review rate before the full run (hydrating 7000 books at the
       0.6s rate limit ≈ 90+ minutes on top of copy time).
 
-## Phase 1.5 — quality
+## Phase 1.5 — quality pass (2026-09-16, fixes + tests)
+
+Plan and adjudications: `docs/superpowers/plans/2026-09-16-phase15-quality.md`.
+Owner-approved scope: the user-visible correctness fixes plus the missing test
+boundaries. **Landed uncommitted**; gate on main **typecheck 0 / lint 0 /
+`npm test` 568 passed / 25 files** (baseline 513/23) and **pytest 64 passed**
+(baseline 18).
+
+- **Scroll reset (F1)** — `useResetScrollOnResultChange` in
+  `src/hooks/useVirtualRows.ts`, keyed on a new pure `resultSetKey()` in
+  `src/lib/resultSetIdentity.ts` (query + filters + sort, normalized). Measured
+  in the running app against the real library (isolated profile, read-only):
+  full library scrolled to the bottom (`scrollTop` = maxScroll = 296,802),
+  search `the` → **230,059 before, 0 after**, same result set both runs.
+  Deliberately does *not* fire on an in-place book-list mutation, and does not
+  out-race the anchor: measured, the detail panel opening left `scrollTop` at
+  205,345 (never 0) and closing restored it to 149,949. Selection wins over the
+  reset when a selected book survives — `useBookNavigation`'s ensure-visible is
+  a plain effect and therefore runs last, which is the documented precedence.
+- **Stable sort ties (F2)** — `orderClause` appends `id ASC` as a pinned
+  tiebreak (`electron/main/services/db.ts`); pinned rather than following the
+  requested direction, so flipping a sort and flipping it back restores the
+  original relative order. Formats is still unsortable.
+- **`file_size_bytes` is recomputed (F3)** — the owner chose recompute over
+  dropping the column. One shared helper, `computeFileSizeBytes` in
+  `services/book-files.ts` (extension-resolved, non-fatal on a flaky share),
+  now used by the four writers that change a format set: `deleteFormats`, the
+  `add_format` branch, the Kindle conversion cache in `transfer-queue`, and the
+  PDF top-up attach — plus `catalog.ts`'s read path, which had its own copy.
+- **`render_pdf_cover` logs its failures (F4)** — ImportError vs render failure,
+  still returning `None` (invariant 12). **`hydration.py`'s EPUB-only wording
+  (F5)** corrected. Both verified by mutation.
+- **New coverage (T1–T3)** — sidecar `pipeline/conflict.py` (19 cases) and
+  `extractors/epub_metadata.py` (16 cases, fixture EPUBs built in-code) plus a
+  hydration-never-throws case; main `sanitizeTitle` and the duplicate
+  GATE (`skip`/`add_new`/`add_format`, `resolveDuplicate`,
+  `abortPendingDecisions`). Every case carries a reproduced mutation.
+- **Repo defect found and fixed: a live worktree broke `npm run lint`.**
+  Each `.claude/worktrees/<name>/` carries its own `tsconfig.json`, so the
+  type-aware parser reported "multiple candidate TSConfigRootDirs" and refused
+  to parse **every** file in the main tree (695 errors, 555 of them the
+  worktrees themselves). `eslint.config.mjs` now ignores `.claude/`.
+- **Two corrections to the notes above, both from reading the code:**
+  `extractors/epub_metadata.py` **raises** on a malformed OPF/container — it is
+  `pipeline/hydration.py:37-43`'s guard that keeps hydration non-fatal — and the
+  sidecar suite was 18 tests, not the 14 previously recorded here.
+
+**Parked, needs a decision (not silent debt):** the conflict-resolution
+extraction (T4 — the ~50-line body still lives in `ipc/metadata.ts:27-79`,
+invariant 8, and is the reason that path has no test), the device-presence and
+`transfer-queue` tests (T5/T6), and the five stdout log sites in
+`pipeline/topup.py`/`migrate.py` (F6 — misrouted, *not* protocol corruption:
+`services/sidecar.ts:160-165` tolerates and relabels them). Each is a separate
+dispatch that was blocked pending consent.
+
+## Phase 1.5 — quality (pre-existing backlog)
 
 - [~] **Tests** — sidecar pytest suite now exists (`sidecar/tests/`, 14 tests:
       `pdf_metadata`, `hydration_pdf`, `topup`; dev deps in
@@ -94,32 +149,36 @@ Blockers before pointing the app at the full 7000-book NAS library:
       equals `sanitizeTitle(currentTitle)`) — only self-corrects on re-send.
       Revisit if it bites; a rename-the-file-on-title-change pass would fix it
       broadly. (Shipped 2026-07-27.)
-- [ ] `books.file_size_bytes` is set at import and never recalculated, so it
+- [x] `books.file_size_bytes` is set at import and never recalculated, so it
       is wrong after `deleteFormats` removes a file (and after "Add format to
-      existing"). Either recompute from the book folder on those writes or
-      drop the column from the detail panel. (Found 2026-07-29.)
-- [ ] Scroll position survives a search/filter change, so narrowing 7000 books
-      to 1072 can leave you parked near the (new) bottom. Pre-existing, but far
-      more visible now that `scrollHeight` tracks the result count — reset the
-      scroll container to 0 when the result set changes. (Found 2026-07-29.)
+      existing"). **Fixed 2026-09-16** — owner chose recompute over dropping the
+      column; one `computeFileSizeBytes` helper now serves all four
+      format-changing writes plus the catalog read path. (Found 2026-07-29.)
+- [x] Scroll position survives a search/filter change, so narrowing 7000 books
+      to 1072 can leave you parked near the (new) bottom. **Fixed 2026-09-16**
+      (`useResetScrollOnResultChange` + `resultSetKey`); measured 230,059 → 0 in
+      the running app, with the anchor's own case measured unchanged. (Found
+      2026-07-29.)
 - [ ] The virtualized views assume uniform row height from layout constants
       (`GridView`'s `MIN_CARD_WIDTH`/`GAP_*`/`CARD_META_HEIGHT`, `ListView`'s
       `ROW_HEIGHT`/`HEADER_HEIGHT`). A style change that alters real row height
       without updating them shows up as drift, not a build error. Consider a
       dev-only assertion comparing the first rendered row's measured height
       against the constant. (Found 2026-07-29.)
-- [ ] Sorting gaps: Formats is deliberately unsortable, and there is no
-      secondary sort key, so ties (same author, same rating) fall back to
-      SQLite's arbitrary order and can shuffle between loads. Add a stable
-      tiebreak (title) if it becomes noticeable. (Found 2026-07-29.)
+- [x] Sorting gaps: **ties fixed 2026-09-16** — `orderClause` appends a pinned
+      `id ASC`, so equal keys no longer fall back to SQLite's arbitrary order.
+      Formats stays deliberately unsortable. (Found 2026-07-29.)
 - [ ] Persist cover `source`/`width`/`height` into metadata.json (sidecar
       returns them; `importer.writeMetadataJson` currently drops them —
       the iOS contract documents them)
-- [ ] `render_pdf_cover` should log on `ImportError` (silent today — a
-      missing/broken PDF rendering dependency degrades invisibly)
+- [x] `render_pdf_cover` should log on `ImportError` (silent today — a
+      missing/broken PDF rendering dependency degrades invisibly) — **fixed
+      2026-09-16**: it distinguishes a missing `pypdfium2` from a render
+      failure, logs to stderr, and still returns `None` (invariant 12).
 - [ ] Test: zero-page PDF (extraction/cover-render behavior on an empty doc)
-- [ ] Fix stale "EPUB" wording in `hydration.py` docstring/comments now that
-      PDF is a first-class hydration input too
+- [x] Fix stale "EPUB" wording in `hydration.py` docstring/comments now that
+      PDF is a first-class hydration input too — **fixed 2026-09-16** (lines 4
+      and 91; line 97 turned out to be the real `.epub` branch, not prose).
 - [ ] Regression test: mobi/azw3 fall-through in `transfer-queue.ts`'s Kindle
       format preference logic. `transfer-queue.ts` has no tests at all — the
       2026-08-11 EBADF fix (source fd owned by `copyWithProgress`, close errors

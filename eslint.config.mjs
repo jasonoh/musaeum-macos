@@ -3,7 +3,11 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['out/', 'dist/', 'node_modules/', 'sidecar/', 'vendor/**'] },
+  // `.claude/` holds agent worktrees (`.claude/worktrees/<name>/`), each with
+  // its own tsconfig.json — leaving them visible makes the type-aware parser
+  // report "multiple candidate TSConfigRootDirs" and refuse to parse every file
+  // in the main tree, so a live worktree would silently break `npm run lint`.
+  { ignores: ['out/', 'dist/', 'node_modules/', 'sidecar/', 'vendor/**', '.claude/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

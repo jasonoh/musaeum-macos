@@ -6,6 +6,24 @@ the app is packaged.
 
 ## [Unreleased] — 2026-09-15
 
+### Fixed
+- **Searching no longer strands you at the bottom of the results.** Narrowing a
+  big library kept the scroll offset it had: scroll to the end of 6459 books,
+  search for `the`, and you were parked at the bottom of a result set you had
+  never seen. Changing the search, a facet or the sort now puts you back at the
+  top — measured, 230,059px before and 0 after — while a metadata edit or a
+  delete leaves your place alone, exactly as before.
+- **Tied sorts hold their order.** Two books by the same author with the same
+  rating were in whatever order SQLite felt like returning, which could shuffle
+  between loads; ties now break the same way every time.
+- **The size a book reports is the size it has.** `file_size_bytes` was written
+  once at import and never revisited, so deleting a format or adding one (or a
+  Kindle conversion, or a Calibre PDF top-up) left the detail panel quoting the
+  old total. Every write that changes a book's formats now measures the folder.
+- **A PDF cover that cannot be rendered says so** instead of failing silently —
+  a missing or broken PDF rendering dependency used to degrade with no trace at
+  all. A failed render is still non-fatal; the book keeps its other metadata.
+
 ### Added
 - **Your own colour schemes, not just the ones we ship.** Musaeum's palette used
   to be compiled in. It now comes from a theme, and you can import one from the
