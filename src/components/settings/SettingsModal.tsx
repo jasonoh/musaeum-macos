@@ -18,6 +18,9 @@ import { EyeIcon, SpinnerIcon } from '@/components/shared/icons'
 
 interface FormState {
   smbUrl: string
+  aiBaseUrl: string
+  aiModel: string
+  aiApiKey: string
   pythonPath: string
   ebookConvertPath: string
   googleBooksApiKey: string
@@ -25,6 +28,9 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   smbUrl: '',
+  aiBaseUrl: '',
+  aiModel: '',
+  aiApiKey: '',
   pythonPath: '',
   ebookConvertPath: '',
   googleBooksApiKey: ''
@@ -33,6 +39,9 @@ const EMPTY_FORM: FormState = {
 function toForm(view: SettingsView): FormState {
   return {
     smbUrl: view.values.smbUrl ?? '',
+    aiBaseUrl: view.values.aiBaseUrl ?? '',
+    aiModel: view.values.aiModel ?? '',
+    aiApiKey: view.values.aiApiKey ?? '',
     pythonPath: view.values.pythonPath ?? '',
     ebookConvertPath: view.values.ebookConvertPath ?? '',
     googleBooksApiKey: view.values.googleBooksApiKey ?? ''
@@ -59,6 +68,9 @@ export function SettingsModal() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [revealKey, setRevealKey] = useState(false)
+  // Its own switch: two keys in one dialog, and one Eye toggling both would
+  // reveal a key nobody asked to see
+  const [revealAiKey, setRevealAiKey] = useState(false)
 
   const close = useCallback(() => openModal(null), [openModal])
 
@@ -71,9 +83,7 @@ export function SettingsModal() {
   useEffect(() => {
     // State is set after the IPC round-trip resolves, never synchronously
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load().catch((err: unknown) =>
-      setError(err instanceof Error ? err.message : String(err))
-    )
+    void load().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }, [load])
 
   const save = async () => {
@@ -190,8 +200,8 @@ export function SettingsModal() {
                   </button>
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-parchment-faint">
-                  Changing the folder applies immediately — if it already holds a Musaeum
-                  library you’ll be asked whether to load it.
+                  Changing the folder applies immediately — if it already holds a Musaeum library
+                  you’ll be asked whether to load it.
                 </p>
               </div>
 
@@ -247,6 +257,53 @@ export function SettingsModal() {
               </div>
             </Section>
 
+            <Section title="Ask (AI)">
+              <Field
+                label="Endpoint"
+                value={form.aiBaseUrl}
+                onChange={set('aiBaseUrl')}
+                placeholder={view.resolved.aiBaseUrl.value ?? ''}
+                mono
+                hint={view.resolved.aiBaseUrl.detail}
+              />
+              <Field
+                label="Model"
+                value={form.aiModel}
+                onChange={set('aiModel')}
+                placeholder="No model set — the ask panel stays off"
+                mono
+                hint={view.resolved.aiModel.detail}
+              />
+              <div className="flex items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <Field
+                    label="API key (optional)"
+                    value={form.aiApiKey}
+                    onChange={set('aiApiKey')}
+                    placeholder={
+                      view.resolved.aiApiKey.source === 'env'
+                        ? 'Set in the environment'
+                        : 'Not needed for a local model'
+                    }
+                    mono
+                    type={revealAiKey ? 'text' : 'password'}
+                  />
+                </div>
+                <button
+                  onClick={() => setRevealAiKey((v) => !v)}
+                  aria-label={revealAiKey ? 'Hide API key' : 'Show API key'}
+                  className="mb-px shrink-0 rounded-md border border-ink-600 p-1.5 text-parchment-dim hover:bg-ink-800 hover:text-parchment"
+                >
+                  <EyeIcon className="h-4 w-4" off={revealAiKey} />
+                </button>
+              </div>
+              <Note>
+                What the reader’s ask panel sends: the title, author, section and your highlight —
+                the book’s own text only when the model can’t place it, or when you ask for it. Read
+                per question, so nothing here has to restart.
+              </Note>
+            </Section>
+
             <Section title="Tools">
               <PathField
                 label="Python interpreter"
@@ -270,7 +327,8 @@ export function SettingsModal() {
 
             <p className="text-[11px] leading-relaxed text-parchment-faint">
               Leave a field blank to go back to auto-detection. Changing the interpreter or the
-              API key restarts the metadata sidecar.
+              metadata API key restarts the metadata sidecar; the Ask settings are read per question
+              and restart nothing.
             </p>
           </div>
         )}

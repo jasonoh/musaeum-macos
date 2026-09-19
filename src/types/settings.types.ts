@@ -10,6 +10,9 @@
 export interface AppSettings {
   libraryRoot: string | null
   smbUrl: string | null
+  aiBaseUrl: string | null
+  aiModel: string | null
+  aiApiKey: string | null
   pythonPath: string | null
   ebookConvertPath: string | null
   googleBooksApiKey: string | null
@@ -44,6 +47,9 @@ export interface SettingsView {
   values: AppSettings
   resolved: {
     smbUrl: ResolvedSetting
+    aiBaseUrl: ResolvedSetting
+    aiModel: ResolvedSetting
+    aiApiKey: ResolvedSetting
     pythonPath: ResolvedSetting
     ebookConvertPath: ResolvedSetting
     googleBooksApiKey: ResolvedSetting

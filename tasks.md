@@ -927,11 +927,11 @@ project **`musaeum`**.
 
 ## Specified, not scheduled (2026-09-19)
 
-Two features were analysed against this file and written up as designs. **Neither is
-scheduled.** They are specified so the decision is actionable the moment a trigger fires, and
-so the reasoning is not re-derived from scratch. The analysis that produced them — what is in
-the roadmap, what is missing from it entirely, and which of those are worth building — is in
-`docs/project-overview.md` §7–8.
+Three features have been analysed against this file and written up as designs. **None was
+scheduled when it was written**; the AI panel's first slice has since been signed off (below). Each
+was specified so the decision is actionable the moment a trigger fires, and so the reasoning is not
+re-derived from scratch. The analysis that produced them — what is in the roadmap, what is missing
+from it entirely, and which of those are worth building — is in `docs/project-overview.md` §7–8.
 
 - [ ] **In-book search (S1)** — spec:
       `docs/superpowers/specs/2026-09-19-reader-search-design.md`. **Recommended as the next
@@ -951,6 +951,18 @@ the roadmap, what is missing from it entirely, and which of those are worth buil
       the library. Would also make the Boox Palma item below real for near-zero extra cost,
       since KOReader on a Boox reads OPDS. Two slices: **O1** (server, auth, new/all/search,
       covers, downloads) then **O2** (author/series/unread browse tree).
+- [x] **Ask about what you're reading (the AI panel)** — spec:
+      `docs/superpowers/specs/2026-09-19-reader-ai-panel-design.md`. Three slices, cut at the
+      testability boundary. **Slice 1 — built 2026-09-19** (endpoint settings `ai_base_url` /
+      `ai_model` / `ai_api_key` with a localhost default, the main-process streaming client
+      `services/ai.ts`, and the `ai:getStatus` / `ai:ask` / `ai:cancel` surface + three events;
+      11 code files, 44 tests, `typecheck` / `lint` / `test` green, `index.html` untouched). Nothing
+      in the UI yet — that is slice 3. **Slice 2** is the two pure pieces (the prompt assembler and
+      the recall scorer); **slice 3** is the panel, which shares the reader's one side-panel slot
+      with TOC and S1 (`ReaderView.tsx:214`) under the spec's D4 rule. Two things it deliberately
+      does **not** need: no annotations or highlights storage (a live selection is enough — D5/D7)
+      and **no CSP change** (the call is main-process, D2). Its third rung (adjacent sections) is
+      deferred until a real book is measured weak *with* its section text sent.
 
 ## Captured, not analysed (2026-09-19)
 
@@ -961,6 +973,13 @@ The bound of this section is that it stays a paragraph, not a design — with on
 exception: the AI entry below stopped being a paragraph when the owner argued a thesis about its
 payload, so it now carries the measurements that bear on that thesis. Everything else here is a
 paragraph.
+
+**Update (2026-09-19, same day):** the AI entry below is no longer captured-only. It has a design —
+`docs/superpowers/specs/2026-09-19-reader-ai-panel-design.md`, listed under *Specified, not
+scheduled* — which settles its six forks as that document's D1–D9 and carries the measurements
+listed here. The entry stays as the record of the argument that produced the design and of the
+things that were true in this repo before it existed; it is **not** a second source of truth for
+the design itself. Where the two disagree, the spec wins.
 
 ### AI conversation about the book you are reading
 

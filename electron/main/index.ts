@@ -4,6 +4,7 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { TRAFFIC_LIGHT_POSITION } from '@shared/window-chrome'
 import { startRestApiIfEnabled } from './api/rest'
+import { registerAiHandlers } from './ipc/ai'
 import { registerDeviceHandlers } from './ipc/device'
 import { registerFileHandlers } from './ipc/files'
 import { registerLibraryHandlers } from './ipc/library'
@@ -55,9 +56,7 @@ function registerMusaeumProtocol(): void {
 
     if (url.host === 'book') {
       const file = await resolveBookFile(bookId, rest)
-      return file
-        ? net.fetch(pathToFileURL(file).toString())
-        : new Response(null, { status: 404 })
+      return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 })
     }
 
     if (url.host !== 'cover') return new Response(null, { status: 400 })
@@ -138,6 +137,7 @@ app.whenReady().then(() => {
   registerSettingsHandlers()
   registerReaderHandlers()
   registerThemeHandlers()
+  registerAiHandlers()
 
   const win = createWindow()
   setMainWindow(win)

@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process'
 import { existsSync, statSync } from 'fs'
 import type { AppSettings, EditableSettings, SettingsView } from '@shared/settings.types'
+import * as ai from './ai'
 import { deleteConfig, getConfig, setConfig } from './db'
 import { getLibraryRoot } from './nas-manager'
 // The version rules live with the module that builds the venv, so validating
@@ -25,6 +26,12 @@ export const DEFAULT_SMB_URL = 'smb://ohnas'
 
 const CONFIG_KEYS: Record<keyof EditableSettings, string> = {
   smbUrl: 'smb_url',
+  // The ask panel's endpoint, model and key. Not in SIDECAR_KEYS below: they are
+  // read per request, so changing one must not bounce the Python process out
+  // from under a hydration that is in flight.
+  aiBaseUrl: ai.AI_CONFIG_KEYS.baseUrl,
+  aiModel: ai.AI_CONFIG_KEYS.model,
+  aiApiKey: ai.AI_CONFIG_KEYS.apiKey,
   pythonPath: 'python_path',
   ebookConvertPath: 'ebook_convert_path',
   googleBooksApiKey: 'google_books_api_key'
@@ -37,11 +44,16 @@ export function getSettings(): SettingsView {
   const values: AppSettings = {
     libraryRoot: getLibraryRoot(),
     smbUrl: getConfig(CONFIG_KEYS.smbUrl),
+    aiBaseUrl: getConfig(CONFIG_KEYS.aiBaseUrl),
+    aiModel: getConfig(CONFIG_KEYS.aiModel),
+    aiApiKey: getConfig(CONFIG_KEYS.aiApiKey),
     pythonPath: getConfig(CONFIG_KEYS.pythonPath),
     ebookConvertPath: getConfig(CONFIG_KEYS.ebookConvertPath),
     googleBooksApiKey: getConfig(CONFIG_KEYS.googleBooksApiKey)
   }
 
+  const aiStatus = ai.getStatus()
+  const aiKey = ai.resolveKey()
   const python = sidecar.resolvePython()
   const ebookConvert = sidecar.resolveEbookConvert()
   const googleKey = sidecar.resolveGoogleBooksKey()
@@ -52,6 +64,19 @@ export function getSettings(): SettingsView {
       smbUrl: values.smbUrl
         ? { value: values.smbUrl, source: 'configured' }
         : { value: DEFAULT_SMB_URL, source: 'default' },
+      // The endpoint and the model already carry their own detail lines from the
+      // one place that computes them, so Settings and the panel cannot disagree
+      // about whether the payload stays on this machine.
+      aiBaseUrl: aiStatus.endpoint,
+      aiModel: aiStatus.model,
+      // Never echoed back in `resolved`, the rule the Google Books key follows:
+      // the configured value is the user's own and already rides in `values`, so
+      // what is left to report is where the key in force came from.
+      aiApiKey: {
+        value: null,
+        source: aiKey.value ? aiKey.source : 'none',
+        detail: aiKey.value ? mask(aiKey.value) : 'Unset — a local model usually needs no key'
+      },
       pythonPath: {
         value: python.path,
         source: python.source,
@@ -114,6 +139,22 @@ function validate(field: keyof EditableSettings, value: string): void {
       if (!/^smb:\/\/\S+$/.test(value)) {
         throw new Error(`Not an SMB URL: ${value} — expected something like ${DEFAULT_SMB_URL}`)
       }
+      return
+    case 'aiBaseUrl':
+      if (!ai.isHttpUrl(value)) {
+        throw new Error(
+          `Not an endpoint URL: ${value} — expected something like ${ai.DEFAULT_AI_BASE_URL}`
+        )
+      }
+      return
+    case 'aiModel':
+      // Presence is the whole requirement here. Whether the model actually
+      // exists is the endpoint's answer to give, and a wrong name fails the
+      // request with the server's own sentence rather than being rejected blind.
+      return
+    case 'aiApiKey':
+      // Only a live request can tell a good key from a bad one — the same
+      // reasoning the Google Books key already documents.
       return
     case 'pythonPath':
       assertExecutable(value, 'Python interpreter')

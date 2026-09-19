@@ -7,7 +7,12 @@ export default tseslint.config(
   // its own tsconfig.json — leaving them visible makes the type-aware parser
   // report "multiple candidate TSConfigRootDirs" and refuse to parse every file
   // in the main tree, so a live worktree would silently break `npm run lint`.
-  { ignores: ['out/', 'dist/', 'node_modules/', 'sidecar/', 'vendor/**', '.claude/'] },
+  // `.obsidian/` is the vault the docs are browsed in — its plugin bundles are
+  // minified third-party JS, and linting them turned the gate red for 635 errors
+  // that had nothing to do with this repo's code.
+  {
+    ignores: ['out/', 'dist/', 'node_modules/', 'sidecar/', 'vendor/**', '.claude/', '.obsidian/']
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

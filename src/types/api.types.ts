@@ -1,3 +1,4 @@
+import type { AiChunkEvent, AiDoneEvent, AiErrorEvent, AiStatus, AskRequest } from './ai.types'
 import type {
   Book,
   BookFilters,
@@ -162,6 +163,27 @@ export interface MusaeumAPI {
     saveProgress(report: ProgressReport): Promise<void>
   }
 
+  ai: {
+    /**
+     * Whether the ask panel can work at all, and what it would send where.
+     * `configured` is false until a model is set — the endpoint has a
+     * compiled-in localhost default, the model deliberately has none.
+     */
+    getStatus(): Promise<AiStatus>
+    /**
+     * Start a streamed request and return immediately: the text arrives as
+     * `on.aiChunk` events and ends with exactly one `on.aiDone` or
+     * `on.aiError`. The caller mints `requestId` so it can subscribe *before*
+     * asking — a refused connection fails faster than this reply arrives.
+     */
+    ask(request: AskRequest): Promise<{ requestId: string }>
+    /**
+     * Stop a request. False when it had already finished, which is how a
+     * settled request reports that it released its slot.
+     */
+    cancel(requestId: string): Promise<boolean>
+  }
+
   theme: {
     /** The active theme, the built-in default's id, and whether the row is stale. */
     get(): Promise<ThemeView>
@@ -210,6 +232,9 @@ export interface MusaeumAPI {
     menuCommand(cb: (command: MenuCommand) => void): Unsubscribe
     pythonEnvProgress(cb: (progress: PythonEnvProgress) => void): Unsubscribe
     themeChanged(cb: (view: ThemeView) => void): Unsubscribe
+    aiChunk(cb: (event: AiChunkEvent) => void): Unsubscribe
+    aiDone(cb: (event: AiDoneEvent) => void): Unsubscribe
+    aiError(cb: (event: AiErrorEvent) => void): Unsubscribe
   }
 }
 
@@ -228,5 +253,8 @@ export const EVENT_CHANNELS = {
   deviceContentsChanged: 'event:device-contents-changed',
   menuCommand: 'event:menu-command',
   pythonEnvProgress: 'event:python-env-progress',
-  themeChanged: 'event:theme-changed'
+  themeChanged: 'event:theme-changed',
+  aiChunk: 'event:ai-chunk',
+  aiDone: 'event:ai-done',
+  aiError: 'event:ai-error'
 } as const

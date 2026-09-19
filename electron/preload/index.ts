@@ -79,6 +79,11 @@ const api: MusaeumAPI = {
   reader: {
     saveProgress: (report) => invoke('reader:saveProgress', report)
   },
+  ai: {
+    getStatus: () => invoke('ai:getStatus'),
+    ask: (request) => invoke('ai:ask', request),
+    cancel: (requestId) => invoke('ai:cancel', requestId)
+  },
   theme: {
     get: () => invoke('theme:get'),
     set: (id) => invoke('theme:set', id),
@@ -101,7 +106,10 @@ const api: MusaeumAPI = {
     deviceContentsChanged: (cb) => listen(EVENT_CHANNELS.deviceContentsChanged, cb),
     menuCommand: (cb) => listen(EVENT_CHANNELS.menuCommand, cb),
     pythonEnvProgress: (cb) => listen(EVENT_CHANNELS.pythonEnvProgress, cb),
-    themeChanged: (cb) => listen(EVENT_CHANNELS.themeChanged, cb)
+    themeChanged: (cb) => listen(EVENT_CHANNELS.themeChanged, cb),
+    aiChunk: (cb) => listen(EVENT_CHANNELS.aiChunk, cb),
+    aiDone: (cb) => listen(EVENT_CHANNELS.aiDone, cb),
+    aiError: (cb) => listen(EVENT_CHANNELS.aiError, cb)
   }
 }
 
