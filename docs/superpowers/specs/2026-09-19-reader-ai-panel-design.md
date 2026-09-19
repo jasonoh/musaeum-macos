@@ -1,8 +1,8 @@
 # Design: Ask about what you're reading (reader AI panel, v1)
 
 **Date:** 2026-09-19
-**Status:** Proposed — the four gating forks were settled with Jason on 2026-09-19; **slice 1 is
-signed off to build**. Slices 2–3 are specified, not yet scheduled.
+**Status:** Proposed — the four gating forks were settled with Jason on 2026-09-19. **Slices 1 and 2
+are built** (slice 1 2026-09-19, slice 2 2026-09-19); slice 3 is specified, not yet scheduled.
 **Scope:** a question panel inside the reader that knows where you are — the book, the section, the
 passage you selected — against an OpenAI-compatible endpoint that is **localhost by default**.
 **Depends on:** the reader (`specs/2026-08-13-native-reader-design.md`, shipped 2026-08-13); the
@@ -570,6 +570,56 @@ What building it changed, and what it taught:
   same way to the person looking at it.
 
 **Not in this slice, deliberately:** there is no UI, so nothing here is visible in the app yet —
-the panel, the prompt assembler and the recall scorer are slices 2 and 3. Nothing in the renderer
+the panel, the prompt assembler and the recall scorer are slices 2 and 3 (slice 2 has since landed;
+see below). Nothing in the renderer
 calls `window.Musaeum.ai` at all yet; the surface exists and is driven from the main process in
 its tests.
+
+---
+
+## Built — slice 2 (2026-09-19)
+
+Four files, all new, all pure — `src/lib/ask-context.ts` + `ask-context.test.ts` (18 tests) and
+`src/lib/recall.ts` + `recall.test.ts` (21 tests). **AC13–AC17 hold**, verified by
+`npm run typecheck`, `npm run lint` and `npm test` — 714 tests over 32 files, 39 of them new — with
+`git status` confirming the four files are the only changes. No store, no IPC, no DOM, no import
+from `electron/main/services/ai.ts`; the one import out of `src/lib` is the *type*
+`AskMode`/`ChatMessage`, which is the seam itself rather than a dependency on slice 1's service.
+
+What building it changed, and what it taught:
+
+- **`parseProbe` failed its own tolerance criterion first.** The first version's "the opening
+  wrapped on to the next line" branch gathered *every* following non-blank line, so
+  `OPENING: Alice was beginning` followed by `NOTE: a guess` scored the claim as
+  `Alice was beginning NOTE: a guess` — a deflated overlap and a spurious **`weak`**, which would
+  have widened the payload for a book the model had placed correctly. Fixed by ending the wrap at
+  any single-word `KEY: value` line (a line of prose that ends in a colon has nothing after it) and
+  at two continuation lines. AC16 caught a real bug, not a formatting quibble.
+- **The probe's payload is not the ask's payload, and the spec did not say so.** The L0 row lists
+  "the question, and the selection if there is one"; a probe has neither — and since the probe is
+  what *decides* the rung, it cannot already be at the passage rung. So
+  `buildAskMessages({ mode: 'probe' })` is pointer-only **by construction**: title, author, section
+  label, position, and nothing else, even when a selection and a passage are handed to it. The
+  highlight is the referent *of a question*; there is no question yet. Recorded here so a later
+  session does not have to re-derive the reading.
+- **The disclosure line reads the payload, not the caller's intent.** `describeEgress()` takes the
+  `AskPayload` the assembler built, and `members` is derived from that object's own fields — so
+  "names every payload member actually present" holds by construction, with no second list to keep
+  in sync and no way for the line to claim less than is sent.
+- **Two small departures from the approved text.** (1) The D5 example line
+  (`Sends: title, author, section “Chapter 4”, your highlight → <host>`) is longer in the
+  implementation, which also names the position and the model — fraction does travel (the rung
+  table), and AC15 asks for every member present. It is a wrapped line in a 288px panel, which is
+  the cost. (2) One cap is used for both blocks of book text —
+  `PASSAGE_CHAR_CAP = 6000` applies to the passage *and* to an oversized highlight — rather than
+  two numbers, since D5 states one cap and only one measurement.
+- **A blank question throws.** An `ask` with no question (or only whitespace) raises
+  `An ask needs a question.` rather than assembling a pointer-only request and posting it: that is
+  a caller bug, and the composer's disabled send button is the same rule on the UI side. A probe
+  needs no question, so it is unaffected.
+
+**For slice 3, the two entry points are:** `buildAskMessages({ mode, rung, title, author,
+sectionLabel, fraction, question, sectionText, selection })` → `{ system, messages, payload, rung }`
+and `describeEgress({ endpoint, model, payload })` → the composer's disclosure string. The verdict
+side is `scoreRecall(parseProbe(reply), sectionText)` → `'strong' | 'weak' | 'unknown'`, with
+`recallOverlap()` exported so the threshold can be asserted directly.

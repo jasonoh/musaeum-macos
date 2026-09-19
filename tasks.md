@@ -957,8 +957,11 @@ from it entirely, and which of those are worth building — is in `docs/project-
       `ai_model` / `ai_api_key` with a localhost default, the main-process streaming client
       `services/ai.ts`, and the `ai:getStatus` / `ai:ask` / `ai:cancel` surface + three events;
       11 code files, 44 tests, `typecheck` / `lint` / `test` green, `index.html` untouched). Nothing
-      in the UI yet — that is slice 3. **Slice 2** is the two pure pieces (the prompt assembler and
-      the recall scorer); **slice 3** is the panel, which shares the reader's one side-panel slot
+      in the UI yet — that is slice 3. **Slice 2 — built 2026-09-19** (the two pure pieces: the
+      prompt assembler `src/lib/ask-context.ts` and the recall scorer `src/lib/recall.ts`, 4 files,
+      39 tests, gates green; the one bug the build exposed was AC16 catching `parseProbe` folding
+      trailing commentary into the claimed opening, which would have scored a correctly-placed book
+      `weak`). **Slice 3** is the panel, which shares the reader's one side-panel slot
       with TOC and S1 (`ReaderView.tsx:214`) under the spec's D4 rule. Two things it deliberately
       does **not** need: no annotations or highlights storage (a live selection is enough — D5/D7)
       and **no CSP change** (the call is main-process, D2). Its third rung (adjacent sections) is
