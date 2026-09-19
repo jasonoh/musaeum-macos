@@ -99,7 +99,9 @@ Musaeum/
 │   │   │   ├── theme.ts          # theme get/set (thin over services/theme/store)
 │   │   │   └── migration.ts      # scan, start, progress, cutover
 │   │   ├── services/             # ALL business logic lives here
-│   │   │   ├── events.ts         # main → renderer broadcast helper
+│   │   │   ├── events.ts         # broadcast to the renderer + main's own subscribers
+│   │   │   │                     # (the window background and nativeTheme follow
+│   │   │   │                     # themeChanged through this one signal)
 │   │   │   ├── db.ts             # connection, migrations, queries, config
 │   │   │   ├── nas-manager.ts    # mount detection, backoff reconnect
 │   │   │   ├── file-watcher.ts   # chokidar on {root}/imports/
@@ -147,19 +149,23 @@ Musaeum/
 │   │   ├── migration/            # MigrationWizard
 │   │   ├── settings/             # SettingsModal, AppearanceSection (the theme
 │   │   │                         # picker: rows, drop zone, the themes folder)
-│   │   ├── reader/               # ReaderView, ReaderEngine, ReaderToc,
-│   │   │                         # ReaderPrefsPopover
+│   │   ├── reader/               # ReaderView, ReaderEngine, ReaderToc, ReaderSearch,
+│   │   │                         # ReaderAsk, ReaderPrefsPopover
 │   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, Toasts,
 │   │                             # icons
 │   ├── stores/                   # library / device / nas / ui / reader / theme zustand stores
 │   ├── hooks/                    # useLibrary, useDevice, useNASStatus, useDragDrop,
 │   │                             # useMenuCommands, useTheme
 │   ├── lib/                      # renderer-side pure logic: selection, metadata-feedback,
-│   │                             # metadata-refresh, notify, theme/ (css var apply path)
+│   │                             # metadata-refresh, notify, reader-search, ask-context,
+│   │                             # recall, theme/ (css var apply path + the reader's
+│   │                             # derived page palette and its injected stylesheet)
 │   └── types/                    # SHARED contracts: book / device / metadata /
 │                                 # settings / api (MusaeumAPI + IPCResult) /
-│                                 # theme (IR + derived tokens) — imported by
-│                                 # main and preload via @shared
+│                                 # theme (IR + derived tokens) / window-chrome
+│                                 # (the traffic lights' geometry and the strip
+│                                 # height every titlebar row is built from) —
+│                                 # imported by main and preload via @shared
 │
 └── sidecar/                      # Python sidecar (venv at sidecar/.venv)
     ├── requirements.txt

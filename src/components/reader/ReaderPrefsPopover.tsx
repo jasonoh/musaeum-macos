@@ -1,5 +1,14 @@
 import type { ReactNode } from 'react'
+import { TITLEBAR_STRIP_HEIGHT } from '@shared/window-chrome'
+import type { ReaderPageTheme } from '@/lib/theme/reader-palette'
 import { PREF_RANGES, THEME_OPTIONS, TYPEFACE_OPTIONS, useReaderStore } from '@/stores/reader.store'
+
+/**
+ * Where the panel floats: just under the reader's titlebar strip, keeping the
+ * 4px of daylight the old `top-12` (44 + 4) left now that the strip is derived
+ * from the lights' line and therefore taller (`TITLEBAR_STRIP_HEIGHT`).
+ */
+const POPOVER_TOP = TITLEBAR_STRIP_HEIGHT + 4
 
 /**
  * Typography controls for the open book.
@@ -24,7 +33,8 @@ export function ReaderPrefsPopover({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-label="Typography"
         onClick={(e) => e.stopPropagation()}
-        className="absolute right-2 top-12 w-64 animate-slide-up space-y-4 rounded-xl border border-ink-700 bg-ink-900 p-4 shadow-cover-lift"
+        className="absolute right-2 w-64 animate-slide-up space-y-4 rounded-xl border border-ink-700 bg-ink-900 p-4 shadow-cover-lift"
+        style={{ top: POPOVER_TOP }}
       >
         <Segmented
           label="Typeface"
@@ -42,12 +52,7 @@ export function ReaderPrefsPopover({ onClose }: { onClose: () => void }) {
           onChange={(theme) => setPrefs({ theme })}
           renderOption={(o) => (
             <>
-              <span
-                aria-hidden
-                className={`h-2.5 w-2.5 rounded-full border border-ink-600 ${
-                  o.value === 'ink' ? 'bg-ink-950' : 'bg-parchment'
-                }`}
-              />
+              <ThemeDot theme={o.value} />
               {o.label}
             </>
           )}
@@ -89,6 +94,37 @@ function FieldLabel({ children }: { children: ReactNode }) {
   return (
     <span className="text-[10px] font-semibold uppercase tracking-widest text-parchment-faint">
       {children}
+    </span>
+  )
+}
+
+/**
+ * The dot beside a theme option, in the palette the option actually paints.
+ *
+ * The third option is **two-tone** — ink over parchment — because `auto` is not
+ * either row: it is whichever row the app theme resolves to, and the old
+ * two-way branch (`ink` ? ink : parchment) would have drawn it as a second
+ * `paper`. No new colour is introduced for it: both halves are existing tokens,
+ * which is the rule that keeps the dot meaningful under any imported theme.
+ */
+function ThemeDot({ theme }: { theme: ReaderPageTheme }) {
+  if (theme !== 'auto') {
+    return (
+      <span
+        aria-hidden
+        className={`h-2.5 w-2.5 rounded-full border border-ink-600 ${
+          theme === 'ink' ? 'bg-ink-950' : 'bg-parchment'
+        }`}
+      />
+    )
+  }
+  return (
+    <span
+      aria-hidden
+      className="flex h-2.5 w-2.5 flex-col overflow-hidden rounded-full border border-ink-600"
+    >
+      <span className="h-1/2 w-full bg-ink-950" />
+      <span className="h-1/2 w-full bg-parchment" />
     </span>
   )
 }

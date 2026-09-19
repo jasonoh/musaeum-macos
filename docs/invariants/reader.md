@@ -76,6 +76,21 @@ promises what the control doesn't do is worse than a vaguer one. The underlying
 field is still `prefs.margin`; genuine side margins need foliate's
 `max-column-width`/`gap` attributes and are a follow-up in tasks.md.
 
+**The page theme is three options and the default follows the app's theme**
+(`'auto' | 'ink' | 'paper'`, `auto` by default since theming slice 5). `auto` is
+not a third palette: it resolves the app's derived values to the page —
+`ink-900` / `parchment` / `parchment_dim` / `gold-400` — so the page and the frame
+around it are the same theme, and on the built-in default those four values *are*
+the `ink` row. `ink` and `paper` are the two authored rows the reader shipped
+with, kept because a stored preference has to keep meaning what it meant. The
+whole resolution and the stylesheet it feeds live in
+`src/lib/theme/reader-palette.ts`, pure and store-free
+(`resolveReaderPalette`, `readerPageCss`); `ReaderEngine` reads the theme store
+beside the reader store and hands it two values. Nothing may write a `var(--…)`
+into that stylesheet, and the alpha for `::selection` is composed in the module
+rather than pasted onto the colour at the rule — both are constraints from the
+vendored engine, recorded under *Searching in the book* below.
+
 Two races in the vendored paginator are known and not ours to fix without
 editing vendor source: an unguarded `this.#view` inside a `requestAnimationFrame`
 in `setStyles`, and a ResizeObserver firing on a mid-navigation document. Both
@@ -111,11 +126,33 @@ state. Three rules are load-bearing:
   `persistedReaderState()` in the store is the single thing that reaches storage,
   and it carries typography only.
 
-**The highlight colour is a resolved literal from `ReaderEngine`'s `PALETTE`**
-(the `search` role), never `var(--…)`: the overlayer lives in foliate-view's
-closed shadow root, and a custom property crossing that boundary is a bet this
-repo does not take. Theming slice 5 makes that table derived, so it must derive
-`search` too, or a themed app outlines hits in a hardcoded amber.
+**The highlight colour is a resolved literal from the reader's derived palette**
+(`resolveReaderPalette(theme, tokens).search` in
+`src/lib/theme/reader-palette.ts`, the `search` role), never `var(--…)`: the
+overlayer lives in foliate-view's closed shadow root, and a custom property
+crossing that boundary is a bet this repo does not take. Theming slice 5 made
+that table derived and **derived `search` with it** — the role exists to be
+derived, and it is the derived link colour, exactly as both authored rows already
+had it. Measured in the running app on a hit-only fixture (no links in the book,
+so every coloured pixel on the page is an outline): a search under
+`builtin:solarized-light` (whose `gold-400` derives to a burnt orange) drew
+**1,784** px of `#cb4b16` and **zero** of the previous hardcoded amber `#d4a24e`;
+under the default theme the same run drew **1,783** px of `#d4a24e` and none of the
+orange. A hardcoded amber here is not a style choice, it is the bug this role was
+named to prevent.
+
+**And the colour has to follow a change, not only a new run.** The vendor draws
+annotations per run and keeps the options it was handed
+(`view.js:545`'s `#searchDrawOptions`, re-applied on every section render), so
+without a rule the outlines keep the colour of the run that drew them: measured,
+switching the app theme with five hits up left **1,780** orange px orange on a page
+that had gone dark. So `ReaderSearch` watches the *resolved colour* and re-runs its
+own query when it moves — safe because `search()` clears its own annotations on
+entry and the run token unwinds whatever this supersedes, and cheap because the
+search is in memory over the book that is already open. Measured after: the same
+switch leaves **1,764** amber px on the dark page. Anything added to that panel
+which reads the palette has the same obligation: a colour resolved once per run is
+a colour that will disagree with the page after the next theme change.
 
 **Keyboard.** ⌘F is a menu command (`'reader-find'`, Edit ▸ Find in Book) routed
 through `useMenuCommands` to `toggleSearch()`, and it is a **no-op with no book

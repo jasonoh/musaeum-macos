@@ -8,7 +8,9 @@ import type {
 } from '@vendor/foliate-js/view.js'
 import '@vendor/foliate-js/view.js'
 import type { BookFormat, ReadingState } from '@shared/book.types'
+import { readerPageCss, resolveReaderPalette } from '@/lib/theme/reader-palette'
 import type { ReaderPrefs, ReaderSection, ReaderTocItem } from '@/stores/reader.store'
+import { useThemeStore } from '@/stores/theme.store'
 
 interface Props {
   bookId: string
@@ -48,97 +50,15 @@ function flattenToc(items: FoliateTocItem[] | undefined, depth = 0): ReaderTocIt
 }
 
 /**
- * Copies of the Tailwind design tokens, by value. The book renders in its own
- * iframe document, which the app's stylesheet does not reach, so these cannot
- * be class names — but they must stay in step with `tailwind.config.js`:
- * `ink` is `ink-900`, `fg` is `parchment`, `dim` is `parchment-dim`, `link` is
- * `gold-400`. A palette change has to update this table too. The `paper` row
- * has no token counterpart — the app has no light theme to borrow from.
- *
- * `search` is a role of its own rather than a second use of `link` so that
- * theming slice 5, which makes this table *derived*, has a name to derive: a
- * colour that is not named here is one slice 5 cannot carry, and a themed app
- * would outline search hits in a hardcoded amber.
- */
-const PALETTE = {
-  ink: { bg: '#14110d', fg: '#e9e1d2', dim: '#b3a78f', link: '#d4a24e', search: '#d4a24e' },
-  paper: { bg: '#f3ece0', fg: '#241f18', dim: '#6b6152', link: '#8a5a1a', search: '#8a5a1a' }
-} as const
-
-/**
- * The colour search hits are outlined in — a resolved literal from the table
- * above, never `var(--…)` (D4).
- *
- * The overlayer that draws it lives in foliate-view's **closed shadow root**
- * inside the app's own document, so a custom property passed across that
- * boundary is a bet this repo does not take: it would probably inherit, and
- * "probably" is not something a unit test can decide. Passing the literal also
- * keeps the colour inside the reader's palette, which is where slice 5 has to
- * be able to find it.
- */
-export function searchHighlightColor(theme: ReaderPrefs['theme']): string {
-  return PALETTE[theme].search
-}
-
-const SERIF = '"Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif'
-const SANS = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif'
-
-/**
- * Styles injected *into* the book's document. Deliberately unprefixed by
- * `!important`: a book that ships its own typography keeps it, and these
- * only fill in what it left unsaid.
- */
-function pageCss(prefs: ReaderPrefs): string {
-  const c = PALETTE[prefs.theme]
-  const family = prefs.typeface === 'serif' ? SERIF : SANS
-  return `
-    @namespace epub "http://www.idpf.org/2007/ops";
-    html {
-      color-scheme: ${prefs.theme === 'paper' ? 'light' : 'dark'};
-      font-size: ${prefs.fontSize}px;
-      background: ${c.bg};
-      color: ${c.fg};
-      font-family: ${family};
-    }
-    body {
-      background: ${c.bg};
-      color: ${c.fg};
-      font-family: ${family};
-    }
-    p, li, blockquote, dd, td {
-      line-height: ${prefs.lineHeight};
-      -webkit-hyphens: auto;
-      hyphens: auto;
-      -webkit-hyphenate-limit-before: 3;
-      -webkit-hyphenate-limit-after: 2;
-      -webkit-hyphenate-limit-lines: 2;
-      hanging-punctuation: allow-end last;
-      widows: 2;
-      orphans: 2;
-    }
-    /* Keep the above from overriding an explicit alignment */
-    [align="left"] { text-align: left; }
-    [align="right"] { text-align: right; }
-    [align="center"] { text-align: center; }
-    [align="justify"] { text-align: justify; }
-    h1, h2, h3, h4, h5, h6 {
-      font-family: ${SERIF};
-      line-height: 1.2;
-      font-weight: 600;
-      -webkit-hyphens: manual;
-      hyphens: manual;
-    }
-    a, a:link, a:visited { color: ${c.link}; }
-    hr { border: 0; border-top: 1px solid ${c.dim}; opacity: 0.4; }
-    pre { white-space: pre-wrap !important; }
-    ::selection { background: ${c.link}44; }
-  `
-}
-
-/**
  * Wraps foliate-js's <foliate-view> custom element. The engine owns its own
  * DOM, so React only mounts the host and hands it a Blob — book bytes arrive
  * over musaeum://, never file://.
+ *
+ * The page's colours are no longer a table in this file: they are derived from
+ * the active theme's tokens in `src/lib/theme/reader-palette.ts`, which is also
+ * where the injected stylesheet lives now. This component reads the theme store
+ * beside the reader store — the same place it already reads prefs — and hands
+ * the pure module two values.
  */
 export function ReaderEngine({
   bookId,
@@ -155,12 +75,29 @@ export function ReaderEngine({
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
 
+  /**
+   * The active theme's tokens, or null before `src/main.tsx` has seeded the
+   * store — in which case `:root`'s authored palette is what is on screen and
+   * the resolver falls back to the ink row, which is the same row.
+   *
+   * The *palette* is deliberately not held here: it is resolved inside each
+   * effect that needs one, because a freshly-built palette object in a
+   * dependency array is a new identity on every render and would re-inject the
+   * stylesheet for no reason.
+   */
+  const tokens = useThemeStore((s) => s.view?.active.tokens ?? null)
+
   // Callbacks are read through refs so a re-render never re-opens the book
   const cb = useRef({ onReady, onRelocate, onSection, onSelection, onError, onKeyDown })
   const prefsRef = useRef(prefs)
+  // The tokens ride with the prefs for the same reason: the open path reads
+  // both at the moment the bytes arrive, and a theme that changed *while* a book
+  // was loading must colour the page it is about to show, not re-open it.
+  const tokensRef = useRef(tokens)
   useEffect(() => {
     cb.current = { onReady, onRelocate, onSection, onSelection, onError, onKeyDown }
     prefsRef.current = prefs
+    tokensRef.current = tokens
   })
 
   // Re-open only when the book changes; pref changes restyle in place
@@ -224,7 +161,14 @@ export function ReaderEngine({
 
         const renderer = view.renderer
         renderer?.setAttribute('margin', `${prefsRef.current.margin}px`)
-        renderer?.setStyles?.(pageCss(prefsRef.current))
+        // Read through the refs, not this render's props: the effect keys on the
+        // book, so a pref or theme change must not run it again.
+        renderer?.setStyles?.(
+          readerPageCss(
+            prefsRef.current,
+            resolveReaderPalette(prefsRef.current.theme, tokensRef.current)
+          )
+        )
 
         // A stored position may no longer resolve — a re-downloaded file, a
         // different engine version. `goTo` reports that by returning
@@ -261,11 +205,17 @@ export function ReaderEngine({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, format])
 
+  /**
+   * Restyle in place — on a typography change, and on a **theme** change while
+   * the book is open (AC5.1): the tokens are a dependency, and the palette is
+   * resolved in here rather than passed in, so a switch repaints the page
+   * without re-opening the book.
+   */
   useEffect(() => {
     const renderer = viewRef.current?.renderer
     renderer?.setAttribute('margin', `${prefs.margin}px`)
-    renderer?.setStyles?.(pageCss(prefs))
-  }, [prefs, viewRef])
+    renderer?.setStyles?.(readerPageCss(prefs, resolveReaderPalette(prefs.theme, tokens)))
+  }, [prefs, tokens, viewRef])
 
   return <div ref={hostRef} className="h-full w-full" />
 }

@@ -582,13 +582,91 @@ slice would otherwise meet without warning.
   `.css` must find all four, or a dropped `.css` is silently ignored by the scan and by the drop
   handler while the dialog offers it.
 
-- [ ] **Slice 5 — reader convergence and the light flip.** The reader's own `PALETTE` table
-      (`src/components/reader/ReaderEngine.tsx:48-50`) becomes derived, under two hard constraints: its
-      injected stylesheet must carry **resolved literals, never variable references** — foliate's
-      `vendor/foliate-js/paginator.js:191` reads the book document's resolved background back out and
-      string-compares it against a transparent rgba, and an unresolvable `var()` falls through that
-      test — and the alpha-suffix concatenation at `ReaderEngine.tsx:104` must go. Also derived
-      shadows and the native window appearance.
+- [x] **Slice 5 — reader convergence and the light flip.** Landed 2026-09-19 from the annex in
+      `docs/superpowers/plans/2026-09-19-theming-slice5.md` (8 adjudicated decisions). The reader's
+      hand-copied `PALETTE` is gone: `src/lib/theme/reader-palette.ts` (new, pure, store-free)
+      derives the page from the active theme's tokens — `ink-900` / `parchment` / `parchment_dim` /
+      `gold-400`, which on the built-in default *are* the old `ink` row, value for value — and owns
+      the injected stylesheet (`readerPageCss`) so §2.5's two vendored-engine constraints have a
+      decider instead of a comment: no `var(` ever reaches the book document, and the `::selection`
+      alpha is composed in the module (`linkAlphaHex`) rather than pasted onto a colour at the rule.
+      `ReaderPrefs.theme` gains **`auto`** (the new default) beside the two authored rows.
+      **The `search` role S1 owed is derived** — it is the derived link colour, and the S1 hand-off
+      is paid with two measurements on a *hit-only* fixture (no links in the book, so every coloured
+      pixel on the page is an outline): a run under solarized-light draws **1,784** px of that
+      theme's `#cb4b16` and **0** of the old amber; under the default theme **1,783** px of
+      `#d4a24e` and **0** of the orange. And the outline follows a *change*, not only a new run:
+      `ReaderSearch` re-runs its own query when the resolved colour moves, because the vendor stores
+      the draw options per run (`view.js:545`) — before that rule, switching themes with five hits
+      up left **1,780** px orange on a page that had gone dark; after it, **1,764** px amber.
+      **The flip:** `--shadow-a1/a2/a3` and `color-scheme` are now written by the apply path
+      (`src/lib/theme/css.ts`, owned names 28 → 32, `aN = clamp(0,1, baseN × shadow / 0.55)` to 3 dp
+      — 0.5/0.35/0.6 on the default, byte for byte what `:root` authors, and 0.145/0.102/0.175 on a
+      light theme); `nativeScheme` (pure, in the theme service) drives `nativeTheme.themeSource` at
+      boot **and on every change**, through a new in-process `subscribe` on `services/events.ts` —
+      the same `themeChanged` broadcast the renderer follows; and the window gets
+      `setBackgroundColor` on that same path, which is the criterion `tasks.md` owed from §4's
+      prose. **Gate:** typecheck 0 / lint 0 / build 0, prettier clean on all 14 touched files, and
+      **814 passed / 35 files** (baseline 789/34). **File count: 9 code + 4 test files** (the mock
+      counted once, as shared infra), over the ~10-file bound; §5's slice-5 row said 6 code + 2 test
+      and missed four of them — `css.ts` (the flip's writer, the same undercount A30 found on slice
+      3), `ReaderSearch.tsx` (the `search` consumer), `events.ts` and the mock. The named absorber
+      (`reader-palette.ts` + its test folding into `css.ts`) was deliberately **not** taken.
+      **Verified by the orchestrator on the running app, not from the reports** (isolated
+      `MUSAEUM_USER_DATA`, synthetic two-chapter EPUB, CDP): with the book open the reading pane is
+      uniformly `rgb(20,18,16)` = `ink-900`, the *page* colour rather than the frame's `#0d0b09`;
+      switching to `builtin:solarized-light` **with the book still open** repaints it to
+      `rgb(239,233,215)` = the derived page (not the frame's `#fdf6e3`), which is AC5.7's round trip
+      — the paginator's own margin gets the page colour, so the read-back branch was taken;
+      `--shadow-a1` flips 0.5 ↔ 0.145 and `color-scheme` dark ↔ light with it; and
+      `prefers-color-scheme` in the renderer flips on each change, which nothing but the main
+      process's `nativeTheme.themeSource` can move (AC5.5, live). Eight orchestrator mutations, each
+      reddening only its own criterion and every file restored byte-identically: the page mapped to
+      `ink-950`, `SHADOW_REFERENCE` changed, `sanitizePrefs`' fallback changed, `color-scheme`
+      dropped from `OWNED_CSS_VARS`, `linkAlphaHex` reduced to `link`, `nativeScheme` pinned,
+      `var(--ink-900)` emitted into the page CSS, and the old `${c.link}44` pasted back at the rule.
+      **A read-only pre-merge review found no blocking finding** and ten worth-fixing items; the
+      repair round closed all ten (spec amendment round 5's repair block, A54–A59) and the mutation
+      campaign is now **15/15 killed**. Two were substantive: **AC5.1's wiring had no decider** —
+      the plan's own AC table promised a source walk over `ReaderEngine.tsx` and no test mentioned
+      the component at all, so resolving against `null`, dropping `tokens` from the restyle deps, or
+      taking the search colour from an authored row all stayed green; and **AC5.6 had no decider of
+      any kind**. The rest: the `activate` arm's `adoptWindow` coupling, the broadcast handler's
+      truthiness-only payload guard, `readerPalette` not being total (a malformed set could paint
+      `background: undefined;`), the search highlight *not* following a live theme change, a
+      vacuous test line, an exported-with-no-consumer `SHADOW_VARS`, and two comments that explained
+      a rule by the wrong mechanism. **This round also corrected the first measurement's figure:**
+      the round-5 "705 / 743 px" numbers were the fixture's **link line** (the link colour *is* the
+      derived link colour), not the hit outlines — the clean numbers are above, and both are
+      recorded in the spec rather than quietly replaced. Owed and paid here:
+      `docs/invariants/reader.md` (the page-theme paragraph, the highlight-colour rule, and the new
+      "a colour resolved once per run will disagree with the page after the next theme change" rule)
+      and `CHANGELOG.md`.
+- [ ] **Slice-5 debt handed on (2026-09-19).**
+      - **AC5.2's decider is a two-link chain, not one import.** `reader-palette.test.ts` cannot
+        import `MUSAEUM_DEFAULT_TOKENS`: `tsconfig.web.json` includes `src/**` and `test/**` only,
+        so the cross-tree import is a `TS6307` (plus 13 `TS2307`s for the inlined `*.yaml?raw`
+        corpus). The test therefore parses `src/index.css`'s `:root`, and
+        `theme/store.test.ts`'s existing pin holds `MUSAEUM_DEFAULT_TOKENS` against that same block.
+        The only way to make it one link is to widen `tsconfig.web.json`'s include — a config change
+        that is not slice 5's to make.
+      - **`subscribe` has no unit decider** (still open after the repair round, which closed the
+        surrounding wiring instead). Its unsubscribe and its throw-isolation (a listener that throws
+        is logged and skipped, never propagated, never stopping the renderer's push) are documented
+        in `services/events.ts` but asserted nowhere — `index.ts`, its only subscriber, is not
+        importable under vitest. Cheapest closure: a case that registers two listeners, has the
+        first throw, and asserts the second still runs. `services/events.ts` has no test file today.
+      - **AC5.7's structural half is asserted by value, not by placement.** The string tests prove the
+        page colour appears in the stylesheet and that nothing is a `var(`; they do not prove *which*
+        rule carries it, so a swapped `html`/`body` pair would pass. Not worth a file on its own;
+        note it to whoever next extends `readerPageCss`.
+      - **`win.setBackgroundColor`'s effect is not observable over CDP** (the A25 residual class): it
+        shows only during a resize flash, and a screenshot covers web contents only. Its decider is
+        the source walk in `theme/store.test.ts` plus `windowBackgroundColor`'s unit test — the
+        wiring exists, that it *ran* is the residual.
+      - **The popover's `Auto` dot is a judgement call.** It is two-tone (ink over parchment) because
+        `auto` is not either row; no frame was compared against an alternative, and the same is true
+        of the option's position in the list.
 - [ ] **Slice 6 — Obsidian resolver.** Load `theme.css` in a sandboxed offscreen window with the
       dark/light class applied and read the variables back as computed values. It is needed rather
       than nice: a regex scrape resolves **1 of the 5** Obsidian themes installed on this machine —

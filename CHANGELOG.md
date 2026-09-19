@@ -6,7 +6,50 @@ the app is packaged.
 
 ## [Unreleased] — 2026-09-19
 
+### Fixed
+- **The reader's controls sit on the traffic lights' line again.** With a book open, the close,
+  contents, search and ask buttons were drawn **4px above** the window's dots, and the library's
+  search, sort and grid/list controls **2px below** them — each strip centring its row on its own
+  middle rather than on the line the sidebar's wordmark is already built from. Both strips are now
+  sized from that line (`window-chrome.ts`'s `TITLEBAR_STRIP_HEIGHT`, derived from the measured
+  `TRAFFIC_LIGHT_CENTER_Y`), so every row in the titlebar lands on it: measured in the running app,
+  the dots' centre is at y 25.5 and the reader's buttons moved 21.5 → 25.5 and the toolbar's
+  27.5 → 25.5.
+
 ### Added
+- **The reading page now follows the app's theme.** Import a light colour scheme and the book you
+  are reading is light too — page, text, links and the colour a search hit is outlined in — without
+  closing the book or opening it again. The reader's page used to be a small hand-copied palette
+  pinned to the app's dark defaults, so a themed app could only ever render a dark page inside a
+  light frame. It is now derived from the active theme like every other colour in the app, and the
+  page area of the reading pane measures exactly the theme's page colour, edge to edge: on the
+  built-in default the pane reads `#14110d`, and switching to *Solarized Light* repaints it to
+  `#f1ecdb` in place. The default is a **no-op**, deliberately: on the theme the app ships with,
+  the derived page is the palette it always had, value for value.
+- **A third reading theme, `Auto`, and it is the new default.** Typography ▸ Theme now offers
+  **Auto / Ink / Paper**. `Auto` means "whatever the app theme is"; `Ink` and `Paper` are the two
+  fixed page palettes that were previously the only choices, unchanged — a stored preference keeps
+  meaning exactly what it meant, so an upgrade does not repaint anyone's page.
+- **Search outlines follow the theme — including when the theme changes under them.** The colour a
+  search hit is drawn in comes from the same derived palette (`resolveReaderPalette(...).search`),
+  and a theme change with results on screen redraws them, so the highlighting moves with the page
+  rather than staying in the colour of the run that drew it. Measured on an isolated profile with a
+  hit-only fixture (no links in the book, so every coloured pixel on the page is a hit outline): a
+  search under *Solarized Light* drew **1,784** pixels of that theme's derived orange `#cb4b16` and
+  **zero** of the previous hardcoded amber, while the same search under the built-in default drew
+  **1,783** pixels of the amber and none of the orange. Switching themes with five hits up repaints
+  them: **1,780** pixels were still orange on a now-dark page before this rule existed, and after
+  it the same switch leaves **1,764** amber pixels on the dark page.
+
+### Changed
+- **A light theme is now correct rather than half-applied.** Cover and panel shadows, the platform's
+  own appearance, and the window's background all follow the theme: the three shadow alphas are
+  derived from the theme's single shadow *strength* (0.5 / 0.35 / 0.6 on the built-in default — byte
+  for byte what `:root` has always authored; 0.145 / 0.102 / 0.175 on a light theme), `:root`'s
+  declared `color-scheme` is rewritten with the tokens so native controls, carets and select popups
+  stop following the OS, and `nativeTheme.themeSource` plus the window background are set on every
+  theme change rather than only at launch. Measured: with a book open, each switch flips
+  `prefers-color-scheme` in the renderer with it, which only the main process can move.
 - **Search inside the book you are reading.** ⌘F (Edit ▸ Find in Book) or the magnifier in the
   reader's header opens a find panel beside the page: type a query, press Enter, and every hit in
   the book is listed grouped by chapter, in reading order, with the matched text emphasised and a

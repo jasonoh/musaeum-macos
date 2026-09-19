@@ -12,6 +12,7 @@ import {
   DEFAULT_THEME_ID,
   getThemeView,
   MUSAEUM_DEFAULT_TOKENS,
+  nativeScheme,
   readLibrary,
   setTheme,
   storedRecordOf,
@@ -1135,5 +1136,84 @@ describe('D9/D10 — the view carries the picker’s rows and the drop-box folde
     expect(view.active.tokens).toEqual(MUSAEUM_DEFAULT_TOKENS)
     expect(view.options).toHaveLength(corpus.length + 1)
     expect(logged).toContain('[theme]')
+  })
+})
+
+// --- AC5.5: the platform's own chrome points the way the theme does ----------
+
+describe('AC5.5(a) — nativeScheme is a pure decision about the tokens', () => {
+  it('answers dark for the built-in default and light for a light set', () => {
+    expect(nativeScheme(MUSAEUM_DEFAULT_TOKENS)).toBe('dark')
+
+    // The light arm is the default's own set with `dark` flipped — no invented
+    // palette, because the function reads exactly that one field.
+    const light: ThemeTokens = { ...MUSAEUM_DEFAULT_TOKENS, dark: false }
+    expect(nativeScheme(light)).toBe('light')
+  })
+
+  it('tracks the field on themes the engine actually derived', () => {
+    // A derived light theme and a derived dark one, not two hand-built sets, so
+    // what is being read is the derivation's own `dark`.
+    expect(derivedTokens('solarized-light').dark).toBe(false)
+    expect(nativeScheme(derivedTokens('solarized-light'))).toBe('light')
+    expect(nativeScheme(derivedTokens('gruvbox-dark-hard'))).toBe('dark')
+  })
+
+  it('agrees with the window colour it is applied beside (D6)', () => {
+    // The coupling that makes the native appearance a decision about the tokens
+    // rather than a second guess at them: after a light theme is stored, the
+    // canvas main paints and the scheme the platform paints come from one set.
+    const stored = setTheme('builtin:solarized-light')
+    if (!stored.ok) throw new Error(`expected a success, got ${stored.reason}`)
+    const tokens = activeTheme().tokens
+    expect(windowBackgroundColor(tokens)).toBe('#fdf6e3')
+    expect(nativeScheme(tokens)).toBe('light')
+  })
+})
+
+describe('AC5.5(b) — main/index.ts applies it, and follows a change — a source walk', () => {
+  // A source walk, and its limit is stated: it proves the wiring is *in the
+  // file*, not that it runs. `electron/main/index.ts` is not importable under
+  // vitest — importing it runs the `whenReady` microtasks that reach
+  // `services/menu.ts` and exit 1 before `createWindow()` is ever called (A25,
+  // the residual slice 3 declared) — so no case in this suite can read
+  // `nativeTheme.themeSource` back after a `setTheme`. What this decides is that
+  // a `themeChanged` broadcast has somewhere to land and that boot sets the
+  // scheme; the live check that the calls are reached is the orchestrator's.
+  const source = readFileSync(MAIN_INDEX, 'utf8')
+
+  it('sets the platform scheme at window creation, from the stored theme', () => {
+    expect(source).toMatch(
+      /nativeTheme\.themeSource\s*=\s*nativeScheme\(\s*activeTheme\(\)\.tokens\s*\)/
+    )
+  })
+
+  it('follows every theme change on the broadcast it already listens to', () => {
+    // Sliced from `app.whenReady()` — everything that runs after boot, which is
+    // where the subscription and the `activate` arm live. Anchoring on the literal
+    // `subscribe(` would be widened by any earlier occurrence of that substring, and
+    // the boot line (`createWindow`) sits above this slice so it cannot satisfy it.
+    const start = source.indexOf('app.whenReady()')
+    expect(start).toBeGreaterThan(-1)
+    const handler = source.slice(start)
+    expect(handler).toMatch(/themeChanged/)
+    expect(handler).toMatch(/nativeTheme\.themeSource\s*=\s*nativeScheme\(/)
+    // The window's own colour, from the payload's tokens — the "not only at
+    // boot" half (tasks.md:519-522).
+    expect(handler).toMatch(/setBackgroundColor\(windowBackgroundColor\(/)
+    // And the payload is *checked*, not merely cast: a tokens record without the
+    // field `nativeScheme` reads is reported rather than applied (CLAUDE.md #12).
+    expect(handler).toMatch(/typeof tokens\.dark !== 'boolean'/)
+  })
+
+  it('keeps both window references in step on a second window', () => {
+    // `activate` builds a window once the first is closed. Reverting that line to
+    // `setMainWindow(createWindow())` would move `services/events.ts`'s reference
+    // while this module's own went stale — the subscription above would then paint
+    // a destroyed window on the next theme change, which is the coupling
+    // `adoptWindow` exists for and which nothing else measures.
+    const activate = source.slice(source.indexOf("app.on('activate'"))
+    expect(activate).toContain('adoptWindow(createWindow())')
+    expect(source).not.toMatch(/setMainWindow\(createWindow\(\)\)/)
   })
 })

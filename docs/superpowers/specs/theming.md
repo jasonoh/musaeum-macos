@@ -195,8 +195,6 @@ The rest of the round:
 | A44 | **Two more nits recorded rather than fixed.** `ThemeOption.sourcePath` is shipped to the renderer and read by nothing yet (it is display-only by contract, and slice 6's resolver is its likely first consumer); and `importPaths` runs one transaction *per file*, so a folder of *n* themes costs *n* read-modify-writes over a JSON array that grows to *n* records. | The first is a field with no consumer, not an invariant risk. The second is the price of D6's per-member atomicity, bounded by the user's own folder; it is carried in `tasks.md` with the condition that would change it (a folder in the hundreds, or a scan the user can feel). |
 | A45 | **The extension set is named as four sites.** `ipc/theme.ts`'s dialog filter, `importer.ts`'s `SCANNABLE_EXTENSIONS`, `index.ts`'s dispatch and `AppearanceSection.tsx`'s drop filter must agree, and slice 6 adding `.css` has to find all four or a dropped `.css` is silently ignored. | A35's rule is "the scan ignores what it cannot read", which is only true while the four agree. Cheaper to write down than to debug in slice 6. |
 
----
-
 **Measured on the returned tree, by the orchestrator, not self-reported by the implementers.** Gate:
 typecheck 0, lint 0, `npm test` **513 passed / 23 files** (slice 3's baseline 452/22 — the slice landed
 at 508 and the repair round above added five cases), `npm run build` 0.
@@ -213,6 +211,100 @@ Four mutations, each reddening only its own criterion: the per-row `stale` flag 
 in `store.test.ts`), `readLibrary` accepting an invalid row (3 tests), `scanFolder` writing a marker
 file into the folder (AC4.3's hash test), and the library arm of the ladder never re-deriving an
 old-engine record (the two J3 tests). Every mutated file was restored byte-identically.
+
+### Amendment round 5 — 2026-09-19 (slice 5 landed)
+
+Slice 5 was built from the annex (`docs/superpowers/plans/2026-09-19-theming-slice5.md`, 8
+adjudicated decisions), then checked three ways: the orchestrator's own eight-mutation campaign
+against the shipped tree, a **live pass** on an isolated `MUSAEUM_USER_DATA` instance driven over
+CDP with a synthetic two-chapter EPUB and the book kept open across the theme switch, and a
+read-only pre-merge review whose brief was to falsify the implementation and its tests. Nine
+sentences lost; each is amended in place at its site as well, nothing here re-opens a product
+decision (J1–J11 stand), and A53's file count is the honest one.
+
+| # | What changed | Why |
+|---|---|---|
+| A46 | **The `search` role is derived, as the derived link colour** (annex D1). §2.5 predates S1 and never mentions the role; `2026-09-19-reader-search-design.md`'s D4 named it *for* this slice and this slice pays it. | S1's own note: "a colour that is not named here is one slice 5 cannot carry". `search === link` in both authored rows and on the derived default, so the no-op property (AC5.2) is untouched; keeping it a *field* is what makes it a role rather than a coincidence. *Reversal:* a palette whose derived `gold-400` reads badly as a hit outline over its own page — then `search` earns a rule in `derive.ts`, and that is a slice-2 change. |
+| A47 | **`pageCss` moved out of `ReaderEngine.tsx` into `src/lib/theme/reader-palette.ts` as `readerPageCss(prefs, palette)`.** §2.5 fixes what the stylesheet may contain and says nothing about where it lives. | AC5.7/AC5.8 had **no unit decider at all** while the builder was module-private inside a `.tsx` that imports the vendored custom element: importing that file under vitest is not possible, so "the string contains no `var(`" could only ever have been a source read. The move is what turns both criteria into assertions. *Reversal:* a future rule that needs React state moves back and loses its decider — say so when it happens. |
+| A48 | **AC5.2's decider is a two-link chain, not one import.** The annex told the test to import `MUSAEUM_DEFAULT_TOKENS`; it cannot: `tsconfig.web.json` includes `src/**` and `test/**` only, so the cross-tree import is `TS6307` plus 13 `TS2307`s for the inlined `*.yaml?raw` corpus. The test parses `src/index.css`'s `:root` instead, and `theme/store.test.ts`'s existing pin holds `MUSAEUM_DEFAULT_TOKENS` against that same block. | The criterion keeps a decider (measured: the `ink-950` mutation still reddens it) without a config change that is not this slice's to make. The hole it leaves is named rather than hidden, and is carried in `tasks.md`. |
+| A49 | **The shadow alphas are rounded to three decimals.** §2.5 gives the formula and its two example sets; it says nothing about representation. | Measured: `0.16` unrounded emits `0.14545454545454545` — valid CSS, incomparable in a test, and visibly arithmetic rather than the three settled values §7's own ledger already recorded (`0.145 / 0.102 / 0.175`). The rounding is what makes the spec's numbers the shipped ones. |
+| A50 | **`--shadow-a1/a2/a3` and `color-scheme` join `OWNED_CSS_VARS` (28 → 32 names).** §2.5 says they become *derived*; it does not say they are *owned*. | Owned means the apply path can take them away again, so the four names cannot accrete the "stale 12 `--status-*`" bug class slice 3's repair round had to fix. `:root`'s authored block stays the default for the frame before JS runs (AC1.2's no-pixel-change promise for slice 1 is preserved: the derived dark values are byte-equal). |
+| A51 | **`nativeScheme(tokens)` is a pure function in the theme service, and the wiring rides a new in-process `subscribe` on `services/events.ts`.** §2.5 said only "set at boot from the stored tokens and on every theme change". | The decision needed an instrument (`main/index.ts` is not importable under vitest — A25), and the change signal had to be the *same* `themeChanged` broadcast the renderer follows rather than a second channel or a line in the handler (`CLAUDE.md` #8). One event, one path, two consumers. |
+| A52 | **The popover's third option is a two-tone dot** (ink over parchment, tokens only). §2.5 gives the three option values and nothing about their rendering. | The old branch (`ink` ? ink : parchment) would have drawn `auto` as a second `paper`. No new colour: both halves are existing tokens, which is what keeps the dot meaningful under an imported theme. |
+| A53 | **Slice 5 landed as 9 code + 4 test files**, not §5's 6 code + 2 test. §5's row and §2.5's budget sentence are corrected at their sites; the named absorber (`reader-palette.ts` + its test folding into `css.ts` + `css.test.ts`) is **not** taken. | Four files the row never counted: `src/lib/theme/css.ts` (A50's writer — the same undercount A30 found on slice 3), `ReaderSearch.tsx` (A46's consumer), `services/events.ts` and `test/mocks/electron.ts` (A51's wiring). Recorded rather than absorbed silently, as A30/A36 were. |
+
+**Built — slice 5 (2026-09-19).** Gate on the returned tree: typecheck 0, lint 0, `npm test`
+**814 passed / 35 files** (baseline 789/34), `npm run build` 0, `npx prettier --check` clean on all
+14 touched files. Live, on an isolated `MUSAEUM_USER_DATA` profile (a synthetic two-chapter EPUB in
+a scratch library, the app driven over CDP on 9222, the book opened by double-clicking its card and
+**never closed** for the whole run):
+
+- **The page follows the theme, in place.** With the default theme active the reading pane's
+  screenshot is uniformly `rgb(20,18,16)` = `ink-900`, the *page* colour — not the reader frame's
+  `#0d0b09`. One `window.Musaeum.theme.set('builtin:solarized-light')`, with the book still open,
+  repaints it to `rgb(239,233,215)` = the derived page `#f1ecdb`, again not the frame's `#fdf6e3`
+  (macOS screenshots are colour-managed, so the comparison that matters is the ~13–14 unit distance
+  to the frame colour, not equality with the palette's hex). AC5.1 and AC5.2 both hold live.
+- **AC5.7's round trip is the same measurement.** The pane is uniform *page* colour edge to edge,
+  which is only true if `paginator.js:191`'s string comparison took the resolved branch and
+  `:626/:685/:1113` painted the paginator's own margin with it. A `var()`-valued stylesheet would
+  have left the pane showing the frame's colour instead.
+- **The live stylesheet, read from the live module.** Importing `src/lib/theme/reader-palette.ts` in
+  the running page (Vite serves it) with the live prefs and the live tokens gives exactly today's
+  `ink` row for the default theme (deep-equal to `INK_PALETTE`), a string containing **no `var(`**,
+  `::selection { background: #d4a24e44; }`, and — after the switch — `color-scheme: light`,
+  `background: #f1ecdb`, and `::selection { background: #cb4b1644; }` from the derived link
+  `#cb4b16`.
+- **AC5.4/AC1.7's flip, on the element:** `--shadow-a1/a2/a3` are `0.5/0.35/0.6` on the default and
+  `0.145/0.102/0.175` on solarized-light, with `color-scheme` dark↔light and
+  `getComputedStyle(documentElement).colorScheme` agreeing.
+- **AC5.5, live and stronger than the criterion asked:** `matchMedia('(prefers-color-scheme: light)')`
+  in the renderer flips false→true→false across the two switches. Nothing but the main process's
+  `nativeTheme.themeSource` can move that — the OS appearance never changed — so the on-change wiring
+  is observed, not inferred. *Residual:* `win.setBackgroundColor`'s own effect shows only during a
+  resize flash and is not observable over CDP (the A25 class); its deciders are
+  `windowBackgroundColor`'s unit test and the source walk in `theme/store.test.ts`.
+- **A46's hand-off, measured by pixels** — on a *hit-only* fixture, because the first run's numbers
+  were wrong: the book used then had a link in it, the link colour **is** the derived link colour,
+  and the "705 / 743 px" figures were the link line rather than the outlines. On a fixture with no
+  links in it, so that every coloured pixel on the page is an outline: a search for `ledger` (5
+  hits, one chapter) under solarized-light drew **1,784** px of that theme's derived orange
+  `#cb4b16` and **0** px of the previous hardcoded amber `#d4a24e`; under the default theme the same
+  run drew **1,783** px of `#d4a24e` and **0** px of the orange. The outline colour follows the
+  theme, which is the thing S1 could not do — and the correction is recorded rather than quietly
+  overwritten because it is the kind of figure a later session would otherwise reuse (repair round,
+  A58).
+- **Eight mutations, one per criterion, each reddening only its own case and every file restored
+  byte-identically:** the page mapped to `ink-950`, `SHADOW_REFERENCE` changed, `sanitizePrefs`'
+  fallback changed, `color-scheme` dropped from `OWNED_CSS_VARS`, `linkAlphaHex` reduced to `link`,
+  `nativeScheme` pinned to a constant, `var(--ink-900)` emitted into the page CSS, and the old
+  `${c.link}44` pasted back at the rule.
+
+---
+
+**Repair round (2026-09-19, after the pre-merge review).** The read-only review of the landed tree
+found **no blocking findings** — no invariant bends, and it re-ran the gate itself (typecheck 0,
+lint 0, prettier clean on all 14 files, 814/35, build 0) — and ten worth-fixing items, of which two
+were substantive: **AC5.1's promised source walk was never written** (the plan's own AC table named
+it, and no test mentioned `ReaderEngine` or `ReaderSearch` at all, so the slice's headline claim was
+undecided), and **AC5.6 had no decider of any kind**. Both are closed, and so is everything else the
+review named; each fix carries a mutation the orchestrator reproduced by hand (M9–M15, all killed,
+every file restored byte-identically). Seven more mutations, so the slice's campaign is **15/15**.
+
+| # | What changed | Why |
+|---|---|---|
+| A54 | **AC5.1's wiring is decided.** `reader-palette.test.ts` gains a source-walk block over `ReaderEngine.tsx` and `ReaderSearch.tsx`: the theme store is read in both, the engine resolves through the tokens on *both* its paths (the open path through the refs), `tokens` is in the restyle effect's dependency list, and neither component names an authored row (`INK_PALETTE` / `PAPER_PALETTE`) — the search colour comes from the resolver (M9/M10/M11 all red). | The pure functions were pinned; the wiring that makes them matter was not. A walk is this repo's sanctioned instrument where no DOM exists (AC4.4, A25), and its limit is stated in place: it proves the wiring is written, not that React calls it — that half is the running-app pass. |
+| A55 | **AC5.6 is decided.** A per-rule assertion: exactly **one** `!important` in the injected stylesheet and it is the pre-existing `pre { white-space: pre-wrap }` one, and no colour/background/`color-scheme`/border declaration carries one (M12 red). | The criterion's named mutation (prefix the colour rules with `!important`) was invisible to the suite, and a blanket "no `!important`" assertion was not available — the sheet legitimately carries one. Naming the allowed rule is what made the criterion checkable. |
+| A56 | **The `activate` arm and the payload guard are decided.** The walk now slices from `app.whenReady()` rather than from the literal `subscribe(` (which any earlier occurrence of that substring would have widened), asserts the `activate` path goes through `adoptWindow(createWindow())`, and asserts no `setMainWindow(createWindow())` exists (M13 red); the broadcast handler's guard is a **shape** check on the fields it reads, not a truthiness test on the object, and a payload it refuses is logged rather than skipped in silence (M14 red). | Reverting the activate line kept every test green while silently stopping the window's background from following a theme change on a second window — the coupling the comment sells. And a tokens record missing `dark` was applied with `nativeScheme` answering `'light'`, which is the "failures are reported" rule read too loosely. |
+| A57 | **`readerPalette` is total.** A colour that is not `/^#[0-9a-f]{6}$/` — `undefined` from a hand-edited `theme_tokens` row, or any future caller that is not main's validated store — resolves to the ink row instead of interpolating `background: undefined;` into the book, which the engine's read-back would treat as transparent with nothing reporting it (M15 red). | The other direction of AC5.7. Main validates everything it sends, so this is not a caller `src/` has today; the guard is what keeps the next one from painting a broken page, and the sibling path (`applyTokens`) exists for the same reason one layer up. |
+| A58 | **The search highlight follows a *live* theme change, and the record of the first measurement is corrected.** `ReaderSearch` hoists the resolved colour (`searchColour`), draws with it, and re-runs its own query when it moves (through a `startRef` so a keystroke cannot trigger it). **Measured:** before, a run under solarized-light followed by a switch to the default theme left **1,780** px orange on a dark page; after, the same switch leaves **1,764** px amber on it, and a fresh run under solarized-light draws **1,784** px of `#cb4b16` with **0** amber. | The vendor stores the draw options per run (`view.js:545`), so an outline keeps the colour of the run that drew it — invisible while the reader's page palette was a pair of constants, and a visible mismatch the moment the page, the links and the highlight all follow the app theme. The review called it a suspicion it could not measure; measuring it also caught that round 5's "705/743 px" figures were the fixture's **link line** (the link colour *is* the derived link colour), not the outlines. Both are recorded here rather than quietly replaced. |
+| A59 | **Four small ones:** `SHADOW_VARS` is now the test's source for the four slice-5 names (one list, not two spellings); `OWNED_CSS_VARS`' comment says *names* rather than "vars" (one member, `color-scheme`, is a real property) and its removal reasoning no longer cites the pre-JS frame; the mock's `nativeTheme` entry says in place that it is inert and not AC5.5 coverage; and the vacuous `linkAlphaHex === \`${link}44\`` case became a shape assertion (`/^#[0-9a-f]{6}44$/` plus the link's own six digits), because as written it passed for any link at all — including one that is not a colour. | Each is a sentence a later reader would have trusted: a comment that explains a rule by the wrong mechanism, an export with no consumer, a test that restates the implementation. |
+
+**Recorded, not closed.** AC5.7's *structural* half — that the `html` and `body` rules carry the page
+literal, rather than those values appearing anywhere in the string — is asserted by value, not by
+placement: a swapped pair of rules would still pass the string tests (the live read covered the real
+outcome). And `subscribe`'s own unsubscribe/throw-isolation arms in `services/events.ts` still have
+no unit decider; both are in `tasks.md`.
 
 ---
 
@@ -239,6 +331,11 @@ Consequences, all measured — three from the first pass, one added in amendment
    injected stylesheet at lines 64–106. Its own comment (line 46) states the `paper` row
    "has no token counterpart — the app has no light theme to borrow from", and line 45
    says "a palette change has to update this table too". It is a fork waiting to drift.
+   **[A46/A47 — slice 5 landed, and this paragraph's present tense is no longer true.** The
+   table is gone; the page is derived from the active theme in
+   `src/lib/theme/reader-palette.ts`, and the injected stylesheet moved there with it
+   (`readerPageCss`). The paragraph is kept because it is the *diagnosis* this slice answers
+   — the same treatment §1's consequence 2 got from A23.]**
 2. **Main process paints a colour the renderer may not agree with.**
    `electron/main/index.ts:94` is `backgroundColor: '#0d0b09'` — the only hex literal
    anywhere under `electron/` — so any light theme flashes near-black at window creation.
@@ -976,6 +1073,10 @@ is in `pageCss()`'s colour expressions, not in its rules. The reader stays at `z
 **File budget:** 10 code + test files (§5) — at the bound. Overrun absorber:
 `src/lib/theme/reader-palette.ts` folds into `src/lib/theme/css.ts` (both are "derived values
 out", and together they are ~60 lines).
+**[A53 — superseded: the landed count is 9 code + 4 test files, and the absorber was deliberately
+not taken.** §5's row below is corrected in place: it never counted `src/lib/theme/css.ts`
+(A50's writer, the same undercount A30 found on slice 3), `ReaderSearch.tsx` (A46's consumer),
+`services/events.ts` and `test/mocks/electron.ts` (A51's wiring).]**
 
 ### 2.6 Slice 6 — The Obsidian resolver
 
@@ -1423,6 +1524,13 @@ canvas (the prototype's measured complaint).
 light theme stored and `'dark'` otherwise, read back after `theme.set`.
 *Mutation that fails it:* set it once at boot only — switching to a light theme leaves native
 scrollbars and menus dark, and the assertion after `theme.set` fails.
+**[A51 — landed with a stronger instrument than the case names.** `nativeTheme.themeSource` is
+still not readable over CDP, but *`matchMedia('(prefers-color-scheme: light)')` in the renderer is*:
+measured live, it flips false→true→false across two theme switches with the OS appearance
+unchanged, and nothing but the main process's `themeSource` can move it. The unit-level decider is
+`nativeScheme`'s two arms plus the source walk over `main/index.ts` in `theme/store.test.ts`;
+`win.setBackgroundColor`'s own effect stays a declared residual (it is visible only during a resize
+flash).]**
 
 **AC5.6 — the book's own typography still wins.** *Case:* a book whose stylesheet sets
 `font-family` and `background` keeps them; the injected CSS adds no `!important` and does not
@@ -1639,7 +1747,11 @@ costs — white at 5% to parchment at 5% — is accepted here and named in §2.7
   `app_config`.
 - **`docs/invariants/reader.md`** — says the reader offers "two page themes — warm paper and
   dark-library ink". After slice 5 the default follows the app theme and the two named rows
-  are overrides. The paragraph becomes stale.
+  are overrides. The paragraph becomes stale. **[Paid at slice 5, 2026-09-19:** the theme
+  paragraph now names the three values and the derived mapping, and the *Searching in the book*
+  section's highlight-colour rule was the other stale sentence — it still described the deleted
+  `PALETTE` table, and now names `resolveReaderPalette(theme, tokens).search` with the pixel
+  measurement that proves it follows the theme.]**
 - **`docs/architecture.md`** — its directory listing gains `electron/main/services/theme/`
   and `src/lib/theme/`.
 - **`tasks.md`** — the six approved slices **plus slice 7 as proposed** (§2.7), the deferred token
@@ -1672,7 +1784,7 @@ slice 2's base16 fixture corpus so no second copy exists in the repo.
 | 2. Derivation core | 6 (`src/types/theme.types.ts`, `theme/color.ts`, `theme/derive.ts`, `theme/parse/base16.ts`, `theme/parse/itermcolors.ts`, `theme/index.ts`) | 2 (`theme/derive.test.ts`, `theme/parse.test.ts`) | `test/fixtures/theme/*.itermcolors` (2) + `builtin/*.yaml` (**13**, vendored — A15; the round-1 figure of 10 was the curated set's size as counted then) | `parse/base16.ts` + `parse/itermcolors.ts` → one `parse.ts` |
 | 3. Persistence + boot | 9 (`theme/store.ts`, `ipc/theme.ts`, `main/index.ts`, `src/types/api.types.ts`, `electron/preload/index.ts`, `src/stores/theme.store.ts`, `src/hooks/useTheme.ts`, `src/lib/theme/css.ts`, `src/main.tsx`) | 2 (`theme/store.test.ts`, `src/lib/theme/css.test.ts`) + `test/mocks/electron.ts` extended (shared infra) | — | `src/main.tsx` merges into `src/lib/theme/css.ts` (8) |
 | 4. Import + picker | **11 landed** (§2.4's count was 7: the row above always undercounted `store.ts`, `src/types/theme.types.ts` and the renderer store test — see A36) | 2 (`theme/importer.test.ts` new, `theme/store.test.ts` and `src/stores/theme.store.test.ts` extended) | — | `AppearanceSection` row rendering folds into `SettingsModal.tsx` — **named, deliberately not taken** (A36) |
-| 5. Reader + flip | 6 (`src/lib/theme/reader-palette.ts`, `ReaderEngine.tsx`, `src/stores/reader.store.ts`, `ReaderPrefsPopover.tsx`, `main/index.ts`, `theme/store.ts`) + `tailwind.config.js` if the shadow vars are touched | 2 (`reader-palette.test.ts` new, `reader.store.test.ts` extended) | — | `reader-palette.ts` folds into `src/lib/theme/css.ts` |
+| 5. Reader + flip | **9 landed** (§2.5's count was 6: `theme/css.ts`, `ReaderSearch.tsx`, `services/events.ts` and `test/mocks/electron.ts` were missing — A53) — one over the ~10-file bound | 4 (`reader-palette.test.ts` new; `css.test.ts`, `reader.store.test.ts`, `theme/store.test.ts` extended) | — | `reader-palette.ts` + its test fold into `src/lib/theme/css.ts` + `css.test.ts` — **named, deliberately not taken** (A53) |
 | 6. Obsidian resolver | 3 (`theme/resolve-css.ts`, `theme/parse/obsidian.ts`, `theme/index.ts`) + `theme/importer.ts` | 1 (`theme/obsidian.test.ts`, with synthetic CSS fixtures inline — **do not vendor a user's theme file**) | — | `parse/obsidian.ts` folds into `theme/index.ts` |
 | **7. Status + scrim + hairline — COMMITTED, staged 7a (bounded) and 7b (the sweep) (§2.7)** | **15 at its widest**, **10 with the named absorber** (`theme/derive.ts`, `src/types/theme.types.ts`, `theme/store.ts`, `src/lib/theme/css.ts`, `tailwind.config.js` + the ten components that invert: the eight modal files, `BookCard.tsx`, `BookDetail.tsx`) | 1 (`theme/derive.test.ts` extended — no new test file) | — | **`src/components/library/BookDetail.tsx`**: its single hairline site leaves first (cosmetic — the cover is already edged by `shadow-cover`), then the status sites in files the slice does not otherwise open leave as debt (§2.7a) |
 

@@ -4,6 +4,7 @@ import {
   PREF_RANGES,
   persistedReaderState,
   sanitizePrefs,
+  THEME_OPTIONS,
   useReaderStore,
   type SearchPatch
 } from './reader.store'
@@ -49,8 +50,45 @@ describe('sanitizePrefs', () => {
 
   it('rejects values outside the union', () => {
     expect(sanitizePrefs({ typeface: 'comic' }).typeface).toBe(DEFAULT_PREFS.typeface)
-    expect(sanitizePrefs({ theme: 'sepia' }).theme).toBe(DEFAULT_PREFS.theme)
+    expect(sanitizePrefs({ theme: 'sepia' }).theme).toBe('auto')
     expect(sanitizePrefs({ typeface: 7 }).typeface).toBe(DEFAULT_PREFS.typeface)
+  })
+
+  /**
+   * AC5.3, both halves. The theme union gained a third member (`auto`, the
+   * default) and the two that existed keep their meaning — which is the point: a
+   * `musaeum.reader` entry written before this slice must not change what it
+   * renders.
+   */
+  it('keeps an old stored theme meaning what it meant, and defaults a missing one', () => {
+    expect(sanitizePrefs({ theme: 'ink' }).theme).toBe('ink')
+    expect(sanitizePrefs({ theme: 'paper' }).theme).toBe('paper')
+    expect(sanitizePrefs({ theme: 'auto' }).theme).toBe('auto')
+    expect(DEFAULT_PREFS.theme).toBe('auto')
+    // The shape a pre-slice-5 entry has: no `theme` field at all.
+    expect(sanitizePrefs({ typeface: 'sans', fontSize: 22 }).theme).toBe('auto')
+    expect(sanitizePrefs(undefined).theme).toBe('auto')
+  })
+
+  it('agrees with THEME_OPTIONS — the list the popover renders is the list storage accepts', () => {
+    // The drift AC5.3's mutation creates: the option list widened without the
+    // validator (or the reverse) lets a control produce a value storage rejects.
+    // `reader.store.ts` keeps one list for both for exactly this reason.
+    expect(THEME_OPTIONS.map((o) => o.value)).toEqual(['auto', 'ink', 'paper'])
+    for (const option of THEME_OPTIONS) {
+      expect(sanitizePrefs({ theme: option.value }).theme, option.value).toBe(option.value)
+    }
+  })
+
+  it('keeps a stored theme through the persist round trip (AC5.3)', () => {
+    // AC5.3's second clause, against the two functions the persist middleware is
+    // actually given rather than a copy of the shape: `persistedReaderState` is
+    // `partialize`, and `sanitizePrefs` is what `merge` runs on the stored entry.
+    // A theme chosen before this slice therefore survives a restart unchanged.
+    const store = useReaderStore.getState()
+    const saved = { ...store.prefs, theme: 'ink' as const }
+    expect(sanitizePrefs(persistedReaderState({ ...store, prefs: saved }).prefs).theme).toBe('ink')
+    expect(sanitizePrefs(persistedReaderState(store).prefs).theme).toBe('auto')
   })
 
   it('rejects numbers that are the wrong type, unbounded, or out of range', () => {

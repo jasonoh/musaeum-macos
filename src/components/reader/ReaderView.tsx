@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { FoliateView } from '@vendor/foliate-js/view.js'
-import { TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
+import { TITLEBAR_STRIP_HEIGHT, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 import { isTypingTarget } from '@/hooks/useBookNavigation'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
@@ -214,7 +214,14 @@ export function ReaderView() {
   // correct today, and silently broken by anyone who reorders it.
   return (
     <div className="fixed inset-0 z-[45] flex animate-fade-in flex-col bg-ink-950">
-      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 pr-3">
+      <header
+        className="flex shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 pr-3"
+        // The strip's height is derived from the lights' line rather than chosen:
+        // this header *is* the window's titlebar while a book is open, and its
+        // controls have to sit level with the dots behind the spacer below
+        // (`TITLEBAR_STRIP_HEIGHT`). `h-11` centred the row 4px above them.
+        style={{ height: TITLEBAR_STRIP_HEIGHT }}
+      >
         {/* The dots' strip, and the window's drag handle while a book is open —
             see TRAFFIC_LIGHT_INSET. Empty by design: nothing here but the
             traffic lights macOS paints over it. */}

@@ -14,6 +14,9 @@ import {
   type AskSession
 } from '@/lib/ask-session'
 import type { RecallVerdict } from '@/lib/recall'
+// The reader's page theme is the palette module's type, so the store, the
+// resolver and the two rows cannot drift into three spellings of one union.
+import type { ReaderPageTheme } from '@/lib/theme/reader-palette'
 import { EMPTY_SEARCH, type SearchGroup } from '@/lib/reader-search'
 
 export interface ReaderTocItem {
@@ -43,7 +46,7 @@ export interface ReaderPrefs {
   fontSize: number // px
   lineHeight: number
   margin: number // px
-  theme: 'paper' | 'ink'
+  theme: ReaderPageTheme
 }
 
 export const DEFAULT_PREFS: ReaderPrefs = {
@@ -51,7 +54,10 @@ export const DEFAULT_PREFS: ReaderPrefs = {
   fontSize: 18,
   lineHeight: 1.6,
   margin: 48,
-  theme: 'ink'
+  // The app theme, by default: the reader's chrome *is* app chrome, so a page
+  // that disagreed with the frame around it would be the same defect the reader's
+  // z-index history warns about.
+  theme: 'auto'
 }
 
 /**
@@ -64,7 +70,16 @@ export const TYPEFACE_OPTIONS: readonly { value: ReaderPrefs['typeface']; label:
   { value: 'sans', label: 'Sans' }
 ]
 
+/**
+ * `auto` first because it is the default and the one the page usually is;
+ * `ink` and `paper` stay as they were, so a stored `'ink'` keeps meaning exactly
+ * what it meant before this slice (AC5.3). This list and `sanitizePrefs`'s
+ * validator are extended together — that is what the shared-list comment above
+ * is for, and widening one without the other is how a control ends up producing
+ * a value storage rejects.
+ */
 export const THEME_OPTIONS: readonly { value: ReaderPrefs['theme']; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
   { value: 'ink', label: 'Ink' },
   { value: 'paper', label: 'Paper' }
 ]

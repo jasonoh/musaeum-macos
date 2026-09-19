@@ -810,3 +810,29 @@ export function setTheme(
 export function windowBackgroundColor(tokens: ThemeTokens): string {
   return tokens.ink['950']
 }
+
+/**
+ * Pure. Which way the platform's *own* chrome points for a set of tokens.
+ *
+ * The platform paints some of Musaeum and will not take a colour for it: native
+ * scrollbars, the traffic lights, the menu bar, the text caret, `<select>` popup
+ * lists and the default canvas all follow `nativeTheme.themeSource` and nothing
+ * else. `:root`'s `color-scheme` covers the web-content half of that list
+ * (slice 1 owns its default, the renderer's apply path owns the transition);
+ * this function is the main-process half, which the renderer cannot reach.
+ *
+ * It is a pure function *here* rather than two lines in
+ * `electron/main/index.ts` because `index.ts` has no harness: importing it under
+ * vitest runs its `whenReady` microtasks, which reach `services/menu.ts` and
+ * exit 1 before `createWindow()` is ever called — the A25 precedent in
+ * `docs/superpowers/specs/theming.md`. A decision inside an unimportable file is
+ * a decision no test can falsify; this one is decided by its own unit case, and
+ * the wiring that calls it is decided by a source walk (AC5.5).
+ *
+ * `dark` is the token set's own boolean — the same one the reader's page palette
+ * resolves the book document's `color-scheme` from, so the app's chrome and the
+ * page inside it cannot point opposite ways.
+ */
+export function nativeScheme(tokens: ThemeTokens): 'light' | 'dark' {
+  return tokens.dark ? 'dark' : 'light'
+}

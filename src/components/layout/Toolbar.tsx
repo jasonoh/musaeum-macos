@@ -1,3 +1,4 @@
+import { TITLEBAR_STRIP_HEIGHT } from '@shared/window-chrome'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
 import { SearchBar } from '@/components/shared/SearchBar'
@@ -33,7 +34,10 @@ export function Toolbar() {
     : [...SORT_OPTIONS, sort]
 
   return (
-    <header className="app-drag flex h-14 shrink-0 items-center gap-3 border-b border-ink-800 bg-ink-900/60 px-4">
+    <header
+      className="app-drag flex shrink-0 items-center gap-3 border-b border-ink-800 bg-ink-900/60 px-4"
+      style={{ height: TITLEBAR_STRIP_HEIGHT }}
+    >
       <div className="flex flex-1 justify-center">
         <SearchBar />
       </div>

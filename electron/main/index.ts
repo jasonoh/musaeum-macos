@@ -1,7 +1,8 @@
-import { app, BrowserWindow, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, nativeTheme, net, protocol, shell } from 'electron'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import type { ThemeView } from '@shared/theme.types'
 import { TRAFFIC_LIGHT_POSITION } from '@shared/window-chrome'
 import { startRestApiIfEnabled } from './api/rest'
 import { registerAiHandlers } from './ipc/ai'
@@ -17,7 +18,7 @@ import { registerThemeHandlers } from './ipc/theme'
 import { resolveBookFile } from './services/book-bytes'
 import { closeDb, getBook } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
-import { broadcast, setMainWindow } from './services/events'
+import { broadcast, setMainWindow, subscribe } from './services/events'
 import { bindToNAS, startWatcher, stopWatcher } from './services/file-watcher'
 import { installApplicationMenu } from './services/menu'
 import * as importer from './services/importer'
@@ -28,7 +29,7 @@ import { createBeforeQuitHandler } from './services/quit'
 import * as readingState from './services/reading-state'
 import { isPackaged } from './services/runtime'
 import * as sidecar from './services/sidecar'
-import { activeTheme, windowBackgroundColor } from './services/theme/store'
+import { activeTheme, nativeScheme, windowBackgroundColor } from './services/theme/store'
 
 // Isolated profile for verification/e2e runs — macOS Electron resolves the
 // default userData via the account's home, so a $HOME override is ignored
@@ -85,7 +86,31 @@ function setDevDockIcon(): void {
   if (existsSync(icon)) app.dock?.setIcon(icon)
 }
 
+/**
+ * The current main window, kept in step with `services/events.ts`'s own
+ * reference. The `themeChanged` listener below needs it for
+ * `setBackgroundColor` — and it has to be a *reference* rather than a captured
+ * `win`, because `activate` builds a second window once the first is closed, and
+ * a listener closing over the old one would repaint a destroyed window (or,
+ * guarded, nothing at all). `adoptWindow` is the one place both references move,
+ * so the two can't be updated out of step.
+ */
+let mainWindow: BrowserWindow | null = null
+
+function adoptWindow(win: BrowserWindow): void {
+  mainWindow = win
+  setMainWindow(win)
+}
+
 function createWindow(): BrowserWindow {
+  // The platform's own chrome — scrollbars, traffic lights, the menu bar, the
+  // caret, `<select>` popups — is not ours to colour; it follows
+  // `nativeTheme.themeSource` and nothing else. Set here from the same stored
+  // theme the window's background comes from, so the two cannot disagree at
+  // boot. The *decision* is `nativeScheme`, in the theme service, where it has a
+  // harness (`index.ts` has none — A25).
+  nativeTheme.themeSource = nativeScheme(activeTheme().tokens)
+
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -140,7 +165,42 @@ app.whenReady().then(() => {
   registerAiHandlers()
 
   const win = createWindow()
-  setMainWindow(win)
+  adoptWindow(win)
+
+  // One subscription, for the process (D6). The window's background and the
+  // platform's scheme follow the theme through the *same* `themeChanged`
+  // broadcast the renderer listens to, so "what is active" has one path and the
+  // native chrome cannot drift from the body it frames. `theme.set` broadcasts
+  // the whole view (the payload is the `ThemeView` the renderer is handed), so
+  // the tokens repainted from here are the ones that were just written.
+  //
+  // `themeSource` is set unconditionally — it is process-wide and needs no
+  // window — while the window's own colour is guarded exactly as `broadcast`
+  // guards its send: a theme change after the window is gone (`window-all-closed`
+  // on a non-macOS quit, or a rejection between `close` and `activate`) logs
+  // nothing and throws nothing (`CLAUDE.md` #12).
+  subscribe((event, payload) => {
+    if (event !== 'themeChanged') return
+    // The registry types the payload `unknown`, so it is cast once and then
+    // *checked* — not asserted and trusted. A future broadcast of this channel
+    // from anywhere else must not be able to take the main process down from a
+    // listener, and it must not be able to set the window's colour from a record
+    // that is not a theme: the check is on the two fields this handler reads, so a
+    // tokens object missing `dark` (nativeScheme would answer `'light'`) or a
+    // canvas is reported rather than applied in silence (`CLAUDE.md` #12).
+    const tokens = (payload as ThemeView | undefined)?.active?.tokens
+    if (!tokens || typeof tokens.dark !== 'boolean' || typeof tokens.ink?.['950'] !== 'string') {
+      console.warn(
+        '[theme] themeChanged carried no usable tokens; native chrome unchanged',
+        payload
+      )
+      return
+    }
+    nativeTheme.themeSource = nativeScheme(tokens)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setBackgroundColor(windowBackgroundColor(tokens))
+    }
+  })
 
   // A packaged build has no venv until it makes one, so the sidecar starts
   // only once an interpreter with its dependencies exists — starting first
@@ -163,8 +223,7 @@ app.whenReady().then(() => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      const w = createWindow()
-      setMainWindow(w)
+      adoptWindow(createWindow())
     }
   })
 })

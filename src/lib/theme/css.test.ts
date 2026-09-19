@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import type { ThemeTokens } from '@shared/theme.types'
-import { applyTokens, hexToChannels, OWNED_CSS_VARS, tokensToCssVars } from './css'
+import { applyTokens, hexToChannels, OWNED_CSS_VARS, SHADOW_VARS, tokensToCssVars } from './css'
 
 /**
  * The apply path, decided without a DOM.
@@ -23,6 +23,18 @@ function rootVars(): Record<string, string> {
   const vars: Record<string, string> = {}
   for (const m of block[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]] = m[2].trim()
   return vars
+}
+
+/**
+ * `:root`'s declared scheme — the one thing in that block that is not a custom
+ * property, so it is read out of the block rather than out of the var map.
+ */
+function rootColorScheme(): string {
+  const css = readFileSync(ROOT_CSS, 'utf8')
+  const block = css.match(/:root\s*\{([\s\S]*?)\}/)
+  const scheme = block?.[1].match(/color-scheme\s*:\s*([a-z]+)\s*;/)
+  if (!scheme) throw new Error(':root declares no color-scheme')
+  return scheme[1]
 }
 
 /** '13 11 9' → '#0d0b09', the inverse of `hexToChannels`. */
@@ -68,19 +80,40 @@ function tokensFromRoot(vars: Record<string, string>): ThemeTokens {
 }
 
 /**
- * The twelve slice-7a names this path owns, and the four slice-5 members it
- * deliberately does not — both module-scope because the `applyTokens` and
- * `OWNED_CSS_VARS` groups read the same lists.
+ * The twelve slice-7a names and the four slice-5 names this path owns — both at
+ * module scope because the `tokensToCssVars`, `applyTokens` and `OWNED_CSS_VARS`
+ * groups all read the same lists, and every count in this file is one of them
+ * plus the sixteen colours.
  */
 const STATUS_VARS = ['danger', 'ok', 'warn'].flatMap((family) =>
   ['400', '500', '600', 'on'].map((step) => `--status-${family}-${step}`)
 )
-const SLICE5 = ['--shadow-a1', '--shadow-a2', '--shadow-a3', 'color-scheme']
+/**
+ * Slice 5's: the three derived shadow alphas and the declared scheme. They are
+ * also the only four values this path writes that are *not* colours — three bare
+ * numbers and a keyword — which is why the "channel triplet" case has to name
+ * its exclusions instead of sweeping the whole map.
+ */
+/**
+ * Slice 5's four owned names. The three alphas come from the module's own
+ * `SHADOW_VARS` rather than a second spelling of them here, so this file cannot
+ * drift from the apply path about which properties exist.
+ */
+const DERIVED_VARS = [...SHADOW_VARS, 'color-scheme']
 
 /** A token set carrying every status family — what every built-in derives. */
 function withStatus(): ThemeTokens {
   const ramp = { '400': '#e5484d', '500': '#dc3545', '600': '#b02a37', on: '#ffffff' }
   return { ...tokensFromRoot(rootVars()), status: { danger: ramp, ok: ramp, warn: ramp } }
+}
+
+/**
+ * A light theme as the engine derives one: the weak shadow strength and
+ * `dark: false`. Nothing else about it is light — the alphas and the scheme are
+ * the whole subject here, and the four page colours are the reader's.
+ */
+function lightTokens(): ThemeTokens {
+  return { ...tokensFromRoot(rootVars()), shadow: 0.16, dark: false }
 }
 
 describe('hexToChannels', () => {
@@ -116,41 +149,72 @@ describe('tokensToCssVars', () => {
   it("writes exactly today's :root values for the default palette", () => {
     const written = tokensToCssVars(tokensFromRoot(vars))
     const owned = Object.keys(written).sort()
-    expect(owned).toHaveLength(16)
+    expect(owned).toHaveLength(20)
     // Every property it writes has to exist in :root with the same value: this is
     // the "the app renders today's pixels" half of AC3.4, decided against the
-    // stylesheet rather than against a second copy of the palette.
-    const expected = Object.fromEntries(
-      Object.entries(vars).filter(([name]) => owned.includes(name))
-    )
+    // stylesheet rather than against a second copy of the palette. `color-scheme`
+    // is the one declaration in the block that is not a custom property, so it is
+    // added from the block itself.
+    const expected = {
+      ...Object.fromEntries(Object.entries(vars).filter(([name]) => owned.includes(name))),
+      'color-scheme': rootColorScheme()
+    }
     expect(written).toEqual(expected)
+    // The bridge A24 named: the token set carries one strength (0.55), `:root`
+    // carries three alphas, and this is the arithmetic that makes them the same
+    // pixels on the default theme (AC5.4).
+    expect(vars['--shadow-a1']).toBe('0.5')
+    expect(vars['--shadow-a2']).toBe('0.35')
+    expect(vars['--shadow-a3']).toBe('0.6')
   })
 
-  it('emits channel triplets, never a hex', () => {
+  it('emits channel triplets for every colour it writes, and never a hex', () => {
     // `tailwind.config.js` composes `rgb(var(--x) / <alpha-value>)`; a hex in the
     // variable is invalid at computed-value time, so every opacity-modified
     // utility is dropped silently with the build still green.
     const written = tokensToCssVars(tokensFromRoot(vars))
-    for (const [name, value] of Object.entries(written)) {
+    const colours = Object.entries(written).filter(([name]) => !DERIVED_VARS.includes(name))
+    expect(colours).toHaveLength(16)
+    for (const [name, value] of colours) {
       expect(value, name).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/)
       expect(value, name).not.toContain('#')
     }
     expect(written['--ink-950']).toBe('13 11 9')
     expect(written['--ink-950']).not.toBe('#0d0b09')
+    // The four that are not colours are not forced into the colour shape.
+    expect(written['--shadow-a1']).toBe('0.5')
+    expect(written['color-scheme']).toBe('dark')
   })
 
-  it('leaves the shadow alphas and the colour scheme to slice 5, and status to slice 7a', () => {
+  it('derives the shadow alphas and the colour scheme, and leaves status to slice 7a (AC5.4)', () => {
+    // Inverted by slice 5: these four were `:root`'s and this path deliberately
+    // did not own them. They are derived now — which is what makes a light theme
+    // a light app rather than a light app with dark shadows and dark native
+    // chrome — and owned, so a switch reconciles them like every other property.
     const written = tokensToCssVars(tokensFromRoot(vars))
-    for (const name of Object.keys(written)) {
-      expect(name).not.toMatch(/^--shadow-/)
-      expect(name).not.toMatch(/^--status-/)
-      expect(name).not.toBe('color-scheme')
-    }
-    // The three the apply path deliberately does not own, and why the count above
-    // is 16 rather than 19.
-    expect(vars['--shadow-a1']).toBe('0.5')
-    expect(vars['--shadow-a2']).toBe('0.35')
-    expect(vars['--shadow-a3']).toBe('0.6')
+    for (const name of DERIVED_VARS) expect(Object.keys(written), name).toContain(name)
+    for (const name of Object.keys(written)) expect(name).not.toMatch(/^--status-/)
+    // The default theme's own strength reproduces the authored alphas exactly.
+    expect(written['--shadow-a1']).toBe('0.5')
+    expect(written['--shadow-a2']).toBe('0.35')
+    expect(written['--shadow-a3']).toBe('0.6')
+    expect(written['color-scheme']).toBe('dark')
+  })
+
+  it('scales the alphas with the theme’s own shadow strength, and flips the scheme (AC5.4)', () => {
+    const light = tokensToCssVars(lightTokens())
+    // 0.16 × base / 0.55, rounded to three decimals: the settled numbers, not
+    // 0.14545454545454545 — an unrounded alpha is correct and incomparable.
+    expect(light['--shadow-a1']).toBe('0.145')
+    expect(light['--shadow-a2']).toBe('0.102')
+    expect(light['--shadow-a3']).toBe('0.175')
+    expect(light['color-scheme']).toBe('light')
+    // Both ends of the clamp: a strength of zero is no shadow at all, and one
+    // stronger than `:root`'s own cannot go past full.
+    expect(tokensToCssVars({ ...lightTokens(), shadow: 0 })['--shadow-a3']).toBe('0')
+    const strong = tokensToCssVars({ ...lightTokens(), shadow: 1 })
+    expect(strong['--shadow-a2']).toBe('0.636')
+    expect(strong['--shadow-a3']).toBe('1')
   })
 
   it('writes the status family when the set carries one, and only then', () => {
@@ -160,11 +224,11 @@ describe('tokensToCssVars', () => {
       status: { danger: ramp, ok: ramp, warn: ramp }
     }
     const written = tokensToCssVars(withStatus)
-    expect(Object.keys(written)).toHaveLength(28)
+    expect(Object.keys(written)).toHaveLength(32)
     expect(written['--status-danger-400']).toBe('229 72 77')
     expect(written['--status-ok-on']).toBe('255 255 255')
     expect(written['--status-warn-500']).toBe('220 53 69')
-    expect(Object.keys(tokensToCssVars(tokensFromRoot(vars)))).toHaveLength(16)
+    expect(Object.keys(tokensToCssVars(tokensFromRoot(vars)))).toHaveLength(20)
   })
 })
 
@@ -205,7 +269,7 @@ describe('applyTokens', () => {
     const { el, set } = recorder()
     applyTokens(tokens, el)
     expect(set).toEqual(tokensToCssVars(tokens))
-    expect(Object.keys(set)).toHaveLength(16)
+    expect(Object.keys(set)).toHaveLength(20)
   })
 
   it('replaces a value rather than appending to it', () => {
@@ -220,7 +284,7 @@ describe('applyTokens', () => {
     })
     applyTokens(light, el)
     expect(set['--ink-950']).toBe('253 246 227')
-    expect(Object.keys(set)).toHaveLength(16)
+    expect(Object.keys(set)).toHaveLength(20)
   })
 
   it('reports a malformed colour as a reason, and writes nothing at all', () => {
@@ -259,7 +323,7 @@ describe('applyTokens', () => {
     const { el, set } = recorder()
     expect(applyTokens(tokens, el)).toBeNull()
     expect(set).toEqual(tokensToCssVars(tokens))
-    expect(Object.keys(set)).toHaveLength(16)
+    expect(Object.keys(set)).toHaveLength(20)
   })
 
   it('reports a target that refuses a write, rather than throwing out of React', () => {
@@ -304,7 +368,7 @@ describe('applyTokens', () => {
     applyTokens(tokensFromRoot(rootVars()), el)
 
     for (const name of STATUS_VARS) expect(removed.has(name), name).toBe(true)
-    expect(Object.keys(set)).toHaveLength(16)
+    expect(Object.keys(set)).toHaveLength(20)
     for (const name of STATUS_VARS) expect(set[name], name).toBeUndefined()
   })
 
@@ -315,32 +379,50 @@ describe('applyTokens', () => {
     const { el, set } = recorder()
     applyTokens(tokensFromRoot(rootVars()), el)
     applyTokens(withStatus(), el)
-    expect(Object.keys(set)).toHaveLength(28)
+    expect(Object.keys(set)).toHaveLength(32)
     for (const name of STATUS_VARS) expect(set[name], name).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/)
     expect(set['--status-danger-400']).toBe('229 72 77')
     // And nothing outside the owned set was dropped by either apply.
     expect(Object.keys(set).filter((name) => !OWNED_CSS_VARS.includes(name))).toEqual([])
   })
 
-  it('never writes or removes the slice-5 properties, on any switch', () => {
-    // `--shadow-a1/a2/a3` and `color-scheme` are `:root`'s until slice 5, and the
-    // reconcile must not reach outside the set it owns to clear them.
+  it('writes the four derived properties on every apply, and never takes them away (AC5.4)', () => {
+    // Inverted by slice 5. These were `:root`'s and the reconcile reached
+    // nowhere near them; they are decided by *every* token set now, so a switch
+    // replaces them rather than clearing them — and the removal half must still
+    // not touch them, because `:root`'s authored block has to remain the default
+    // for the frame before JS runs.
     const { el, set, removed } = recorder()
     applyTokens(withStatus(), el)
     applyTokens(tokensFromRoot(rootVars()), el)
-    for (const name of SLICE5) {
-      expect(set[name], name).toBeUndefined()
+    for (const name of DERIVED_VARS) {
+      expect(set[name], name).toBeDefined()
       expect(removed.has(name), name).toBe(false)
     }
+    expect(set['color-scheme']).toBe(rootColorScheme())
+    expect(set['--shadow-a1']).toBe('0.5')
+  })
+
+  it('carries a light theme’s weaker alphas and its scheme through to the element', () => {
+    // The one-line live claim of AC5.4, decided as far as a DOM-less environment
+    // can take it: what lands on `documentElement` is what the tokens decided.
+    const { el, set } = recorder()
+    applyTokens(lightTokens(), el)
+    expect(set).toMatchObject({
+      '--shadow-a1': '0.145',
+      '--shadow-a2': '0.102',
+      '--shadow-a3': '0.175',
+      'color-scheme': 'light'
+    })
   })
 })
 
 describe('OWNED_CSS_VARS — the names the apply path may write *and* take away', () => {
-  it('is exactly the 28 names, and none of slice 5’s', () => {
+  it('is exactly the 32 names, the four derived ones included (AC5.4)', () => {
     // Ownership is what the removal half runs on, so it is worth pinning: an
     // owned name the set never writes is removed on every apply, and a name this
-    // path does not own is never touched — `--shadow-a1/a2/a3` and
-    // `color-scheme` must keep whatever `src/index.css` declares.
+    // path does not own is never touched. Slice 5 moves
+    // `--shadow-a1/a2/a3` and `color-scheme` from the second group to the first.
     const palette = [
       '--ink-950',
       '--ink-900',
@@ -359,8 +441,8 @@ describe('OWNED_CSS_VARS — the names the apply path may write *and* take away'
       '--on-accent',
       '--scrim'
     ]
-    expect([...OWNED_CSS_VARS].sort()).toEqual([...palette, ...STATUS_VARS].sort())
-    expect(new Set(OWNED_CSS_VARS).size).toBe(28)
-    for (const name of SLICE5) expect(OWNED_CSS_VARS, name).not.toContain(name)
+    expect([...OWNED_CSS_VARS].sort()).toEqual([...palette, ...DERIVED_VARS, ...STATUS_VARS].sort())
+    expect(new Set(OWNED_CSS_VARS).size).toBe(32)
+    for (const name of DERIVED_VARS) expect(OWNED_CSS_VARS, name).toContain(name)
   })
 })

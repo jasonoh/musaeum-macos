@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, MutableRefObject } from 'react'
 import type { FoliateView } from '@vendor/foliate-js/view.js'
 import { countHits, nextHit, runSearch, type SearchHit } from '@/lib/reader-search'
+import { resolveReaderPalette } from '@/lib/theme/reader-palette'
 import { useReaderStore } from '@/stores/reader.store'
-import { searchHighlightColor } from './ReaderEngine'
+import { useThemeStore } from '@/stores/theme.store'
 import { CloseIcon, SearchIcon } from '@/components/shared/icons'
 
 /**
@@ -29,6 +30,14 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
   const results = useReaderStore((s) => s.results)
   const activeCfi = useReaderStore((s) => s.activeCfi)
   const theme = useReaderStore((s) => s.prefs.theme)
+  /**
+   * The app theme's tokens, read here because this is where the reader store is
+   * already read — the resolver is a pure module and holds no store of its own
+   * (D3). Resolved at *click* time rather than held: the handler is a callback,
+   * so the palette it hands the run is the one the app is showing when the run
+   * starts.
+   */
+  const tokens = useThemeStore((s) => s.view?.active.tokens ?? null)
   const setQuery = useReaderStore((s) => s.setQuery)
   const setSearchState = useReaderStore((s) => s.setSearchState)
   const clearSearch = useReaderStore((s) => s.clearSearch)
@@ -81,6 +90,13 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
     }
   }, [clearSearch, viewRef])
 
+  /**
+   * The colour a run draws its hit outlines in — the derived link colour (D1),
+   * resolved from the app's live tokens. Hoisted out of `start` so the watcher
+   * below can tell when it moves.
+   */
+  const searchColour = resolveReaderPalette(theme, tokens).search
+
   const start = useCallback(async () => {
     const view = viewRef.current
     const text = query.trim()
@@ -93,7 +109,10 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
 
     const result = await runSearch(view, {
       query: text,
-      color: searchHighlightColor(theme),
+      // A resolved literal, never `var(--…)`: the outline is drawn in
+      // foliate-view's closed shadow root, where a custom property is not
+      // something this repo bets on.
+      color: searchColour,
       isStale: stale,
       // A run that has been superseded must not write, even for its own state
       onState: (state) => {
@@ -101,7 +120,42 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
       }
     })
     if (result.outcome === 'failed') setFailure(result.message)
-  }, [query, theme, viewRef, setSearchState])
+  }, [query, searchColour, viewRef, setSearchState])
+
+  /**
+   * The latest `start`, read through a ref: its identity changes with every
+   * keystroke in the query box, and the watcher below has no business re-running
+   * on those.
+   */
+  const startRef = useRef(start)
+  useEffect(() => {
+    startRef.current = start
+  })
+
+  /**
+   * A theme change **with results on screen re-runs the search**, so the outlines
+   * follow the theme the way the page and the links already do.
+   *
+   * The vendor draws annotations per run and keeps the options it was handed
+   * (`view.js:545`'s `#searchDrawOptions`, re-applied on every section render), so
+   * the outlines otherwise keep the colour of the run that drew them: measured,
+   * flipping the app theme with five hits up left all ~1,780 orange pixels orange
+   * against a page that had gone dark. That mismatch could not happen while the
+   * reader's page palette was a pair of constants — it is a consequence of the
+   * page now following the app theme, so the highlighting has to follow it too.
+   *
+   * Cheap and safe: the search runs in memory over the book that is already open
+   * (which is why it works offline), `search()` clears its own annotations on
+   * entry, and the token guard unwinds a run that is superseded by this one.
+   * Keyed on the resolved colour rather than on the tokens, so a theme change
+   * that leaves the link alone redraws nothing.
+   */
+  const drawnColour = useRef(searchColour)
+  useEffect(() => {
+    if (drawnColour.current === searchColour) return
+    drawnColour.current = searchColour
+    if (ranQuery) void startRef.current()
+  }, [searchColour, ranQuery])
 
   const jumpTo = useCallback(
     (hit: SearchHit | null) => {

@@ -28,4 +28,10 @@ export const protocol = {
   registerSchemesAsPrivileged: (): void => undefined,
   handle: (): void => undefined
 }
+// Main-process modules that touch `nativeTheme` (electron/main/index.ts sets
+// `themeSource` from the stored theme) must stay importable under vitest, so the
+// mock carries it. Assignable and inert: nothing in the suite reads it back —
+// the wiring that writes it is decided by the source walk in
+// services/theme/store.test.ts, not here (AC5.5's A25 residual).
+export const nativeTheme = { themeSource: 'dark' }
 export class BrowserWindow {}

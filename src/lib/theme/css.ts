@@ -31,6 +31,40 @@ const STATUS_FAMILIES: readonly StatusFamily[] = ['danger', 'ok', 'warn']
 const STATUS_STEPS = ['400', '500', '600', 'on'] as const
 
 /**
+ * The three shadow alphas, and the strength they are authored *at*.
+ *
+ * A theme never supplies shadow *shape*, only amplitude: the tokens carry one
+ * `shadow` number, and these base alphas are what `src/index.css` has authored
+ * (0.5 / 0.35 / 0.6) mapped onto the strength the built-in default's tokens
+ * carry (0.55). That is the whole bridge — the default theme derives today's
+ * numbers exactly, and a light theme's weaker strength slides all three down
+ * with it, which is what stops covers turning to mud on a light canvas (AC5.4).
+ */
+export const SHADOW_VARS = ['--shadow-a1', '--shadow-a2', '--shadow-a3'] as const
+
+/** The strength the authored alphas correspond to (A24). */
+const SHADOW_REFERENCE = 0.55
+
+const SHADOW_BASE: Record<(typeof SHADOW_VARS)[number], number> = {
+  '--shadow-a1': 0.5,
+  '--shadow-a2': 0.35,
+  '--shadow-a3': 0.6
+}
+
+/**
+ * `aN = clamp(0, 1, baseN × shadow / 0.55)`, to three decimals.
+ *
+ * Rounded because these are CSS *numbers* written as strings, and unrounded
+ * arithmetic on `0.16` emits `0.14545454545454545`: the value is then correct
+ * and incomparable, and it makes the derived alphas look like arithmetic rather
+ * than the three settled values they are (`0.16` → `0.145 / 0.102 / 0.175`).
+ */
+function shadowAlpha(base: number, shadow: number): string {
+  const scaled = Math.min(1, Math.max(0, (base * shadow) / SHADOW_REFERENCE))
+  return String(Math.round(scaled * 1000) / 1000)
+}
+
+/**
  * A `#rrggbb` colour → the space-separated channel triplet Tailwind composes
  * (`'#0d0b09'` → `'13 11 9'`).
  *
@@ -48,16 +82,21 @@ export function hexToChannels(hex: string): string {
 }
 
 /**
- * Every custom property this path owns.
+ * Every name on `documentElement` this path owns — 31 custom properties and one
+ * real property (`color-scheme`, which is not a custom property and does not take
+ * the `--` prefix; it is in this list because it is decided by the same tokens and
+ * has to be reconciled by the same rule).
  *
  * Ownership is *fixed and total*, not "whatever this set decides": a switch is
- * only a switch if the previous set's properties can be taken away again, and
+ * only a switch if the previous set's declarations can be taken away again, and
  * `setProperty` alone can only add. The names are the 16 colours (7 ink + 3
- * parchment + 4 gold + on-accent + scrim) plus slice 7a's twelve
- * `--status-<family>-<step>` — frozen by A28 — which are owned even by a set
- * that carries no status family, because the *previous* set may have carried
- * one. `--shadow-a1/a2/a3` and `color-scheme` are deliberately absent: slice 5
- * owns them and `:root` keeps its authored values until then.
+ * parchment + 4 gold + on-accent + scrim), the three derived shadow alphas and
+ * the declared scheme — slice 5's, owned exactly like the colours so that a
+ * switch reconciles them, and so a stale alpha or a stale scheme cannot become a
+ * class of bug in the way the twelve `--status-*` names once could — plus slice
+ * 7a's twelve `--status-<family>-<step>`, frozen by A28, which are owned even by
+ * a set that carries no status family, because the *previous* set may have
+ * carried one.
  */
 export const OWNED_CSS_VARS: readonly string[] = [
   ...INK_STEPS.map((step) => `--ink-${step}`),
@@ -65,19 +104,26 @@ export const OWNED_CSS_VARS: readonly string[] = [
   ...GOLD_STEPS.map((step) => `--gold-${step}`),
   '--on-accent',
   '--scrim',
+  ...SHADOW_VARS,
+  'color-scheme',
   ...STATUS_FAMILIES.flatMap((family) => STATUS_STEPS.map((step) => `--status-${family}-${step}`))
 ]
 
 /**
  * Every custom property this token set decides. Pure; no DOM.
  *
- * `--shadow-a1/a2/a3` and `color-scheme` are **not** here: slice 5 owns them
- * (`:root` keeps its authored alphas and its declared scheme until then), and
- * so is slice 7a's status block in `:root` — this writes `--status-*` only when
- * the *set* carries a status family, which the built-in default does not.
+ * The colour values are space-separated channel triplets because
+ * `tailwind.config.js` composes them (`rgb(var(--x) / <alpha-value>)`); the
+ * three shadow alphas are bare numbers and the scheme is a keyword, so neither
+ * is a colour and neither goes through `hexToChannels`. `:root` keeps its
+ * authored values for all four: they are the default for the frame before JS
+ * runs, and this is what takes over once it does.
  *
- * A property it does not decide is not necessarily left alone: `applyTokens`
- * reconciles against `OWNED_CSS_VARS`, so what this omits is what that removes.
+ * Slice 7a's status block is the one decision left out of the map — it is
+ * written only when the *set* carries a status family, which the built-in
+ * default does not. A property this does not decide is not necessarily left
+ * alone: `applyTokens` reconciles against `OWNED_CSS_VARS`, so what this omits
+ * is what that removes.
  */
 export function tokensToCssVars(tokens: ThemeTokens): Record<string, string> {
   const vars: Record<string, string> = {}
@@ -87,6 +133,8 @@ export function tokensToCssVars(tokens: ThemeTokens): Record<string, string> {
   for (const step of GOLD_STEPS) vars[`--gold-${step}`] = hexToChannels(tokens.gold[step])
   vars['--on-accent'] = hexToChannels(tokens.on_acc)
   vars['--scrim'] = hexToChannels(tokens.scrim)
+  for (const name of SHADOW_VARS) vars[name] = shadowAlpha(SHADOW_BASE[name], tokens.shadow)
+  vars['color-scheme'] = tokens.dark ? 'dark' : 'light'
 
   const { status } = tokens
   if (status) {
@@ -129,8 +177,11 @@ export interface CssVarTarget {
  * picker moving back to the default would otherwise leave twelve stale
  * `--status-*` properties on `documentElement` — silently, with nothing
  * consuming them until 7a and no test able to see it. It is deliberately *only*
- * the owned names: `--shadow-a1/a2/a3` and `color-scheme` keep whatever
- * `src/index.css` declares.
+ * the owned names: another theme's value must not survive a switch, and for a
+ * name this set does not decide, taking the inline declaration away is the
+ * correct answer rather than a loss — `src/index.css` declares the same four
+ * (`color-scheme` and the three alphas), so the authored default is what a
+ * removal re-exposes.
  */
 export function applyTokens(
   tokens: ThemeTokens,
