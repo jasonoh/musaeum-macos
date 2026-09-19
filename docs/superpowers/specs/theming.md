@@ -397,6 +397,33 @@ on: `rgb(232,201,135)` = `gold-300`, where the four classes previously computed 
 and a card 146×294 = cover 218 + `CARD_META_MARGIN` 8 + `CARD_META_HEIGHT` 68. Full evidence,
 deviations and the escalations the child raised are in the annex §8.
 
+### Amendment round 8 — 2026-09-19 (slice 7b landed)
+
+Slice 7b — the sweep — was built from its annex (`docs/superpowers/plans/2026-09-19-theming-slice7b.md`,
+seven adjudicated readings D1–D7), the 15-line migration implemented by a dispatched child and then
+**checked by the orchestrator on the returned tree** (diff read against the annex's table, gates
+re-run, campaign run, app pass run, every claim re-measured). Nothing here re-opens J1, J2, A28 or
+A69; the two corrections below are *figures*, and the last row is the slice's own headline bug.
+
+| # | What changed | Why |
+|---|---|---|
+| A76 | **`SelectionPanel.tsx` was a ninth file the inventory never named, and §2.7's "53 sites / 16 files" is the *pre-7a* figure, not the 7b remainder.** Measured at `e8d0bee` with the walk's pattern: **27 utility names on 15 lines across 8 files** (`text-red-400` 12, `bg-red-500` 8, `border-red-500` 5, `bg-emerald-500` 1, `ring-white` 1). | 7a's ten files held most of the class — its own §4 had already re-tallied to 21 lines / 26 names *inside the ten*. The panel's three lines survived because 7a's table recorded the file as "J5's separate two-file dispatch", and that dispatch was the `gold-200` ramp fix. *A criterion of the form "grep to zero" is decided by the grep, not by the budget row* — the inventory is a starting point, and the artifact is the authority. |
+| A77 | **A source-walk decider under `src/` must compose the spellings it asserts on, because `src/**` is Tailwind's own `content` glob.** The first version of the walk carried its samples as literals and **emitted seven dead stock rules into the app's stylesheet**; the walk could not see it (it skipped test files) and **the acceptance grep is what caught it**. Fixed by composing the names *and* dropping the test-file exemption, so the walk and the grep are one predicate over one scope. | The instrument was inside the artefact it audits. This is A74's lesson taken one step further: 7a learned to *grep for the count, not the file*; 7b learned that a test which lives in a scanned tree is itself scanned. Any future walk-based decider under `src/` inherits this rule. |
+| A78 | **`ok-500` is consumed as of this slice** — `Sidebar.tsx:22`'s NAS dot is the app's only `bg-emerald-500` site, and it lands on `bg-ok-500`. **`warn` still has no consumer, and the `*-600` steps still have none.** | A75's first half is discharged and its second is now a *recorded non-consumption* rather than an unexplained gap: the reconnecting state is an accent (`gold-400`), not a status, and nothing renders a warning surface. |
+| A79 | **The app pass, same profile and theme as 7a's, before and after:** the selection panel's danger text goes **2.4057:1 → 5.6847:1** against the light panel (the criterion is 4.5); the NAS dot goes `rgb(16,185,129)` → `rgb(46,107,52)`; `BookDetail`'s ring goes `rgb(255 255 255 / 0.05)` → `rgb(43 36 23 / 0.05)` (contrast 1.0072 → 1.0967 on light; 1.1199 → 1.1023 on the default — the shift §2.7 accepted, now measured at the second site); and the two retired classes **resolve to nothing at all** — the built sheet carries no rule for them, which is what "the sweep reached zero" looks like from inside the running app. | AC8.2's light-theme half and AC8.3's second site are pixel claims, and the *before* column is only capturable while the old build is standing. The last row is the emission criterion's DOM-side witness. |
+| A80 | **AC8.4's decider is the walk in the gate plus the recorded grep; the two build-shaped criteria have none, and say so.** The walk (`src/lib/theme/palette-scan.test.ts`, three cases) decides *presence of a stock name* over `src/**` and `index.html` — no exemption, test files included. *That a migrated name emits its rule* is decided by the Tailwind build read; *that a site paints the theme's value* by the app pass. | A72's class is narrowed, not abolished: a class name still has no DOM harness. Naming which instrument decides which row is the difference between a closed criterion and one that merely has no red. |
+| A81 | **Residuals this slice does not close:** `Toasts.tsx:7`'s error row could not be lit in the probe (a nonexistent path and a malformed `.epub` raised no `[role=alert]` card, and the second import call did not return within 120 s — a probe observation, not a reproduced defect); and an import of a malformed file not reporting through the toast surface is **captured in `tasks.md` as an unscheduled observation about the refresh-feedback surface**, not as theming debt. | A residual with an owner is a decision; a residual left in a harness log is the next session's coin flip. The 120 s non-return is explicitly *not* called a bug because the eval was not timeout-bounded — the instrument could not tell "hung" from "slow". |
+
+**Built — slice 7b.** Gates on the returned tree (the orchestrator's own run): `typecheck=0`,
+`lint=0`, `npm test` **855 passed / 37 files** (7a's 852/36 — the walk adds one file and three
+cases), `npm run build=0`; prettier clean on 7 of the nine touched files, the two exceptions dirty at
+`HEAD` in regions the slice never touched (A73's rule, re-measured). Acceptance: **the grep reaches
+0** over `src/` + `index.html`; the emitted sheet carries **0 stock-hue rules** and **0 white/black
+rules** with all fourteen migrated rules and their alpha forms intact; the mutation campaign is
+**7/7 killed** (the last three are the walk's own anti-vacuity cases — the first slice of this feature
+with no GREEN row). The 15-line diff is the annex's table, name for name. Full evidence, the
+self-caught bug's numbers and the residuals are in the annex §8.
+
 ---
 
 ## 1. The problem, and what is true today
@@ -1810,6 +1837,24 @@ difference under 1% luminance and the assertion fails. The fix is `ring-parchmen
 is by construction the tone that contrasts with the canvas, so it needs no eighteenth token
 (and `scrim` cannot serve, being near-black in both variants). The dark-theme pixel shift this
 costs — white at 5% to parchment at 5% — is accepted here and named in §2.7, not hidden.
+
+**AC8.4 — the sweep is complete, and the acceptance is the grep, not the budget row.**
+*(added in round 8, when 7b landed; the criterion the directive named, written down after the fact
+so the next session reads it here rather than only in the annex.)*
+*Case:* no `.ts`/`.tsx`/`.css` under `src/` and no class in `index.html` names a stock-palette colour
+utility — zero, with **no exemption**: test files are inside the predicate, because `src/**` is
+Tailwind's own `content` globs and a spelling parked in a test is scanned as a candidate like any
+other. *Deciders:* the walk `src/lib/theme/palette-scan.test.ts` (three cases: the walk is not
+vacuous — both roots and both extension shapes are present; zero offenders; the pattern matches
+every retired shape and no token shape), plus the recorded grep over the same scope. The count
+before is **27 utility names on 15 lines across 8 files** (round 8, A76 — *not* §2.7's pre-7a
+"53 / 16", which counted the whole class before 7a swept most of it).
+*Mutation that fails it:* put any single site back on a stock utility — the walk names it. Three
+mutations fail the *anti-vacuity* cases instead (the hue list, the extension list, the roots), which
+is the point of them: without them the walk could go blind to part of the tree and stay green.
+*Not decided here, and named so it is not mistaken for decided:* that a migrated name **emits** its
+rule (the Tailwind build read) and that a site **paints** the theme's value (the running app).
+A class name still has no unit decider — A72's class, narrowed by this criterion rather than closed.
 
 ---
 

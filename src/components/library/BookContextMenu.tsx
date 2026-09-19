@@ -221,7 +221,7 @@ function MenuItem({
       onClick={onClick}
       className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] ${
         danger
-          ? 'text-parchment-dim hover:bg-red-500/15 hover:text-red-400'
+          ? 'text-parchment-dim hover:bg-danger-500/15 hover:text-danger-400'
           : 'text-parchment-dim hover:bg-ink-800 hover:text-parchment'
       }`}
     >

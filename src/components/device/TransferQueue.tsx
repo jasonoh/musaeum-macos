@@ -28,7 +28,7 @@ export function TransferQueue() {
               {job.status === 'done' ? (
                 <CheckIcon className="h-3 w-3 shrink-0 text-gold-400" />
               ) : job.status === 'error' ? (
-                <WarningIcon className="h-3 w-3 shrink-0 text-red-400" />
+                <WarningIcon className="h-3 w-3 shrink-0 text-danger-400" />
               ) : (
                 <SpinnerIcon className="h-3 w-3 shrink-0 text-gold-400" />
               )}
@@ -61,7 +61,7 @@ export function TransferQueue() {
               <>
                 {/* Full text on hover: the panel is too narrow for a long
                     message, and a truncated error is an unactionable one */}
-                <p className="mt-0.5 text-[10px] leading-snug text-red-400" title={job.error}>
+                <p className="mt-0.5 text-[10px] leading-snug text-danger-400" title={job.error}>
                   {job.error}
                 </p>
                 <button

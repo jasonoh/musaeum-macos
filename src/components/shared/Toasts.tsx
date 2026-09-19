@@ -4,7 +4,7 @@ import { CheckIcon, CloseIcon, InfoIcon, WarningIcon } from '@/components/shared
 const TONE: Record<ToastKind, { border: string; icon: string }> = {
   success: { border: 'border-gold-500/30', icon: 'text-gold-400' },
   info: { border: 'border-ink-600', icon: 'text-parchment-faint' },
-  error: { border: 'border-red-500/40', icon: 'text-red-400' }
+  error: { border: 'border-danger-500/40', icon: 'text-danger-400' }
 }
 
 function ToastIcon({ kind, className }: { kind: ToastKind; className: string }) {

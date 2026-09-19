@@ -64,7 +64,7 @@ export function StatusBar() {
           title={pythonEnv.detail}
           className={
             pythonEnv.stage === 'failed'
-              ? 'flex items-center gap-1.5 text-red-400'
+              ? 'flex items-center gap-1.5 text-danger-400'
               : 'flex items-center gap-1.5 text-gold-400'
           }
         >

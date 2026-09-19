@@ -742,13 +742,22 @@ slice would otherwise meet without warning.
     dock-reopen regression — **DONE 2026-09-19, both closed, see the two bullets above**; (2) then
     **slice 7a** (§2.7, ten files at the bound), whose derivation half already landed with slice 2 —
     **landed 2026-09-19**, annex `docs/superpowers/plans/2026-09-19-theming-slice7a.md`, spec round-7
-    trail A68–A75, and **J5's `gold-200` two-file dispatch landed with it**; (3) **next is slice 7b**,
-    the status sweep of the files 7a did not open (its starting inventory is in the 7b bullet below).
+    trail A68–A75, and **J5's `gold-200` two-file dispatch landed with it**; (3) then **slice 7b**, the
+    status sweep of the files 7a did not open — **landed 2026-09-19**, annex
+    `docs/superpowers/plans/2026-09-19-theming-slice7b.md`, spec round-8 trail A76–A81, acceptance at
+    **0** over `src/` + `index.html` with a gate walk behind it. **That closes the theming feature's
+    seven slices.** What the feature leaves open, in the order worth taking: the **Appearance
+    compartmentalization** follow-up (the owner's own request, [ ] below — the last thing standing
+    between the settings dialog and a hundred theme rows); `warn`'s first consumer and any consumer
+    for the `*-600` steps (recorded non-consumptions, not gaps); and the one bounded check the 7b pass
+    raised against the import surface (the observation bullet below).
     *Correction, in place (this line said "everything above is uncommitted on purpose … nothing has
     been pushed"):* the slice **is committed and pushed** — `0481b97` is both `HEAD` and
     `origin/main`, and the working tree is clean. The sentence described the state before the rebase
-    the round-6 trail records; it was left standing as if it were still true. The 7a/hairline work is
-    **uncommitted** (nothing here commits without being asked).
+    the round-6 trail records; it was left standing as if it were still true. *Second correction, in
+    place (2026-09-19, after 7a/7b landed and were committed as `e8d0bee`):* the clause "the 7a/hairline
+    work is uncommitted" is no longer true either — that commit **is** `HEAD` and `origin/main`, and
+    the 7b work below is the uncommitted set. Nothing here commits without being asked.*
 - [x] **Slice 7a — the status family and the inversions.** Landed 2026-09-19 from the annex
       `docs/superpowers/plans/2026-09-19-theming-slice7a.md` (six adjudicated readings D1–D6; the
       spec's round-7 trail carries the same set as A68–A75). What landed: the `danger`/`ok`/`warn`
@@ -771,7 +780,7 @@ slice would otherwise meet without warning.
       **Not in this slice:** `ok` has no consumer yet and the `*-600` steps have none at all
       (`bg-emerald-500`'s only site is `Sidebar.tsx:22`) — both are 7b's, as is `BookDetail.tsx`'s
       hairline, the slice's named absorber.
-- [ ] **Slice 7b — the status sweep.** Migrate the **53 stock-palette sites across 16 files**
+- [x] **Slice 7b — the status sweep.** Migrate the **53 stock-palette sites across 16 files**
       (`text-red-400` ×23, `bg-red-500` ×11, `border-red-500` ×7, `text-white` ×4, `bg-red-600` ×3,
       `ring-white` ×2, `bg-emerald-500` ×1). Acceptance is a repo-wide grep reaching zero, with the
       count recorded before and after. Split out of 7a because the sweep crosses 16 files, over the
@@ -780,6 +789,45 @@ slice would otherwise meet without warning.
       `Toasts`, `TransferQueue`, `ConflictResolver` and `BookDetail.tsx`, plus `BookDetail.tsx:83`'s
       `ring-white/5`; the families (`danger`/`ok`/`warn`, `text-on-*`) and every step the sweep needs
       already exist, and `ok-500` is wired but still consumed by nothing.
+      **Landed 2026-09-19**, annex `docs/superpowers/plans/2026-09-19-theming-slice7b.md` (seven
+      adjudicated readings D1–D7), spec round-8 trail **A76–A81**. **Correction, in place (the two
+      figures above are the *pre-7a* inventory of the whole class, not this stage's remainder —
+      measured at `e8d0bee` with the walk's own pattern):** the sweep was **27 utility names on 15
+      lines across 8 files** (`text-red-400` ×12, `bg-red-500` ×8, `border-red-500` ×5,
+      `bg-emerald-500` ×1, `ring-white/5` ×1); 7a's ten files had already taken the rest.
+      **A ninth file the list above never names: `SelectionPanel.tsx`** (:93, :127, :133) — 8 of the
+      27 names, left standing because 7a's table recorded that file as J5's `gold-200` dispatch, which
+      never touched its danger sites. Acceptance is a repo-wide grep with **no exemption**:
+      `grep -rnE '<the stock-hue alternation>' src/ index.html` → **0 matches**. The criterion now also
+      has a gate decider — **`src/lib/theme/palette-scan.test.ts`** walks `src/**/*.{ts,tsx,css,html}`
+      plus `index.html` and asserts zero, with its own anti-vacuity cases (the hue list, the extension
+      list and the roots must all still catch what they claim to).
+      **Readings that were not obvious and are now pinned:** the walk's first version carried its
+      sample spellings as literals, and because `src/**` is Tailwind's own `content` glob it **emitted
+      seven dead stock rules into the app's stylesheet** — the walk skipped test files and so could not
+      see it; the *grep* caught it. The samples are now composed from fragments, the test-file
+      exemption is gone, and the built sheet carries 0 stock-hue rules.
+      Gates: typecheck 0, lint 0, `npm test` **855 passed / 37 files**, build 0; prettier clean on 7 of
+      9 touched files (the two exceptions dirty at `HEAD` — A73's rule). Mutation campaign **7/7
+      killed**, no GREEN row. App pass, before and after on one profile and the light synthetic Obsidian
+      theme: the selection panel's danger text **2.4057:1 → 5.6847:1** against its panel; the NAS dot
+      `rgb(16,185,129)` → the theme's `ok-500` (`rgb(46,107,52)` light / `rgb(127,158,106)` default);
+      `BookDetail`'s ring `rgb(255 255 255 / 0.05)` → `rgb(43 36 23 / 0.05)` (1.0072 → 1.0967 light,
+      1.1199 → 1.1023 default); and the retired classes now resolve to nothing at all in the running
+      app, because no rule is emitted for them.
+      **Not in this slice, and now the feature's only open ends:** `warn` still has no consumer (nothing
+      renders a warning *surface*) and the `*-600` steps still have none — recorded non-consumptions,
+      not gaps. `ok-500`'s consumer landed here (the sidebar dot), discharging A75's first half.
+- [ ] **Observation (2026-09-19, from slice 7b's app pass — unverified, not theming debt).** In the
+      probe profile, importing a **malformed** file (`/tmp/musaeum-pass/not-an-epub.epub`, text in an
+      `.epub`) raised **no** `[role=alert]` toast within 7 s, and that `import.addFiles` call had not
+      returned after 120 s; a nonexistent path also raised no toast (that call returned promptly with a
+      per-file failure). The probe's `eval` had no timeout, so this cannot separate "hung" from "slow",
+      and the file is deliberately malformed. Worth one bounded check on the real import surface
+      (`electron/main/services/importer.ts` → the toast surface `docs/invariants/refresh-feedback.md`
+      documents): does a file the importer rejects loudly enough *notify*, and does a malformed EPUB
+      return at all? Nothing was written to the real library — the whole pass ran on
+      `MUSAEUM_USER_DATA=/tmp/musaeum-app-pass`.
 - [x] **`gold-200` defect — fixed 2026-09-19** (spec J5, landed as its own two-file dispatch
       immediately after slice 7a). Four sites in two files referenced a ramp step the config
       **never defined** (`gold` is 300/400/500/600), so `text-gold-200` / `bg-gold-200` emitted no CSS

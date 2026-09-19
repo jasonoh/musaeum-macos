@@ -90,7 +90,7 @@ export function SelectionPanel() {
               }
               className={
                 failed
-                  ? 'flex w-full items-center justify-center gap-2 rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-[13px] text-red-400 hover:bg-red-500/20 disabled:opacity-40'
+                  ? 'flex w-full items-center justify-center gap-2 rounded-md border border-danger-500/60 bg-danger-500/10 px-3 py-2 text-[13px] text-danger-400 hover:bg-danger-500/20 disabled:opacity-40'
                   : 'flex w-full items-center justify-center gap-2 rounded-md bg-gold-500/20 px-3 py-2 text-[13px] text-gold-300 hover:bg-gold-500/30 disabled:opacity-40'
               }
             >
@@ -124,13 +124,13 @@ export function SelectionPanel() {
         <button
           disabled={!online}
           onClick={() => requestSelectionDelete(true)}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-red-500/40 px-3 py-2 text-[13px] text-red-400 hover:bg-red-500/15 disabled:opacity-40"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-danger-500/40 px-3 py-2 text-[13px] text-danger-400 hover:bg-danger-500/15 disabled:opacity-40"
         >
           <TrashIcon className="h-4 w-4" />
           Delete {count} books…
         </button>
         {!online && (
-          <p className="text-[12px] text-red-400">The library is offline — reconnect to act.</p>
+          <p className="text-[12px] text-danger-400">The library is offline — reconnect to act.</p>
         )}
       </div>
     </aside>

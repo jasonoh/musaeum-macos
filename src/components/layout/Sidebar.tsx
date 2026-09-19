@@ -19,10 +19,10 @@ export function Sidebar() {
 
   const nasDot =
     nasStatus?.state === 'connected'
-      ? 'bg-emerald-500'
+      ? 'bg-ok-500'
       : nasStatus?.state === 'reconnecting'
         ? 'bg-gold-400 animate-pulse'
-        : 'bg-red-500'
+        : 'bg-danger-500'
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-ink-800 bg-ink-900">

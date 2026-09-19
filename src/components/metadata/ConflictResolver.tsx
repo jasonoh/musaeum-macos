@@ -103,7 +103,7 @@ export function ConflictResolver({ conflict, onResolved }: Props) {
         ))}
       </div>
 
-      {error && <p className="mt-2 text-[12px] text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-[12px] text-danger-400">{error}</p>}
     </div>
   )
 }

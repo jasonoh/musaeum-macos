@@ -80,7 +80,7 @@ export function BookDetail() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-5">
-        <div className="mx-auto aspect-[2/3] w-44 overflow-hidden rounded-md shadow-cover ring-1 ring-white/5">
+        <div className="mx-auto aspect-[2/3] w-44 overflow-hidden rounded-md shadow-cover ring-1 ring-parchment/5">
           {full ? (
             <img src={full} alt="" className="h-full w-full object-cover" draggable={false} />
           ) : (
@@ -211,7 +211,7 @@ export function BookDetail() {
                 }
                 className={
                   failed
-                    ? 'flex flex-1 items-center justify-center gap-2 rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-[13px] font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-40'
+                    ? 'flex flex-1 items-center justify-center gap-2 rounded-md border border-danger-500/60 bg-danger-500/10 px-3 py-2 text-[13px] font-semibold text-danger-400 hover:bg-danger-500/20 disabled:opacity-40'
                     : 'flex flex-1 items-center justify-center gap-2 rounded-md bg-gold-500 px-3 py-2 text-[13px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40'
                 }
               >
@@ -239,7 +239,7 @@ export function BookDetail() {
                   onClick={() => requestDeviceRemoval({ bookId: book.id, deviceId: d.id })}
                   title={`Remove from ${d.name}`}
                   aria-label={`Remove from ${d.name}`}
-                  className="rounded-md border border-ink-600 px-2.5 text-parchment-dim hover:border-red-500/60 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                  className="rounded-md border border-ink-600 px-2.5 text-parchment-dim hover:border-danger-500/60 hover:bg-danger-500/10 hover:text-danger-400 disabled:opacity-40"
                 >
                   <TrashIcon className="h-4 w-4" />
                 </button>
@@ -309,7 +309,7 @@ export function BookDetail() {
             disabled={!online || busy !== null}
             onClick={() => requestDelete(book.id)}
             title={book.formats.length > 1 ? 'Delete book or formats' : 'Delete book'}
-            className="rounded-md border border-ink-600 px-2.5 py-1.5 text-parchment-dim hover:bg-ink-800 hover:text-red-400 disabled:opacity-40"
+            className="rounded-md border border-ink-600 px-2.5 py-1.5 text-parchment-dim hover:bg-ink-800 hover:text-danger-400 disabled:opacity-40"
           >
             <TrashIcon className="h-4 w-4" />
           </button>

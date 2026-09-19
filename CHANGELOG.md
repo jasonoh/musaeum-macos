@@ -25,10 +25,24 @@ the app is packaged.
   **0.6063 lstar below** the canvas where it was **0.0000 below** (i.e. the canvas itself), and the
   cover-art badge’s glyph keeps 4.11:1 against it. On the built-in default the migration is a
   no-op — the same `rgba(13, 11, 9, 0.8)`.
+- **The rest of the app's warning and status colours moved onto those tokens, and something now
+  enforces it.** The remaining 27 stock-palette utilities across 8 files — the status bar's failed
+  setup line, the sidebar's connection dot and its offline state, the book context menu's danger
+  item, the toast surface's error row, the transfer queue's failures, the conflict resolver's error
+  line, the selection panel's failed-send retry, its destructive row and its offline note, and the
+  detail panel's remove/delete controls — are on the derived family, and a new source walk
+  (`src/lib/theme/palette-scan.test.ts`) fails the suite if a stock hue ever comes back. Measured on
+  a light theme in the running app, the selection panel's destructive row goes from **2.4:1 to
+  5.7:1** against its panel (the family's floor is 4.5), the connection dot stops being stock
+  emerald under *every* variant (`rgb(16, 185, 129)` → the theme's own `ok-500`), and the built
+  stylesheet contains no rule at all for the classes that were retired — a themed app can no longer
+  paint a colour its theme did not choose.
 - **The cover hairline is visible on both variants.** The 5 % white ring around a cover became a 5 %
   *parchment* ring: on a light theme its contrast against the surface goes from **1.0049** to
   **1.0975**, an 18× change in perceived lightness, at the cost of an imperceptible shift on the
-  dark default.
+  dark default. The detail panel's own cover frame followed it (`rgb(255 255 255 / 0.05)` →
+  `rgb(43 36 23 / 0.05)` on a light theme, 1.0072 → 1.0967; and `rgb(233 225 210 / 0.05)` on the
+  default), so no cover in the app is edged by a colour the active theme did not choose.
 
 ### Fixed
 - **The selected-row tick renders.** `text-gold-200` and `bg-gold-200` named a palette step that the
