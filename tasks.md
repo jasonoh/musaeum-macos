@@ -667,7 +667,7 @@ slice would otherwise meet without warning.
       - **The popover's `Auto` dot is a judgement call.** It is two-tone (ink over parchment) because
         `auto` is not either row; no frame was compared against an alternative, and the same is true
         of the option's position in the list.
-- [ ] **Slice 6 — Obsidian resolver.** Load `theme.css` in a sandboxed offscreen window with the
+- [x] **Slice 6 — Obsidian resolver.** Load `theme.css` in a sandboxed offscreen window with the
       dark/light class applied and read the variables back as computed values. It is needed rather
       than nice: a regex scrape resolves **1 of the 5** Obsidian themes installed on this machine —
       the rest compute their roles through `hsl(var(--base-h) …)`, `var()` chains and `color-mix()`.
@@ -696,6 +696,36 @@ slice would otherwise meet without warning.
     the four §2.6 names, plus the two extension sites A45 already names (`ipc/theme.ts`,
     `AppearanceSection.tsx`), plus `theme/store.ts` and `main/index.ts`. One over the ~10-file bound;
     the named absorber is deliberately not taken. See the annex §3 D8.
+  - **Landed 2026-09-19: 6 of 6 installed themes import, as 9 rows, 193 ms** (measured through the
+    shipped resolver; the spec's round-6 trail carries the evidence, the annex's §8 the deviations).
+    **Debts this slice created, each with the instrument it lacks:**
+    - **AC6.3's renderer half is unprobed** — that a real import leaves the renderer's
+      `document.styleSheets` unchanged needs the running app; the payload half is decided (unit +
+      probe). Next app pass owes it.
+    - **The timeout path (`READ_TIMEOUT_MS`) has no decider** — no fixture makes Chromium's read hang,
+      so neither the suite nor the probe reaches it. Either a hostile fixture or a seam that lets a
+      test drive the clock.
+    - **`isResolverWindow` has no unit decider** — a mutation that makes it answer `false` survives
+      the suite; its only consumer is `main/index.ts`'s `activate`, which has no harness (the A25
+      class). The probe's window accounting (`resolver 1, other 0`) is what decides it today.
+    - **A dragged *folder* is not read.** The picker's dialog cannot select a directory and the drop
+      handler sees files, so an Obsidian theme arrives by being put in the drop folder (the scan looks
+      one level in for `<name>/theme.css`) or by picking its `theme.css`. A folder-drop would need
+      `webkitGetAsEntry` recursion in `AppearanceSection.tsx`.
+    - **Two visible lossy steps**, both recorded with their reversal condition in the annex §8: a
+      5 %-alpha veil border (Obsidianite) imports as a saturated cyan hairline, and a theme whose
+      accent is injected by a settings plugin (Blue Topaz) imports with the muted grey in place of an
+      accent. Neither is a bug in a rule; both are the price of the rules the spec chose.
+    - **The probe is not a gate, but it is now in the tree.** The Electron-shaped criteria (AC6.2,
+      AC6.5's effect half, AC6.6's cleanup) are decided by `scripts/theme-resolver-probe.ts` —
+      esbuild-bundled and run under `electron` (the two commands are in its header), printing the rows
+      recorded in the annex §8, reproducing them from the repo (6 themes / 9 entries / 191 ms). It is a
+      script rather than a test because `npm test` runs Electron-as-Node, where there is no
+      `BrowserWindow`; wiring it into the gate is the remaining step, not a solved problem.
+  - **Next session, in order:** (1) the app pass that closes **AC6.3's renderer half** and D1's
+    dock-reopen regression — the only criterion here with no decider yet; (2) then **slice 7a** (§2.7,
+    ten files at the bound), whose derivation half already landed with slice 2. Everything above is
+    uncommitted on purpose: the slice lands as one change, and nothing has been pushed.
 - [ ] **Slice 7a — the status family and the inversions.** The *derivation* half already landed with
       slice 2 (`theme/derive.ts` + `src/types/theme.types.ts` carry `danger`/`ok`/`warn` with their
       `400`/`500`/`600` steps and `on-*` foregrounds, floors enforced and corpus-tested); what 7a owes

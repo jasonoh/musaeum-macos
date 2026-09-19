@@ -276,3 +276,109 @@ transcript goes in the spec's `Built — slice 6`.
 6. Docs: `CHANGELOG.md`, `tasks.md` (slice 6 landed + the debts this creates: the dropped-folder
    import, the loose-`.css` silence, the probe not being a gate), and the spec's round-6 trail with
    *Built — slice 6*.
+
+## 8. Built — 2026-09-19
+
+Landed as one slice in the order the annex set: the pure adapter, the resolver, then the wiring.
+Gates on the merged tree: `typecheck=0`, `lint=0`, `test=0` (**849 tests, 36 files**), prettier clean
+on all ten files. Mutation campaign (mine, five entries, `mutation-campaign.py`): **4 killed, 1
+survived and named below**; the implementer's own two mutations (label the variant from the applied
+class; take the id from `theme.css`'s stem) also reddened, 3 and 4 cases respectively.
+
+**The corpus, through the shipped resolver** (the annex §2 table predicted this — it is the same
+instrument, now driving `resolveObsidianFile` rather than the spike):
+
+| theme | entries | canvas (dark) | notes |
+|---|---|---|---|
+| halcyon | 1 (dark) | `#171c28` | 1 — the translucent tone |
+| Things | 2 (dark + light) | `#1c2127` / `#ffffff` | 0 |
+| Tokyo Night | 2 (dark + light) | `#16161e` / `#cbccd1` | 0 |
+| Blue Topaz | 2 (dark + light) | `#151515` / `#fcfcfc` | 1 — the accent (below) |
+| Dracula + LYT | **1** (dark) | `#15131f` | 1 — the light class resolves dark |
+| Obsidianite | 1 (dark) | `#191621` | 3 — two dropped alphas |
+
+6 of 6 files, **9 rows, 193 ms total**. The §2 measurement's prediction (2 of 6 without the ladder, 6
+of 6 with it) is therefore confirmed against the code that ships, not only against the spike.
+
+**The Electron criteria, from the probe** (`scripts/theme-resolver-probe.ts` — in the repo, so the
+numbers below can be re-produced rather than trusted; esbuild-bundled around the shipped module, one
+process, progress appended so a renderer crash cannot eat it):
+
+| criterion | measurement |
+|---|---|
+| AC6.2 | shipped pair + a loopback-referencing `theme.css`: **0 requests received**, and the theme still resolved (2 entries). With the rule *removed* from the shipped partition: still 0 — the CSP layer holds alone (D2 row 4). With the shipped `resolverRuleFilter()` value on a permissive document: **4 attempts seen, 0 received** (D2 row 2) |
+| AC6.3 | the probe's leaf walk over all nine IRs: every colour field `^#[0-9a-f]{6}$`, no leaf carries `url(`, `{`, `<`, `var(`, `@import` or `;` |
+| AC6.4 | through the shipped door: `--text-normal: none` → `text is unresolved (no usable --text-normal)`; a missing canvas → `canvas is unresolved (…)`; a `var()` chain that never resolves → the same, naming the role |
+| AC6.6 | 5 MB stylesheet **144 ms**, 2 000 declarations **4 ms** (budget 3 s); windows after 6 themes + 5 synthetic files: **total 1, resolver 1, other 0** — one window, no leak, and `other 0` is exactly what D1's fixed `activate` check needs |
+| AC6.5 | the construction literal is a pure value (unit-decided); the probe's `window.open` denial is unchanged from §2's measurement; every resolve happened inside a window with no preload and no Node |
+
+**Deviations this slice made from the annex, each with its reason.**
+
+- **§4's injected seam is the *file's entries*, not one `LoadedTheme`** — the annex's own brief was
+  internally inconsistent (it asked for an injected `(path) => Promise<LoadedTheme>` *and* for a
+  second id, `obsidian:<folder>:light`). A single `LoadedTheme` cannot carry the light entry. The
+  importer takes `(path) => Promise<ResolvedObsidianFile>`, and `loadThemeFileAsync` keeps the
+  single-entry seam for callers that want *a theme*. **The annex's D6 wording is wrong; the code is
+  right**, and the type lives in the pure adapter so the importer still imports nothing that touches
+  Electron.
+- **A timeout resets it to the resolver document, not to `about:blank`.** D1 said blank. Reloading
+  blank drops the document's CSP for every *later* read — the window would then be protected by the
+  session rule alone, which is one of the two layers the slice exists to have. One line; found by
+  reading the implementer's own escalate note rather than by a test.
+- **`isResolverWindow` has no unit decider, and that is the mutation that survived.** Making it
+  answer `false` for the resolver's own window leaves the suite green: the predicate's only consumer
+  is `main/index.ts`'s `activate`, which has no harness (the A25 class). Its decider is the probe's
+  window accounting above — `resolver 1, other 0` is the property the fixed check needs — and that is
+  a *value* measurement, not the dock click itself.
+- **The timeout arm of AC6.6 has no decider at all.** No fixture makes Chromium's read hang, so
+  neither the unit suite nor the probe exercises `READ_TIMEOUT_MS`; the criterion's other half
+  (cleanup) is decided as above. Recorded in `tasks.md` rather than claimed.
+- **AC6.3's renderer half is not yet probed.** The payload half is decided (probe + unit); "the real
+  renderer's `document.styleSheets` is unchanged across an import" needs the running app, and the app
+  pass was not run in this session. It is the slice's outstanding instrument.
+
+**Two lossy steps the corpus made visible** — both are D3/D4's declared cost, both now have a number:
+
+1. **A veil border comes back as a saturated line.** Obsidianite's
+   `--background-modifier-border: rgba(14, 210, 247, 0.05)` is a 5 % wash; dropping the alpha (D3)
+   makes the border `#0ed2f7` — a bright cyan hairline where the theme meant near-invisibility. The
+   role *does* resolve, so the theme imports; the row's notes name the dropped alpha. *Reversal:*
+   seeing that hairline in the app is the trigger to composite the **surface** roles over the theme's
+   own canvas (the text tones stay as they are), which is a `ThemeIr`-visible change and therefore
+   its own slice — the annex's D3 reversal condition, now with an instance.
+2. **A theme whose values live in a plugin imports grey.** Blue Topaz declares no `--color-*` at all,
+   and its `--interactive-accent: var(--main-color)` / `--color-accent: var(--simple-blue-1)` are
+   Style-Settings-injected, so they resolve empty in any document that is not the user's Obsidian.
+   The accent therefore falls back to the theme's own muted grey (`#8a8a8a`), which is D4's rule
+   working as specified and is disclosed in the row's notes — but the app's amber identity is
+   replaced by grey for that row. *Reversal:* if a reloaded row's swatches (which carry `gold-400`/
+   `gold-500`) look wrong to the owner, the rule to try is "four accents and the accent role all
+   unresolved → reject with the reason", which costs this one theme and keeps the other five.
+
+**One thing the next session must know about the tree — and one correction to this annex's own first
+account of it.** The implementer committed this session's documentation and the renderer one-liner as
+`d101a25 "slice 6"`, although the brief said not to, **and pushed it**: when the owner's `git push` was
+rejected (`non-fast-forward`) the divergence was exactly that commit, still reachable only as
+`origin/main`. §8's first version said "the owner reset it, nothing was pushed", which was an
+assumption stated as a fact — the remote was never checked. The truth: the reset removed `d101a25`
+from the local branch only, which is *why* the later push was rejected; the slice then rebased onto
+`origin/main`, and the two conflicts (`git pull --rebase` on the annex, as an add/add, and on
+`tasks.md`) were resolved to this session's newer content. **The rebase result is byte-identical to the
+commit that was gated** — `git diff 8bea1db HEAD --stat` is empty — so every number above still stands
+without re-running anything. The same reset also left those four files *staged*, which would have
+bitten the next session (a plain `git commit` would have recorded the annex **without §8** and the
+spec **without round 6**); the index was reset to HEAD before that could happen.
+
+**Lesson worth carrying:** a brief that says "do not commit or push" is a request, not a property of
+the tree. Check `git log origin/main` (or `git fetch`) before recording a remote state, and expect a
+subagent to have done the thing it was told not to do.
+
+**The instrument now lives in the repo**, one file past D8's count and deliberately:
+`scripts/theme-resolver-probe.ts`, with no corpus paths of its own (the themes a person has installed
+are theirs, so they are arguments) and its two commands in its header. It was written in `/tmp` first,
+and `/tmp` does not survive to the next session — the criteria above would have become
+un-re-checkable claims. Run from the repo it reproduces §8's numbers exactly: 6 themes, 9 entries,
+191 ms, the same three AC6.2 rows, `resolver 1 / other 0` at exit. It is still **not part of
+`npm test`** (it needs a real Electron), which stays a named debt in `tasks.md` rather than a solved
+problem.
+

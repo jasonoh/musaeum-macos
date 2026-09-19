@@ -8,6 +8,7 @@ import type {
   ThemeProvider
 } from '@shared/theme.types'
 import { loadThemeFile } from './index'
+import { OBSIDIAN_THEME_FILE, themeFolderName, type ResolvedObsidianFile } from './parse/obsidian'
 import { getThemeView, storedRecordOf, themeFolder, upsertLibrary } from './store'
 
 /**
@@ -15,7 +16,7 @@ import { getThemeView, storedRecordOf, themeFolder, upsertLibrary } from './stor
  * settings section, and a folder scan all end in the same
  * read → parse → derive → validate → upsert.
  *
- * Three things this file is careful about:
+ * Four things this file is careful about:
  *
  * 1. **A batch never aborts on a member.** Each file is independent, and a
  *    failure is a `{ path, reason }` row carrying the engine's own reason string
@@ -28,6 +29,13 @@ import { getThemeView, storedRecordOf, themeFolder, upsertLibrary } from './stor
  *    from what is in it; nothing here creates, copies, renames or normalizes a
  *    file (AC4.3). The app stores derived *values*, which is what lets a theme be
  *    applied after its source has moved away.
+ * 4. **The one provider that needs Electron is injected, never imported.** A
+ *    `.css` resolves through the resolver window, which is async and
+ *    Electron-bound, so the resolver is a parameter (`ImportOptions.resolveCss`)
+ *    with a **lazy** dynamic import as its default. Every Obsidian case can then
+ *    pass a fake and decide the pipeline — id, rows, rejection list, batch
+ *    independence — without Electron, and the yaml/iTerm2 cases never build the
+ *    resolver's module graph at all (D6).
  *
  * The dialog and `shell.openPath` belong to the IPC layer: nothing here imports
  * `electron`, so the whole pipeline is exercisable against real files.
@@ -37,6 +45,24 @@ import { getThemeView, storedRecordOf, themeFolder, upsertLibrary } from './stor
 export interface ThemeImportBatch {
   imported: ImportedTheme[]
   rejected: RejectedTheme[]
+}
+
+/**
+ * The one injection point: what reads a `.css`.
+ *
+ * **The shape is the *file's entries*, not one `LoadedTheme`.** A `.css` can
+ * legally resolve to two palettes (D5 — Tokyo Night and Things declare both
+ * classes; Dracula + LYT's light class resolves to a dark palette and so yields
+ * one), and the id rule (`obsidian:<folder>` and `obsidian:<folder>:light`) is
+ * about the entries, not about a single theme. A seam that could only answer one
+ * `LoadedTheme` could not carry the light entry the second id names.
+ *
+ * The real implementation is `resolve-css.ts`'s `resolveObsidianFile`; the type
+ * lives in the pure adapter so this file needs no import from a module that
+ * touches `electron`.
+ */
+export interface ImportOptions {
+  resolveCss?: (path: string) => Promise<ResolvedObsidianFile>
 }
 
 /**
@@ -72,6 +98,10 @@ export function withThemeView(batch: ThemeImportBatch): ThemeImportResult {
  * imported id starts `base16:`/`iterm:` and every built-in starts `builtin:`, so
  * a file named `musaeum.yaml` cannot replace the default.
  *
+ * The one exception is Obsidian, and it is D7's: a theme is identified by the
+ * **folder** holding its `theme.css`, because the file is always named
+ * `theme.css` — a stem-keyed id would call every Obsidian theme `obsidian:theme`.
+ *
  * `native` is here only so the map is total over `ThemeProvider`: no adapter
  * reports it (the built-in default does, and the default is never a file).
  */
@@ -83,11 +113,17 @@ const ID_PREFIX: Record<ThemeProvider, string> = {
 }
 
 /**
- * The extensions a folder scan accepts, matching `loadThemeText`'s dispatch.
- * `.css` is deliberately absent: Obsidian is slice 6, and a folder listing must
- * not fill with reasons about files the app cannot read yet (D7).
+ * The extensions a folder scan accepts, matching the adapters' dispatch. `.css`
+ * is one of them as of slice 6; *where* a stylesheet may sit to be a theme is
+ * D7's separate rule, applied below.
+ *
+ * A file whose extension is in this set but which the app cannot read is
+ * reported when the user put it there deliberately — that is what the picked and
+ * dropped paths are for. A folder listing is different: it must not fill with
+ * reasons about files that are not themes (D7/A35), which is why the loose
+ * stylesheet below is skipped rather than reported.
  */
-const SCANNABLE_EXTENSIONS = new Set(['.yaml', '.yml', '.itermcolors'])
+const SCANNABLE_EXTENSIONS = new Set(['.yaml', '.yml', '.itermcolors', '.css'])
 
 /** `…/schemes/gruvbox-dark.yaml` → `gruvbox-dark` — the engine's own stem rule. */
 function stemOf(path: string): string {
@@ -105,20 +141,114 @@ function isFile(path: string): boolean {
   }
 }
 
+/** Whether an entry is a directory — the one level a theme folder may sit at. */
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 /**
- * One file → the record the library stores, or the reason it cannot be one.
+ * What a `.css` is, or the reason it is not an Obsidian theme.
+ *
+ * Two rules, both D7: the file must be named `theme.css` (that name *is* the
+ * format — a dropped `notes.css` is a scratch stylesheet), and it must sit in a
+ * folder, because the folder is what names the theme. The folder comes back with
+ * the success arm rather than being derived a second time at the one call site —
+ * it is the id's other half, and two derivations of it are two things that can
+ * disagree.
+ */
+function cssThemeFolder(
+  path: string
+): { ok: true; folder: string } | { ok: false; reason: string } {
+  if (basename(path).toLowerCase() !== OBSIDIAN_THEME_FILE) {
+    return {
+      ok: false,
+      reason: `${basename(path)} is not an Obsidian theme — an Obsidian theme is a folder containing ${OBSIDIAN_THEME_FILE}`
+    }
+  }
+  const folder = themeFolderName(path)
+  if (folder === null) {
+    return {
+      ok: false,
+      reason: `${path} is not inside a theme folder — an Obsidian theme is a folder containing ${OBSIDIAN_THEME_FILE}`
+    }
+  }
+  return { ok: true, folder }
+}
+
+/** The resolver, injected or lazily imported. Never a static import (`electron`). */
+async function resolveCssFor(path: string, options?: ImportOptions): Promise<ResolvedObsidianFile> {
+  if (options?.resolveCss !== undefined) return options.resolveCss(path)
+  const { resolveObsidianFile } = await import('./resolve-css')
+  return resolveObsidianFile(path)
+}
+
+/**
+ * One `.css` → the records its entries become, or the reason it becomes none.
+ *
+ * The id and the display name both come from the **parent folder** (D7):
+ * `<folder>/theme.css` is `obsidian:<folder>`, and a file that resolves to two
+ * entries gives the second one `obsidian:<folder>:light` — the suffix is what
+ * the two-row case needs, and the bare id stays the common one (D5's note on the
+ * spec's `theme_id` row).
+ *
+ * Every entry is built before any is written, and a failure on one rejects the
+ * file: the importer's report is per path, so the alternative would be a row
+ * that says "imported" about half a theme. Nothing is partial in storage either
+ * — the upsert for this file is one transaction after the whole build.
+ */
+async function recordsForCss(
+  path: string,
+  options?: ImportOptions
+): Promise<{ ok: true; themes: StoredTheme[] } | { ok: false; reason: string }> {
+  const theme = cssThemeFolder(path)
+  if (!theme.ok) return { ok: false, reason: theme.reason }
+  const folder = theme.folder
+
+  const resolved = await resolveCssFor(path, options)
+  if (!resolved.ok) return { ok: false, reason: resolved.reason }
+
+  const themes: StoredTheme[] = []
+  for (const [index, entry] of resolved.variants.entries()) {
+    // The second entry is the light one D5 describes (it is kept only when its
+    // variant differs from the first's), so its id is the annex's
+    // `obsidian:<folder>:light` — spelled from the entry's own variant so the id
+    // cannot lie if a file ever resolved the two the other way round.
+    const id =
+      index === 0
+        ? `${ID_PREFIX.obsidian}:${folder}`
+        : `${ID_PREFIX.obsidian}:${folder}:${entry.variant}`
+    const built = storedRecordOf(entry.ir, id, path)
+    // A derivation failure is *this file's* rejection, the same value the
+    // stem-keyed path returns for one: the report is per path, so the alternative
+    // would be a row that says "imported" about half a theme.
+    if (!built.ok) return { ok: false, reason: built.reason }
+    themes.push(built.theme)
+  }
+  return { ok: true, themes }
+}
+
+/**
+ * One file → the records the library stores, or the reason it cannot be one.
  *
  * The id's namespace comes from the loaded IR's own `source` rather than from the
  * file name: the extension decides which adapter reads the file, so the two agree
  * by construction today, and reading the provider out of the *parsed* file is
  * what keeps the id honest if a later adapter ever sniffs content instead.
  */
-function recordForPath(
-  path: string
-): { ok: true; theme: StoredTheme } | { ok: false; reason: string } {
+async function recordsForPath(
+  path: string,
+  options?: ImportOptions
+): Promise<{ ok: true; themes: StoredTheme[] } | { ok: false; reason: string }> {
+  if (extname(path).toLowerCase() === '.css') return recordsForCss(path, options)
   const loaded = loadThemeFile(path)
   if (!loaded.ok) return { ok: false, reason: loaded.reason }
-  return storedRecordOf(loaded.ir, `${ID_PREFIX[loaded.ir.source]}:${stemOf(path)}`, path)
+  const built = storedRecordOf(loaded.ir, `${ID_PREFIX[loaded.ir.source]}:${stemOf(path)}`, path)
+  if (!built.ok) return { ok: false, reason: built.reason }
+  return { ok: true, themes: [built.theme] }
 }
 
 /**
@@ -126,8 +256,15 @@ function recordForPath(
  *
  * Each path is independent (see the header), and the arrays follow the **input
  * order**, so a caller can line a rejection up with the file it names.
+ *
+ * **Async because one provider is.** A `.css` needs the resolver window; a
+ * `.yaml` is still read synchronously inside — the `async` is the seam's shape,
+ * not a change to how a base16 scheme is parsed.
  */
-export function importPaths(paths: string[]): ThemeImportBatch {
+export async function importPaths(
+  paths: string[],
+  options?: ImportOptions
+): Promise<ThemeImportBatch> {
   const imported: ImportedTheme[] = []
   const rejected: RejectedTheme[] = []
 
@@ -141,18 +278,20 @@ export function importPaths(paths: string[]): ThemeImportBatch {
   for (const candidate of paths) {
     const path = typeof candidate === 'string' ? candidate : String(candidate)
     try {
-      const built = recordForPath(path)
+      const built = await recordsForPath(path, options)
       if (!built.ok) {
         rejected.push({ path, reason: built.reason })
         continue
       }
-      upsertLibrary([built.theme])
-      imported.push({
-        id: built.theme.id,
-        name: built.theme.name,
-        provider: built.theme.provider,
-        variant: built.theme.variant
-      })
+      upsertLibrary(built.themes)
+      for (const theme of built.themes) {
+        imported.push({
+          id: theme.id,
+          name: theme.name,
+          provider: theme.provider,
+          variant: theme.variant
+        })
+      }
     } catch (err) {
       // A write that cannot happen is *this file's* rejection, not the batch's
       // end: the files around it are already imported and stay imported, and the
@@ -167,18 +306,23 @@ export function importPaths(paths: string[]): ThemeImportBatch {
 /**
  * Import everything the drop-box directory offers.
  *
- * Read-only and extension-scoped (D7): `readdirSync`, non-recursive, entries that
- * are files whose extension is `.yaml`, `.yml` or `.itermcolors`. Anything else —
- * a directory, `.DS_Store`, `README.md`, a `.css` theme — is ignored *silently*,
- * because a listing full of reasons about files the app cannot read is noise. A
- * supported file that fails to parse **is** reported: that one the user put
+ * Read-only and extension-scoped (D7): `readdirSync`, one level deep. A
+ * supported provider file at the drop box's own level is a candidate; so is a
+ * **folder** holding a `theme.css`, which is the only place a stylesheet is a
+ * theme — the folder names it, and a loose `.css` beside the provider files is
+ * somebody's scratch stylesheet rather than an Obsidian theme, so it is ignored
+ * *silently* (A35: a folder listing is not a list of complaints). Anything else
+ * — a directory without a `theme.css`, `.DS_Store`, `README.md` — is skipped the
+ * same way.
+ *
+ * A supported file that fails to parse **is** reported: that one the user put
  * there for this purpose.
  *
  * A missing folder is an empty scan rather than an error — it is the normal
  * first-run state, and nothing on the read path creates it (only the *Reveal in
  * Finder* control does, D8).
  */
-export function scanFolder(): ThemeImportBatch {
+export async function scanFolder(options?: ImportOptions): Promise<ThemeImportBatch> {
   const folder = themeFolder()
   let names: string[]
   try {
@@ -187,17 +331,32 @@ export function scanFolder(): ThemeImportBatch {
     return { imported: [], rejected: [] }
   }
 
-  const paths = names
-    .filter((name) => SCANNABLE_EXTENSIONS.has(extname(name).toLowerCase()))
+  const paths: string[] = []
+  for (const name of names.sort()) {
+    const full = join(folder, name)
     // `statSync` rather than a dirent's own type: it follows a symlink (a
     // linked-in theme is the user's own file, and the read would have followed it
     // anyway) and it is the same check on every filesystem. A name that cannot be
     // stat'ed is not a file this scan can read, so it is skipped like the rest.
-    .filter((name) => isFile(join(folder, name)))
-    // Sorted, so the order of the reported rows is stable from one scan to the
-    // next — a folder listing has no order of its own.
-    .sort()
-    .map((name) => join(folder, name))
+    if (isFile(full)) {
+      const extension = extname(name).toLowerCase()
+      if (!SCANNABLE_EXTENSIONS.has(extension)) continue
+      // A stylesheet is only a theme inside a folder of its own: at this level
+      // the "folder" would be the drop box itself, which names no theme.
+      if (extension === '.css') continue
+      paths.push(full)
+      continue
+    }
+    if (!isDirectory(full)) continue
+    // `<name>/theme.css` is a candidate by construction: the file is named for
+    // the format and its folder is the subdirectory, so D7's two rules hold
+    // without a second check.
+    const themeCss = join(full, OBSIDIAN_THEME_FILE)
+    if (isFile(themeCss)) paths.push(themeCss)
+  }
+  // Sorted, so the order of the reported rows is stable from one scan to the
+  // next — a folder listing has no order of its own.
+  paths.sort()
 
-  return importPaths(paths)
+  return importPaths(paths, options)
 }

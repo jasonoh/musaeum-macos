@@ -29,6 +29,7 @@ import { createBeforeQuitHandler } from './services/quit'
 import * as readingState from './services/reading-state'
 import { isPackaged } from './services/runtime'
 import * as sidecar from './services/sidecar'
+import { isResolverWindow } from './services/theme/resolve-css'
 import { activeTheme, nativeScheme, windowBackgroundColor } from './services/theme/store'
 
 // Isolated profile for verification/e2e runs — macOS Electron resolves the
@@ -222,7 +223,16 @@ app.whenReady().then(() => {
   startRestApiIfEnabled()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    // **The count is not the question.** A resolver window is created lazily on
+    // the first `.css` import and then lives until the app quits, because
+    // destroying it and building another is the shape that dies with `SIGTRAP`
+    // in Electron 37.10.3 (D1). So `BrowserWindow.getAllWindows().length` is
+    // never 0 again after one import, and the dock icon would silently stop
+    // reopening the app. What the dock click is asking is "is there no window the
+    // user can see" — so every window counts except the resolver's, which is
+    // always hidden and never theirs.
+    const userWindows = BrowserWindow.getAllWindows().filter((win) => !isResolverWindow(win))
+    if (userWindows.length === 0) {
       adoptWindow(createWindow())
     }
   })

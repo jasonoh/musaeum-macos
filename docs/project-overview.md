@@ -196,8 +196,9 @@ the reasoning, not just the rule.
 
 ### 3.7 A palette theme engine with guardrails
 
-Themes are imported from tools the owner already uses — **base16 (`.yaml`)** and
-**iTerm2 (`.itermcolors`)** today, Obsidian `theme.css` planned — and the app
+Themes are imported from tools the owner already uses — **base16 (`.yaml`)**,
+**iTerm2 (`.itermcolors`)** and **Obsidian (`theme.css`, read out of a live
+cascade because its palettes are computed)** — and the app
 _derives_ its own design tokens from the palette, enforcing contrast floors at
 every step. A palette that cannot hold a legible contrast is **refused with its
 reason**, per file, in its own row; the app keeps the theme it already had. A

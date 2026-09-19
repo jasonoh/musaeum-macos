@@ -14,16 +14,22 @@ import { basename, join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ThemeIr, ThemeTokens } from '@shared/theme.types'
-import { closeDb, getConfig, getDb } from '../db'
+import { closeDb, getConfig, getDb, setConfig } from '../db'
 import { deriveTheme, loadThemeFile, THEME_ENGINE_VERSION } from './index'
 import { importPaths, scanFolder, withThemeView } from './importer'
+import {
+  OBSIDIAN_THEME_FILE,
+  type ResolvedObsidianFile,
+  type ResolvedObsidianVariant
+} from './parse/obsidian'
 import {
   DEFAULT_THEME_ID,
   getThemeView,
   MUSAEUM_DEFAULT_TOKENS,
   readLibrary,
   setTheme,
-  themeFolder
+  themeFolder,
+  THEME_LIBRARY_KEY
 } from './store'
 
 /**
@@ -129,8 +135,8 @@ function directoryHash(dir: string): string {
 // --- AC4.1: the provider types import, and each becomes a row -----------------
 
 describe('AC4.1 — a base16 scheme and an iTerm2 scheme both import', () => {
-  it('imports one of each, keyed by the file’s stem and the provider it parsed as', () => {
-    const batch = importPaths([GRUVBOX_YAML, GRUVBOX_ITERM])
+  it('imports one of each, keyed by the file’s stem and the provider it parsed as', async () => {
+    const batch = await importPaths([GRUVBOX_YAML, GRUVBOX_ITERM])
 
     expect(batch.rejected).toEqual([])
     expect(batch.imported.map((theme) => theme.id)).toEqual([
@@ -147,8 +153,8 @@ describe('AC4.1 — a base16 scheme and an iTerm2 scheme both import', () => {
     ])
   })
 
-  it('gives each imported theme a row with five swatches, a provider and a variant', () => {
-    importPaths([GRUVBOX_YAML, GRUVBOX_ITERM])
+  it('gives each imported theme a row with five swatches, a provider and a variant', async () => {
+    await importPaths([GRUVBOX_YAML, GRUVBOX_ITERM])
 
     for (const [id, path] of [
       ['base16:gruvbox-dark-hard', GRUVBOX_YAML],
@@ -179,15 +185,15 @@ describe('AC4.1 — a base16 scheme and an iTerm2 scheme both import', () => {
     }
   })
 
-  it('carries the iTerm file’s own lossy note, which is the disclosure the row shows', () => {
-    importPaths([GRUVBOX_ITERM])
+  it('carries the iTerm file’s own lossy note, which is the disclosure the row shows', async () => {
+    await importPaths([GRUVBOX_ITERM])
     // A terminal file has no base01–03, so the ramp above the canvas is inferred
     // — the one thing a user looking at two grays of the same scheme needs told.
     expect(rowOf('iterm:gruvbox').notes.some((note) => /ramp inferred/.test(note))).toBe(true)
   })
 
-  it('imports a light scheme as a light row', () => {
-    const batch = importPaths([SOLARIZED_YAML])
+  it('imports a light scheme as a light row', async () => {
+    const batch = await importPaths([SOLARIZED_YAML])
 
     expect(batch.imported.map((theme) => theme.variant)).toEqual(['light'])
     const row = rowOf('base16:solarized-light')
@@ -211,9 +217,9 @@ describe('AC4.2 — import is validated before it is stored', () => {
     return { paths: [GRUVBOX_YAML, broken, NORD_YAML, SOLARIZED_YAML, GRUVBOX_ITERM], broken }
   }
 
-  it('imports four of five and reports the malformed member by path and reason', () => {
+  it('imports four of five and reports the malformed member by path and reason', async () => {
     const { paths, broken } = fiveFiles()
-    const batch = importPaths(paths)
+    const batch = await importPaths(paths)
 
     expect(batch.imported).toHaveLength(4)
     expect(batch.rejected).toHaveLength(1)
@@ -226,9 +232,9 @@ describe('AC4.2 — import is validated before it is stored', () => {
     expect(batch.rejected[0].reason).toMatch(/plist/)
   })
 
-  it('makes the four usable: each resolves through setTheme and renders its own canvas', () => {
+  it('makes the four usable: each resolves through setTheme and renders its own canvas', async () => {
     const { paths } = fiveFiles()
-    const batch = importPaths(paths)
+    const batch = await importPaths(paths)
 
     expect(batch.imported).toHaveLength(4)
     for (const imported of batch.imported) {
@@ -245,8 +251,8 @@ describe('AC4.2 — import is validated before it is stored', () => {
     }
   })
 
-  it('writes nothing for the failed member and keeps the four in the library', () => {
-    const batch = importPaths(fiveFiles().paths)
+  it('writes nothing for the failed member and keeps the four in the library', async () => {
+    const batch = await importPaths(fiveFiles().paths)
 
     // The rejected file is not a row, in the view or in storage.
     const ids = readLibrary().map((record) => record.id)
@@ -256,9 +262,9 @@ describe('AC4.2 — import is validated before it is stored', () => {
     expect(batch.imported.every((theme) => ids.includes(theme.id))).toBe(true)
   })
 
-  it('reports in input order, so a rejection lines up with the file it names', () => {
+  it('reports in input order, so a rejection lines up with the file it names', async () => {
     const paths = [NORD_YAML, writeScratch('broken.itermcolors', BROKEN_ITERM), GRUVBOX_YAML]
-    const batch = importPaths(paths)
+    const batch = await importPaths(paths)
 
     expect(batch.imported.map((theme) => theme.id)).toEqual([
       'base16:nord',
@@ -267,10 +273,15 @@ describe('AC4.2 — import is validated before it is stored', () => {
     expect(batch.rejected.map((row) => row.path)).toEqual([paths[1]])
   })
 
-  it('answers a path it cannot read as that file’s rejection rather than throwing', () => {
+  it('answers a path it cannot read as that file’s rejection rather than throwing', async () => {
     const missing = join(scratch(), 'not-there.yaml')
-    expect(() => importPaths([missing])).not.toThrow()
-    const batch = importPaths([missing, GRUVBOX_YAML])
+    // Slice 6 made this door async, and an async function cannot throw at its
+    // caller — so `not.toThrow()` would now be true of *every* input, including
+    // ones that should be rejected. The assertion is the value it answers.
+    const alone = await importPaths([missing])
+    expect(alone.imported).toEqual([])
+    expect(alone.rejected.map((row) => row.path)).toEqual([missing])
+    const batch = await importPaths([missing, GRUVBOX_YAML])
     expect(batch.rejected.map((row) => row.path)).toEqual([missing])
     expect(batch.rejected[0].reason).toContain(missing)
     // The good member beside it still imported.
@@ -291,11 +302,11 @@ describe('AC4.3 — the drop-box directory works and is never written to', () =>
     copyFileSync(GRUVBOX_ITERM, join(themeFolder(), 'gruvbox-proton.itermcolors'))
   }
 
-  it('scans three dropped files into three new rows', () => {
+  it('scans three dropped files into three new rows', async () => {
     dropThreeFiles()
     const before = getThemeView().options.length
 
-    const batch = scanFolder()
+    const batch = await scanFolder()
 
     expect(batch.rejected).toEqual([])
     // Sorted file names — `gruvbox-proton.itermcolors` sorts before
@@ -314,7 +325,7 @@ describe('AC4.3 — the drop-box directory works and is never written to', () =>
     }
   })
 
-  it('leaves the directory byte-identical: same entries, sizes and mtimes', () => {
+  it('leaves the directory byte-identical: same entries, sizes and mtimes', async () => {
     dropThreeFiles()
     const folder = themeFolder()
     // Non-vacuity: the hash covers three entries, so an empty or single-entry
@@ -322,7 +333,7 @@ describe('AC4.3 — the drop-box directory works and is never written to', () =>
     expect(readdirSync(folder)).toHaveLength(3)
     const before = directoryHash(folder)
 
-    scanFolder()
+    await scanFolder()
 
     expect(readdirSync(folder)).toHaveLength(3)
     expect(directoryHash(folder)).toBe(before)
@@ -333,51 +344,62 @@ describe('AC4.3 — the drop-box directory works and is never written to', () =>
     expect(directoryHash(folder)).not.toBe(before)
   })
 
-  it('does not create the folder itself', () => {
-    expect(() => scanFolder()).not.toThrow()
-    expect(scanFolder()).toEqual({ imported: [], rejected: [] })
+  it('does not create the folder itself', async () => {
+    // A missing folder is an empty scan rather than a failure, and the door is
+    // async now — so the assertion is the batch it answers.
+    expect(await scanFolder()).toEqual({ imported: [], rejected: [] })
     // The `mkdir` belongs to the Reveal control: a read that created the folder
     // would put an empty directory in the user's Application Support, and
     // AC4.3's "never written to" would have nothing to hash.
     expect(() => statSync(themeFolder())).toThrow()
   })
 
-  it('ignores every entry that is not a theme file, silently', () => {
+  it('ignores every entry that is not a theme file, silently', async () => {
     mkdirSync(themeFolder(), { recursive: true })
     copyFileSync(GRUVBOX_YAML, join(themeFolder(), 'gruvbox-dark-hard.yaml'))
     copyFileSync(NORD_ITERM, join(themeFolder(), 'nord.itermcolors'))
     writeFileSync(join(themeFolder(), 'README.md'), 'drop provider files here\n')
     writeFileSync(join(themeFolder(), '.DS_Store'), '\u0000')
-    // A stylesheet is slice 6's, and a folder listing must not fill with reasons
-    // about files this build cannot read.
+    // **Inverted from slice 5's reading of this line.** `.css` *is* a scannable
+    // extension as of slice 6, so what keeps the listing quiet is no longer "this
+    // build cannot read stylesheets" — it is D7's rule that an Obsidian theme is
+    // a *folder* holding `theme.css`, and a stylesheet at the drop box's own
+    // level sits in no such folder (the folder that would name it would be the
+    // drop box itself). The assertion below is unchanged in shape and opposite in
+    // cause: the silence is now a decision the scan makes, not a consequence of
+    // the extension set.
     writeFileSync(join(themeFolder(), 'notes.css'), ':root { --x: #fff; }\n')
     // A *directory* under a theme extension is not a file, so it is skipped too.
     mkdirSync(join(themeFolder(), 'backup.yaml'))
 
-    const batch = scanFolder()
+    const batch = await scanFolder()
 
     expect(batch.rejected).toEqual([])
     expect(batch.imported.map((theme) => theme.id)).toEqual([
       'base16:gruvbox-dark-hard',
       'iterm:nord'
     ])
+    // Stated positively rather than left to the two assertions above: the loose
+    // stylesheet is neither a row nor a reason.
+    expect(batch.imported.some((theme) => theme.id.includes('notes'))).toBe(false)
+    expect(batch.rejected.some((row) => row.path.endsWith('notes.css'))).toBe(false)
   })
 
-  it('reports a supported file that fails to parse, and still imports its neighbours', () => {
+  it('reports a supported file that fails to parse, and still imports its neighbours', async () => {
     mkdirSync(themeFolder(), { recursive: true })
     copyFileSync(NORD_ITERM, join(themeFolder(), 'nord.itermcolors'))
     writeFileSync(join(themeFolder(), 'half.itermcolors'), BROKEN_ITERM)
 
-    const batch = scanFolder()
+    const batch = await scanFolder()
 
     expect(batch.imported.map((theme) => theme.id)).toEqual(['iterm:nord'])
     expect(batch.rejected.map((row) => row.path)).toEqual([join(themeFolder(), 'half.itermcolors')])
   })
 
-  it('does not import the same file twice on a second scan', () => {
+  it('does not import the same file twice on a second scan', async () => {
     dropThreeFiles()
-    scanFolder()
-    const again = scanFolder()
+    await scanFolder()
+    const again = await scanFolder()
 
     // The rows existed already, so nothing is *new* — but a rescan must not
     // duplicate a row either: the id is the key, not the scan.
@@ -390,9 +412,9 @@ describe('AC4.3 — the drop-box directory works and is never written to', () =>
 // --- Re-import: upsert, not duplicate ----------------------------------------
 
 describe('re-importing a file upserts the row it already has', () => {
-  it('does not add a second row for the same file', () => {
-    const first = importPaths([GRUVBOX_ITERM])
-    const second = importPaths([GRUVBOX_ITERM])
+  it('does not add a second row for the same file', async () => {
+    const first = await importPaths([GRUVBOX_ITERM])
+    const second = await importPaths([GRUVBOX_ITERM])
 
     expect(first.imported).toHaveLength(1)
     expect(second.imported).toHaveLength(1)
@@ -400,16 +422,16 @@ describe('re-importing a file upserts the row it already has', () => {
     expect(getThemeView().options.filter((row) => row.id === 'iterm:gruvbox')).toHaveLength(1)
   })
 
-  it('replaces the row in place when the file’s bytes changed', () => {
+  it('replaces the row in place when the file’s bytes changed', async () => {
     const path = scratchCopy(GRUVBOX_YAML, 'palette.yaml')
-    importPaths([path])
+    await importPaths([path])
     const before = rowOf('base16:palette')
     expect(before.variant).toBe('dark')
 
     // The same file name, different scheme — what editing a dropped file looks
     // like from here. The id is the stem, so this is the *same* theme updated.
     copyFileSync(SOLARIZED_YAML, path)
-    const batch = importPaths([path])
+    const batch = await importPaths([path])
 
     expect(batch.rejected).toEqual([])
     expect(readLibrary()).toHaveLength(1)
@@ -423,8 +445,8 @@ describe('re-importing a file upserts the row it already has', () => {
 // --- D2: the namespaces are disjoint -----------------------------------------
 
 describe('D2 — an imported id cannot shadow a built-in', () => {
-  it('offers an imported copy of a vendored scheme beside the built-in of the same name', () => {
-    importPaths([GRUVBOX_YAML])
+  it('offers an imported copy of a vendored scheme beside the built-in of the same name', async () => {
+    await importPaths([GRUVBOX_YAML])
 
     // Both rows exist, and they are different themes: one is the inlined corpus
     // entry with no file behind it, the other is the imported file.
@@ -445,9 +467,9 @@ describe('D2 — an imported id cannot shadow a built-in', () => {
     expect(fromRegistry.view.active.engineVersion).toBe(THEME_ENGINE_VERSION)
   })
 
-  it('cannot replace the built-in default, even when the file is named for it', () => {
+  it('cannot replace the built-in default, even when the file is named for it', async () => {
     const path = scratchCopy(GRUVBOX_YAML, 'musaeum.yaml')
-    const batch = importPaths([path])
+    const batch = await importPaths([path])
 
     // The file's id is namespaced by its provider, so it cannot spell the
     // default's id (`builtin:musaeum`) — a file named after the app imports as
@@ -480,12 +502,12 @@ describe('D2 — an imported id cannot shadow a built-in', () => {
  * has no harness — `ipcMain.handle` is a no-op in the Electron mock, so a test
  * could not see a handler's return value at all — which is exactly why the
  * ordering bug these cases decide shipped in the first place: the handler answered
- * `{ view: getThemeView(), ...importPaths(paths) }`, left-to-right property
+ * `{ view: getThemeView(), ...await importPaths(paths) }`, left-to-right property
  * evaluation read the view *before* the import, and the row the user had just
  * imported was missing from the list until some later interaction.
  */
 describe('D10 — an import answer carries the list it just changed', () => {
-  it('heads a batch with a view that already contains the imported row', () => {
+  it('heads a batch with a view that already contains the imported row', async () => {
     const file = scratchCopy(GRUVBOX_YAML, 'fresh-theme.yaml')
     expect(
       getThemeView()
@@ -493,7 +515,7 @@ describe('D10 — an import answer carries the list it just changed', () => {
         .includes('base16:fresh-theme')
     ).toBe(false)
 
-    const result = withThemeView(importPaths([file]))
+    const result = withThemeView(await importPaths([file]))
 
     expect(result.imported.map((theme) => theme.id)).toEqual(['base16:fresh-theme'])
     const row = result.view.options.find((option) => option.id === 'base16:fresh-theme')
@@ -504,16 +526,16 @@ describe('D10 — an import answer carries the list it just changed', () => {
     expect(result.view.options.length).toBeGreaterThan(result.imported.length)
   })
 
-  it('also answers an empty batch with a view, so a cancelled dialog is harmless', () => {
+  it('also answers an empty batch with a view, so a cancelled dialog is harmless', async () => {
     const result = withThemeView({ imported: [], rejected: [] })
     expect(result.imported).toEqual([])
     expect(result.view.options.length).toBeGreaterThan(0)
   })
 
-  it('keeps the handlers composing through it, rather than an inline literal', () => {
+  it('keeps the handlers composing through it, rather than an inline literal', async () => {
     // A source walk, deliberately: the regression this guards cannot be seen by a
     // behaviour test (no handler harness), and an inline
-    // `{ view: getThemeView(), ...importPaths(paths) }` reads the view first and
+    // `{ view: getThemeView(), ...await importPaths(paths) }` reads the view first and
     // silently ships the bug again. Matching the *call* is the only instrument
     // that exists here; `withThemeView`'s own case above decides the ordering.
     const ipc = readFileSync(join(process.cwd(), 'electron', 'main', 'ipc', 'theme.ts'), 'utf8')
@@ -534,7 +556,7 @@ describe('D10 — an import answer carries the list it just changed', () => {
 })
 
 describe('D6 — a batch survives a write that cannot land', () => {
-  it('reports the file whose write was refused, and keeps the ones before it', () => {
+  it('reports the file whose write was refused, and keeps the ones before it', async () => {
     const first = scratchCopy(GRUVBOX_YAML, 'first-theme.yaml')
     const second = scratchCopy(NORD_YAML, 'second-theme.yaml')
     // Refuse only the write that carries the *second* record: the first file's
@@ -547,7 +569,7 @@ describe('D6 — a batch survives a write that cannot land', () => {
        CREATE TRIGGER library_update_poison BEFORE UPDATE ON app_config WHEN ${when} BEGIN SELECT RAISE(ABORT, 'poisoned by the test'); END;`
     )
 
-    const batch = importPaths([first, second])
+    const batch = await importPaths([first, second])
 
     expect(batch.imported.map((theme) => theme.id)).toEqual(['base16:first-theme'])
     expect(batch.rejected.map((rejection) => rejection.path)).toEqual([second])
@@ -561,15 +583,15 @@ describe('D6 — a batch survives a write that cannot land', () => {
 })
 
 describe('D5 — importing never activates a theme', () => {
-  it('leaves the app on the theme it was on', () => {
+  it('leaves the app on the theme it was on', async () => {
     mkdirSync(themeFolder(), { recursive: true })
     copyFileSync(NORD_ITERM, join(themeFolder(), 'nord.itermcolors'))
     const started = setTheme('builtin:solarized-light')
     if (!started.ok) throw new Error(`built-in:solarized-light was rejected: ${started.reason}`)
     const stored = getConfig('theme_id')
 
-    importPaths([GRUVBOX_YAML, GRUVBOX_ITERM, SOLARIZED_YAML])
-    scanFolder()
+    await importPaths([GRUVBOX_YAML, GRUVBOX_ITERM, SOLARIZED_YAML])
+    await scanFolder()
 
     expect(getConfig('theme_id')).toBe(stored)
     expect(getThemeView().active.id).toBe('builtin:solarized-light')
@@ -578,5 +600,228 @@ describe('D5 — importing never activates a theme', () => {
         .options.filter((row) => row.active)
         .map((row) => row.id)
     ).toEqual(['builtin:solarized-light'])
+  })
+})
+
+// --- Slice 6: the Obsidian pipeline, with the resolver faked ------------------
+
+/**
+ * Slice 6's import rules, decided without Electron.
+ *
+ * The resolver is the one part of the pipeline that needs a window, so it is a
+ * parameter (`ImportOptions.resolveCss`) and every case below passes a fake. What
+ * that leaves decidable here is everything the *pipeline* owns: that a `.css` is
+ * keyed by its folder, that a two-entry file writes two ids, that a loose
+ * stylesheet is silent in a scan and a reason in a drag, and that an Obsidian row
+ * survives an engine-version bump without being re-read.
+ *
+ * The palettes the fakes answer with are the vendored schemes, relabelled: an IR
+ * that derives is what the row-builder requires, and a synthetic palette built
+ * here would be a second thing to keep passing `deriveTheme`'s floors.
+ */
+describe('slice 6 — a .css is a folder, and the resolver is injected', () => {
+  /** The vendored scheme's IR, carrying the name and provider a real read would. */
+  function asObsidian(source: string, name: string): ThemeIr {
+    return { ...irOf(source), name, author: 'Obsidian theme', source: 'obsidian' }
+  }
+
+  /** What the resolver answers with: the entries, in the order they are labelled. */
+  function entries(irs: ThemeIr[]): ResolvedObsidianFile {
+    const variants: ResolvedObsidianVariant[] = irs.map((ir) => ({ variant: ir.variant, ir }))
+    return { ok: true, variants }
+  }
+
+  /**
+   * A real theme folder: `<scratch>/<name>/theme.css`. The file is written so the
+   * folder scan can stat it; the fakes never read its bytes, which is the honest
+   * shape of the seam — only `resolve-css.ts` opens the file.
+   */
+  function themeFolderFile(name: string): string {
+    const dir = join(scratch(), name)
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, OBSIDIAN_THEME_FILE)
+    writeFileSync(path, ':root { /* the resolver is faked in this suite */ }\n')
+    return path
+  }
+
+  /** The dark entry a fake answers with, named after the folder it is standing in. */
+  function darkEntry(name: string): ThemeIr {
+    return asObsidian(GRUVBOX_YAML, name)
+  }
+
+  it('keys a theme by its folder, because the file is always theme.css', async () => {
+    const path = themeFolderFile('Cool Theme')
+    const seen: string[] = []
+    const batch = await importPaths([path], {
+      resolveCss: async (asked) => {
+        seen.push(asked)
+        return entries([darkEntry('Cool Theme')])
+      }
+    })
+
+    expect(batch.rejected).toEqual([])
+    // The stem is `theme` for every Obsidian theme ever written, so the *folder*
+    // is what names it (D7).
+    expect(batch.imported).toEqual([
+      { id: 'obsidian:Cool Theme', name: 'Cool Theme', provider: 'obsidian', variant: 'dark' }
+    ])
+    expect(seen).toEqual([path])
+
+    const row = rowOf('obsidian:Cool Theme')
+    expect(row.provider).toBe('obsidian')
+    expect(row.sourcePath).toBe(path)
+    expect(row.author).toBe('Obsidian theme')
+    // The row renders the palette the resolver answered with, not a re-derivation.
+    expect(row.swatches[0]).toBe(tokensOf(GRUVBOX_YAML).ink['950'])
+  })
+
+  it('writes one id per entry, the second being obsidian:<folder>:light', async () => {
+    const path = themeFolderFile('Pair')
+    const batch = await importPaths([path], {
+      resolveCss: async () => entries([darkEntry('Pair'), asObsidian(SOLARIZED_YAML, 'Pair')])
+    })
+
+    expect(batch.rejected).toEqual([])
+    expect(batch.imported.map((theme) => theme.id)).toEqual([
+      'obsidian:Pair',
+      'obsidian:Pair:light'
+    ])
+    expect(batch.imported.map((theme) => theme.variant)).toEqual(['dark', 'light'])
+    // Both are rows, and each carries its own palette: the pair is two themes, not
+    // one theme with two labels.
+    expect(readLibrary().map((theme) => theme.id)).toEqual(['obsidian:Pair', 'obsidian:Pair:light'])
+    expect(rowOf('obsidian:Pair').swatches[0]).not.toBe(rowOf('obsidian:Pair:light').swatches[0])
+    expect(rowOf('obsidian:Pair:light').sourcePath).toBe(path)
+  })
+
+  it('rejects a picked .css that is not a theme folder’s theme.css', async () => {
+    // Two ways a stylesheet is not an Obsidian theme, both D7's, and both answered
+    // *before* the resolver is asked — nothing about either needs a window.
+    const loose = writeScratch('notes.css', ':root { --x: #fff; }\n')
+    const asked: string[] = []
+    const resolver = async (path: string): Promise<ResolvedObsidianFile> => {
+      asked.push(path)
+      return entries([darkEntry('Whatever')])
+    }
+
+    const looseBatch = await importPaths([loose], { resolveCss: resolver })
+    expect(looseBatch.imported).toEqual([])
+    expect(looseBatch.rejected).toHaveLength(1)
+    expect(looseBatch.rejected[0].path).toBe(loose)
+    expect(looseBatch.rejected[0].reason).toContain(
+      'an Obsidian theme is a folder containing theme.css'
+    )
+
+    // A `theme.css` with no folder at all cannot be named, so it cannot be a
+    // theme: `dirname` of a bare file name names no folder.
+    const bareBatch = await importPaths([OBSIDIAN_THEME_FILE], { resolveCss: resolver })
+    expect(bareBatch.rejected).toHaveLength(1)
+    expect(bareBatch.rejected[0].reason).toContain('is not inside a theme folder')
+
+    expect(asked).toEqual([])
+  })
+
+  it('finds a theme folder one level into the drop box, and only that', async () => {
+    mkdirSync(themeFolder(), { recursive: true })
+    copyFileSync(NORD_ITERM, join(themeFolder(), 'nord.itermcolors'))
+    // A loose stylesheet beside it: silent, and the case above in the folder scan
+    // says why.
+    writeFileSync(join(themeFolder(), 'notes.css'), ':root { --x: #fff; }\n')
+    // The theme: `<drop>/obsidian-theme/theme.css`.
+    const dir = join(themeFolder(), 'obsidian-theme')
+    mkdirSync(dir)
+    const themeCss = join(dir, OBSIDIAN_THEME_FILE)
+    writeFileSync(themeCss, ':root { --x: #fff; }\n')
+    // A folder without a theme.css is not a theme either.
+    mkdirSync(join(themeFolder(), 'not-a-theme'))
+
+    const seen: string[] = []
+    const batch = await scanFolder({
+      resolveCss: async (asked) => {
+        seen.push(asked)
+        return entries([darkEntry('obsidian-theme')])
+      }
+    })
+
+    expect(batch.rejected).toEqual([])
+    expect(batch.imported.map((theme) => theme.id)).toEqual([
+      'iterm:nord',
+      'obsidian:obsidian-theme'
+    ])
+    expect(seen).toEqual([themeCss])
+    expect(rowOf('obsidian:obsidian-theme').provider).toBe('obsidian')
+  })
+
+  it('reports one Obsidian member and imports the rest of the batch, in input order', async () => {
+    const good = themeFolderFile('Good')
+    const broken = themeFolderFile('Broken')
+
+    const batch = await importPaths([GRUVBOX_YAML, broken, good], {
+      // A batch is per file: the resolver's refusal is *this* file's rejection,
+      // and it names the path like every other failure does.
+      resolveCss: async (asked) =>
+        asked === broken
+          ? {
+              ok: false,
+              reason: `${asked}: canvas is unresolved (no usable --background-secondary)`
+            }
+          : entries([darkEntry('Good')])
+    })
+
+    expect(batch.imported.map((theme) => theme.id)).toEqual([
+      'base16:gruvbox-dark-hard',
+      'obsidian:Good'
+    ])
+    expect(batch.rejected.map((row) => row.path)).toEqual([broken])
+    expect(batch.rejected[0].reason).toContain('--background-secondary')
+    // The refused file left no row behind, and the two around it are usable.
+    expect(readLibrary().map((theme) => theme.id)).toEqual([
+      'base16:gruvbox-dark-hard',
+      'obsidian:Good'
+    ])
+    expect(setTheme('obsidian:Good').ok).toBe(true)
+  })
+
+  it('keeps a stale Obsidian row’s stored values instead of re-reading its file', async () => {
+    const path = themeFolderFile('Stale')
+    await importPaths([path], { resolveCss: async () => entries([darkEntry('Stale')]) })
+    const stored = readLibrary()
+    expect(stored).toHaveLength(1)
+
+    // An engine-version bump is the state J3 describes — the row's values were
+    // derived by older rules. Its source is a stylesheet, whose values only exist
+    // inside a live cascade (D1), and this ladder runs inside `resolveId`, on the
+    // click's critical path: so the stored values stay and the row is flagged,
+    // rather than the click reaching for a hidden window (J3/J4, D6).
+    setConfig(
+      THEME_LIBRARY_KEY,
+      JSON.stringify(stored.map((row) => ({ ...row, engineVersion: 0 })))
+    )
+
+    const applied = setTheme('obsidian:Stale')
+    if (!applied.ok) throw new Error(`the stored Obsidian row was refused: ${applied.reason}`)
+    expect(applied.view.active.id).toBe('obsidian:Stale')
+    expect(applied.view.active.sourcePath).toBe(path)
+    expect(applied.view.active.engineVersion).toBe(0)
+    // "Keep the stored values" means exactly that: the tokens are the ones the
+    // import derived, not a fresh derivation from a file nothing can re-read.
+    expect(applied.view.active.tokens).toEqual(stored[0].tokens)
+    // And the two places the flag surfaces both say so.
+    expect(applied.view.stale).toBe(true)
+    expect(rowOf('obsidian:Stale').stale).toBe(true)
+  })
+
+  it('is a light row when its own palette is light, whatever the file is called', async () => {
+    // Non-vacuity for the id rule: a single-entry file is named by its folder even
+    // when that entry is light, and no `:light` suffix appears because there is no
+    // second entry to tell it apart from.
+    const path = themeFolderFile('Sunlit')
+    const batch = await importPaths([path], {
+      resolveCss: async () => entries([asObsidian(SOLARIZED_YAML, 'Sunlit')])
+    })
+
+    expect(batch.imported.map((theme) => theme.id)).toEqual(['obsidian:Sunlit'])
+    expect(batch.imported.map((theme) => theme.variant)).toEqual(['light'])
+    expect(rowOf('obsidian:Sunlit').variant).toBe('light')
   })
 })

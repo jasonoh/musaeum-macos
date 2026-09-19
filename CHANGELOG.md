@@ -17,6 +17,17 @@ the app is packaged.
   27.5 → 25.5.
 
 ### Added
+- **Obsidian themes can be imported — the computed ones too.** An Obsidian theme is a *folder*
+  containing `theme.css`, and its palette is usually computed (`hsl(var(--base-h) …)`, `var()`
+  chains, `color-mix()`), which is why scraping the stylesheet resolves one of the five themes the
+  prototype sampled. Musaeum now runs the stylesheet in a hidden window that can reach no network
+  and reads the roles back as resolved colours, so the theme is identified by its **folder** and the
+  values are stored. Measured end to end on this machine: **6 of 6 installed themes import, as 9
+  rows, in 193 ms total**, on one reused window that is never rebuilt. A theme that declares both
+  palettes imports as two rows (`obsidian:<folder>` and `obsidian:<folder>:light`). A theme whose
+  required roles cannot be resolved is reported by name —
+  `obsidian:Broken: canvas is unresolved (no usable --background-secondary)` — and never half-applied;
+  a role the theme left translucent is imported with its alpha dropped and says so in the row's notes.
 - **The reading page now follows the app's theme.** Import a light colour scheme and the book you
   are reading is light too — page, text, links and the colour a search hit is outlined in — without
   closing the book or opening it again. The reader's page used to be a small hand-copied palette

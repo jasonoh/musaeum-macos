@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { join } from 'path'
+import { extname, join } from 'path'
 import type {
   StoredTheme,
   ThemeIr,
@@ -484,7 +484,29 @@ export function storedRecordOf(
  * same arm for the same reason: the stored values are what the app has been
  * rendering, and dropping the theme is worse than flagging it.
  */
+/** The one extension whose values cannot be re-derived from its bytes. */
+const RESOLVER_ONLY_EXTENSION = '.css'
+
 function rederiveFromFile(path: string, id: string): StoredTheme | null {
+  // **An Obsidian row is never re-derived from its file** (D6). Its values only
+  // exist inside a live cascade — the resolver window has to *run* the stylesheet
+  // (§2.6/D1) — and this function sits inside `resolveId`, which is on the
+  // click's critical path: `theme.set` must not depend on a hidden browser
+  // window, let alone on one that is not up yet (J4, AC4.5). J3's answer is what
+  // the caller does with a `null` here: keep the stored values and flag the row
+  // stale, so the picker can say "derived by an older engine" instead of the app
+  // losing a theme it can still render. A fresh read of a theme folder is an
+  // import, not something a click does.
+  //
+  // Guarded by *extension* rather than by id because the id's namespace is the
+  // importer's rule, while the stylesheet is the file this function cannot read:
+  // without the guard the read below would still be refused one line later
+  // (`loadThemeText` has no `.css` arm on purpose), but it would have read the
+  // bytes off disk first, on a click.
+  if (extname(path).toLowerCase() === RESOLVER_ONLY_EXTENSION) {
+    console.warn(`[theme] ${id} is an Obsidian theme — keeping its stored values, not re-reading`)
+    return null
+  }
   const loaded = loadThemeFile(path)
   if (!loaded.ok) {
     console.warn(`[theme] could not re-read ${id} from ${path}: ${loaded.reason}`)

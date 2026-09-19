@@ -10,11 +10,18 @@ import { handle } from './handle'
  * What the picker offers, for the dialog's filter popup. Electron takes the
  * extensions without their dots; the first entry is the default selection, so it
  * is the one that shows every file the importer can read.
+ *
+ * `css` is the fourth extension site A45 names, and it is here rather than folded
+ * into an existing entry because the filter list is what tells the user what the
+ * app reads: an Obsidian theme is picked as a `theme.css` inside its own folder
+ * (the dialog cannot select a directory in `openFile` mode), so the entry names
+ * both the extension and the file the folder is expected to hold.
  */
 const THEME_FILTERS = [
-  { name: 'Theme files', extensions: ['yaml', 'yml', 'itermcolors'] },
+  { name: 'Theme files', extensions: ['yaml', 'yml', 'itermcolors', 'css'] },
   { name: 'base16 schemes', extensions: ['yaml', 'yml'] },
-  { name: 'iTerm2 colour schemes', extensions: ['itermcolors'] }
+  { name: 'iTerm2 colour schemes', extensions: ['itermcolors'] },
+  { name: 'Obsidian themes', extensions: ['css'] }
 ]
 
 /**
@@ -53,8 +60,13 @@ export function registerThemeHandlers(): void {
     return result.view
   })
 
-  handle('theme:importPaths', (paths: string[]): ThemeImportResult =>
-    withThemeView(importPaths(paths))
+  // The three import handlers **await** the service: slice 6 made
+  // `importPaths`/`scanFolder` async because a `.css` resolves through the
+  // Electron resolver window, and `handle()` awaits promises either way — so the
+  // only thing that changed here is the one `await`. The handlers stay thin: the
+  // composition (and its ordering) is still `withThemeView`'s.
+  handle('theme:importPaths', async (paths: string[]): Promise<ThemeImportResult> =>
+    withThemeView(await importPaths(paths))
   )
 
   handle('theme:importFromDialog', async (): Promise<ThemeImportResult> => {
@@ -72,10 +84,12 @@ export function registerThemeHandlers(): void {
     if (result.canceled || !result.filePaths.length) {
       return withThemeView({ imported: [], rejected: [] })
     }
-    return withThemeView(importPaths(result.filePaths))
+    return withThemeView(await importPaths(result.filePaths))
   })
 
-  handle('theme:scanFolder', (): ThemeImportResult => withThemeView(scanFolder()))
+  handle('theme:scanFolder', async (): Promise<ThemeImportResult> =>
+    withThemeView(await scanFolder())
+  )
 
   handle('theme:openFolder', async (): Promise<void> => {
     const folder = themeFolder()
