@@ -347,9 +347,9 @@ resume, and a genuine offline state).
       bookmarks; no search-in-book; no per-book typography (preferences are
       global and per machine). Annotations in particular need a storage
       decision first — metadata.json keeps the book's record small today, and
-      highlights are the first thing that would grow without bound. **Search-in-book now has a
-      design** — the S1 spec under "Specified, not scheduled" below — and is recommended as the
-      next reader slice; the annotations in this list still wait on the storage decision.
+      highlights are the first thing that would grow without bound. **Search-in-book shipped
+      2026-09-19** (S1 — the spec under "Specified, not scheduled" below, built and verified in
+      the running app); the annotations in this list still wait on the storage decision.
 - [ ] Genuine horizontal margin control. The "Spacing" slider drives foliate's
       paginator `margin` attribute, which it spends on vertical inset and column
       gutter — the left text edge does not move, which is why the control is not
@@ -933,16 +933,32 @@ was specified so the decision is actionable the moment a trigger fires, and so t
 re-derived from scratch. The analysis that produced them — what is in the roadmap, what is missing
 from it entirely, and which of those are worth building — is in `docs/project-overview.md` §7–8.
 
-- [ ] **In-book search (S1)** — spec:
-      `docs/superpowers/specs/2026-09-19-reader-search-design.md`. **Recommended as the next
-      reader slice.** The engine already implements it: `view.search()` in the vendored
+- [x] **In-book search (S1)** — spec:
+      `docs/superpowers/specs/2026-09-19-reader-search-design.md`. The engine already implements
+      it: `view.search()` in the vendored
       foliate-js is a public async generator yielding per-section progress, CFIs and excerpts,
       and it draws its own highlights. Read off the vendored commit, not upstream's docs — the
       same discipline `src/types/foliate-js.d.ts` follows. So there is no index, no schema
       change, no sidecar call and **no NAS I/O at all**: `open()` already holds the whole file
-      in memory, which means search works offline and on a dropped share. ~10 code files, at
-      the bound. Its expensive twin — a library-wide index of book *contents* — is **rejected**
-      in that spec's D1 with a reversal condition; do not fold it in.
+      in memory, which means search works offline and on a dropped share. Its expensive twin — a
+      library-wide index of book *contents* — is **rejected** in that spec's D1 with a reversal
+      condition; do not fold it in. **Built 2026-09-19**, one slice, **9 code files** (the spec's
+      `icons.tsx` row was already satisfied — `SearchIcon` existed — and
+      `src/types/foliate-js.d.ts` took its place, as that spec's invariant note predicted).
+      25 new tests (**789 / 34 files**), `typecheck` / `lint` / `test` green, `vendor/`
+      untouched. Verified in the running app on an isolated profile: `ledger` → **4 hits in 3
+      groups** in spine order with counts 1/2/1; search-hit outlines measured as gold pixels in
+      the reading pane **0 → 1044**, still 1044 after a page turn, **0** again when the panel
+      closed; a jump moved the stored position
+      `epubcfi(/6/4!/4/2,,/10/1:53)` → `epubcfi(/6/2!/4/2,,/10/1:114)` and `metadata.json`
+      carried it; the three-step Escape chain and the three-way side-slot exclusivity (D4)
+      proved by clicking all three panels. **The criterion AC1.2 caught a real bug in the first
+      build** — the new Escape arm swallowed every unmodified key while the panel was open, so
+      page turns were dead until it was narrowed to Escape alone — and the probe found a second,
+      latent one: `openBook` on the book that is *already* open stamped `loading` with nothing
+      left to report ready (guarded, with a case). Three things it deliberately does **not** do:
+      no index, no persisted query or results (a session-only panel), no PDF. Theming slice 5
+      still owes the `search` colour in its derived palette table.
 - [ ] **OPDS catalog (conditional)** — spec:
       `docs/superpowers/specs/2026-09-19-opds-catalog-design.md`. **Trigger: a second reading
       device that speaks OPDS** (a Boox, a Kobo running KOReader, a phone with KOReader or

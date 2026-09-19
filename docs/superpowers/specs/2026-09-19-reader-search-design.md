@@ -1,7 +1,9 @@
 # Design: In-book search (S1 — reader)
 
 **Date:** 2026-09-19
-**Status:** Proposed — not yet reviewed with Jason
+**Status:** Built and verified in the running app, 2026-09-19 (S1) — see *Built — S1* at the end,
+which carries the measurements, the readings this spec left open, and the two defects the criteria
+caught.
 **Scope:** searching the text of the book currently open in the reader (EPUB, MOBI, AZW3).
 **Depends on:** the reader, shipped 2026-08-13 (`specs/2026-08-13-native-reader-design.md`)
 **Interacts with:** theming slice 5 (reader convergence) — see D4
@@ -389,3 +391,113 @@ visible reader feature since C1, so it earns one).
 **Suggested sequencing:** land S1 as one slice. Do not attempt it in the same slice as theming
 slice 5 — they both edit `ReaderEngine.tsx`'s palette table, and D4's hand-off is easier to
 verify when only one of them is moving.
+
+---
+
+## Built — S1 (2026-09-19)
+
+Landed as one slice, gates green, verified in the running app. **789 tests / 34 files** (25 new:
+19 in `src/lib/reader-search.test.ts`, 6 added to the store's), `typecheck` 0, `lint` 0, prettier
+clean on every touched file, and `git status --porcelain vendor/` empty — the engine was used, not
+patched (AC1.12).
+
+**Files, against the expected-footprint table.** `src/components/shared/icons.tsx` **was not
+needed**: `SearchIcon` already existed there (line 37). One file took its place, and it is the one
+this spec's own invariant note predicted: **`src/types/foliate-js.d.ts`** (forced — the engine's
+`search()`/`clearSearch()` are public API of the vendored view and had no declaration; invariant
+#11 puts our divergences there, never in `vendor/`). So: **9 code files — 7 modified, 2 new — plus
+2 test files (one new, one extended).**
+
+**Readings this spec left open, settled by the build** — each is a coin-flip a later session would
+otherwise have to re-guess:
+
+1. **`Part N` numbering** is the group's place among the sections *that matched* (1-based), not the
+   spine index: monotonic with no gaps, which is what a header needs.
+2. **Enter's "results already showing"** is qualified by *the input still holding the query those
+   results answer*. An edited query re-runs — the hits on screen are for text nobody is asking
+   about any more. The Go control shares that one code path (the house rule), so its label tracks
+   it: `Find` → `Next` once stepping is what pressing it would do.
+3. **`clearSearch()` clears the query too**, and that is load-bearing: it is what makes the second
+   Escape's "panel open and empty" true, which is what makes the third Escape reach the book.
+4. **Escape's first step also drops the outlines** (the engine's own `clearSearch()`), because
+   results and outlines are one thing shown two ways — leaving the page outlined under an empty
+   panel would read as stale hits.
+5. **⌘F toggles rather than opens.** The spec says the menu case "calls `toggleSearch()`", so this
+   is its consequence made explicit: the key that opened the panel closes it.
+6. **Two store actions beyond the four the spec listed**: `closeSearch()` (the pair `toggleAsk`/
+   `closeAsk` already establishes) and `activeCfi`, which is folded into `setSearchState` rather
+   than given an action of its own.
+7. **The highlight colour is a `search` role per palette row** (equal to `link` today) rather than
+   a reuse of `link`, so theming slice 5 has a name to derive.
+8. **`persistedReaderState()` is exported** so AC1.8's partialize case has a real instrument: the
+   test environment has no `localStorage`, so zustand's persist returns the config untouched and
+   `.persist` is never attached. The criterion is decided against the very function the middleware
+   is handed, over the serialized whole.
+
+**Three defects and a naming slip the criteria caught** — the first is the headline, because a
+criterion caught it:
+
+- **AC1.2's second direction failed on the first build.** `ReaderView`'s new Escape arm returned
+  early for *every* non-Escape key while the panel was open, so arrow/space paging was dead for as
+  long as the panel stood — measured before the fix (percent stuck at 39%, CFI unmoved) and after
+  (39% → 72%, `…/10/1:114` → `…/10/1:53`). The arm now intercepts **Escape only**: the panel
+  already owns the keys while focus is inside it. A probe that attributed a frame change to a page
+  turn had masked this; the position CFI is what decided it.
+- **`openBook` on the already-open book stranded the reader in `loading`** — found by the probe
+  opening the same book twice. The engine keys its effect on `(bookId, format)`, so nothing would
+  ever report ready and the reader sat under "Opening…" with a blank percentage, permanently.
+  Unreachable from the UI today (the overlay covers every other entry point), so the guard is two
+  lines plus a store case, and this is recorded as a latent hazard rather than a user-visible bug.
+- Minor: the query box and the header button shared the accessible name "Find in this book"; the
+  box is now "Search this book".
+- **A third defect no probe could see, and the owner could** — reported from his own screen, with a
+  screenshot: the traffic lights painted **over the reader's close and contents buttons**, and S1's
+  new magnifier landed hard against the green dot. Every frame any earlier session took had missed
+  it for a structural reason: `Page.captureScreenshot` covers the web contents only, so OS-drawn
+  window chrome never appears in a frame this repo can produce. Fixed against
+  `@shared/window-chrome`'s `TRAFFIC_LIGHT_RIGHT_EDGE` (74px) — the same constant the window's
+  `trafficLightPosition` and the sidebar's wordmark already read — spent as a spacer of the group
+  plus one `px-3` (86px), which also gives the window back its drag handle: the overlay had covered
+  the sidebar's, and the spacer holds no control, so it cannot swallow a click meant for one.
+  Measured after: controls at x = 90 / 122 / 154 / 186, spacer 0→86 full-height with
+  `-webkit-app-region: drag`, and a real mouse click on the *moved* close button still closes the
+  reader. The three modals were checked too — all centred dialogs, so nothing of theirs reaches the
+  dots. This is the one claim in the slice whose instrument was the owner's display and not mine.
+
+**Live measurements**, isolated profile (`MUSAEUM_USER_DATA`) and a synthetic two-book library, so
+no real book was touched:
+
+| Criterion | Measured |
+| --- | --- |
+| AC1.2 | typing `ledger` left the header at 72% → 72%; keys typed in the box moved neither percent nor CFI; with focus outside the panel, ArrowRight paged (39% → 72%) |
+| AC1.3 | `ledger` → **4 hits in 3 groups** in spine order, counts 1 / 2 / 1 (matches the fixture's text exactly) |
+| AC1.5 | gold pixels in the reading pane (x > 320, excluding the panel) **0 → 1044** with results, still 1044 after a page turn |
+| AC1.4 | clicking the last hit moved the display 72% → 100%, panel still open, 1 active row of 4 |
+| AC1.7 | closing the panel by its own control took that 1044 → **0** (baseline 0) |
+| AC1.6 | the three steps, each asserted: results + query go with the panel standing → panel closes → reader closes |
+| AC1.8 | reopen → query `''`, 0 result rows |
+| AC1.9 | a jump moved SQLite `epubcfi(/6/4!/4/2,,/10/1:53)` → `epubcfi(/6/2!/4/2,,/10/1:114)`; after the reader closed, `metadata.json`'s `reading_state.position` **equals the jump target** |
+| AC1.10 | `No matches for “zzzznope”.` |
+| AC1.13 | a live overlap (`argument` then `ledger`, 50 ms apart) displayed ledger's 4 rows, not argument's |
+| D4 | all three transitions live: search → TOC closed the search panel; TOC → Ask; Ask → search left 0 rows where 4 had been |
+
+**Not measured, and why** — stated rather than implied:
+
+- **AC1.11** (a modal over the reader owns the keyboard): ⌘, is the only way to open Settings while
+  the reader covers the library, and a native menu accelerator cannot be driven over CDP. The
+  `overlaid` bail is ordered *before* the search arm and the whole handler is shared, so this rests
+  on the source plus AC1.2's live result — not on a probe.
+- **AC1.1's ⌘F keypress itself**: same reason — CDP key injection goes to the renderer and bypasses
+  the native menu. What is proved live is the renderer half (the header control, which the menu case
+  calls through the same store action, opens the panel and focuses the input) plus the no-op guard
+  (`bookId` null), which is source-level.
+- **AC1.14's mid-run abort on a genuinely long book**: the fixture is three short sections, so a run
+  finishes in milliseconds and cannot be caught mid-flight. What is proved is that a superseded run
+  stops at the token *and unwinds the generator* (unit case, with the generator's own `finally` as
+  the evidence) and that the book is pageable and re-searchable afterwards (live).
+- **Fixed-layout books**: no FXL fixture exists, so the overlayer-geometry question this spec
+  recorded as open is still open. Nothing was assumed about it.
+
+**Deliberately not done**, all of it per D1/D3/D6: no index, no schema, no sidecar call, no PDF, no
+persisted query or results, no annotations, and the per-section `index` path is not wired at all.
+Theming slice 5 still owes `search` in its derived palette table, and this slice did not touch it.

@@ -1,6 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_PREFS, PREF_RANGES, sanitizePrefs, useReaderStore } from './reader.store'
+import {
+  DEFAULT_PREFS,
+  PREF_RANGES,
+  persistedReaderState,
+  sanitizePrefs,
+  useReaderStore,
+  type SearchPatch
+} from './reader.store'
+import { countHits } from '@/lib/reader-search'
 import { makeBook } from '../../test/helpers/book'
+
+/**
+ * A run in flight with one hit already in — what the store looks like between
+ * the start of a search and its terminator. The panel writes this shape through
+ * `setSearchState`, one reduced state per yield.
+ */
+function searchingWithHits(): SearchPatch {
+  return {
+    searching: true,
+    progress: 0.5,
+    results: [
+      {
+        label: 'Chapter 1',
+        hits: [{ cfi: 'cfi-1', excerpt: { pre: 'a', match: 'b', post: 'c' }, index: 0 }]
+      }
+    ]
+  }
+}
 
 /**
  * `localStorage` is only as trustworthy as the build that wrote it: these are
@@ -182,18 +208,38 @@ describe('the ask stream', () => {
 
 describe('the reader’s one side slot (D4)', () => {
   const get = () => useReaderStore.getState()
+  const occupants = () => [get().tocOpen, get().searchOpen, get().askOpen]
 
-  it('opens the ask panel and the table of contents exclusively', () => {
+  it('opens any one of the three by closing the other two', () => {
     get().toggleToc()
-    expect(get().tocOpen).toBe(true)
+    expect(occupants()).toEqual([true, false, false])
+
+    get().toggleSearch()
+    expect(occupants()).toEqual([false, true, false])
 
     get().toggleAsk()
-    expect(get().askOpen).toBe(true)
-    expect(get().tocOpen).toBe(false)
+    expect(occupants()).toEqual([false, false, true])
+
+    get().toggleSearch()
+    expect(occupants()).toEqual([false, true, false])
 
     get().toggleToc()
-    expect(get().tocOpen).toBe(true)
-    expect(get().askOpen).toBe(false)
+    expect(occupants()).toEqual([true, false, false])
+  })
+
+  it('closes the search panel on its own toggle, and takes the run with it', () => {
+    get().toggleSearch()
+    get().setQuery('alice')
+    get().setSearchState(searchingWithHits())
+    get().toggleSearch()
+
+    expect(get().searchOpen).toBe(false)
+    expect([get().query, get().searching, countHits(get().results), get().activeCfi]).toEqual([
+      '',
+      false,
+      0,
+      null
+    ])
   })
 
   it('leaves the typography popover alone — it is not in the slot', () => {
@@ -201,6 +247,108 @@ describe('the reader’s one side slot (D4)', () => {
     get().toggleAsk()
     expect(get().prefsOpen).toBe(true)
     expect(get().askOpen).toBe(true)
+  })
+
+  /**
+   * AC1.8, over the serialized whole rather than the field we suspect: the
+   * absence that matters is that nothing about a search reaches storage — not
+   * the query, not the CFIs, not the active hit.
+   */
+  it('persists nothing of a search', () => {
+    const QUERY = 'sentinel-query-hobbit'
+    const CFI = 'sentinel-cfi(/6/4!/4/2)'
+    get().toggleSearch()
+    get().setQuery(QUERY)
+    get().setSearchState({
+      ...searchingWithHits(),
+      results: [
+        {
+          label: 'Chapter 1',
+          hits: [{ cfi: CFI, excerpt: { pre: 'a', match: 'b', post: 'c' }, index: 0 }]
+        }
+      ],
+      activeCfi: CFI
+    })
+
+    // Over the serialized whole, not the field we suspect, and against the very
+    // function the middleware is given — the test env has no `localStorage`, so
+    // zustand returns the config untouched and `.persist` is not attached.
+    const serialized = JSON.stringify(persistedReaderState(get()))
+
+    expect(serialized).not.toContain(QUERY)
+    expect(serialized).not.toContain(CFI)
+    expect(serialized).toContain('prefs')
+  })
+
+  it('clears the run when another book opens, and when the reader closes', () => {
+    const ran = () => {
+      get().toggleSearch()
+      get().setQuery('alice')
+      get().setSearchState(searchingWithHits())
+      get().setSearchState({ activeCfi: 'cfi-1' })
+    }
+
+    get().openBook(makeBook('b1'))
+    ran()
+    get().openBook(makeBook('b2'))
+    expect([get().searchOpen, get().query, countHits(get().results), get().activeCfi]).toEqual([
+      false,
+      '',
+      0,
+      null
+    ])
+
+    ran()
+    get().close()
+    expect([get().searchOpen, get().query, countHits(get().results)]).toEqual([false, '', 0])
+  })
+
+  /**
+   * Escape's first step: the results go and the query goes with them, which is
+   * what makes the second Escape's "open and empty" true (AC1.6) — and the panel
+   * is untouched, because the reader has not asked for it to close yet.
+   */
+  it('clears the results and the query, and keeps the panel standing', () => {
+    get().toggleSearch()
+    get().setQuery('alice')
+    get().setSearchState(searchingWithHits())
+    get().setSearchState({ activeCfi: 'cfi-1' })
+
+    get().clearSearch()
+
+    expect(get().searchOpen).toBe(true)
+    expect([get().query, get().searching, countHits(get().results), get().activeCfi]).toEqual([
+      '',
+      false,
+      0,
+      null
+    ])
+  })
+
+  it('does not notify for a patch that changes nothing', () => {
+    get().setSearchState({ searching: false })
+    const listener = vi.fn()
+    const unsubscribe = useReaderStore.subscribe(listener)
+    get().setSearchState({ searching: false })
+    expect(listener).not.toHaveBeenCalled()
+    unsubscribe()
+  })
+
+  /**
+   * A defect the live probe exposed rather than a criterion the spec wrote: the
+   * engine keys its effect on `(bookId, format)`, so a second `openBook` for the
+   * book that is already open runs nothing that could report ready — and the
+   * reader sat under "Opening…" with a blank percentage, for good.
+   */
+  it('does not strand the reader in loading when the open book is opened again', () => {
+    get().openBook(makeBook('b1'))
+    get().setStatus('ready')
+    get().openBook(makeBook('b1'))
+    expect(get().status).toBe('ready')
+
+    // A different book is a load, and says so
+    get().openBook(makeBook('b2'))
+    expect(get().status).toBe('loading')
   })
 })
 

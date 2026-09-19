@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { FoliateView } from '@vendor/foliate-js/view.js'
+import { TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 import { isTypingTarget } from '@/hooks/useBookNavigation'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
@@ -7,11 +8,30 @@ import { useUIStore } from '@/stores/ui.store'
 import { ReaderEngine } from './ReaderEngine'
 import { ReaderPrefsPopover } from './ReaderPrefsPopover'
 import { ReaderAsk } from './ReaderAsk'
+import { ReaderSearch } from './ReaderSearch'
 import { ReaderToc } from './ReaderToc'
-import { AskIcon, CloseIcon, ListIcon } from '@/components/shared/icons'
+import { AskIcon, CloseIcon, ListIcon, SearchIcon } from '@/components/shared/icons'
 
 /** Position reports are debounced: a page turn is cheap, a NAS write is not. */
 const REPORT_DEBOUNCE_MS = 2_000
+
+/**
+ * What the header's controls clear, in px: the traffic lights' group plus one
+ * `px-3` of breathing room.
+ *
+ * The reader is an overlay across the whole window, so while a book is open this
+ * header *is* the titlebar — and the dots paint over whatever sits in the first
+ * 74px, which is where the close, contents, search and ask controls used to
+ * start. The width comes from `@shared/window-chrome`, the one place the dots'
+ * geometry lives (the window's own `trafficLightPosition` and the sidebar's
+ * wordmark read the same constant), never a copied number.
+ *
+ * The space is spent on a spacer rather than on the header's own padding, so it
+ * can also give the window back its drag handle: every other top strip in the
+ * app is draggable, and the overlay had covered the only one there was. The
+ * spacer holds no control, so it cannot swallow a click meant for one.
+ */
+const TRAFFIC_LIGHT_INSET = TRAFFIC_LIGHT_RIGHT_EDGE + 12
 
 export function ReaderView() {
   const bookId = useReaderStore((s) => s.bookId)
@@ -23,6 +43,8 @@ export function ReaderView() {
   const prefsOpen = useReaderStore((s) => s.prefsOpen)
   const prefs = useReaderStore((s) => s.prefs)
   const askOpen = useReaderStore((s) => s.askOpen)
+  const searchOpen = useReaderStore((s) => s.searchOpen)
+  const query = useReaderStore((s) => s.query)
   const close = useReaderStore((s) => s.close)
   const setStatus = useReaderStore((s) => s.setStatus)
   const setToc = useReaderStore((s) => s.setToc)
@@ -32,6 +54,9 @@ export function ReaderView() {
   const setSelection = useReaderStore((s) => s.setSelection)
   const toggleToc = useReaderStore((s) => s.toggleToc)
   const toggleAsk = useReaderStore((s) => s.toggleAsk)
+  const toggleSearch = useReaderStore((s) => s.toggleSearch)
+  const closeSearch = useReaderStore((s) => s.closeSearch)
+  const clearSearch = useReaderStore((s) => s.clearSearch)
   const togglePrefs = useReaderStore((s) => s.togglePrefs)
   const closePrefs = useReaderStore((s) => s.closePrefs)
 
@@ -117,6 +142,22 @@ export function ReaderView() {
         closePrefs()
         return
       }
+      // The search panel is the reader's own too, and Escape steps back out the
+      // way the reader came in: results, then the panel, then the book (AC1.6).
+      //
+      // Only Escape is intercepted here. Every other key is left to the switch
+      // below, because the panel already owns the keys *while focus is inside
+      // it* — its own handler stops them there, and `isTypingTarget` bails for
+      // the query box above — whereas swallowing them here would kill page turns
+      // for as long as the panel is open, which is not what a find bar does
+      // (AC1.2). Measured: with this arm taking every unmodified key, an arrow
+      // key did nothing while the panel stood.
+      if (searchOpen && e.key === 'Escape') {
+        e.preventDefault()
+        if (query.trim()) clearSearch()
+        else closeSearch()
+        return
+      }
       switch (e.key) {
         case 'Escape':
           e.preventDefault()
@@ -135,7 +176,7 @@ export function ReaderView() {
           break
       }
     },
-    [closeReader, closePrefs, overlaid, prefsOpen]
+    [closeReader, closePrefs, clearSearch, closeSearch, overlaid, prefsOpen, searchOpen, query]
   )
 
   useEffect(() => {
@@ -173,7 +214,15 @@ export function ReaderView() {
   // correct today, and silently broken by anyone who reorders it.
   return (
     <div className="fixed inset-0 z-[45] flex animate-fade-in flex-col bg-ink-950">
-      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 px-3">
+      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 pr-3">
+        {/* The dots' strip, and the window's drag handle while a book is open —
+            see TRAFFIC_LIGHT_INSET. Empty by design: nothing here but the
+            traffic lights macOS paints over it. */}
+        <div
+          className="app-drag h-full shrink-0"
+          style={{ width: TRAFFIC_LIGHT_INSET }}
+          aria-hidden
+        />
         <button
           onClick={closeReader}
           title="Close reader (Esc)"
@@ -192,6 +241,17 @@ export function ReaderView() {
           }`}
         >
           <ListIcon className="h-4 w-4" />
+        </button>
+        <button
+          onClick={toggleSearch}
+          title="Find in this book (⌘F)"
+          aria-label="Find in this book"
+          aria-pressed={searchOpen}
+          className={`rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
+            searchOpen ? 'text-gold-300' : 'text-parchment-faint'
+          }`}
+        >
+          <SearchIcon className="h-4 w-4" />
         </button>
         <button
           onClick={toggleAsk}
@@ -233,6 +293,7 @@ export function ReaderView() {
       <div className="flex min-h-0 flex-1">
         {/* One side slot (D4): whichever panel is open, and only one is */}
         {tocOpen && <ReaderToc onNavigate={(href) => void viewRef.current?.goTo(href)} />}
+        {searchOpen && <ReaderSearch viewRef={viewRef} />}
         {askOpen && <ReaderAsk onNavigate={(href) => void viewRef.current?.goTo(href)} />}
         <main className="relative min-w-0 flex-1">
           {status === 'error' ? (

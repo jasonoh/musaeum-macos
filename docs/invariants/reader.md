@@ -83,6 +83,51 @@ are non-fatal, and recorded here so they are recognised rather than re-diagnosed
 
 ---
 
+## Searching in the book
+
+`view.search()` in the vendored engine **is** the feature: a public async
+generator over the book's own text that yields per-section progress, then a
+CFI and an excerpt per hit, and draws its own highlights. So there is no index,
+no schema, no sidecar call and **no NAS I/O at all** — `open()` already holds the
+whole file in memory, which is why search works offline and on a dropped share.
+The reference for what that generator actually yields is
+`src/types/foliate-js.d.ts` (read off the vendored commit), never upstream's
+docs.
+
+The loop we own lives in `src/lib/reader-search.ts`, testable without a browser;
+`ReaderSearch.tsx` is layout only, and `reader.store.ts` holds the run as session
+state. Three rules are load-bearing:
+
+- **The token guard, not an abort.** The generator has no `AbortController`;
+  breaking the `for await` is what stops it. It matters because `search()` calls
+  `clearSearch()` on entry — so a second run's highlights are the only ones on
+  the page, and a superseded run still writing would show hits for a query that
+  is no longer displayed. Every new run, panel close and reader close bumps a
+  token first.
+- **One side slot, three occupants** (D4 of the AI-panel spec): `ReaderToc`,
+  `ReaderSearch` and `ReaderAsk` are mutually exclusive session flags. Opening
+  any one closes the other two.
+- **Nothing about a search is persisted** — no query, no results, no active hit.
+  `persistedReaderState()` in the store is the single thing that reaches storage,
+  and it carries typography only.
+
+**The highlight colour is a resolved literal from `ReaderEngine`'s `PALETTE`**
+(the `search` role), never `var(--…)`: the overlayer lives in foliate-view's
+closed shadow root, and a custom property crossing that boundary is a bet this
+repo does not take. Theming slice 5 makes that table derived, so it must derive
+`search` too, or a themed app outlines hits in a hardcoded amber.
+
+**Keyboard.** ⌘F is a menu command (`'reader-find'`, Edit ▸ Find in Book) routed
+through `useMenuCommands` to `toggleSearch()`, and it is a **no-op with no book
+open**. It toggles rather than opens, so the key that opened the panel closes it.
+Escape steps back out one layer at a time — results, then the panel, then the
+book — and `ReaderView`'s window handler intercepts **Escape only** while the
+panel is open: the panel already owns the keys while focus is inside it (its own
+`stopPropagation`), and swallowing everything else there killed page turns for as
+long as the panel stood, which was measured rather than reasoned.
+
+---
+
 ## Reading position
 
 **Tiered, because the three stores cost wildly different amounts**

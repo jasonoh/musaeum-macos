@@ -57,7 +57,11 @@ function buildTemplate(): MenuItemConstructorOptions[] {
       { role: 'paste' },
       // Not `role: 'selectAll'` — that role owns ⌘A, and the library needs it.
       // The renderer routes by focus so text fields keep their own select-all.
-      { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: command('select-all') }
+      { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: command('select-all') },
+      { type: 'separator' },
+      // macOS puts Find in Edit, and the reader is the only surface in this app
+      // with a book to find in: the renderer makes it a no-op over the library.
+      { label: 'Find in Book', accelerator: 'CmdOrCtrl+F', click: command('reader-find') }
     ]
   }
 

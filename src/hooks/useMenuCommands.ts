@@ -1,11 +1,13 @@
 import { useEffect } from 'react'
+import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
 
 /**
  * Run native menu commands against the UI stores. Mount once at app root.
  *
  * Every command has an in-app equivalent (the sidebar's gear, the toolbar's
- * view toggle) — the menu only adds the keyboard route to them.
+ * view toggle, the reader header's search button) — the menu only adds the
+ * keyboard route to them.
  */
 export function useMenuCommands(): void {
   useEffect(
@@ -21,6 +23,13 @@ export function useMenuCommands(): void {
           const el = document.activeElement
           if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.select()
           else useUIStore.getState().selectAllBooks()
+        } else if (cmd === 'reader-find') {
+          // A no-op over the library (AC1.1): with no book open there is nothing
+          // to find in, and opening a panel with no book behind it would be a
+          // worse answer than the key doing nothing. `bookId` is the reader's own
+          // "a book is open" — not the library's selection.
+          const reader = useReaderStore.getState()
+          if (reader.bookId) reader.toggleSearch()
         }
       }),
     []

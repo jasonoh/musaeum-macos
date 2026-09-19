@@ -44,7 +44,16 @@ export type Unsubscribe = () => void
  * what the action does — so every item here maps to something the UI can
  * also do on its own.
  */
-export type MenuCommand = 'open-settings' | 'view-grid' | 'view-list' | 'select-all'
+export type MenuCommand =
+  | 'open-settings'
+  | 'view-grid'
+  | 'view-list'
+  | 'select-all'
+  /**
+   * Find inside the open book. A no-op with no book open — the library has its
+   * own search field, and a panel with no book behind it is worse than nothing.
+   */
+  | 'reader-find'
 
 /** Outcome of a batched delete: partial success is normal, not an error. */
 export interface BulkDeleteResult {

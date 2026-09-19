@@ -14,6 +14,7 @@ import {
   type AskSession
 } from '@/lib/ask-session'
 import type { RecallVerdict } from '@/lib/recall'
+import { EMPTY_SEARCH, type SearchGroup } from '@/lib/reader-search'
 
 export interface ReaderTocItem {
   label: string
@@ -124,11 +125,11 @@ interface ReaderState {
   prefs: ReaderPrefs
 
   /**
-   * The ask panel. It shares the TOC's side slot rather than getting one of its
-   * own, so it is a session flag exactly like `tocOpen` — and `toggleToc` and
-   * `toggleAsk` each close the other (D4). The transcript is *not* cleared by
-   * closing the panel: it belongs to the book, and the book's own open/close
-   * are what end it (D8).
+   * The ask panel. It shares the reader's one side slot rather than getting one
+   * of its own, so it is a session flag exactly like `tocOpen` — and opening any
+   * of the three occupants closes the other two (D4). The transcript is *not*
+   * cleared by closing the panel: it belongs to the book, and the book's own
+   * open/close are what end it (D8).
    */
   askOpen: boolean
   /** The last `tocItem.label` the engine reported — an index, never a chapter number (D5). */
@@ -147,6 +148,22 @@ interface ReaderState {
   askSession: AskSession
   /** The probe in flight, or null. Its reply accumulates here and is never rendered. */
   askProbe: AskProbe | null
+
+  /**
+   * The search panel — the third occupant of the one side slot, and session
+   * state like the other two. `query` is the input's text, which is *not* the
+   * query that was run: the run's own results are the only record of what was
+   * searched for. Nothing here is persisted (D6), so reopening a book starts
+   * with an empty panel (AC1.8).
+   */
+  searchOpen: boolean
+  query: string
+  /** A run is in flight. Its progress and results arrive through `setSearchState`. */
+  searching: boolean
+  progress: number
+  results: SearchGroup[]
+  /** The hit the reader last jumped to — the anchor Enter steps on from. */
+  activeCfi: string | null
 
   openBook(book: Book): void
   close(): void
@@ -170,7 +187,24 @@ interface ReaderState {
   aiChunk(event: AiChunkEvent): void
   aiDone(event: AiDoneEvent): void
   aiError(event: AiErrorEvent): void
+
+  /** Open the search panel, or close it — either way the other two occupants go. */
+  toggleSearch(): void
+  closeSearch(): void
+  setQuery(query: string): void
+  /** The only writer of a live run's state. See `startSearch`. */
+  setSearchState(patch: SearchPatch): void
+  /** Drop the results and the query, and keep the panel open — Esc's first step. */
+  clearSearch(): void
 }
+
+/**
+ * What the running loop may write. Deliberately not `query`: the input belongs to
+ * the reader, and a run that could rewrite it would fight the caret.
+ */
+export type SearchPatch = Partial<
+  Pick<ReaderState, 'searching' | 'progress' | 'results' | 'activeCfi'>
+>
 
 /**
  * Everything the ask panel owns, at rest: a book is a new conversation.
@@ -189,12 +223,43 @@ const ASK_IDLE = {
   selection: null
 } satisfies Partial<ReaderState>
 
+/**
+ * A run at rest: no query, no results, no active hit, nothing left to write into.
+ *
+ * Two names for one reset because the panel and the *run* are separable —
+ * Escape's first step clears the results and leaves the panel standing, and the
+ * second closes it (AC1.6).
+ */
+const SEARCH_CLEARED = {
+  query: '',
+  searching: false,
+  progress: 0,
+  // The same array the lib's own empty state holds: an identity the panel's
+  // "changed nothing" check can compare against
+  results: EMPTY_SEARCH.results,
+  activeCfi: null
+} satisfies Partial<ReaderState>
+
+/** The cleared run *and* the panel gone (AC1.8). */
+const SEARCH_IDLE = { searchOpen: false, ...SEARCH_CLEARED } satisfies Partial<ReaderState>
+
 /** The verdict and the rung move together: the rung is derived, never set. */
 function verdictState(
   verdict: RecallVerdict | null,
   override: boolean
 ): Pick<ReaderState, 'askVerdict' | 'askRung'> {
   return { askVerdict: verdict, askRung: effectiveRung(verdict, override) }
+}
+
+/**
+ * What survives a restart: typography, and nothing else (AC1.8).
+ *
+ * Exported because it is handed to the persist middleware as `partialize`, and
+ * the criterion "nothing about a search is persisted" is decided against *this
+ * function* rather than a copy of it — the middleware cannot use another one.
+ */
+export function persistedReaderState(s: ReaderState): Partial<ReaderState> {
+  return { prefs: s.prefs }
 }
 
 export const useReaderStore = create<ReaderState>()(
@@ -210,6 +275,7 @@ export const useReaderStore = create<ReaderState>()(
       prefsOpen: false,
       prefs: DEFAULT_PREFS,
       ...ASK_IDLE,
+      ...SEARCH_IDLE,
 
       /**
        * A book the engine can't render is handed to the OS instead of opening
@@ -223,17 +289,29 @@ export const useReaderStore = create<ReaderState>()(
           if (fallback) void window.Musaeum.files.openBookFile(book.id, fallback).catch(() => {})
           return
         }
-        set({
-          bookId: book.id,
-          format,
-          status: 'loading',
-          error: null,
-          toc: [],
-          percent: book.readingState?.percent ?? 0,
-          tocOpen: false,
-          prefsOpen: false,
-          // A book is a new conversation: transcript, verdict, pointer and all
-          ...ASK_IDLE
+        set((s) => {
+          // A book that is already open is not a load. The engine keys its effect
+          // on `(bookId, format)`, so a second `openBook` for the same book runs
+          // nothing that could report ready — and stamping `loading` here left the
+          // reader under "Opening…" with a blank percentage, permanently (measured
+          // by opening the same book twice from a probe). Unreachable from the UI
+          // today: the overlay covers every other entry point. The guard is here so
+          // the first entry point that is *not* covered cannot strand it.
+          const reload = s.bookId !== book.id || s.format !== format
+          return {
+            bookId: book.id,
+            format,
+            status: reload ? 'loading' : s.status,
+            error: null,
+            toc: [],
+            percent: reload ? (book.readingState?.percent ?? 0) : s.percent,
+            tocOpen: false,
+            prefsOpen: false,
+            // A book is a new conversation: transcript, verdict, pointer and all
+            ...ASK_IDLE,
+            // …and a new search: results for another book's text are not results
+            ...SEARCH_IDLE
+          }
         })
       },
 
@@ -248,14 +326,15 @@ export const useReaderStore = create<ReaderState>()(
           toc: [],
           tocOpen: false,
           prefsOpen: false,
-          ...ASK_IDLE
+          ...ASK_IDLE,
+          ...SEARCH_IDLE
         }),
       setStatus: (status, error = null) => set({ status, error }),
       setToc: (toc) => set({ toc }),
       setPercent: (percent) => set({ percent }),
-      // One side slot, two claimants: opening either closes the other (D4)
-      toggleToc: () => set((s) => ({ tocOpen: !s.tocOpen, askOpen: false })),
-      toggleAsk: () => set((s) => ({ askOpen: !s.askOpen, tocOpen: false })),
+      // One side slot, three claimants: opening any one closes the other two (D4)
+      toggleToc: () => set((s) => ({ tocOpen: !s.tocOpen, askOpen: false, ...SEARCH_IDLE })),
+      toggleAsk: () => set((s) => ({ askOpen: !s.askOpen, tocOpen: false, ...SEARCH_IDLE })),
       closeAsk: () => set({ askOpen: false }),
       togglePrefs: () => set((s) => ({ prefsOpen: !s.prefsOpen })),
       closePrefs: () => set({ prefsOpen: false }),
@@ -274,6 +353,44 @@ export const useReaderStore = create<ReaderState>()(
       setSectionLabel: (label) =>
         set((s) => (s.sectionLabel === label ? s : { sectionLabel: label })),
       setSelection: (selection) => set((s) => (s.selection === selection ? s : { selection })),
+
+      /**
+       * ⌘F, the header's button and the menu item all land here — one code path,
+       * which is the repo's rule for a command and its in-app control.
+       *
+       * It toggles rather than opens, for the same reason ⌘F does in every other
+       * reader: the key that opened the panel is the one a reader presses to get
+       * rid of it. Closing takes the run with it, so ⌘F ⌘F leaves no results
+       * behind for the next open to show (AC1.8).
+       */
+      toggleSearch: () =>
+        set((s) =>
+          s.searchOpen ? { ...SEARCH_IDLE } : { searchOpen: true, tocOpen: false, askOpen: false }
+        ),
+      closeSearch: () => set({ ...SEARCH_IDLE }),
+      setQuery: (query) => set({ query }),
+
+      /**
+       * The running loop's only writer (see `runSearch`). Identity is preserved
+       * when the patch changes nothing, so a scan of a book where hundreds of
+       * sections match nothing does not notify a subscriber per section.
+       */
+      setSearchState: (patch) =>
+        set((s) => {
+          const keys = Object.keys(patch) as (keyof SearchPatch)[]
+          return keys.every((key) => s[key] === patch[key]) ? s : patch
+        }),
+
+      /**
+       * Escape's first step: the results go and the **query goes with them**,
+       * because that is what makes the second Escape's "panel open and empty"
+       * true. Three steps, one key (AC1.6).
+       *
+       * Stopping a live run is not this action's job — a run in flight is stopped
+       * by the caller's token, and a store that also had to know about tokens
+       * would be two places deciding the same thing.
+       */
+      clearSearch: () => set({ ...SEARCH_CLEARED }),
 
       setVerdict: (verdict) => set((s) => verdictState(verdict, s.askOverride)),
       setOverride: (sendPassage) =>
@@ -351,9 +468,11 @@ export const useReaderStore = create<ReaderState>()(
     }),
     {
       // Only typography survives a restart — which book was open does not,
-      // matching how the library forgets selection and search
+      // matching how the library forgets selection and search. The search panel's
+      // query and results are session state by the same rule, and partialize is
+      // what enforces it rather than the panel remembering to clean up (AC1.8).
       name: 'musaeum.reader',
-      partialize: (s) => ({ prefs: s.prefs }),
+      partialize: persistedReaderState,
       merge: (persisted, current) => {
         const { prefs } = (persisted ?? {}) as { prefs?: unknown }
         return { ...current, prefs: sanitizePrefs(prefs) }

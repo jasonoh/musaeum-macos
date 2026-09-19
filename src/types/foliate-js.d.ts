@@ -51,6 +51,43 @@ declare module '@vendor/foliate-js/view.js' {
   /** Opaque resolved navigation target; only its truthiness is meaningful. */
   export type FoliateTarget = object
 
+  /** A hit's context, already trimmed to ~50 characters either side. */
+  export interface FoliateSearchExcerpt {
+    pre: string
+    match: string
+    post: string
+  }
+
+  export interface FoliateSearchHit {
+    cfi: string
+    excerpt: FoliateSearchExcerpt
+  }
+
+  /** A section that matched. `label` is the TOC label, and **may be empty**. */
+  export interface FoliateSearchGroup {
+    label: string
+    subitems: FoliateSearchHit[]
+  }
+
+  export interface FoliateSearchOptions {
+    query: string
+    /** Omit to search the whole book — the only mode the reader uses (D3). */
+    index?: number
+    matchCase?: boolean
+    matchDiacritics?: boolean
+    matchWholeWords?: boolean
+    defaultLocale?: string
+    /** Defaults to `Overlayer.outline`; the reader passes a colour (D4). */
+    drawOptions?: { color?: string; width?: number; radius?: number }
+  }
+
+  /**
+   * Three shapes, interleaved: one `{ progress }` per section, one
+   * `{ label, subitems }` per section that has hits, and the bare string
+   * `'done'` last.
+   */
+  export type FoliateSearchYield = { progress: number } | FoliateSearchGroup | 'done'
+
   export class FoliateView extends HTMLElement {
     book: FoliateBook
     /** Created by `open()` — undefined until it resolves. */
@@ -66,6 +103,20 @@ declare module '@vendor/foliate-js/view.js' {
     goToFraction(fraction: number): Promise<void>
     next(): Promise<void>
     prev(): Promise<void>
+    /**
+     * Whole-book (or one-section) search, as an async generator.
+     *
+     * It calls `clearSearch()` on entry, so **exactly one search is live at a
+     * time** and a second run erases the first's highlights — which is why a
+     * superseded consumer has to stop writing. Hits are stored as annotations
+     * under the `foliate-search:` prefix and re-added on every section render,
+     * so they stay outlined while you read on.
+     *
+     * Breaking the iteration stops it; there is no `AbortController`.
+     */
+    search(opts: FoliateSearchOptions): AsyncGenerator<FoliateSearchYield, void, void>
+    /** Delete the search annotations — every outline the engine drew. */
+    clearSearch(): void
     /** Throws if `open()` resolved but nothing was ever displayed. */
     close(): void
   }

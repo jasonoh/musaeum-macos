@@ -4,6 +4,35 @@ All notable changes to Musaeum. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions follow semver once
 the app is packaged.
 
+## [Unreleased] — 2026-09-19
+
+### Added
+- **Search inside the book you are reading.** ⌘F (Edit ▸ Find in Book) or the magnifier in the
+  reader's header opens a find panel beside the page: type a query, press Enter, and every hit in
+  the book is listed grouped by chapter, in reading order, with the matched text emphasised and a
+  count per chapter. Clicking a hit jumps to it and keeps the panel open, so stepping through
+  matches is one click each; Enter steps to the next one, wrapping at the end. Hits are outlined
+  **on the page itself**, in the reader's own palette, and the outlines stay while you read on —
+  measured, 0 gold pixels in the reading pane before a search, 1,044 with the results showing,
+  still 1,044 after a page turn, and back to 0 the moment the panel closes.
+  **Nothing about it is written down and nothing leaves the machine**: no index, no database
+  change, no library file touched — the engine searches the copy of the book that is already open,
+  which is also why search works offline and on a dropped share, with no SMB latency at all. On a
+  three-chapter fixture a query for `ledger` returned **4 hits across 3 chapters** (1 / 2 / 1).
+  ⌘F over the library does nothing rather than opening a panel with no book behind it, and Escape
+  steps back out one layer at a time: the results, then the panel, then the book. Escaping and
+  paging behave exactly as they did before: the query box takes the typing, and arrows and space
+  still turn pages whenever the focus is not in the panel.
+  **A closing consequence, stated because it is the behaviour of every reader that has find:**
+  jumping to a hit writes your reading position, so searching chapter 3 and jumping there moves
+  where the book resumes. Reopening a book starts with an empty panel — no query, no results.
+- **The reader's header no longer hides under the window buttons.** The reader covers the whole
+  window, so its header is the titlebar while a book is open — and the traffic lights were painting
+  over its first two controls, with the new magnifier left wedged against the green button. The
+  header's controls now start clear of them (`window-chrome.ts`, the same geometry the window and
+  the sidebar's wordmark are built from), and the strip those dots occupy is a drag handle again,
+  which the full-window overlay had taken away.
+
 ## [Unreleased] — 2026-09-15
 
 ### Fixed

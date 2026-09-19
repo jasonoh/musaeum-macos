@@ -54,11 +54,31 @@ function flattenToc(items: FoliateTocItem[] | undefined, depth = 0): ReaderTocIt
  * `ink` is `ink-900`, `fg` is `parchment`, `dim` is `parchment-dim`, `link` is
  * `gold-400`. A palette change has to update this table too. The `paper` row
  * has no token counterpart — the app has no light theme to borrow from.
+ *
+ * `search` is a role of its own rather than a second use of `link` so that
+ * theming slice 5, which makes this table *derived*, has a name to derive: a
+ * colour that is not named here is one slice 5 cannot carry, and a themed app
+ * would outline search hits in a hardcoded amber.
  */
 const PALETTE = {
-  ink: { bg: '#14110d', fg: '#e9e1d2', dim: '#b3a78f', link: '#d4a24e' },
-  paper: { bg: '#f3ece0', fg: '#241f18', dim: '#6b6152', link: '#8a5a1a' }
+  ink: { bg: '#14110d', fg: '#e9e1d2', dim: '#b3a78f', link: '#d4a24e', search: '#d4a24e' },
+  paper: { bg: '#f3ece0', fg: '#241f18', dim: '#6b6152', link: '#8a5a1a', search: '#8a5a1a' }
 } as const
+
+/**
+ * The colour search hits are outlined in — a resolved literal from the table
+ * above, never `var(--…)` (D4).
+ *
+ * The overlayer that draws it lives in foliate-view's **closed shadow root**
+ * inside the app's own document, so a custom property passed across that
+ * boundary is a bet this repo does not take: it would probably inherit, and
+ * "probably" is not something a unit test can decide. Passing the literal also
+ * keeps the colour inside the reader's palette, which is where slice 5 has to
+ * be able to find it.
+ */
+export function searchHighlightColor(theme: ReaderPrefs['theme']): string {
+  return PALETTE[theme].search
+}
 
 const SERIF = '"Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif'
 const SANS = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif'
