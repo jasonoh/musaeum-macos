@@ -17,6 +17,7 @@ import { ReaderView } from '@/components/reader/ReaderView'
 import { SettingsModal } from '@/components/settings/SettingsModal'
 import { NASStatusBanner } from '@/components/shared/NASStatusBanner'
 import { Toasts } from '@/components/shared/Toasts'
+import { useAi } from '@/hooks/useAi'
 import { useDevice } from '@/hooks/useDevice'
 import { useDragDrop } from '@/hooks/useDragDrop'
 import { useLibrary } from '@/hooks/useLibrary'
@@ -30,6 +31,7 @@ export default function App() {
   useLibrary()
   useNASStatus()
   useDevice()
+  useAi()
   useDragDrop()
   useMenuCommands()
   usePythonEnv()

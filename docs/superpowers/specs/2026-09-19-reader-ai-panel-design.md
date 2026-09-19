@@ -1,8 +1,9 @@
 # Design: Ask about what you're reading (reader AI panel, v1)
 
 **Date:** 2026-09-19
-**Status:** Proposed — the four gating forks were settled with Jason on 2026-09-19. **Slices 1 and 2
-are built** (slice 1 2026-09-19, slice 2 2026-09-19); slice 3 is specified, not yet scheduled.
+**Status:** Proposed — the four gating forks were settled with Jason on 2026-09-19. **All three
+slices are built** (1, 2 and 3, each on 2026-09-19). v1 is complete as designed; every deferred
+item below still carries its reversal condition.
 **Scope:** a question panel inside the reader that knows where you are — the book, the section, the
 passage you selected — against an OpenAI-compatible endpoint that is **localhost by default**.
 **Depends on:** the reader (`specs/2026-08-13-native-reader-design.md`, shipped 2026-08-13); the
@@ -623,3 +624,108 @@ sectionLabel, fraction, question, sectionText, selection })` → `{ system, mess
 and `describeEgress({ endpoint, model, payload })` → the composer's disclosure string. The verdict
 side is `scoreRecall(parseProbe(reply), sectionText)` → `'strong' | 'weak' | 'unknown'`, with
 `recallOverlap()` exported so the threshold can be asserted directly.
+
+---
+
+## Built — slice 3 (2026-09-19)
+
+The panel exists and v1 is complete. **AC18–AC25 hold**, decided by the instrument each one
+needs — a unit test where the claim is logic, the running app where the claim is layout, the
+wire where the claim is egress:
+
+| AC  | What decided it                                                                                                                                                        |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 18  | CDP: one slot (w-72 = 288px, `border-r border-ink-800 bg-ink-950`), TOC and ask clicked in turn — `aria-pressed` flips on one and the other's `<aside>` is the only one |
+| 19  | CDP: Escape dispatched inside the composer → panel gone, reader still open; Escape elsewhere → reader closed                                                            |
+| 20  | CDP: the line reads before the first send, and after the probe it names exactly the members sent                                                                        |
+| 21  | CDP: a strict prefix of the answer rendered with the caret while the stream was still arriving, captured in that same call                                              |
+| 22  | CDP + the stub's request log: `weak` → notice + `this section's text` in the disclosure; the override → the passage in the *body*, not just in the line                 |
+| 23  | CDP: `Go to “The Ledger of Small Debts”` appears, and clicking it moves the pointer to `section “The Ledger of Small Debts”, position (72%)`; absent for an answer that names no section |
+| 24  | `find` + `grep` over the library root, the SQLite file and its WAL: a sentinel answer appears in 0 of them, and no file was written during the session                  |
+| 25  | Structural: the panel's entire IPC surface is `ai:getStatus` / `ai:ask` / `ai:cancel` and the three `on.ai*` subscriptions — plus a behavioural run with the book's folder moved out of the library root, which still answered       |
+
+The verification ran against a **stub SSE server**, no model and no library: `MUSAEUM_USER_DATA`
+isolation plus two synthetic EPUBs (`/tmp/musaeum-probe`), so the real library was never opened
+and **no real book was touched** — the sentinel and tree checks are only meaningful because
+nothing else was writing.
+
+**Nine code files, two test files.** The eight planned, plus:
+
+- `src/components/shared/icons.tsx` — the panel's header button needs a glyph, and the house rule
+  is that icons are hand-rolled SVGs in that set rather than borrowed from a library. One
+  12-line `AskIcon`.
+- `src/stores/reader.store.test.ts` — the file already existed (sanitizePrefs); the store's ask
+  routing is now 14 more cases there, because the reducer can be tested in isolation but
+  *routing* (which stream an event lands in) is store behaviour.
+- `vitest.config.ts` — one line, and the only genuine bug the gates caught. The store now imports
+  through `@/`, which no test had ever exercised; `vitest.config.ts` aliased `@shared` and
+  `electron` but not `@`, so `reader.store.test.ts` failed to *load*. The build config already had
+  the alias (`electron.vite.config.ts`) — the test config now mirrors it, which is the fix rather
+  than writing the store's one import relative and leaving the trap for the next file.
+
+**One bug found before it ran, and it was a real one.** `onRelocate` reports position updates,
+and `latest.current` is spread straight into `reader:saveProgress` — so adding `label` to the
+relocate detail and letting the whole detail become `latest` would have posted a `label` field
+into the progress report. The handler now destructures the two fields the report carries. Nothing
+would have failed loudly; it would have travelled silently for as long as the report shape
+tolerated it.
+
+**Readings this spec left open, now settled — each one is a coin flip the next session should not
+have to make again:**
+
+1. **The disclosure line needs a payload before a question exists.** `buildAskMessages` refuses an
+   empty ask (deliberately), so the composer assembles its preview with a placeholder standing in
+   for the *question* only. The member list is still the assembler's own — derived from the
+   payload's fields — so an ask always lists `your question`, which is correct: an ask cannot be
+   sent without one.
+2. **The probe is a send too, so it gets a line.** D5's rule is that nothing leaves quietly; the
+   probe is the one request the reader pressed nothing for. While it is out the panel says
+   *"Checking whether the model knows this book. Sends: title, author, section “X”, position →
+   host"* — the probe's own payload, from the same assembler. This is an addition beyond the
+   letter of D5 and squarely inside its intent.
+3. **Escape's scope.** The decision text says "Escape while the composer has focus"; the build
+   scopes it to *focus anywhere inside the panel* (its buttons included) and additionally swallows
+   unmodified keys while focus is inside — which is the rule the `prefsOpen` branch already
+   states, applied to the second panel. Without it Space on the panel's own button would also turn
+   the page underneath.
+4. **A cancelled probe still lands a verdict.** `null` means "not probed", so leaving it `null`
+   after a cancel would re-probe on every reopen and weaken "one probe per (book, session)".
+   Cancelled or failed, the verdict is `unknown` — unverified, which is what is actually known.
+   A partial reply that parses is still scored (`RECALL: no` followed by a dropped connection is
+   the model saying it cannot place the book).
+5. **The selection's CFI is captured nowhere.** D7 jumps by label and D8 defers the cfi-keyed
+   cache, so nothing consumes `getCFI(index, range)`; the selection's *text* is all that travels.
+   `src/types/foliate-js.d.ts` is therefore untouched — when the deferred cache is built, whoever
+   needs the CFI declares it then, rather than this slice widening the vendored surface for a
+   field with no reader.
+6. **The section text is `textContent`, not `innerText`.** `load` fires while the paginator is
+   measuring the new section with its iframe unrendered, and `innerText` needs layout; foliate's
+   own search reads the same text nodes. The known limit is a file whose XHTML is minified onto
+   one line — two block elements then read as one word — which costs a little in the passage and
+   a token at the score, never a verdict.
+7. **The transcript is one store field (`askSession`), not the sketch's four flat ones.** The
+   reducer is its only writer; `askTurns` / `askStatus` / `askError` as separate fields would be
+   three writes per event and could disagree. `askStatus` is derived instead, by
+   `askStatusOf(session, probing)`, and the pure module owns that rule too.
+8. **D9's per-request listener bullet is superseded by its own wire-once bullet.** `useAi.ts`
+   subscribes once at the root; the store routes by `requestId`, and a stale event returns the
+   *same state object*, so it cannot notify a subscriber. There is no listener to leak — the
+   failure that bullet guarded against is now structurally impossible, and it is asserted at the
+   store level (a subscriber is not called for a request nobody is waiting on).
+9. **A settled answer that produced no tokens is dropped** rather than left as an empty bubble, so
+   a failure before the first token reads as a sentence rather than a blank box.
+
+**Deliberately not done:** no transcript persistence, no answer cache, no verdict cache, no L2
+(adjacent sections), no CFI storage, no highlights storage — all deferred with the conditions
+already stated above. The one thing the panel reaches outside itself is `openModal('settings')`
+for the unavailable state's button, which is the existing modal route and not a new surface.
+
+**Stated plainly, so nobody re-derives it:** AC25's "works with the library offline" is proven
+structurally and by one behavioural run (the book's folder removed from the library root while a
+question was answered), not by unmounting the NAS — the section text is in memory and no path in
+this feature reads a file. And the verification observed something outside this slice: with two
+books imported in one session, the second book was in `catalog.json` and on disk but had no
+`books` row until the app was relaunched, after which the startup catalog reconciliation adopted
+it. That is the import/catalog path, untouched here, and whether it is a race with the
+verification's own immediate `refreshLibrary()` call or a real gap is **not diagnosed** — it is
+recorded rather than explained.

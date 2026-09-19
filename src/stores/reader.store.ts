@@ -1,13 +1,38 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { AiChunkEvent, AiDoneEvent, AiErrorEvent } from '@shared/ai.types'
 import type { Book, BookFormat } from '@shared/book.types'
 import { readableFormat } from '@shared/book.types'
+import type { AskRung } from '@/lib/ask-context'
+import {
+  appendProbeDelta,
+  effectiveRung,
+  EMPTY_ASK_SESSION,
+  probeVerdict,
+  reduceAsk,
+  type AskProbe,
+  type AskSession
+} from '@/lib/ask-session'
+import type { RecallVerdict } from '@/lib/recall'
 
 export interface ReaderTocItem {
   label: string
   href: string
   /** Nesting level in the book's own TOC; the panel indents by it. */
   depth?: number
+}
+
+/**
+ * The section being rendered, as the engine reports it on `load`.
+ *
+ * Both halves are kept rather than the text alone: the callback identifies a
+ * *section*, and the spine index is what a session-keyed cache (the deferred
+ * item in D8) would key on. Nothing else may derive it — `tocItem.label` is
+ * the reader's index into the book, and a section index is ours.
+ */
+export interface ReaderSection {
+  index: number
+  text: string
 }
 
 export type ReaderStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -51,11 +76,7 @@ export const PREF_RANGES = {
   margin: { min: 16, max: 160, step: 8 }
 } as const
 
-function oneOf<T extends string>(
-  options: readonly { value: T }[],
-  value: unknown,
-  fallback: T
-): T {
+function oneOf<T extends string>(options: readonly { value: T }[], value: unknown, fallback: T): T {
   return options.find((o) => o.value === value)?.value ?? fallback
 }
 
@@ -102,6 +123,31 @@ interface ReaderState {
   prefsOpen: boolean
   prefs: ReaderPrefs
 
+  /**
+   * The ask panel. It shares the TOC's side slot rather than getting one of its
+   * own, so it is a session flag exactly like `tocOpen` — and `toggleToc` and
+   * `toggleAsk` each close the other (D4). The transcript is *not* cleared by
+   * closing the panel: it belongs to the book, and the book's own open/close
+   * are what end it (D8).
+   */
+  askOpen: boolean
+  /** The last `tocItem.label` the engine reported — an index, never a chapter number (D5). */
+  sectionLabel: string | null
+  /** The section currently rendered, text and all. The passage rung's only source. */
+  section: ReaderSection | null
+  /** The reader's live selection — the one thing sent verbatim (D5). */
+  selection: string | null
+  /** The probe's verdict for this book this session. Null means "not probed yet". */
+  askVerdict: RecallVerdict | null
+  /** The composer's "send the passage too" switch. It can widen the payload, never narrow it. */
+  askOverride: boolean
+  /** What will actually be sent: `effectiveRung(askVerdict, askOverride)`. */
+  askRung: AskRung
+  /** The transcript and its stream. Written only through `reduceAsk`. */
+  askSession: AskSession
+  /** The probe in flight, or null. Its reply accumulates here and is never rendered. */
+  askProbe: AskProbe | null
+
   openBook(book: Book): void
   close(): void
   setStatus(status: ReaderStatus, error?: string | null): void
@@ -111,6 +157,44 @@ interface ReaderState {
   togglePrefs(): void
   closePrefs(): void
   setPrefs(prefs: Partial<ReaderPrefs>): void
+  toggleAsk(): void
+  closeAsk(): void
+  setSection(section: ReaderSection): void
+  setSectionLabel(label: string | null): void
+  setSelection(selection: string | null): void
+  setVerdict(verdict: RecallVerdict): void
+  setOverride(sendPassage: boolean): void
+  /** Marks a probe in flight *before* the request goes out — see `beginProbe`. */
+  beginProbe(requestId: string): void
+  beginAsk(requestId: string, question: string): void
+  aiChunk(event: AiChunkEvent): void
+  aiDone(event: AiDoneEvent): void
+  aiError(event: AiErrorEvent): void
+}
+
+/**
+ * Everything the ask panel owns, at rest: a book is a new conversation.
+ * `askVerdict: null` is the state that lets the panel probe again, so this is
+ * also what "one probe per (book, session)" is counted against.
+ */
+const ASK_IDLE = {
+  askOpen: false,
+  askVerdict: null,
+  askOverride: false,
+  askRung: 'pointer',
+  askSession: EMPTY_ASK_SESSION,
+  askProbe: null,
+  section: null,
+  sectionLabel: null,
+  selection: null
+} satisfies Partial<ReaderState>
+
+/** The verdict and the rung move together: the rung is derived, never set. */
+function verdictState(
+  verdict: RecallVerdict | null,
+  override: boolean
+): Pick<ReaderState, 'askVerdict' | 'askRung'> {
+  return { askVerdict: verdict, askRung: effectiveRung(verdict, override) }
 }
 
 export const useReaderStore = create<ReaderState>()(
@@ -125,6 +209,7 @@ export const useReaderStore = create<ReaderState>()(
       tocOpen: false,
       prefsOpen: false,
       prefs: DEFAULT_PREFS,
+      ...ASK_IDLE,
 
       /**
        * A book the engine can't render is handed to the OS instead of opening
@@ -146,12 +231,14 @@ export const useReaderStore = create<ReaderState>()(
           toc: [],
           percent: book.readingState?.percent ?? 0,
           tocOpen: false,
-          prefsOpen: false
+          prefsOpen: false,
+          // A book is a new conversation: transcript, verdict, pointer and all
+          ...ASK_IDLE
         })
       },
 
-      // Both panels belong to the session, not to the app: a book opened next
-      // starts with neither showing, however the last one was left
+      // Every panel belongs to the session, not to the app: a book opened next
+      // starts with none of them showing, however the last one was left
       close: () =>
         set({
           bookId: null,
@@ -160,14 +247,104 @@ export const useReaderStore = create<ReaderState>()(
           error: null,
           toc: [],
           tocOpen: false,
-          prefsOpen: false
+          prefsOpen: false,
+          ...ASK_IDLE
         }),
       setStatus: (status, error = null) => set({ status, error }),
       setToc: (toc) => set({ toc }),
       setPercent: (percent) => set({ percent }),
-      toggleToc: () => set((s) => ({ tocOpen: !s.tocOpen })),
+      // One side slot, two claimants: opening either closes the other (D4)
+      toggleToc: () => set((s) => ({ tocOpen: !s.tocOpen, askOpen: false })),
+      toggleAsk: () => set((s) => ({ askOpen: !s.askOpen, tocOpen: false })),
+      closeAsk: () => set({ askOpen: false }),
       togglePrefs: () => set((s) => ({ prefsOpen: !s.prefsOpen })),
       closePrefs: () => set({ prefsOpen: false }),
+
+      /**
+       * The section text arrives on every `load`, so the write is guarded by
+       * identity: a re-report of the section already held is not a state
+       * change, and zustand skips notification when the updater hands back the
+       * state it was given. Same rule for the label and the selection — a
+       * `selectionchange` fires for every caret move.
+       */
+      setSection: (section) =>
+        set((s) =>
+          s.section?.index === section.index && s.section.text === section.text ? s : { section }
+        ),
+      setSectionLabel: (label) =>
+        set((s) => (s.sectionLabel === label ? s : { sectionLabel: label })),
+      setSelection: (selection) => set((s) => (s.selection === selection ? s : { selection })),
+
+      setVerdict: (verdict) => set((s) => verdictState(verdict, s.askOverride)),
+      setOverride: (sendPassage) =>
+        set((s) => ({ askOverride: sendPassage, ...verdictState(s.askVerdict, sendPassage) })),
+
+      /**
+       * `askProbe` is set *synchronously*, before the request goes out. That is
+       * what makes the panel's probe effect idempotent: React's StrictMode runs
+       * an effect twice in development, and the second run sees a probe already
+       * in flight rather than starting a second one.
+       */
+      beginProbe: (requestId) => set({ askProbe: { requestId, reply: '' } }),
+      beginAsk: (requestId, question) =>
+        set((s) => ({
+          askSession: reduceAsk(s.askSession, { type: 'open', requestId, question })
+        })),
+
+      /**
+       * One reader for three event channels (D9), routed by the `requestId` the
+       * caller minted. The probe's reply never lands in the transcript; an
+       * event for a superseded question cannot touch the current one; and a
+       * chunk the reducer does not want is returned as *the same state*, so a
+       * cancelled stream cannot notify a subscriber either.
+       */
+      aiChunk: (event) =>
+        set((s) => {
+          if (s.askProbe?.requestId === event.requestId) {
+            const probe = appendProbeDelta(s.askProbe, event.requestId, event.delta)
+            return probe === s.askProbe ? s : { askProbe: probe }
+          }
+          const askSession = reduceAsk(s.askSession, {
+            type: 'chunk',
+            requestId: event.requestId,
+            delta: event.delta
+          })
+          return askSession === s.askSession ? s : { askSession }
+        }),
+
+      aiDone: (event) =>
+        set((s) => {
+          if (s.askProbe?.requestId === event.requestId) {
+            // Whatever arrived is scored, even a reply cut short — `RECALL: no`
+            // followed by a dropped connection is still the model saying it
+            // cannot place the book. Both sides of that comparison are local.
+            const verdict = probeVerdict(s.askProbe.reply, s.section?.text ?? null)
+            return { askProbe: null, ...verdictState(verdict, s.askOverride) }
+          }
+          const askSession = reduceAsk(s.askSession, {
+            type: 'settle',
+            requestId: event.requestId,
+            reason: event.reason
+          })
+          return askSession === s.askSession ? s : { askSession }
+        }),
+
+      aiError: (event) =>
+        set((s) => {
+          if (s.askProbe?.requestId === event.requestId) {
+            // A probe that fails is not a failure of the feature (D6, invariant
+            // 12): the reader keeps the panel, and `unknown` is the honest
+            // verdict — unverified, which is exactly what we now know.
+            return { askProbe: null, ...verdictState('unknown', s.askOverride) }
+          }
+          const askSession = reduceAsk(s.askSession, {
+            type: 'fail',
+            requestId: event.requestId,
+            message: event.message
+          })
+          return askSession === s.askSession ? s : { askSession }
+        }),
+
       // Sanitized on the way in as well as on the way out of storage, so the
       // store's own invariant holds no matter who calls it
       setPrefs: (prefs) => set((s) => ({ prefs: sanitizePrefs({ ...s.prefs, ...prefs }) }))

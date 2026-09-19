@@ -961,7 +961,19 @@ from it entirely, and which of those are worth building — is in `docs/project-
       prompt assembler `src/lib/ask-context.ts` and the recall scorer `src/lib/recall.ts`, 4 files,
       39 tests, gates green; the one bug the build exposed was AC16 catching `parseProbe` folding
       trailing commentary into the claimed opening, which would have scored a correctly-placed book
-      `weak`). **Slice 3** is the panel, which shares the reader's one side-panel slot
+      `weak`). **Slice 3 — built 2026-09-19** (the panel itself: `ReaderAsk.tsx` + the store's ask
+      state, `useAi.ts` one-subscription wiring, `ask-session.ts` — the pure reducer for
+      probe→verdict→rung and the TOC-label citation matcher — and the engine's `tocItem.label` /
+      section-text / selection threading; 9 code files + 2 test files, 50 tests, gates green).
+      Verified in the running app against a **stub SSE server** on the endpoint's own default —
+      no model installed, an isolated profile (`MUSAEUM_USER_DATA`) and a synthetic two-book
+      library, so the real library was never opened:
+      one slot with TOC proved by clicking both; Escape in the composer closes the panel and
+      leaves the book; the disclosure line names endpoint + model + payload before the first
+      send; tokens render mid-stream; a `weak` verdict adds the passage and says so; the
+      override adds it on demand; "Go to ‹label›" jumps to the section the answer named and is
+      absent when the answer names none; a sentinel answer appears nowhere on disk (0 hits in
+      the library tree, the DB and its WAL). Slice 3 shares the reader's one side-panel slot
       with TOC and S1 (`ReaderView.tsx:214`) under the spec's D4 rule. Two things it deliberately
       does **not** need: no annotations or highlights storage (a live selection is enough — D5/D7)
       and **no CSP change** (the call is main-process, D2). Its third rung (adjacent sections) is

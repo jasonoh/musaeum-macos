@@ -41,6 +41,15 @@ export const SearchIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+/** The ask panel: a speech bubble, so it reads as a conversation rather than a search. */
+export const AskIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M20 15.5a2 2 0 0 1-2 2H8.6L4.5 21V5.5a2 2 0 0 1 2-2h11.5a2 2 0 0 1 2 2z" />
+    <line x1="8" y1="8.5" x2="16" y2="8.5" />
+    <line x1="8" y1="12.5" x2="13" y2="12.5" />
+  </svg>
+)
+
 export const BookIcon = ({ className }: IconProps) => (
   <svg {...base(className)}>
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5v13z" />

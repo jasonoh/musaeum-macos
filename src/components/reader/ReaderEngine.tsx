@@ -8,7 +8,7 @@ import type {
 } from '@vendor/foliate-js/view.js'
 import '@vendor/foliate-js/view.js'
 import type { BookFormat, ReadingState } from '@shared/book.types'
-import type { ReaderPrefs, ReaderTocItem } from '@/stores/reader.store'
+import type { ReaderPrefs, ReaderSection, ReaderTocItem } from '@/stores/reader.store'
 
 interface Props {
   bookId: string
@@ -16,7 +16,17 @@ interface Props {
   initial: ReadingState | null
   prefs: ReaderPrefs
   onReady(toc: ReaderTocItem[]): void
-  onRelocate(detail: { position: string | null; percent: number }): void
+  onRelocate(detail: { position: string | null; percent: number; label: string | null }): void
+  /**
+   * The section that has just been rendered, with its own text. Fired from the
+   * `load` listener the engine already keeps — the ask panel's passage rung and
+   * its recall probe both read the page the reader is actually on, and the
+   * paginator renders one section at a time, so the last `load` is the current
+   * one.
+   */
+  onSection(detail: ReaderSection): void
+  /** The text selected in that section, or null. A page turn clears it. */
+  onSelection(selection: string | null): void
   onError(message: string): void
   /**
    * The book's own iframe steals focus as soon as a page renders, so the
@@ -117,6 +127,8 @@ export function ReaderEngine({
   prefs,
   onReady,
   onRelocate,
+  onSection,
+  onSelection,
   onError,
   onKeyDown,
   viewRef
@@ -124,10 +136,10 @@ export function ReaderEngine({
   const hostRef = useRef<HTMLDivElement>(null)
 
   // Callbacks are read through refs so a re-render never re-opens the book
-  const cb = useRef({ onReady, onRelocate, onError, onKeyDown })
+  const cb = useRef({ onReady, onRelocate, onSection, onSelection, onError, onKeyDown })
   const prefsRef = useRef(prefs)
   useEffect(() => {
-    cb.current = { onReady, onRelocate, onError, onKeyDown }
+    cb.current = { onReady, onRelocate, onSection, onSelection, onError, onKeyDown }
     prefsRef.current = prefs
   })
 
@@ -151,11 +163,30 @@ export function ReaderEngine({
       // view would stamp the previous book's CFI onto the current bookId
       if (disposed) return
       const detail = (event as CustomEvent<FoliateRelocateDetail>).detail
-      cb.current.onRelocate({ position: detail.cfi ?? null, percent: detail.fraction ?? 0 })
+      cb.current.onRelocate({
+        position: detail.cfi ?? null,
+        percent: detail.fraction ?? 0,
+        // The book's own name for the section — never a chapter number, which
+        // drifts across editions (D5)
+        label: detail.tocItem?.label?.trim() || null
+      })
     })
     view.addEventListener('load', (event) => {
-      const { doc } = (event as CustomEvent<FoliateLoadDetail>).detail
+      const { doc, index } = (event as CustomEvent<FoliateLoadDetail>).detail
       doc.addEventListener('keydown', (e) => cb.current.onKeyDown(e))
+      // The selection has to be read where it is made: the overlay's own
+      // listeners never see a selection inside the book's iframe. Captured
+      // wide — a drag can end outside the section, and a shift-arrow makes one
+      // with no mouse at all — because the store drops the repeats.
+      const capture = () => cb.current.onSelection(selectionText(doc))
+      doc.addEventListener('selectionchange', capture)
+      doc.addEventListener('mouseup', capture)
+      doc.addEventListener('keyup', capture)
+
+      if (disposed) return
+      cb.current.onSection({ index, text: sectionText(doc) })
+      // A new section starts with nothing selected in it
+      cb.current.onSelection(null)
     })
 
     void (async () => {
@@ -226,4 +257,28 @@ async function goToFraction(view: FoliateView, fraction: number): Promise<void> 
   } catch {
     await view.renderer?.next()
   }
+}
+
+/**
+ * The section's own text — what the ask panel sends at the passage rung, and
+ * what its recall verdict is scored against.
+ *
+ * `textContent` rather than `innerText`, deliberately: `load` fires while the
+ * paginator is measuring the new section with its iframe unrendered, and
+ * `innerText` needs layout. It is also the vendor's own text model — foliate's
+ * search reads the same text nodes and joins them the same way
+ * (`vendor/foliate-js/text-walker.js` is imported for exactly that). The known
+ * limit: XHTML minified onto one line puts no whitespace between two block
+ * elements, so those two words read as one. That costs a little in the passage
+ * and a token at the score; it does not change a verdict.
+ */
+function sectionText(doc: Document): string {
+  return doc.body?.textContent?.trim() ?? ''
+}
+
+/** The selected text in a section, trimmed — null for a bare caret. */
+function selectionText(doc: Document): string | null {
+  const selection = doc.getSelection()
+  const text = selection && !selection.isCollapsed ? selection.toString().trim() : ''
+  return text || null
 }

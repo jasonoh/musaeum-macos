@@ -7,6 +7,11 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   resolve: {
     alias: {
+      // Mirrors the renderer's aliases in `electron.vite.config.ts`. Without
+      // `@`, a test that imports anything under `src/` which in turn imports
+      // through `@/…` fails to load at all — so the test config has to agree
+      // with the build about what a path means, not just about `electron`.
+      '@': resolve(__dirname, 'src'),
       '@shared': resolve(__dirname, 'src/types'),
       electron: resolve(__dirname, 'test/mocks/electron.ts')
     }

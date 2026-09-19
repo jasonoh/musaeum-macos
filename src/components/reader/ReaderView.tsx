@@ -6,8 +6,9 @@ import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
 import { ReaderEngine } from './ReaderEngine'
 import { ReaderPrefsPopover } from './ReaderPrefsPopover'
+import { ReaderAsk } from './ReaderAsk'
 import { ReaderToc } from './ReaderToc'
-import { CloseIcon, ListIcon } from '@/components/shared/icons'
+import { AskIcon, CloseIcon, ListIcon } from '@/components/shared/icons'
 
 /** Position reports are debounced: a page turn is cheap, a NAS write is not. */
 const REPORT_DEBOUNCE_MS = 2_000
@@ -21,11 +22,16 @@ export function ReaderView() {
   const tocOpen = useReaderStore((s) => s.tocOpen)
   const prefsOpen = useReaderStore((s) => s.prefsOpen)
   const prefs = useReaderStore((s) => s.prefs)
+  const askOpen = useReaderStore((s) => s.askOpen)
   const close = useReaderStore((s) => s.close)
   const setStatus = useReaderStore((s) => s.setStatus)
   const setToc = useReaderStore((s) => s.setToc)
   const setPercent = useReaderStore((s) => s.setPercent)
+  const setSection = useReaderStore((s) => s.setSection)
+  const setSectionLabel = useReaderStore((s) => s.setSectionLabel)
+  const setSelection = useReaderStore((s) => s.setSelection)
   const toggleToc = useReaderStore((s) => s.toggleToc)
+  const toggleAsk = useReaderStore((s) => s.toggleAsk)
   const togglePrefs = useReaderStore((s) => s.togglePrefs)
   const closePrefs = useReaderStore((s) => s.closePrefs)
 
@@ -69,13 +75,16 @@ export function ReaderView() {
   )
 
   const onRelocate = useCallback(
-    (detail: { position: string | null; percent: number }) => {
-      latest.current = detail
+    (detail: { position: string | null; percent: number; label: string | null }) => {
+      // Only the two fields the report carries: `latest` is spread straight
+      // into `saveProgress`, so anything else here would ride along.
+      latest.current = { position: detail.position, percent: detail.percent }
       setPercent(detail.percent)
+      setSectionLabel(detail.label)
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => flush(false), REPORT_DEBOUNCE_MS)
     },
-    [flush, setPercent]
+    [flush, setPercent, setSectionLabel]
   )
 
   const closeReader = useCallback(() => {
@@ -184,6 +193,17 @@ export function ReaderView() {
         >
           <ListIcon className="h-4 w-4" />
         </button>
+        <button
+          onClick={toggleAsk}
+          title="Ask about this book"
+          aria-label="Ask about this book"
+          aria-pressed={askOpen}
+          className={`rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
+            askOpen ? 'text-gold-300' : 'text-parchment-faint'
+          }`}
+        >
+          <AskIcon className="h-4 w-4" />
+        </button>
 
         <div className="mx-3 min-w-0 flex-1 text-center">
           <h1 className="truncate font-display text-[15px] leading-tight text-parchment">
@@ -211,7 +231,9 @@ export function ReaderView() {
       </header>
 
       <div className="flex min-h-0 flex-1">
+        {/* One side slot (D4): whichever panel is open, and only one is */}
         {tocOpen && <ReaderToc onNavigate={(href) => void viewRef.current?.goTo(href)} />}
+        {askOpen && <ReaderAsk onNavigate={(href) => void viewRef.current?.goTo(href)} />}
         <main className="relative min-w-0 flex-1">
           {status === 'error' ? (
             <div className="flex h-full flex-col items-center justify-center gap-5 px-8 text-center">
@@ -252,6 +274,8 @@ export function ReaderView() {
                   setStatus('ready')
                 }}
                 onRelocate={onRelocate}
+                onSection={setSection}
+                onSelection={setSelection}
                 onError={(message) => setStatus('error', message)}
                 onKeyDown={onKeyDown}
               />
