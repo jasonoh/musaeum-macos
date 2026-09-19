@@ -107,7 +107,7 @@ export function MigrationWizard() {
     (step === 'running' || step === 'topup-running') && (!progress || progress.phase !== 'error')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 p-8 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/80 p-8 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-lg rounded-xl border border-ink-700 bg-ink-900 shadow-cover-lift">
         <div className="flex items-center justify-between border-b border-ink-800 px-5 py-3">
           <h2 className="font-display text-lg text-parchment">Migrate from Calibre</h2>
@@ -174,7 +174,7 @@ export function MigrationWizard() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-parchment-faint">metadata.db</dt>
-                  <dd className={scan.hasMetadataDb ? 'text-gold-300' : 'text-red-400'}>
+                  <dd className={scan.hasMetadataDb ? 'text-gold-300' : 'text-danger-400'}>
                     {scan.hasMetadataDb ? 'Found' : 'Missing'}
                   </dd>
                 </div>
@@ -271,7 +271,7 @@ export function MigrationWizard() {
                 {(progress.errors ?? 0) > 0 && (
                   <div className="flex justify-between">
                     <dt className="text-parchment-faint">Errors</dt>
-                    <dd className="tabular-nums text-red-400">
+                    <dd className="tabular-nums text-danger-400">
                       {(progress.errors ?? 0).toLocaleString()}
                     </dd>
                   </div>
@@ -287,7 +287,7 @@ export function MigrationWizard() {
           )}
 
           {error && (
-            <p className="mt-3 flex items-start gap-1.5 text-[13px] text-red-400">
+            <p className="mt-3 flex items-start gap-1.5 text-[13px] text-danger-400">
               <WarningIcon className="mt-px h-4 w-4 shrink-0" />
               {error}
             </p>

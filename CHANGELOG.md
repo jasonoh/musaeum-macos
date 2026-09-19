@@ -6,7 +6,36 @@ the app is packaged.
 
 ## [Unreleased] — 2026-09-19
 
+### Changed
+- **Warnings, errors and "unread" status colours now come from the palette, not from Tailwind's
+  stock red and green.** Every theme derives its own `danger`/`ok`/`warn` family — a `400` text step
+  floored at 4.5:1 on a panel, a `500` fill with an `on-*` foreground floored at 4.0:1, and a deeper
+  `600` — and the dialogs, the destructive buttons, the conflict queue and the migration wizard use
+  them. The built-in default's family is derived from the app's own palette rather than copied from
+  a theme, and it is legible where the stock values were not: the destructive button's pair measures
+  **5.21:1** on the default (white on `red-600` measured 4.83:1), and error text on a light panel
+  goes from **≈2.3:1** to a floored 4.5:1. A filled danger surface uses the `500` step, because that
+  is the step the derivation floors a foreground against — the `600` is a deeper fill with no
+  derived text colour.
+- **Modals dim what is behind them under a light theme again.** The twelve veils (every modal
+  backdrop, the import overlay and the four badges laid over cover art) were `bg-ink-950/*`, and
+  under a flipped palette the canvas *is* `ink-950` — so a light theme's dialogs floated on a white
+  wash and the badges over cover art became gold on near-white. They are now a `scrim` role, derived
+  to darken in *both* variants: measured on a light theme, the Settings backdrop composites
+  **0.6063 lstar below** the canvas where it was **0.0000 below** (i.e. the canvas itself), and the
+  cover-art badge’s glyph keeps 4.11:1 against it. On the built-in default the migration is a
+  no-op — the same `rgba(13, 11, 9, 0.8)`.
+- **The cover hairline is visible on both variants.** The 5 % white ring around a cover became a 5 %
+  *parchment* ring: on a light theme its contrast against the surface goes from **1.0049** to
+  **1.0975**, an 18× change in perceived lightness, at the cost of an imperceptible shift on the
+  dark default.
+
 ### Fixed
+- **The selected-row tick renders.** `text-gold-200` and `bg-gold-200` named a palette step that the
+  config never defined, so four sites in two components (the selection panel's *Select* button, the
+  list view's checkbox rows and the tri-state mark) emitted no CSS rule at all and fell back to an
+  inherited `parchment-faint`. They now resolve — the tick measures `rgb(232, 201, 135)` = `gold-300`
+  where it previously computed nothing — and the emitted stylesheet contains zero `gold-200` rules.
 - **The reader's controls sit on the traffic lights' line again.** With a book open, the close,
   contents, search and ask buttons were drawn **4px above** the window's dots, and the library's
   search, sort and grid/list controls **2px below** them — each strip centring its row on its own

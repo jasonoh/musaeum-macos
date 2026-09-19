@@ -37,7 +37,34 @@ module.exports = {
           600: 'rgb(var(--gold-600) / <alpha-value>)'
         },
         // A role, not a ramp step: the veil that *darkens* whatever is behind it
-        scrim: 'rgb(var(--scrim) / <alpha-value>)'
+        scrim: 'rgb(var(--scrim) / <alpha-value>)',
+        /*
+         * The status family (slice 7a). `400` is the text step, `500` is the fill
+         * that carries the `on-*` foreground, and `600` is a deeper fill with no
+         * derived foreground — a filled danger surface uses `500` (annex D2),
+         * because `on-danger` is only floored against it. The names are frozen
+         * (A28) and the values are `:root`'s, derived from the app's own palette.
+         */
+        danger: {
+          400: 'rgb(var(--status-danger-400) / <alpha-value>)',
+          500: 'rgb(var(--status-danger-500) / <alpha-value>)',
+          600: 'rgb(var(--status-danger-600) / <alpha-value>)'
+        },
+        ok: {
+          400: 'rgb(var(--status-ok-400) / <alpha-value>)',
+          500: 'rgb(var(--status-ok-500) / <alpha-value>)',
+          600: 'rgb(var(--status-ok-600) / <alpha-value>)'
+        },
+        warn: {
+          400: 'rgb(var(--status-warn-400) / <alpha-value>)',
+          500: 'rgb(var(--status-warn-500) / <alpha-value>)',
+          600: 'rgb(var(--status-warn-600) / <alpha-value>)'
+        },
+        // Each family's filled-surface foreground — a role, not a ramp step, and
+        // only ever audited against that family's `500`.
+        'on-danger': 'rgb(var(--status-danger-on) / <alpha-value>)',
+        'on-ok': 'rgb(var(--status-ok-on) / <alpha-value>)',
+        'on-warn': 'rgb(var(--status-warn-on) / <alpha-value>)'
       },
       fontFamily: {
         display: ['"Iowan Old Style"', 'Palatino', '"Palatino Linotype"', 'Georgia', 'serif'],

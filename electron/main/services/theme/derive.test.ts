@@ -1317,7 +1317,8 @@ describe('AC1.4 — the :root defaults still pin the pre-change palette', () => 
     // Both sides of this comparison come from the same parse, so an empty parse
     // would compare `undefined` to `undefined` and pass. Pin the count so every
     // assertion in this block fails if the parse goes empty rather than vacuous.
-    expect(Object.keys(vars)).toHaveLength(19)
+    // 19 until slice 7a authored the twelve status values; 31 after.
+    expect(Object.keys(vars)).toHaveLength(31)
     expect(vars['--scrim']).toBe(vars['--ink-950'])
   })
 
@@ -1325,5 +1326,128 @@ describe('AC1.4 — the :root defaults still pin the pre-change palette', () => 
     expect(vars['--shadow-a1']).toBe('0.5')
     expect(vars['--shadow-a2']).toBe('0.35')
     expect(vars['--shadow-a3']).toBe('0.6')
+  })
+})
+
+/**
+ * D1 (slice 7a) — the twelve `--status-*` values `src/index.css` authors are the
+ * *derivation* of a canonical default IR, not hand-picked colours.
+ *
+ * The built-in default's token set carries no status family on purpose (A28), so
+ * `:root` is where the app's status values live, and both obvious sources for
+ * them fail (the annex's D1): the stock Tailwind palette cannot hold the family's
+ * floors (`text-white` on `#ef4444` measures 4.4:1 against the 4.5 floor the
+ * criterion asserts), and the prototype's `NATIVE` row carries `'status': {}`.
+ * So the values are `deriveTheme` run once on the app's own ink/parchment plus
+ * four accents its single amber hue cannot supply, and this block is the pin:
+ * every authored value equals the derived one, channel triplet for channel
+ * triplet — the form Tailwind composes — and the family holds both floors.
+ *
+ * The two floors are the pair the criterion audits, and the pair is *not*
+ * interchangeable: `on-<fam>` is derived as the best foreground against the `500`
+ * fill (`derive.py:542`), so that is what it is measured against, while `400` is
+ * the family's *text* step and is read against the panel (`ink-900`). D2 is why a
+ * filled danger surface uses `500`: `on` against `600` would be unreadable.
+ */
+describe('D1 (7a) — the :root status values are the canonical default IR’s derivation', () => {
+  /**
+   * The IR the twelve authored values came from: `:root`'s own canvas, surfaces,
+   * border, muted and text, and four accents in the app's own register (`accent_hint`
+   * is `--gold-400`). Values, not a rule — the derivation is what decides the twelve.
+   */
+  const CANONICAL_DEFAULT: ThemeIr = {
+    name: 'musaeum-default',
+    author: '',
+    variant: 'dark',
+    source: 'native',
+    bg: '#0d0b09',
+    bg2: '#191511',
+    bg3: '#201b15',
+    border: '#3b3226',
+    muted: '#7d7260',
+    fg: '#e9e1d2',
+    fg_bright: '#e9e1d2',
+    accents: {
+      red: '#e0554a',
+      orange: '#e08a3c',
+      yellow: '#d9a441',
+      green: '#7f9e6a',
+      cyan: '#6f9aa0',
+      blue: '#7a8fb0',
+      purple: '#9a86b0',
+      brown: '#a98466'
+    },
+    accent_hint: '#d4a24e',
+    notes: []
+  }
+
+  const FAMILIES = ['danger', 'ok', 'warn'] as const
+  const STEPS = ['400', '500', '600', 'on'] as const
+
+  /** The frozen names (A28) — spelled once, so a stray `-300` is visible. */
+  const STATUS_NAMES = FAMILIES.flatMap((family) =>
+    STEPS.map((step) => `--status-${family}-${step}`)
+  )
+
+  /** `:root`'s custom properties, the same parse `store.test.ts`'s D1 block uses. */
+  function rootVars(): Record<string, string> {
+    const css = readFileSync(join(process.cwd(), 'src', 'index.css'), 'utf8')
+    const block = css.match(/:root\s*\{([\s\S]*?)\}/)
+    if (!block) throw new Error('src/index.css has no :root block')
+    const vars: Record<string, string> = {}
+    for (const m of block[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]] = m[2].trim()
+    return vars
+  }
+
+  /** A hex colour as the channel triplet `:root` stores it in. */
+  function asChannels(hex: string): string {
+    const body = hex.replace(/^#/, '')
+    return [0, 2, 4].map((at) => parseInt(body.slice(at, at + 2), 16)).join(' ')
+  }
+
+  /** The canonical IR, derived — a rejection is a test failure, not a value. */
+  function canonical(): DerivedTokens {
+    const result = deriveTheme(CANONICAL_DEFAULT)
+    if (!result.ok) {
+      const { reason } = result
+      throw new Error(
+        'the canonical default IR did not derive: ' +
+          (reason.kind === 'floor'
+            ? `${reason.role} ${reason.ratio} < ${reason.floor} (${reason.metric})`
+            : `${reason.role}: ${reason.detail}`)
+      )
+    }
+    return result.tokens
+  }
+
+  it('authors exactly the twelve frozen names, and no other status step', () => {
+    const vars = rootVars()
+    expect(
+      Object.keys(vars)
+        .filter((name) => name.startsWith('--status-'))
+        .sort()
+    ).toEqual([...STATUS_NAMES].sort())
+  })
+
+  it('matches the derivation of the canonical default IR, channel by channel', () => {
+    const vars = rootVars()
+    const { status } = canonical()
+    for (const family of FAMILIES) {
+      for (const step of STEPS) {
+        expect(asChannels(status[family][step])).toBe(vars[`--status-${family}-${step}`])
+      }
+    }
+  })
+
+  it('holds both floors the criterion audits, against the derived fill and panel', () => {
+    const tokens = canonical()
+    const panel = tokens.ink['900']
+    for (const family of FAMILIES) {
+      const ramp = tokens.status[family]
+      const onFill = contrast(hexToRgb(ramp.on), hexToRgb(ramp['500']))
+      const textOnPanel = contrast(hexToRgb(ramp['400']), hexToRgb(panel))
+      expect(onFill, `${family}-on vs ${family}-500`).toBeGreaterThanOrEqual(4.0)
+      expect(textOnPanel, `${family}-400 vs ink-900`).toBeGreaterThanOrEqual(4.5)
+    }
   })
 })

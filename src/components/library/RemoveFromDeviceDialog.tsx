@@ -46,7 +46,7 @@ export function RemoveFromDeviceDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-ink-950/80 p-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-scrim/80 p-8 backdrop-blur-sm"
       onClick={() => !busy && requestDeviceRemoval(null)}
     >
       <div
@@ -66,7 +66,7 @@ export function RemoveFromDeviceDialog() {
           The book stays in your library — you can send it again at any time.
         </p>
 
-        {error && <p className="mt-3 text-[12px] text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-400">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button
@@ -79,7 +79,7 @@ export function RemoveFromDeviceDialog() {
           <button
             disabled={busy}
             onClick={() => void confirm()}
-            className="flex items-center gap-2 rounded-md bg-red-600 px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-red-500 disabled:opacity-40"
+            className="flex items-center gap-2 rounded-md bg-danger-500 px-3 py-1.5 text-[13px] font-semibold text-on-danger hover:bg-danger-500/90 disabled:opacity-40"
           >
             {busy ? <SpinnerIcon className="h-4 w-4" /> : <TrashIcon className="h-4 w-4" />}
             Remove from device

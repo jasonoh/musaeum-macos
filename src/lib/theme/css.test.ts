@@ -142,8 +142,9 @@ describe('tokensToCssVars', () => {
 
   it('parses :root at all', () => {
     // Every equality below reads this map; an empty parse would make the loop
-    // compare nothing to nothing.
-    expect(Object.keys(vars)).toHaveLength(19)
+    // compare nothing to nothing. 19 properties until slice 7a authored the twelve
+    // `--status-*` values, 31 after.
+    expect(Object.keys(vars)).toHaveLength(31)
   })
 
   it("writes exactly today's :root values for the default palette", () => {

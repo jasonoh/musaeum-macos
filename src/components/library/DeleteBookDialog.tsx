@@ -73,7 +73,7 @@ export function DeleteBookDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-ink-950/80 p-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-scrim/80 p-8 backdrop-blur-sm"
       onClick={() => !busy && requestDelete(null)}
     >
       <div
@@ -99,13 +99,13 @@ export function DeleteBookDialog() {
                   onClick={() => toggle(f)}
                   className={`flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-[13px] transition-colors ${
                     on
-                      ? 'border-red-500/60 bg-red-500/10 text-parchment'
+                      ? 'border-danger-500/60 bg-danger-500/10 text-parchment'
                       : 'border-ink-700 text-parchment-dim hover:border-ink-600 hover:bg-ink-850'
                   }`}
                 >
                   <span
                     className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border ${
-                      on ? 'border-red-400 bg-red-500/30 text-red-300' : 'border-ink-600'
+                      on ? 'border-danger-400 bg-danger-500/30 text-danger-400' : 'border-ink-600'
                     }`}
                   >
                     {on && <CheckIcon className="h-3 w-3" />}
@@ -139,11 +139,11 @@ export function DeleteBookDialog() {
         </p>
 
         {!online && (
-          <p className="mt-3 text-[12px] text-red-400">
+          <p className="mt-3 text-[12px] text-danger-400">
             The library is offline — reconnect before deleting.
           </p>
         )}
-        {error && <p className="mt-3 text-[12px] text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-400">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button
@@ -156,7 +156,7 @@ export function DeleteBookDialog() {
           <button
             disabled={busy || !online || nothingChosen}
             onClick={() => void confirm()}
-            className="flex items-center gap-2 rounded-md bg-red-600 px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-red-500 disabled:opacity-40"
+            className="flex items-center gap-2 rounded-md bg-danger-500 px-3 py-1.5 text-[13px] font-semibold text-on-danger hover:bg-danger-500/90 disabled:opacity-40"
           >
             {busy ? <SpinnerIcon className="h-4 w-4" /> : <TrashIcon className="h-4 w-4" />}
             {wholeBook

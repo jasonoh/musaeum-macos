@@ -340,6 +340,63 @@ a measurement. The probe that decides this round's Electron criteria is a repo s
 (`scripts/theme-resolver-probe.ts`, two commands in its header) rather than a file in `/tmp`; it is not
 yet part of `npm test`.
 
+**The app pass (2026-09-19, run after the round above — the last criterion with no decider).**
+AC6.3's renderer half and D1's dock-reopen regression are both closed, on the built artifact, an
+isolated `MUSAEUM_USER_DATA` profile and CDP. **The import was driven through the UI** — Settings →
+Appearance → *Rescan the theme folder*, with a synthetic Obsidian theme at
+`<userData>/themes/probe-obsidian/theme.css` whose values are computed (`hsl(…, calc(…))`,
+`color-mix()`, `rgba()`), so the resolver had to do real work: two rows landed
+(`obsidian:probe-obsidian`, `obsidian:probe-obsidian:light`) and the light one applied
+(`--ink-950: 245 244 240`, `color-scheme: light`).
+
+- **AC6.3, renderer half:** `document.styleSheets`' *whole surface* — length, and per sheet its
+  `href`, owner tag and rule count, plus the document's `<style>` and `<link rel=stylesheet>` tags —
+  is identical before the import, after the import and after the apply: **1 sheet,
+  `out/renderer/assets/index-BE3r8EVF.css`, 484 rules, 0 style tags, the same link tag**. The
+  criterion's own instrument (`length` alone) would not have seen a sheet swapped for another, so
+  the probe reads the surface, not the count.
+- **D1:** with one `.css` imported, `/json/list` shows **two** page targets — the renderer's and the
+  resolver's `data:text/html;charset=utf-8,…` document. Closing the main window leaves the resolver
+  as the only target; a reopen AppleEvent (`open -a node_modules/electron/dist/Musaeum.app`) then
+  reopens the main window **in the same process** (`6700` before and after — no second instance
+  launched) and it comes up themed. The resolver's own liveness is therefore observable over CDP, and
+  a hidden window is not invisible to the target list.
+- Harness: `/tmp/musaeum-pass/app-pass-probe.py` (scratch, like the resolver probe was before it
+  moved into the repo; it re-takes its own numbers when re-run against a new build). It is the same
+  profile and the same theme the 7a pass below reuses.
+
+### Amendment round 7 — 2026-09-19 (slice 7a landed)
+
+Slice 7a was built from the annex (`docs/superpowers/plans/2026-09-19-theming-slice7a.md`, six
+adjudicated readings D1–D6), implemented by a dispatched renderer child and then **checked by the
+orchestrator on the returned tree**: gates re-run, mutation campaign re-run, and the app pass run —
+including the *before* column, taken on the same profile and the same instrument before the slice was
+built. Nothing here re-opens a product decision: J1, J2, J5 and A28 stand, and A13's scope cut is
+what made the slice ten files rather than fifteen.
+
+| # | What changed | Why |
+|---|---|---|
+| A68 | **`:root`'s status values are the derivation of a canonical default IR** (annex D1): the shipped `deriveTheme` run on an IR built from `:root`'s own ink/parchment plus four authored accent hues, authored back into the block as `danger` `#e0554a`/`#9e090e`, `ok` `#7f9e6a`/`#466331`, `warn` `#d9a441`/`#915f00`, `on` `#0d0b09` — each family's `400` = `500` on this palette, which is the prototype's "walk until the floor holds" rule with nothing to walk. A test re-derives the same IR and pins all twelve channels. | §2.7 said "the `--scrim` and status variables in `src/index.css`" and nothing about their *values*. The two obvious sources both fail: **today's stock values cannot hold AC8.2** (white on `#ef4444` measures 4.4:1, under the family's own 4.5 floor) and **the prototype has no answer** — its `NATIVE` row carries `'status': {}` (`derive.py:720`), which is exactly why A28 left the block to 7a. *Reversal:* the owner dislikes the register — then the four **inputs** move and the twelve are re-derived, not hand-edited. |
+| A69 | **A filled danger surface uses the `500` step, and §2.7 item 4's `bg-red-600` + `text-on-danger` pairing is false as written.** The three `bg-red-600 … text-white … hover:bg-red-500` destructive buttons land as `bg-danger-500 … text-on-danger … hover:bg-danger-500/90`. | `on-*` is derived as the best foreground **against the 500 fill** and `600` is a bare `adjustLight(base, 0.30, false)` carrying no foreground (A17). Composed as the spec's item 4 reads, `on-danger` `#0d0b09` on `danger-600` `#9e090e` is **1.9:1** — the three buttons would have shipped *less* legible than the pair they replace (white on `#dc2626` = 4.83:1), and AC8.2, which audits `on` against `500`, could not have seen it. *Reversal:* an owner who wants the deeper fill needs a `600` foreground, which is a `derive.ts` change and its own criteria. |
+| A70 | **`text-red-300` → `text-danger-400`.** `DeleteBookDialog.tsx:108`'s selected destructive chip keeps the family's lightest step. | A28 froze the names at {`400`,`500`,`600`,`on`}, so a `300` cannot exist; the chip's own backdrop is `bg-danger-500/30` over the panel, where `danger-400` measures 5.06:1 on the default. |
+| A71 | **The app pass is the decider for the migration, and it is a *pair*.** Same isolated profile, same light Obsidian theme, before and after: the modal backdrop goes from `rgba(245,244,240,0.8)` — **0.0000 below** the canvas, i.e. the veil *is* the canvas — to `rgba(19,15,8,0.8)`, **0.6063 below**; the over-cover chip from 0.0000 below to **0.7958** below with its glyph at 4.106; the cover ring from `rgb(255 255 255 / 0.05)` (contrast vs surface 1.0049) to `rgb(43 36 23 / 0.05)` (**1.0975**, an 18× lstar delta); and on the **default** theme the backdrop is byte-identical (`rgba(13,11,9,0.8)`) — A5's pixel-identity promise, measured. | AC8.1/AC8.3 are pixel claims and `vitest` has no DOM. The before column exists because the same profile was still standing when the slice was built; a criterion measured only after the change cannot show that the change is what moved it. |
+| A72 | **Two criteria have no unit decider, and the campaign says so rather than hiding it.** Of five mutations, three reddened (a channel off the derivation, `warn-on` given parchment, a frozen name renamed) and **two survived**: the veil put back on `ink-950` (61 passed) and `tailwind.config.js`'s `danger.400` wired to `--status-danger-500` (27 passed). | A class name has no DOM harness and the config has none either — the same class of criterion as A25, and the same answer: name the instrument that *does* decide it (the app pass; the emitted-stylesheet read, where `rgb(var(--status-danger-500) / 0.4)` and `/ 0.6` prove the `<alpha-value>` form, and zero `gold-200` rules prove J5's fix) rather than tuning the mutation until it reddens. |
+| A73 | **`npx prettier --check` cannot go green on 7a's touched set, and could not before it.** Measured: `MigrationWizard.tsx`, `BookEditor.tsx`, `BookCard.tsx` and `derive.test.ts` are prettier-dirty **at `HEAD`**, with the residue in regions this slice never touched (JSX prose reflow, unrelated loops). The two hunks the slice introduced are formatted. | `npm run lint` is eslint-only and is the repo's gate (`CLAUDE.md`); the alternative — `prettier --write` over four files — reformats a dozen unrelated hunks inside a migration whose decider is the annex's site table. Same trade as this repo's standing "do not reformat a document to satisfy a check the repo does not run". |
+| A74 | **§4's tallies were approximate; its rows were not.** 13 `text-red-400` sites (the fourteenth red text site is the `text-red-300` of A70), and the status migration is **21 lines / 26 utility names**, not "20 sites". The honest budget: **10 code files by §2.7's convention** (`src/index.css` counted 0) / 11 edited, **3 test files** rather than 1 — `store.test.ts`, `derive.test.ts` and `css.test.ts` each carried their own `:root` property-count assertion, which is the absence-inversion class this repo keeps meeting — and **J5's two-file `gold-200` dispatch after it**. | A spec's parenthetical is what the next session reconstructs the case from. The count assertion in a third file was found by the implementer's grep, not by the dispatch's — *grep for the count, not for the file*. |
+| A75 | **The `ok` family ships wired but unconsumed, and so do the `*-600` steps.** §2.7 item 4's `bg-emerald-500 → bg-ok-500` has no site inside the ten files (its only occurrence is `Sidebar.tsx:22`, beside its `bg-red-500` twin at `:25`), so both go to **7b**; `BookDetail.tsx`'s hairline is still the absorber. | J2's cut is what puts them there, and naming them is what stops a later reader concluding the family is dead code. |
+
+**Built — slice 7a.** Gates on the returned tree (the orchestrator's own run, not the
+implementer's): `typecheck=0`, `lint=0`, `npm test` **852 passed / 36 files** (slice 6's 849/36, so
+the new pin added three cases), `npm run build=0`. The emission check: `.bg-scrim\/80`,
+`.ring-parchment\/5`, `rgb(var(--status-danger-500) / 0.4)` and `/ 0.6`, `.text-gold-300`,
+`.bg-gold-400`, and **zero** `gold-200` rules. The migration's diff is 12 `bg-scrim/` lines, 1
+`ring-parchment/5`, 21 status lines, and `grep -c -E "red-|ink-950/|ring-white"` over the nine
+component files returns **0**. Live, the `gold-200` fix is exactly the tick the defect was measured
+on: `rgb(232,201,135)` = `gold-300`, where the four classes previously computed nothing and inherited
+`rgb(125,114,96)`. Row geometry is unmoved: `tr` 37 px (`style: 36px` + the 1 px collapsed border)
+and a card 146×294 = cover 218 + `CARD_META_MARGIN` 8 + `CARD_META_HEIGHT` 68. Full evidence,
+deviations and the escalations the child raised are in the annex §8.
+
 ---
 
 ## 1. The problem, and what is true today

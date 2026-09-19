@@ -27,6 +27,26 @@
     --on-accent: 13 11 9;
     /* Byte-equal to ink-950 by design: the veils are pixel-identical until they migrate */
     --scrim: 13 11 9;
+    /*
+     * The status family, slice 7a (annex D1): the *derivation* of the app's own
+     * palette — `deriveTheme` run on a canonical default IR whose ink/parchment
+     * values are this block's own — authored here because the built-in default's
+     * token set carries no status family on purpose (A28). These are what
+     * `applyTokens` re-exposes when a theme carries none; a theme that does carry
+     * one overwrites all twelve. Names frozen: `--status-<family>-<step>` (A28).
+     */
+    --status-danger-400: 224 85 74;
+    --status-danger-500: 224 85 74;
+    --status-danger-600: 158 9 14;
+    --status-danger-on: 13 11 9;
+    --status-ok-400: 127 158 106;
+    --status-ok-500: 127 158 106;
+    --status-ok-600: 70 99 49;
+    --status-ok-on: 13 11 9;
+    --status-warn-400: 217 164 65;
+    --status-warn-500: 217 164 65;
+    --status-warn-600: 145 95 0;
+    --status-warn-on: 13 11 9;
     /* Shadow strengths, consumed by the boxShadow tokens in tailwind.config.js */
     --shadow-a1: 0.5;
     --shadow-a2: 0.35;

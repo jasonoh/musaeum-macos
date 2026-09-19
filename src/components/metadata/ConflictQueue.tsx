@@ -39,7 +39,7 @@ export function ConflictQueue() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 p-8 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/80 p-8 backdrop-blur-sm animate-fade-in">
       <div className="flex max-h-full w-full max-w-2xl flex-col rounded-xl border border-ink-700 bg-ink-900 shadow-cover-lift">
         <div className="flex shrink-0 items-center justify-between border-b border-ink-800 px-5 py-3">
           <h2 className="font-display text-lg text-parchment">Metadata Review</h2>

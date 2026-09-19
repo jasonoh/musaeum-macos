@@ -56,7 +56,7 @@ export function DeleteSelectionDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-ink-950/80 p-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-scrim/80 p-8 backdrop-blur-sm"
       onClick={() => !busy && requestSelectionDelete(false)}
     >
       <div
@@ -89,20 +89,20 @@ export function DeleteSelectionDialog() {
         </p>
 
         {!online && (
-          <p className="mt-3 text-[12px] text-red-400">
+          <p className="mt-3 text-[12px] text-danger-400">
             The library is offline — reconnect before deleting.
           </p>
         )}
-        {error && <p className="mt-3 text-[12px] text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-400">{error}</p>}
         {result && (
-          <div className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 p-3">
+          <div className="mt-3 rounded-md border border-danger-500/40 bg-danger-500/10 p-3">
             <p className="text-[12px] text-parchment-dim">
               Deleted {result.deleted}. {result.failed.length} could not be deleted and are still
               selected:
             </p>
             <ul className="mt-1.5 space-y-0.5">
               {result.failed.map((f) => (
-                <li key={f.id} className="truncate text-[12px] text-red-400">
+                <li key={f.id} className="truncate text-[12px] text-danger-400">
                   {f.title} — {f.error}
                 </li>
               ))}
@@ -122,7 +122,7 @@ export function DeleteSelectionDialog() {
             <button
               disabled={busy || !online || selected.length === 0}
               onClick={() => void confirm()}
-              className="flex items-center gap-2 rounded-md bg-red-600 px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-red-500 disabled:opacity-40"
+              className="flex items-center gap-2 rounded-md bg-danger-500 px-3 py-1.5 text-[13px] font-semibold text-on-danger hover:bg-danger-500/90 disabled:opacity-40"
             >
               {busy ? <SpinnerIcon className="h-4 w-4" /> : <TrashIcon className="h-4 w-4" />}
               Delete {selected.length} books

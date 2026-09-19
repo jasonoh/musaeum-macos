@@ -192,7 +192,7 @@ export function BookEditor() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-ink-950/80 p-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-scrim/80 p-8 backdrop-blur-sm"
       onClick={() => !busy && close()}
     >
       <div
@@ -290,11 +290,11 @@ export function BookEditor() {
 
         <div className="shrink-0 border-t border-ink-800 px-5 py-3">
           {!online && (
-            <p className="mb-2 text-[12px] text-red-400">
+            <p className="mb-2 text-[12px] text-danger-400">
               The library is offline — reconnect before saving.
             </p>
           )}
-          {error && <p className="mb-2 text-[12px] text-red-400">{error}</p>}
+          {error && <p className="mb-2 text-[12px] text-danger-400">{error}</p>}
           <div className="flex items-center justify-end gap-2">
             <span className="mr-auto text-[11px] text-parchment-faint">⌘↵ to save</span>
             <button
@@ -350,7 +350,7 @@ function Field({
         aria-invalid={required && !value.trim() ? true : undefined}
         className={`mt-1 w-full rounded-md border bg-ink-850 px-2.5 py-1.5 text-[13px] text-parchment placeholder:text-parchment-faint/50 focus:outline-none focus:ring-1 focus:ring-gold-500/30 disabled:opacity-40 ${
           required && !value.trim()
-            ? 'border-red-500/60 focus:border-red-500'
+            ? 'border-danger-500/60 focus:border-danger-500'
             : 'border-ink-700 focus:border-gold-500/60'
         }`}
       />

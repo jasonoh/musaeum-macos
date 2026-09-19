@@ -85,7 +85,7 @@ function JobCard({ job }: { job: ImportProgress }) {
       <p className="truncate font-display text-[13px] text-parchment">{job.fileName}</p>
 
       {failed ? (
-        <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-red-400">
+        <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-danger-400">
           <WarningIcon className="mt-px h-3.5 w-3.5 shrink-0" />
           {job.error ?? 'Import failed'}
         </p>
@@ -127,7 +127,7 @@ export function ImportOverlay() {
   return (
     <>
       {isDragging && (
-        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-ink-950/70 backdrop-blur-sm animate-fade-in">
+        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-scrim/70 backdrop-blur-sm animate-fade-in">
           <div className="rounded-2xl border-2 border-dashed border-gold-400/70 px-14 py-10 text-center">
             <p className="font-display text-2xl text-gold-300">Add to your library</p>
             <p className="mt-2 text-sm text-parchment-dim">Drop EPUB, MOBI, or AZW3 files</p>

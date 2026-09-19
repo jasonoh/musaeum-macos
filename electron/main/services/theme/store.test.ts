@@ -102,9 +102,11 @@ describe('D1 — the built-in default is the :root block, restated', () => {
 
   it('parses the :root block at all', () => {
     // Every assertion below reads this map, so a parse that goes empty would make
-    // them all vacuous. `:root` carries 19 properties (14 palette channels +
-    // on-accent + scrim + the three slice-5 shadow alphas).
-    expect(varsCount).toBe(19)
+    // them all vacuous. `:root` carries 31 properties: 14 palette channels, on-accent,
+    // scrim, the three slice-5 shadow alphas (19), and slice 7a's twelve
+    // `--status-<family>-<step>` values, which the default's own token set deliberately
+    // does not carry (A28 — see the D2 case below).
+    expect(varsCount).toBe(31)
     expect(vars['--ink-950']).toBeDefined()
   })
 

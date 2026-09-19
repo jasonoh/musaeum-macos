@@ -699,9 +699,25 @@ slice would otherwise meet without warning.
   - **Landed 2026-09-19: 6 of 6 installed themes import, as 9 rows, 193 ms** (measured through the
     shipped resolver; the spec's round-6 trail carries the evidence, the annex's §8 the deviations).
     **Debts this slice created, each with the instrument it lacks:**
-    - **AC6.3's renderer half is unprobed** — that a real import leaves the renderer's
-      `document.styleSheets` unchanged needs the running app; the payload half is decided (unit +
-      probe). Next app pass owes it.
+    - **AC6.3's renderer half — CLOSED by the app pass, 2026-09-19.** Measured on an isolated
+      `MUSAEUM_USER_DATA` profile over CDP, with a synthetic Obsidian theme (`themes/probe-obsidian/`)
+      imported through the Appearance section's own *Rescan* control: `document.styleSheets`'
+      whole surface — the array length, every sheet's `href`/owner/rule count, the `<style>` and
+      `<link rel=stylesheet>` tags — is **byte-identical before the import, after the import and
+      after applying the theme** (`1` sheet = `out/renderer/assets/index-BE3r8EVF.css`, `484` rules,
+      `0` style tags, unchanged link tags). The two Obsidian rows (`obsidian:probe-obsidian`,
+      `obsidian:probe-obsidian:light`) landed and the light one applied (`--ink-950` `245 244 240`,
+      `color-scheme: light`), so the import and the apply both really happened. The harness is
+      `/tmp/musaeum-pass/app-pass-probe.py` (a scratch script: the two halves it decides are the
+      renderer's, and re-running it is what re-takes the numbers).
+    - **D1's dock-reopen regression — CLOSED, and it was a real regression risk.** With the
+      resolver window alive (the `data:text/html;charset=utf-8,…` target is visible in
+      `/json/list` — the hidden window is not invisible to CDP), closing the main window left the
+      resolver as the only target; a reopen AppleEvent (`open -a
+      node_modules/electron/dist/Musaeum.app`) then reopened the window **in the same process**
+      (`6700` before and after — no second instance) and the new window came up themed
+      (`obsidian:probe-obsidian:light` active, `--ink-950: 245 244 240`). Two targets at exit: the
+      renderer's and the resolver's.
     - **The timeout path (`READ_TIMEOUT_MS`) has no decider** — no fixture makes Chromium's read hang,
       so neither the suite nor the probe reaches it. Either a hostile fixture or a seam that lets a
       test drive the clock.
@@ -723,29 +739,55 @@ slice would otherwise meet without warning.
       script rather than a test because `npm test` runs Electron-as-Node, where there is no
       `BrowserWindow`; wiring it into the gate is the remaining step, not a solved problem.
   - **Next session, in order:** (1) the app pass that closes **AC6.3's renderer half** and D1's
-    dock-reopen regression — the only criterion here with no decider yet; (2) then **slice 7a** (§2.7,
-    ten files at the bound), whose derivation half already landed with slice 2. Everything above is
-    uncommitted on purpose: the slice lands as one change, and nothing has been pushed.
-- [ ] **Slice 7a — the status family and the inversions.** The *derivation* half already landed with
-      slice 2 (`theme/derive.ts` + `src/types/theme.types.ts` carry `danger`/`ok`/`warn` with their
-      `400`/`500`/`600` steps and `on-*` foregrounds, floors enforced and corpus-tested); what 7a owes
-      is the `:root` + `tailwind.config.js` wiring for `scrim` and the status family, and then the
-      migration: the **twelve veils** (`bg-ink-950/70|80` → `bg-scrim/…`) and the two
-      `ring-white/5` hairlines (`BookCard.tsx:79`, `BookDetail.tsx:81`). Not optional: under a flipped
-      light ramp `ink-950` is the *lightest* tone, so every modal backdrop inverts to a white wash —
-      and four of the twelve are chips laid over **cover art** (`BookCard.tsx:98/114/128/167`), which
-      is exactly why `scrim` is a role that darkens in both variants rather than a ramp step.
+    dock-reopen regression — **DONE 2026-09-19, both closed, see the two bullets above**; (2) then
+    **slice 7a** (§2.7, ten files at the bound), whose derivation half already landed with slice 2 —
+    **landed 2026-09-19**, annex `docs/superpowers/plans/2026-09-19-theming-slice7a.md`, spec round-7
+    trail A68–A75, and **J5's `gold-200` two-file dispatch landed with it**; (3) **next is slice 7b**,
+    the status sweep of the files 7a did not open (its starting inventory is in the 7b bullet below).
+    *Correction, in place (this line said "everything above is uncommitted on purpose … nothing has
+    been pushed"):* the slice **is committed and pushed** — `0481b97` is both `HEAD` and
+    `origin/main`, and the working tree is clean. The sentence described the state before the rebase
+    the round-6 trail records; it was left standing as if it were still true. The 7a/hairline work is
+    **uncommitted** (nothing here commits without being asked).
+- [x] **Slice 7a — the status family and the inversions.** Landed 2026-09-19 from the annex
+      `docs/superpowers/plans/2026-09-19-theming-slice7a.md` (six adjudicated readings D1–D6; the
+      spec's round-7 trail carries the same set as A68–A75). What landed: the `danger`/`ok`/`warn`
+      families in `tailwind.config.js` and the twelve authored `--status-*` values in `src/index.css`
+      (`:root`'s block is 31 properties now, up from 19); the **twelve veils** on `bg-scrim/70|80`
+      (pixel-identical on the default — measured `rgba(13,11,9,0.8)` before and after); `BookCard`'s
+      hairline on `ring-parchment/5`; and the status sites inside the ten files it owns.
+      **Readings that were not obvious and are now pinned:** `:root`'s status values are the
+      *derivation* of a canonical default IR (the stock values cannot hold the floor — white on
+      `#ef4444` is 4.4:1 — and the prototype's `NATIVE` row carries `'status': {}`); and **a filled
+      danger surface uses the `500` step**, because `on-*` is only floored against it — §2.7 item 4's
+      `bg-danger-600` + `text-on-danger` pairing measures **1.9:1**, so the three destructive buttons
+      would have shipped less legible than the pair they replace. Gates: typecheck 0, lint 0,
+      `npm test` **852 passed / 36 files**, build 0. Mutation campaign 3 of 5 killed — both survivors
+      are criteria with no unit decider (a class name, and the Tailwind config), whose instruments are
+      the app pass and the emitted-stylesheet read. The app pass, before and after on one profile:
+      the light-theme modal backdrop went from **0.0000 below** the canvas (the veil *was* the canvas)
+      to **0.6063 below**, the cover-art badge's glyph holds 4.11:1, and the cover ring's contrast
+      went 1.0049 → 1.0975. Row geometry unmoved (`tr` 37 px; card 146×294).
+      **Not in this slice:** `ok` has no consumer yet and the `*-600` steps have none at all
+      (`bg-emerald-500`'s only site is `Sidebar.tsx:22`) — both are 7b's, as is `BookDetail.tsx`'s
+      hairline, the slice's named absorber.
 - [ ] **Slice 7b — the status sweep.** Migrate the **53 stock-palette sites across 16 files**
       (`text-red-400` ×23, `bg-red-500` ×11, `border-red-500` ×7, `text-white` ×4, `bg-red-600` ×3,
       `ring-white` ×2, `bg-emerald-500` ×1). Acceptance is a repo-wide grep reaching zero, with the
       count recorded before and after. Split out of 7a because the sweep crosses 16 files, over the
       ~10-file bound; 7a is the bounded half and lands green on its own.
-- [ ] **`gold-200` defect — fixed by slice 7a** (spec J5). Four sites in two files reference a ramp
-      step the config **never defined** (`gold` is 300/400/500/600), so `text-gold-200` / `bg-gold-200`
-      emit no CSS rule at all. Measured in the running app: the selected-row tick computes to
-      `rgb(125,114,96)` — an inherited `parchment-faint` — while the same element's `bg-gold-500/30`
-      tint works correctly. Fix: the three text sites → `gold-300`, and the mark at
-      `ListView.tsx:211` → `bg-gold-400`.
+      **Where 7a left it (2026-09-19):** the sites in `StatusBar`, `Sidebar`, `BookContextMenu`,
+      `Toasts`, `TransferQueue`, `ConflictResolver` and `BookDetail.tsx`, plus `BookDetail.tsx:83`'s
+      `ring-white/5`; the families (`danger`/`ok`/`warn`, `text-on-*`) and every step the sweep needs
+      already exist, and `ok-500` is wired but still consumed by nothing.
+- [x] **`gold-200` defect — fixed 2026-09-19** (spec J5, landed as its own two-file dispatch
+      immediately after slice 7a). Four sites in two files referenced a ramp step the config
+      **never defined** (`gold` is 300/400/500/600), so `text-gold-200` / `bg-gold-200` emitted no CSS
+      rule at all. Measured in the running app before the fix: the selected-row tick computed to
+      `rgb(125,114,96)` — an inherited `parchment-faint`. After: `rgb(232,201,135)` = `gold-300`, the
+      three text sites → `gold-300`, the mark at `ListView.tsx:212` → `bg-gold-400`, and a real
+      Tailwind build contains **zero** `gold-200` rules. `gold-300` is the ramp's readable-on-a-tint
+      end by construction (`mix(acc, fg, 0.30)`), which is why that step and not `gold-400`.
 - [ ] **Follow-up (owner request 2026-09-17) — compartmentalize the Appearance section.**
       Settings → Appearance is now the tallest thing in the dialog and growing: the whole
       built-in corpus plus everything imported renders as rows (swatches, name, provider,

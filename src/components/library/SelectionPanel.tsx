@@ -91,7 +91,7 @@ export function SelectionPanel() {
               className={
                 failed
                   ? 'flex w-full items-center justify-center gap-2 rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-[13px] text-red-400 hover:bg-red-500/20 disabled:opacity-40'
-                  : 'flex w-full items-center justify-center gap-2 rounded-md bg-gold-500/20 px-3 py-2 text-[13px] text-gold-200 hover:bg-gold-500/30 disabled:opacity-40'
+                  : 'flex w-full items-center justify-center gap-2 rounded-md bg-gold-500/20 px-3 py-2 text-[13px] text-gold-300 hover:bg-gold-500/30 disabled:opacity-40'
               }
             >
               {live > 0 ? (

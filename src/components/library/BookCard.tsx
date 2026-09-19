@@ -76,7 +76,9 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
       >
         <div
           className={`relative aspect-[2/3] w-full overflow-hidden rounded-md shadow-cover transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-cover-lift ${
-            selected ? 'ring-2 ring-gold-400' : 'ring-1 ring-white/5 group-hover:ring-gold-500/40'
+            selected
+              ? 'ring-2 ring-gold-400'
+              : 'ring-1 ring-parchment/5 group-hover:ring-gold-500/40'
           }`}
         >
           {thumb ? (
@@ -95,7 +97,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
           )}
           {onDevice && (
             <div
-              className="absolute left-1.5 top-1.5 rounded-full bg-ink-950/70 p-1 text-gold-400 shadow"
+              className="absolute left-1.5 top-1.5 rounded-full bg-scrim/70 p-1 text-gold-400 shadow"
               title="On device"
             >
               <DeviceIcon className="h-2.5 w-2.5" />
@@ -111,7 +113,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
           <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1">
             {refreshing && (
               <div
-                className="rounded-full bg-ink-950/80 p-1 text-gold-400 shadow"
+                className="rounded-full bg-scrim/80 p-1 text-gold-400 shadow"
                 title="Refreshing metadata…"
               >
                 <SpinnerIcon className="h-3 w-3" />
@@ -125,7 +127,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
             {format && (
               <div
                 title={orderedFormats(book).join(' · ').toUpperCase()}
-                className="rounded-[3px] bg-ink-950/70 px-1 py-px text-[10px] font-semibold uppercase leading-[14px] tracking-wider text-parchment-dim shadow backdrop-blur-sm transition-colors group-hover:text-parchment"
+                className="rounded-[3px] bg-scrim/70 px-1 py-px text-[10px] font-semibold uppercase leading-[14px] tracking-wider text-parchment-dim shadow backdrop-blur-sm transition-colors group-hover:text-parchment"
               >
                 {format}
                 {extraFormats > 0 && (
@@ -164,7 +166,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
           onClick={() => requestDelete(book.id)}
           title="Delete book"
           aria-label={`Delete ${book.title}`}
-          className="pointer-events-auto absolute bottom-1.5 right-1.5 rounded-full bg-ink-950/80 p-1.5 text-parchment-faint opacity-0 shadow transition-colors hover:bg-red-500/90 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
+          className="pointer-events-auto absolute bottom-1.5 right-1.5 rounded-full bg-scrim/80 p-1.5 text-parchment-faint opacity-0 shadow transition-colors hover:bg-danger-500/90 hover:text-on-danger focus-visible:opacity-100 group-hover:opacity-100"
         >
           <TrashIcon className="h-3.5 w-3.5" />
         </button>

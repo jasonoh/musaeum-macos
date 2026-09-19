@@ -145,7 +145,7 @@ export function SettingsModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-ink-950/80 p-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-scrim/80 p-8 backdrop-blur-sm"
       onClick={() => !busy && close()}
     >
       <div
@@ -334,7 +334,7 @@ export function SettingsModal() {
         )}
 
         <div className="shrink-0 border-t border-ink-800 px-5 py-3">
-          {error && <p className="mb-2 text-[12px] text-red-400">{error}</p>}
+          {error && <p className="mb-2 text-[12px] text-danger-400">{error}</p>}
           <div className="flex items-center justify-end gap-2">
             <span className="mr-auto text-[11px] text-parchment-faint">
               {saved ? 'Saved' : '⌘↵ to save'}

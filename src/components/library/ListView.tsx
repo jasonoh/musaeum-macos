@@ -86,7 +86,7 @@ function Row({ book }: { book: Book }) {
         <span className="flex h-5 items-center">
           <span
             className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-colors ${
-              selected ? 'border-gold-400 bg-gold-500/30 text-gold-200' : 'border-ink-600'
+              selected ? 'border-gold-400 bg-gold-500/30 text-gold-300' : 'border-ink-600'
             }`}
           >
             {selected && <CheckIcon className="h-2.5 w-2.5" />}
@@ -205,11 +205,11 @@ function SelectAllHeaderCell() {
       >
         <span
           className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-colors ${
-            all || some ? 'border-gold-400 bg-gold-500/30 text-gold-200' : 'border-ink-600'
+            all || some ? 'border-gold-400 bg-gold-500/30 text-gold-300' : 'border-ink-600'
           }`}
         >
           {all && <CheckIcon className="h-2.5 w-2.5" />}
-          {some && <span className="h-0.5 w-2 rounded bg-gold-200" />}
+          {some && <span className="h-0.5 w-2 rounded bg-gold-400" />}
         </span>
       </button>
     </th>
