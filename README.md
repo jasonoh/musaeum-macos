@@ -5,6 +5,8 @@ NAS-hosted library. Electron + React + TypeScript, with a Python sidecar for
 metadata hydration and format conversion.
 
 - [CLAUDE.md](CLAUDE.md) — project brief: invariants, conventions, where to look
+- [docs/project-overview.md](docs/project-overview.md) — features, status, and how
+  it compares to Calibre/Calibre-Web/Kavita and the rest
 - [docs/](docs/) — architecture, data contracts, and per-subsystem invariants
 - [tasks.md](tasks.md) — roadmap, known issues, backlog
 - [CHANGELOG.md](CHANGELOG.md) — release history

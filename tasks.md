@@ -347,7 +347,9 @@ resume, and a genuine offline state).
       bookmarks; no search-in-book; no per-book typography (preferences are
       global and per machine). Annotations in particular need a storage
       decision first — metadata.json keeps the book's record small today, and
-      highlights are the first thing that would grow without bound.
+      highlights are the first thing that would grow without bound. **Search-in-book now has a
+      design** — the S1 spec under "Specified, not scheduled" below — and is recommended as the
+      next reader slice; the annotations in this list still wait on the storage decision.
 - [ ] Genuine horizontal margin control. The "Spacing" slider drives foliate's
       paginator `margin` attribute, which it spends on vertical inset and column
       gutter — the left text edge does not move, which is why the control is not
@@ -922,6 +924,168 @@ project **`musaeum`**.
   shaped the way they are, but its architecture, schema and IPC sections
   duplicate the docs. Decide whether to fold it in so there is one architecture
   source, or annotate it as historical and leave it alone.
+
+## Specified, not scheduled (2026-09-19)
+
+Two features were analysed against this file and written up as designs. **Neither is
+scheduled.** They are specified so the decision is actionable the moment a trigger fires, and
+so the reasoning is not re-derived from scratch. The analysis that produced them — what is in
+the roadmap, what is missing from it entirely, and which of those are worth building — is in
+`docs/project-overview.md` §7–8.
+
+- [ ] **In-book search (S1)** — spec:
+      `docs/superpowers/specs/2026-09-19-reader-search-design.md`. **Recommended as the next
+      reader slice.** The engine already implements it: `view.search()` in the vendored
+      foliate-js is a public async generator yielding per-section progress, CFIs and excerpts,
+      and it draws its own highlights. Read off the vendored commit, not upstream's docs — the
+      same discipline `src/types/foliate-js.d.ts` follows. So there is no index, no schema
+      change, no sidecar call and **no NAS I/O at all**: `open()` already holds the whole file
+      in memory, which means search works offline and on a dropped share. ~10 code files, at
+      the bound. Its expensive twin — a library-wide index of book *contents* — is **rejected**
+      in that spec's D1 with a reversal condition; do not fold it in.
+- [ ] **OPDS catalog (conditional)** — spec:
+      `docs/superpowers/specs/2026-09-19-opds-catalog-design.md`. **Trigger: a second reading
+      device that speaks OPDS** (a Boox, a Kobo running KOReader, a phone with KOReader or
+      Librera). Do not start without one — that is the spec's first precondition, and the cost
+      of this feature is not the code, it is a permanent network surface on the machine holding
+      the library. Would also make the Boox Palma item below real for near-zero extra cost,
+      since KOReader on a Boox reads OPDS. Two slices: **O1** (server, auth, new/all/search,
+      covers, downloads) then **O2** (author/series/unread browse tree).
+
+## Captured, not analysed (2026-09-19)
+
+An owner idea recorded here so it is not re-derived from one sentence later. Nothing in this
+section has had the treatment the two specs above got: each entry carries only **what is already
+true in this repo that touches it**, and the forks that make it a decision rather than a chore.
+The bound of this section is that it stays a paragraph, not a design — with one deliberate
+exception: the AI entry below stopped being a paragraph when the owner argued a thesis about its
+payload, so it now carries the measurements that bear on that thesis. Everything else here is a
+paragraph.
+
+### AI conversation about the book you are reading
+
+**Owner's words:** *"a sidecar to the ebook reader where I can ask the AI questions and it knows
+from the position or current highlight to what I'm referring to — user would have to configure an
+API key or run a local model."*
+
+**Settled by inspection — three of the pieces already exist:**
+
+- **The "where I am" input does.** `FoliateRelocateDetail` carries `cfi`, `fraction` and
+  `tocItem` (`src/types/foliate-js.d.ts:23-27`), and the current section's `Document` arrives on
+  the engine's `load` event (`ReaderEngine.tsx:156-158`) — so the pointer is free, "the text being
+  read" is `doc.body.innerText` of the open section when the payload ladder needs it, and "jump to a
+  citation" is the `goTo(cfi)` the TOC panel and position restore already use
+  (`src/types/foliate-js.d.ts:64`).
+- **A highlight does not need the annotations storage decision.** Annotations/highlights/bookmarks
+  are still out of the reader and still wait on storage (`tasks.md` C1 out-of-scope list) — but
+  foliate's annotation mechanism is already in use and needs no persistence: `addAnnotation` /
+  `deleteAnnotation` are public (`view.js:368`, `:399`), non-search annotations are *ours to draw*
+  (the engine emits `draw-annotation` with `{draw, annotation, doc, range}`, `view.js:393`), and
+  search re-adds its own on every section render (`view.js:416`). A **session** selection or
+  highlight is therefore a live CFI plus one `draw-annotation` listener, and v1 should read that —
+  **never a highlight library**. This is what stops the feature queueing behind the annotations
+  decision instead of being decoupled from it.
+- **Key resolution has a precedent to copy.** `resolveGoogleBooksKey()`
+  (`services/sidecar.ts:51`) already implements "`app_config` wins over the environment, report
+  which source won", and Settings validates a value before writing it — so an AI key is a
+  settled shape, not a new question.
+
+**Owner's position on the payload (2026-09-19) — the pointer, not the text:** *"with the latest
+frontier models, entire chapters do not need to be sent over the wire at all… all we'd really need
+to do is send the title, author, chapter #, and the highlight."*
+
+The argument is right, and it is the compression argument this app already lives by: when the
+decoder holds the content, the message only has to carry the residual — title, author and section
+are an *index* into knowledge the model already has, and the highlight is the one piece of text
+that must travel verbatim because it is the **referent**. Two consequences are worth more than the
+bandwidth saved: egress drops from "a chapter of a copyrighted work to a third party" to a citation
+plus one sentence, and answers become cacheable per `(book, section, question)` in the local SQLite
+cache like any other local artifact.
+
+**What this library actually says about the bet** (measured 2026-09-19, read-only against the live
+dev database — 6,458 books, of which **5,080 hold an epub/mobi/azw3**, so that number is this
+feature's real surface):
+
+| Slice                            | Books | Bearing on the bet                                                                     |
+| -------------------------------- | ----- | -------------------------------------------------------------------------------------- |
+| pre-1900                         | 995   | public-domain canon — the most-memorised material there is                             |
+| 1900–1959                        | 43    |                                                                                        |
+| 1960–1999                        | 377   |                                                                                        |
+| 2000–2013                        | 3,132 | the bulk: business, self-help, technical, textbooks                                    |
+| 2014–2023                        | 1,773 |                                                                                        |
+| 2024+                            | 134   | **outside most models' knowledge by construction**                                     |
+| Lonely Planet + Rough Guide      | 290   | travel guides — no chapter-level recall exists in any model                            |
+| no description at all            | 2,602 | proxy for how weakly indexed these are anywhere                                        |
+| authors / authors appearing once | 3,727 / 3,118 | 84% of authors appear exactly once — a long tail                                |
+
+*(Rows are separate reads, not a partition — the travel-guide, no-description and author rows
+overlap the year buckets. Do not sum the column.)*
+
+The library **splits** the thesis rather than confirming it. The canon slice — pre-1900 plus the
+King/Clarke/Dick/Vonnegut/Sartre/Márquez/Tolkien shelf — is exactly where pointer-only should work,
+and it is a large, real fraction. The 2000–2023 non-fiction majority is where no pointer summons the
+chapter: 290 travel guides, a UCC contracts textbook, a bread-baking book. And the model has no way
+to know which kind it is looking at — it answers fluently either way. English is the one thing that
+favours the bet strongly and it favours it almost universally here (6,274 of 6,458).
+
+So the residual risk is not a *rate* problem, it is a **grounding** problem — and it is the kind
+this app can test for free, because `open()` already holds the whole book in memory. **The design
+that follows from the argument: pointer-only by default, with local verification.** Before trusting
+a pointed answer for a book, ask one question whose answer is checkable against the local text (the
+section's opening line, or the names that appear in it) and score it locally; if recall is weak for
+this book, widen the payload for that session — the section, or a window around the CFI. Nothing
+leaves the machine to do the checking, and the escalation is evidence-driven rather than a hope.
+Same discipline as the device-presence census: make the assumption measurable, give the failure a
+visible path.
+
+Three smaller consequences, all real:
+
+- **Pass the TOC label and the fraction, not the chapter number.** Section indices and chapter
+  numbers drift across editions, reissues and translations, and a collection's "chapter 7" is a
+  short story. `tocItem` and `fraction` are already on the relocate detail; the bare integer is the
+  weakest of the three.
+- **"I don't have this book" must be an answer the model is allowed to give.** For the tail above,
+  a plausible invented chapter summary is the worst possible output; refusal has to be cheap.
+- Prompt shape: the pointer is the *index* and the highlight is the *referent* — say which is which.
+
+**Forks — each is a decision, none is a detail:**
+
+1. **The call cannot come from the renderer.** `index.html:8`'s CSP is
+   `connect-src 'self' ws: musaeum:`; no remote host is reachable, and that is a stated promise
+   ("book content can never execute and an EPUB cannot phone home", `docs/project-overview.md`
+   §3.5), not an accident to widen. So the client belongs in `electron/main/services/` with tokens
+   streamed back over IPC (invariant 8) — **not** in the Python sidecar, whose job is metadata.
+2. **Name collision to kill first:** "sidecar" in this repo *is* the Python metadata process. An AI
+   panel is a renderer surface plus a main-process client; calling it a sidecar in code, tasks or
+   specs will read as the wrong process forever.
+3. **What leaves the machine is a smaller question than it looked — but not zero.** With the
+   payload argued above, the standing egress is a title, an author, a section label and the
+   highlight; the residual is the highlight itself and any escalation to text. So the panel still
+   has to say what it is about to send, and the provider setting still has to be modelled as
+   **base URL + model** with localhost first-class (Ollama, `llama-server`, LM Studio) rather than
+   a cloud key with local bolted on — a local model is what makes the remaining egress exactly
+   zero, which today is the app's stated posture ("no account, no service, no listener").
+4. **Transcripts are the growth risk, so they are not part of a book's record.** Same class as
+   highlights: the first thing that grows without bound. If conversations are kept at all, the
+   local SQLite cache is the place — never `metadata.json` and never `catalog.json`, whose costs
+   are one SMB write per book and a whole-library rewrite. Persisting them at all is optional; v1
+   can be single-session.
+5. **The reader's side panel is a one-slot resource.** `ReaderView.tsx:214` holds one panel and the
+   two occupants are session-only store booleans (`reader.store.ts:100-102`); S1 (in-book search)
+   claims the same slot under a TOC⇄search mutual-exclusion rule. Whichever of the two lands
+   second owns settling that layout — two panels, or one slot with a rule.
+6. **Named, not decided:** single-turn vs. multi-turn; **the escalation ladder's trigger and
+   thresholds** (the shape is settled above — pointer first, widen on evidence — but what counts as
+   weak recall, and whether the check is one probe per book or per section, is not); whether an
+   answer may cite a CFI the panel jumps to; and whether the AI may be asked about the **library**
+   rather than the book — that last is a different feature (a catalog query over FTS) and must not
+   be absorbed into this one silently.
+
+**Sizing guess, on the house arithmetic:** ~10 code files, at the bound. The pieces to design for
+testability are both pure and both belong in `src/lib/`, since the renderer has no DOM harness (a
+standing gap, recorded under slice-4 debt): the context assembler — `(book, section label,
+fraction, cfi, selection) → prompt` — and the recall scorer the ladder above turns on. The
+main-process client is testable today; the panel is not.
 
 ## Post-MVP (unchanged from spec — do not implement yet)
 
