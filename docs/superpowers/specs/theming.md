@@ -1107,6 +1107,17 @@ BrowserWindow({
 1. `session.fromPartition('musaeum-theme-resolver', { cache: false })` gets
    `webRequest.onBeforeRequest((_d, cb) => cb({ cancel: true }))` — **every** request
    cancelled, unconditionally, before the document loads. This is the primary control.
+   **[Confirmed 2026-09-19, and false as written.** An unfiltered cancel-all cancels the `data:`
+   document itself — it is the first request the listener sees — and the load fails with
+   `ERR_BLOCKED_BY_CLIENT`, so nothing resolves at all. The rule ships filtered:
+   `onBeforeRequest({ urls: ['*://*/*'] }, …)`. It never sees the document, and a loopback server
+   proves it still cancels every http(s) attempt a stylesheet can make: with the CSP relaxed to
+   nothing, 4 attempts are seen and **0 requests reach the server**; with the rule removed, all 4
+   arrive. Measured against the six Obsidian themes installed on this machine; the harness and the
+   full table are in the annex, `plans/2026-09-19-theming-slice6.md` §2–§3 (D2). AC6.2's decider does
+   not survive as written — the strict-CSP document issues *no* request, so a bare
+   `onBeforeRequest` counter reads 0 with the rule removed and with it installed, and the
+   loopback server replaces it.**]**
 2. The document is created from a data URL whose own CSP is
    `default-src 'none'; style-src 'unsafe-inline'` — a second layer: `@import` and
    `url()`-bearing declarations resolve to blocked fetches even if the session rule were
@@ -1119,6 +1130,24 @@ BrowserWindow({
 4. `getComputedStyle(document.body).getPropertyValue(name)` for the role list, then
    `window.close()`/`destroy()` and a hard timeout (proposed 3 s) that destroys the window
    and rejects the theme with a reason.
+   **[Confirmed 2026-09-19: the destroy cannot ship.** In Electron 37.10.3 the *second* window created
+   after a destroy never loads (`ERR_FAILED`) and the process dies with `SIGTRAP` around the third —
+   with `offscreen` on and off, and with a fixed partition and a fresh one per window. One window
+   created once and **reused** resolved all six real themes × two variants in one process (1.24 MB of
+   stylesheet in 25 ms). So the window is created lazily on the first `.css` and never destroyed; a
+   timeout resets it (`webContents.stop()` + a reload of `about:blank`) instead. AC6.6's "no orphaned
+   window" is restated in the annex (D1) as *N resolves leave exactly one window* — and the same note
+   carries the file this changes outside the resolver: `main/index.ts:225`'s `activate` decides
+   whether to reopen the main window from `BrowserWindow.getAllWindows().length === 0`, which a
+   permanently-alive hidden window would keep at 1.**]**
+   **[Also confirmed in the same run, and this one is a correction to step 5 rather than to the
+   design: a computed custom property is *not* a colour.** Chromium answers with the substituted
+   token stream — `#171c28`, `rgb(22, 22, 30)`, `hsl(220, 12%, calc(18% - 2%))`,
+   `color-mix( in hsl, #1d2433, #2f3b54 )`, `color(srgb 0.149 0.186 0.264)`, `rgba(…, 0.65)`, or
+   empty — so the `^#[0-9a-f]{6}$` test is right about the contract and wrong about its input. The
+   read is two-stage (a probe element resolves the CSS value; a pure `normalizeColour` in the adapter
+   accepts hex/`rgb()`/`rgba()`/`color(srgb …)` and answers `#rrggbb`, alpha dropped and the roles it
+   was dropped for named in `notes`). See the annex §3 D3.**]**
 5. **What crosses back is hex strings only.** The resolver returns
    `Record<ObsidianRole, string>`; every value is validated against `^#[0-9a-f]{6}$` (after
    normalizing `#rgb`/`#rrggbbaa`) in `services/theme/` **before** it becomes part of an IR.
@@ -1159,6 +1188,17 @@ what the app renders and they survive the source moving. See "Open questions" at
 **File budget:** 5 code files + 1 test file (§5). Overrun absorber: `parse/obsidian.ts` folds
 into `theme/index.ts`. This slice does **not** get a separate resolver module if that would
 push it past the bound — the resolver and the role map belong together.
+**[Corrected 2026-09-19 by the pre-build check the sentence above demanded: the honest count is 8 code
+files + 2 test files.** The walk over *who writes it, who reads it, who wires it, who proves it* finds
+four files neither budget row counted — two of them named by this spec's own A45 as extension sites
+slice 6 must find (`ipc/theme.ts`'s dialog filter and `AppearanceSection.tsx`'s drop filter), plus
+`theme/store.ts` (the never-re-derive-an-Obsidian-row rule, D6) and `electron/main/index.ts` (D1's
+`activate` predicate, which exists *because* the resolver window is now long-lived) — on top of the
+four this sentence names. The named absorber is deliberately not taken: it would fold the pure,
+unit-decided adapter into the module that owns the Electron edge. Tests: `parse/obsidian.test.ts`
+(new) and `importer.test.ts` (extended, including inverting the `.css`-is-not-scannable assertions at
+`:351`). One file over `CLAUDE.md`'s ~10-file bound, recorded rather than absorbed, as A30/A36/A53
+were. Files, owners and the reason for each: annex §3 D8 and §4.**]**
 
 ### 2.7 Slice 7 — COMMITTED by the owner, and staged 7a/7b: status colours, and the two migrations that invert
 
@@ -1786,6 +1826,7 @@ slice 2's base16 fixture corpus so no second copy exists in the repo.
 | 4. Import + picker | **11 landed** (§2.4's count was 7: the row above always undercounted `store.ts`, `src/types/theme.types.ts` and the renderer store test — see A36) | 2 (`theme/importer.test.ts` new, `theme/store.test.ts` and `src/stores/theme.store.test.ts` extended) | — | `AppearanceSection` row rendering folds into `SettingsModal.tsx` — **named, deliberately not taken** (A36) |
 | 5. Reader + flip | **9 landed** (§2.5's count was 6: `theme/css.ts`, `ReaderSearch.tsx`, `services/events.ts` and `test/mocks/electron.ts` were missing — A53) — one over the ~10-file bound | 4 (`reader-palette.test.ts` new; `css.test.ts`, `reader.store.test.ts`, `theme/store.test.ts` extended) | — | `reader-palette.ts` + its test fold into `src/lib/theme/css.ts` + `css.test.ts` — **named, deliberately not taken** (A53) |
 | 6. Obsidian resolver | 3 (`theme/resolve-css.ts`, `theme/parse/obsidian.ts`, `theme/index.ts`) + `theme/importer.ts` | 1 (`theme/obsidian.test.ts`, with synthetic CSS fixtures inline — **do not vendor a user's theme file**) | — | `parse/obsidian.ts` folds into `theme/index.ts` |
+| **[6, corrected 2026-09-19]** | **8 landed** (§2.6's own sentence said 5; this row said 3 — see A60/D8) | **2** (`obsidian.test.ts` new, `importer.test.ts` extended — the file is named by its provider, not by the slice) | — | `parse/obsidian.ts` folds into `theme/index.ts` — **named, deliberately not taken** (D8) |
 | **7. Status + scrim + hairline — COMMITTED, staged 7a (bounded) and 7b (the sweep) (§2.7)** | **15 at its widest**, **10 with the named absorber** (`theme/derive.ts`, `src/types/theme.types.ts`, `theme/store.ts`, `src/lib/theme/css.ts`, `tailwind.config.js` + the ten components that invert: the eight modal files, `BookCard.tsx`, `BookDetail.tsx`) | 1 (`theme/derive.test.ts` extended — no new test file) | — | **`src/components/library/BookDetail.tsx`**: its single hairline site leaves first (cosmetic — the cover is already edged by `shadow-cover`), then the status sites in files the slice does not otherwise open leave as debt (§2.7a) |
 
 Every *approved* slice is inside the bound, and slices 3 and 5 sit right at it.
@@ -2019,12 +2060,22 @@ three shipped specs read for register.
 - **The pixel-identity claim itself (AC1.1).** It is a criterion for the implementer, not a
   measurement I took: I did not build, launch, or capture frames. Nothing in this spec has
   been validated in a running app.
-- **Electron 37's exact offscreen/`executeJavaScript` behaviour** under
+- ~~**Electron 37's exact offscreen/`executeJavaScript` behaviour** under
   `webPreferences.offscreen + sandbox: true`, and whether a cancelled-request session can
-  still complete a `data:` document's inline `<style>`. The design assumes both; the first
-  implementation task in slice 6 must confirm them before building on them.
-- **Whether `onBeforeRequest`'s cancel-all interferes with the data-URL document itself** —
-  it must not, but that is an assumption about Electron's ordering, not a measurement.
+  still complete a `data:` document's inline `<style>`. The design assumes both; the
+  first implementation task in slice 6 must confirm them before building on them.~~
+  **[Resolved 2026-09-19 by slice 6's pre-build check — the first half holds, the second does not.**
+  `offscreen: true` + `sandbox: true` loads a `data:` document in 55–62 ms and
+  `executeJavaScript` reads computed custom properties off it (identical with `offscreen: false`). A
+  **cancelled-request session cannot complete the document**: the `data:` URL is itself the first
+  request the listener sees, so an unfiltered cancel-all fails the load with `ERR_BLOCKED_BY_CLIENT`.
+  The rule ships filtered to `*://*/*`. Measured on Electron 37.10.3 / Chromium 138, harness and
+  tables in `plans/2026-09-19-theming-slice6.md` §2.]**
+- ~~**Whether `onBeforeRequest`'s cancel-all interferes with the data-URL document itself** —
+  it must not, but that is an assumption about Electron's ordering, not a measurement.~~
+  **[Resolved 2026-09-19 — it does, and it is the whole reason the slice's first change is a filter
+  rather than the control §2.6 described.** The `data:` document is a request; a listener with no
+  filter cancels it. §2.6 step 1 is corrected in place.]**
 - **Whether a 10-scheme `?raw` import set survives `electron-vite build` into
   `out/main/**`** — the precedent (`db.ts` importing `.sql?raw`) says yes; I did not run the
   build.

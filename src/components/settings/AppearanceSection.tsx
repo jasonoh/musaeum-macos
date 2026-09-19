@@ -29,8 +29,16 @@ import {
  * file (`CLAUDE.md` #9 / `invariants/reader.md`).
  */
 
-/** The provider files this slice can read. `.css` waits for slice 6's adapter. */
-const THEME_EXTENSIONS = ['.yaml', '.yml', '.itermcolors']
+/**
+ * The provider files this section accepts. `.css` is an Obsidian theme's
+ * `theme.css` — the only file name that form uses, and a theme is named by the
+ * folder holding it, so the *path* decides the row's id rather than the file's
+ * own stem (`theme/importer.ts`, D7). A `.css` dropped from somewhere that is
+ * not a theme folder still passes this filter and comes back as a reported
+ * rejection: a file the user dropped on purpose is not a folder listing, and
+ * A35's rule about silence is about the listing.
+ */
+const THEME_EXTENSIONS = ['.yaml', '.yml', '.itermcolors', '.css']
 
 /**
  * `native` is the built-in default, so it is named for what it is to the user
@@ -230,7 +238,7 @@ function ImportControl({
       <span className={`text-[11px] ${dragging ? 'text-gold-300' : 'text-parchment-faint'}`}>
         {dragging
           ? 'Release to import'
-          : 'Drop a .yaml, .yml or .itermcolors anywhere on this section, or put files in the folder below'}
+          : 'Drop a .yaml, .yml or .itermcolors anywhere on this section, or an Obsidian theme.css, or put files in the folder below'}
       </span>
     </div>
   )

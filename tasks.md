@@ -674,6 +674,28 @@ slice would otherwise meet without warning.
       Security surface: arbitrary CSS, possibly a remote `@import`, network blocked, and never injected
       into the real renderer. Stored as **derived values only** plus `sourcePath` — never a copy of the
       source CSS.
+  - **Annex: `docs/superpowers/plans/2026-09-19-theming-slice6.md`** (settles §2.6's readings; the spec
+    carries the round-6 trail when the slice lands).
+  - **The pre-build check §2.6 demanded is done, and it changed three things.** `offscreen + sandbox`
+    loads a `data:` document and `executeJavaScript` reads computed custom properties off it — that
+    assumption holds. The session's **cancel-all does not**: the `data:` document is itself the first
+    request the listener sees, so it is cancelled and the load fails (`ERR_BLOCKED_BY_CLIENT`). The
+    rule ships as `onBeforeRequest({ urls: ['*://*/*'] })`. **And the window cannot be a
+    per-resolve one**: a second window created after a destroy never loads and the process dies
+    (`SIGTRAP`) in this Electron build, so one hidden window is created once and reused, with a
+    consequence outside the resolver — `main/index.ts`'s `activate` cannot decide "reopen?" from
+    `getAllWindows().length === 0` any more. Measured on Electron 37.10.3, harness in the annex §2.
+  - **The "5 themes / 1 scrapable" figure is the prototype's curated sample; the tree holds six**
+    (`halcyon`, `Things`, `Tokyo Night`, `Blue Topaz`, `Dracula + LYT` in `toporeal` and `pt`, plus
+    `Obsidianite`). Measured against all six, both classes: §2.6's canonical role list alone admits
+    **2 of 6** — these themes lean on Obsidian's *own* `--color-base-*` vocabulary, which a bare
+    resolver document does not have — and the three-rung ladder the annex specifies admits **6 of 6**,
+    five of them with no synthesized colour. That ladder, the dropped-alpha rule and the two-entry
+    (dark/light) rule are the annex's D3–D5.
+  - **Count: 8 code files + 2 test files**, not the 5 + 1 §2.6's sentence claimed (and not §5's 3 + 1):
+    the four §2.6 names, plus the two extension sites A45 already names (`ipc/theme.ts`,
+    `AppearanceSection.tsx`), plus `theme/store.ts` and `main/index.ts`. One over the ~10-file bound;
+    the named absorber is deliberately not taken. See the annex §3 D8.
 - [ ] **Slice 7a — the status family and the inversions.** The *derivation* half already landed with
       slice 2 (`theme/derive.ts` + `src/types/theme.types.ts` carry `danger`/`ok`/`warn` with their
       `400`/`500`/`600` steps and `on-*` foregrounds, floors enforced and corpus-tested); what 7a owes
