@@ -23,19 +23,8 @@
     - Non-blocking status banner shown; user can manually retry
 - NAS health checked every 30 seconds while app is running
 - No hardcoded NAS paths stored in SQLite — all paths relative to library root
-- Cover images are served to the renderer via the custom
-  **`musaeum://cover/{bookId}/{thumb|full}`** protocol — the renderer never
-  gets raw `file://` access (CSP enforces this)
-- **Multi-machine**: `catalog.json` at the library root is a derived cache of
-  every book's `metadata.json` (which stays canonical). Every metadata write
-  upserts it (bulk ops batch one write) — a deliberate edit or hydration
-  upserts the whole record, but a background push like reading position
-  field-merges only its own fields onto the existing entry, so finishing a
-  chapter on one machine can't clobber an edit made on another; on connect
-  and on "Refresh Library" the local SQLite cache is transactionally replaced
-  from it; "Rebuild Catalog" re-walks `books/*/metadata.json` as recovery.
-  Last-write-wins, one machine at a time. (`services/catalog.ts`,
-  `services/library-sync.ts`)
+- Cover images are served to the renderer via the custom **`musaeum://cover/{bookId}/{thumb|full}`** protocol — the renderer never gets raw `file://` access (CSP enforces this)
+- **Multi-machine**: `catalog.json` at the library root is a derived cache of every book's `metadata.json` (which stays canonical). Every metadata write upserts it (bulk ops batch one write) — a deliberate edit or hydration upserts the whole record, but a background push like reading position field-merges only its own fields onto the existing entry, so finishing a chapter on one machine can't clobber an edit made on another; on connect and on "Refresh Library" the local SQLite cache is transactionally replaced from it; "Rebuild Catalog" re-walks `books/*/metadata.json` as recovery. Last-write-wins, one machine at a time. (`services/catalog.ts`, `services/library-sync.ts`)
 
 ---
 

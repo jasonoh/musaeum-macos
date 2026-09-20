@@ -1,53 +1,18 @@
 # Design: Theming — provider-imported palettes across the whole app
 
-**Date:** 2026-09-15
-**Status:** Approved. Every product decision below was taken by Jason and is **closed**;
-each is recorded with the alternative it beat and the condition that would reverse it.
-This document does not re-open one.
-**Scope:** six *approved* slices, in the dependency order of §2.1–§2.6, plus one **committed,
-staged** seventh slice (§2.7 — committed by the owner, staged 7a/7b; it carries its own budget, its absorber, a
-cheaper alternative and a recommendation), landing a palette-only theming system: import a
-colour scheme from a provider the owner already uses, derive Musaeum's **17** design values
-from it, and apply them to the whole app including the reader.
-**Amended 2026-09-15 (amendment round 1).** The first pass understated the change surface: it
-treated "the app's entire palette lives in `tailwind.config.js`" as the whole truth, and so
-"config plus CSS" as a sufficient surface. The premise is **false** — seven classes of colour
-consumer reach a pixel without going through a token utility (§1.3), three of them inside
-slice 1's config-and-CSS scope and four needing their own edits. Every claim that changed, and
-why, is in the amendment trail immediately below. Where the independent audit's figure and the
-orchestrator's re-measurement differ, **the re-measurement is the figure recorded and the
-audit's is noted beside it**.
+**Date:** 2026-09-15 **Status:** Approved. Every product decision below was taken by Jason and is **closed**; each is recorded with the alternative it beat and the condition that would reverse it. This document does not re-open one. **Scope:** six *approved* slices, in the dependency order of §2.1–§2.6, plus one **committed, staged** seventh slice (§2.7 — committed by the owner, staged 7a/7b; it carries its own budget, its absorber, a cheaper alternative and a recommendation), landing a palette-only theming system: import a colour scheme from a provider the owner already uses, derive Musaeum's **17** design values from it, and apply them to the whole app including the reader. **Amended 2026-09-15 (amendment round 1).** The first pass understated the change surface: it treated "the app's entire palette lives in `tailwind.config.js`" as the whole truth, and so "config plus CSS" as a sufficient surface. The premise is **false** — seven classes of colour consumer reach a pixel without going through a token utility (§1.3), three of them inside slice 1's config-and-CSS scope and four needing their own edits. Every claim that changed, and why, is in the amendment trail immediately below. Where the independent audit's figure and the orchestrator's re-measurement differ, **the re-measurement is the figure recorded and the audit's is noted beside it**.
 
-**Amended 2026-09-15 (amendment round 2).** Slice 2 landed (uncommitted), and porting `derive.py`
-falsified four claims in round 1's text: the scrim's rule, the status family's return key and its
-floors, the ladder's `mix(…, 'linear')` naming, and — the one that matters most — **AC2.4, whose
-literal clause the reference implementation cannot satisfy on the fixture it names**. Each is corrected
-**in place**, with the superseded sentence kept visible at its site and the measurement that settled it
-in the round-2 trail below. Nothing here re-opens a product decision: J1–J11 stand. The one scope
-change is that **slice 7a no longer owns the status derivation**, because slice 2 shipped it (A13).
+**Amended 2026-09-15 (amendment round 2).** Slice 2 landed (uncommitted), and porting `derive.py` falsified four claims in round 1's text: the scrim's rule, the status family's return key and its floors, the ladder's `mix(…, 'linear')` naming, and — the one that matters most — **AC2.4, whose literal clause the reference implementation cannot satisfy on the fixture it names**. Each is corrected **in place**, with the superseded sentence kept visible at its site and the measurement that settled it in the round-2 trail below. Nothing here re-opens a product decision: J1–J11 stand. The one scope change is that **slice 7a no longer owns the status derivation**, because slice 2 shipped it (A13).
 
-**Supersedes nothing.** `2026-08-13-native-reader-design.md` deliberately left the
-reader's page themes as two authored rows; slice 5 changes that default and says so.
-**Read before implementing:** `docs/invariants/settings-and-editing.md` (`app_config`,
-persisted UI state), `docs/invariants/reader.md` (the reader, its injected page CSS,
-reading position), `docs/invariants/library-views.md` (computed row geometry),
-`docs/invariants/menu-and-branding.md` (the native menu is built once and never rebuilt).
+**Supersedes nothing.** `2026-08-13-native-reader-design.md` deliberately left the reader's page themes as two authored rows; slice 5 changes that default and says so. **Read before implementing:** `docs/invariants/settings-and-editing.md` (`app_config`, persisted UI state), `docs/invariants/reader.md` (the reader, its injected page CSS, reading position), `docs/invariants/library-views.md` (computed row geometry), `docs/invariants/menu-and-branding.md` (the native menu is built once and never rebuilt).
 
-**The reference implementation is `/Users/jasonoh/theme-probe/derive.py`** (pure Python,
-stdlib only) with its findings in `/Users/jasonoh/theme-probe/HANDOFF.md` and its rendered
-output in `preview.html`. The port must reproduce its rules and its measured numbers
-verbatim, with the one hardening named in §2.2 and the one addition named in §2.5, and the
-two further additions amendment round 1 makes (the `scrim` derivation and, if slice 7 lands,
-the status family — both marked as this spec's own, not the prototype's).
+**The reference implementation is `/Users/jasonoh/theme-probe/derive.py`** (pure Python, stdlib only) with its findings in `/Users/jasonoh/theme-probe/HANDOFF.md` and its rendered output in `preview.html`. The port must reproduce its rules and its measured numbers verbatim, with the one hardening named in §2.2 and the one addition named in §2.5, and the two further additions amendment round 1 makes (the `scrim` derivation and, if slice 7 lands, the status family — both marked as this spec's own, not the prototype's).
 
 ---
 
 ## Amendment trail — 2026-09-15, amendment round 1
 
-This round amends in place; nothing here re-opens a settled product decision (1–6 stand), and
-the six approved slices keep their boundaries except where a row below says slice 1 gained a
-line in a file it already owns. Each row names what changed and why, and the section it
-changed.
+This round amends in place; nothing here re-opens a settled product decision (1–6 stand), and the six approved slices keep their boundaries except where a row below says slice 1 gained a line in a file it already owns. Each row names what changed and why, and the section it changed.
 
 | # | What changed | Why |
 |---|---|---|
@@ -65,11 +30,7 @@ changed.
 
 ### Amendment round 2 — 2026-09-15 (post-slice-2 reconciliation)
 
-Slice 2's port was checked against the reference implementation rather than against round 1's prose,
-and four sentences lost. Each is amended in place below with the superseded text still visible at its
-site. The measurements are the orchestrator's: a differential over all 15 real palettes (every derived
-value identical, 1,539 assertions) and three hand-applied mutations, each of which reddened only its
-own criterion.
+Slice 2's port was checked against the reference implementation rather than against round 1's prose, and four sentences lost. Each is amended in place below with the superseded text still visible at its site. The measurements are the orchestrator's: a differential over all 15 real palettes (every derived value identical, 1,539 assertions) and three hand-applied mutations, each of which reddened only its own criterion.
 
 | # | What changed | Why |
 |---|---|---|
@@ -85,10 +46,7 @@ own criterion.
 
 ### Amendment round 3 — 2026-09-16 (slice 3 landed)
 
-Slice 3 was implemented from a contract annex that settled the design questions §2.3 left open, then
-checked two ways: an independent read-only audit whose brief was to falsify that annex, and the
-orchestrator's own mutation run against the shipped tree. Ten sentences lost. Each is amended in
-place below with the superseded text still visible at its site.
+Slice 3 was implemented from a contract annex that settled the design questions §2.3 left open, then checked two ways: an independent read-only audit whose brief was to falsify that annex, and the orchestrator's own mutation run against the shipped tree. Ten sentences lost. Each is amended in place below with the superseded text still visible at its site.
 
 | # | What changed | Why |
 |---|---|---|
@@ -103,52 +61,16 @@ place below with the superseded text still visible at its site.
 | A29 | **`ThemeView` gains `stale`.** §2.3 fixes `{ active, options, defaultId, folder }`; slice 3 lands `{ active, defaultId, stale }` and slice 4 adds `options`/`folder` with the picker it belongs to. J3 said "flag the theme **in the picker row**" — the flag has to exist in the view before a row can carry it. | A divergence declared now rather than discovered in slice 4. |
 | A30 | **Slice 3's file budget is 12 code files, not 9.** The spec's count was short by `electron/main/env.d.ts` (the `*.yaml?raw` declaration §4's own inlining decision needs), `src/types/theme.types.ts` (the shared persisted/view shapes) and `src/App.tsx` (the hook mount). That exceeds `CLAUDE.md`'s ~10-file escalation bound; recorded rather than absorbed silently, since each addition is forced by a mechanism the spec itself mandates and none bends an invariant. | A dispatch that silently exceeds the repo's own escalation threshold is the one governance rule this slice could break with every test green. |
 
-**Repair round (2026-09-16, after the pre-merge review).** The read-only review of the landed tree
-found one BLOCK and four fix-now defects; all five are fixed and each carries a deciding case plus a
-mutation the orchestrator reproduced by hand. **The BLOCK, because it changes what AC3.4's threat
-model means:** `BUILTIN_THEME_SOURCES` is a plain object literal, so a stored `theme_id` of
-`builtin:__proto__` (or `constructor`, `hasOwnProperty`, `toString`, `valueOf`) resolved
-`Object.prototype` rather than `undefined`, the registry's miss-guard never fired, and
-`loadThemeText` threw `TypeError: text.match is not a function` — out of `resolveId` → `readStored` →
-`activeRead` → `activeTheme()`, which is called from `createWindow()`. So a hand-edited row **opened
-no window at all**, falsifying `CLAUDE.md` #12 on the exact threat model AC3.4 exists for. The
-registry now has one sanctioned lookup (`builtinSource`, an own-key check plus a `typeof` re-check).
-The second fatal-class fix is the same shape: `activeRead` guarded *return values*, not exceptions, so
-a database that could not be opened was fatal to startup where before slice 3 `createWindow()` touched
-no database at all — the read is now total and logs instead of throwing. The other three: `applyTokens`
-could only *set* properties, so switching from a status-carrying theme back to the default left 12
-stale `--status-*` channels on `documentElement` (it now reconciles against a frozen list of the 28
-names it owns, and touches none of slice 5's); `ThemeView.defaultId` was decided by no test at all
-(`'builtin:nonsense'` left the suite green); and `useTheme`'s effect applied tokens unguarded, so the
-one path that could throw into React was the theme *change*, not the boot. `applyTokens` is now a
-total function that returns a reason instead of throwing, which is what lets both call sites be
-guarded by the same pure case.
+**Repair round (2026-09-16, after the pre-merge review).** The read-only review of the landed tree found one BLOCK and four fix-now defects; all five are fixed and each carries a deciding case plus a mutation the orchestrator reproduced by hand. **The BLOCK, because it changes what AC3.4's threat model means:** `BUILTIN_THEME_SOURCES` is a plain object literal, so a stored `theme_id` of `builtin:__proto__` (or `constructor`, `hasOwnProperty`, `toString`, `valueOf`) resolved `Object.prototype` rather than `undefined`, the registry's miss-guard never fired, and `loadThemeText` threw `TypeError: text.match is not a function` — out of `resolveId` → `readStored` → `activeRead` → `activeTheme()`, which is called from `createWindow()`. So a hand-edited row **opened no window at all**, falsifying `CLAUDE.md` #12 on the exact threat model AC3.4 exists for. The registry now has one sanctioned lookup (`builtinSource`, an own-key check plus a `typeof` re-check). The second fatal-class fix is the same shape: `activeRead` guarded *return values*, not exceptions, so a database that could not be opened was fatal to startup where before slice 3 `createWindow()` touched no database at all — the read is now total and logs instead of throwing. The other three: `applyTokens` could only *set* properties, so switching from a status-carrying theme back to the default left 12 stale `--status-*` channels on `documentElement` (it now reconciles against a frozen list of the 28 names it owns, and touches none of slice 5's); `ThemeView.defaultId` was decided by no test at all (`'builtin:nonsense'` left the suite green); and `useTheme`'s effect applied tokens unguarded, so the one path that could throw into React was the theme *change*, not the boot. `applyTokens` is now a total function that returns a reason instead of throwing, which is what lets both call sites be guarded by the same pure case.
 
-**One rejected repair, recorded so it is not re-attempted:** making an unresolvable `builtin:` id a
-*validation* failure (so `builtin:__proto__` degrades to the default rather than taking J3's
-keep-and-flag arm). *Rejected* because a builtin dropped from the corpus in a later release produces
-exactly the same read-time shape — an id no longer in the registry — and J3's arm is right for that
-one: the user keeps the theme they chose, from its stored tokens, flagged instead of lost. The two are
-indistinguishable at read time, so the rule would fix a hand-edit at the cost of a real regression.
-*Reversal:* if the picker (slice 4) ever needs to tell "removed scheme" from "never existed", that is
-a corpus-provenance record, not a validation rule.
+**One rejected repair, recorded so it is not re-attempted:** making an unresolvable `builtin:` id a *validation* failure (so `builtin:__proto__` degrades to the default rather than taking J3's keep-and-flag arm). *Rejected* because a builtin dropped from the corpus in a later release produces exactly the same read-time shape — an id no longer in the registry — and J3's arm is right for that one: the user keeps the theme they chose, from its stored tokens, flagged instead of lost. The two are indistinguishable at read time, so the rule would fix a hand-edit at the cost of a real regression. *Reversal:* if the picker (slice 4) ever needs to tell "removed scheme" from "never existed", that is a corpus-provenance record, not a validation rule.
 
 
-**Documentation debts paid in this round** (§4's list): `docs/architecture.md` (ipc/theme.ts, `*.yaml?raw`,
-the stores/hooks/lib listings), `docs/data-contracts.md` (**added to the list — it was in neither §4 nor
-the annex's file table**: the `app_config` census and the quoted `MusaeumAPI` block both move),
-`docs/invariants/settings-and-editing.md` (the three keys, the one-transaction rule, the read-validation
-rule), `CLAUDE.md`'s "Design tokens live in `tailwind.config.js`" line, and `tasks.md`. **Still owed:**
-`CHANGELOG.md` at slice 4 (slice 3 is invisible to the user), and `docs/invariants/reader.md` at slice 5.
+**Documentation debts paid in this round** (§4's list): `docs/architecture.md` (ipc/theme.ts, `*.yaml?raw`, the stores/hooks/lib listings), `docs/data-contracts.md` (**added to the list — it was in neither §4 nor the annex's file table**: the `app_config` census and the quoted `MusaeumAPI` block both move), `docs/invariants/settings-and-editing.md` (the three keys, the one-transaction rule, the read-validation rule), `CLAUDE.md`'s "Design tokens live in `tailwind.config.js`" line, and `tasks.md`. **Still owed:** `CHANGELOG.md` at slice 4 (slice 3 is invisible to the user), and `docs/invariants/reader.md` at slice 5.
 
 ### Amendment round 4 — 2026-09-16 (slice 4 landed)
 
-Slice 4 was implemented from the contract annex (`docs/superpowers/plans/2026-09-16-theming-slice4.md`,
-13 adjudicated decisions), then checked three ways: the orchestrator's own mutation run against the
-shipped tree (four mutations, each reddening only its own criterion), a **live pass** on an isolated
-`MUSAEUM_USER_DATA` instance driven over CDP, and a read-only pre-merge review whose brief was to
-falsify the implementation and its tests. Nine sentences lost; each is amended in place at its site
-as well, and nothing here re-opens a product decision — J1–J11 stand.
+Slice 4 was implemented from the contract annex (`docs/superpowers/plans/2026-09-16-theming-slice4.md`, 13 adjudicated decisions), then checked three ways: the orchestrator's own mutation run against the shipped tree (four mutations, each reddening only its own criterion), a **live pass** on an isolated `MUSAEUM_USER_DATA` instance driven over CDP, and a read-only pre-merge review whose brief was to falsify the implementation and its tests. Nine sentences lost; each is amended in place at its site as well, and nothing here re-opens a product decision — J1–J11 stand.
 
 | # | What changed | Why |
 |---|---|---|
@@ -163,27 +85,9 @@ as well, and nothing here re-opens a product decision — J1–J11 stand.
 | A39 | **A re-scan reports files it already has as imported.** Three unchanged files in the folder and a rescan says "3 imported, 1 rejected" — which is true (they are re-derived and re-upserted) but reads as if three themes were added. | Registered, not fixed: distinguishing *new* from *refreshed* is a third array on `ThemeImportResult` plus its UI and tests, and AC4.2 fixes the shape as `{ imported, rejected }`. `tasks.md` carries it as debt with the shape change named. |
 | A40 | **The live measurements are in §7's ledger** (AC4.2/4.3/4.5 by run, AC4.4 by a controlled drop), with the one residual: *Reveal in Finder* was not exercised live, because the only way to exercise it opens a Finder window on the owner's desktop. | Six of this slice's claims are about a running app. A criterion decided by a run has to record the run. |
 
-**Repair round (2026-09-16, after the pre-merge review).** The read-only review of the landed tree
-found one defect worth blocking a release for, one rule with no decider, one criterion with no
-decider, and a tail of nits; all but the tail are now fixed, each with a deciding case and a
-mutation the orchestrator reproduced by hand.
+**Repair round (2026-09-16, after the pre-merge review).** The read-only review of the landed tree found one defect worth blocking a release for, one rule with no decider, one criterion with no decider, and a tail of nits; all but the tail are now fixed, each with a deciding case and a mutation the orchestrator reproduced by hand.
 
-**The FIX-NOW, and it is the only thing in this slice that a user could see and not explain.** The
-three import handlers composed their answer inline —
-`return { view: getThemeView(), ...importPaths(paths) }` — and an object literal's properties
-evaluate **left to right**, so the view was read *before* the import ran. The returned snapshot
-predated the row it was reporting on, `theme.store` replaced the list with it, and the user's freshly
-imported theme was therefore **absent from the picker**; pressing Refresh made it worse rather than
-better, because the stale snapshot replaced the good list every time, so the row only appeared when
-some *later* interaction happened to re-read the view. Nothing caught it: the handler layer has no
-harness (`ipcMain.handle` is a no-op in the Electron mock, so a handler's return value is invisible
-to the suite) and **every live check in this slice read the view back with a separate `theme.get()`,
-which of course agreed**. The composition now lives in the service as `withThemeView(batch)` — where
-`importer.test.ts` can decide it, and where a handler cannot get the order wrong because the batch is
-its argument — and the three handlers are one line each. Measured on the same instrument, before and
-after: the id was absent from the returned view (and the row never appeared in the UI after a
-Refresh) and is now present, with the row appearing **17 ms** after one press of the refresh control
-and applying in **21 ms** with no key chord. *Reversal:* none — the ordering is now structural.
+**The FIX-NOW, and it is the only thing in this slice that a user could see and not explain.** The three import handlers composed their answer inline — `return { view: getThemeView(), ...importPaths(paths) }` — and an object literal's properties evaluate **left to right**, so the view was read *before* the import ran. The returned snapshot predated the row it was reporting on, `theme.store` replaced the list with it, and the user's freshly imported theme was therefore **absent from the picker**; pressing Refresh made it worse rather than better, because the stale snapshot replaced the good list every time, so the row only appeared when some *later* interaction happened to re-read the view. Nothing caught it: the handler layer has no harness (`ipcMain.handle` is a no-op in the Electron mock, so a handler's return value is invisible to the suite) and **every live check in this slice read the view back with a separate `theme.get()`, which of course agreed**. The composition now lives in the service as `withThemeView(batch)` — where `importer.test.ts` can decide it, and where a handler cannot get the order wrong because the batch is its argument — and the three handlers are one line each. Measured on the same instrument, before and after: the id was absent from the returned view (and the row never appeared in the UI after a Refresh) and is now present, with the row appearing **17 ms** after one press of the refresh control and applying in **21 ms** with no key chord. *Reversal:* none — the ordering is now structural.
 
 The rest of the round:
 
@@ -195,32 +99,11 @@ The rest of the round:
 | A44 | **Two more nits recorded rather than fixed.** `ThemeOption.sourcePath` is shipped to the renderer and read by nothing yet (it is display-only by contract, and slice 6's resolver is its likely first consumer); and `importPaths` runs one transaction *per file*, so a folder of *n* themes costs *n* read-modify-writes over a JSON array that grows to *n* records. | The first is a field with no consumer, not an invariant risk. The second is the price of D6's per-member atomicity, bounded by the user's own folder; it is carried in `tasks.md` with the condition that would change it (a folder in the hundreds, or a scan the user can feel). |
 | A45 | **The extension set is named as four sites.** `ipc/theme.ts`'s dialog filter, `importer.ts`'s `SCANNABLE_EXTENSIONS`, `index.ts`'s dispatch and `AppearanceSection.tsx`'s drop filter must agree, and slice 6 adding `.css` has to find all four or a dropped `.css` is silently ignored. | A35's rule is "the scan ignores what it cannot read", which is only true while the four agree. Cheaper to write down than to debug in slice 6. |
 
-**Measured on the returned tree, by the orchestrator, not self-reported by the implementers.** Gate:
-typecheck 0, lint 0, `npm test` **513 passed / 23 files** (slice 3's baseline 452/22 — the slice landed
-at 508 and the repair round above added five cases), `npm run build` 0.
-Live, on an isolated profile: a batch of five files with one malformed member imports **4 and rejects
-1** with the engine's own reason, and each of the four then applies with its own canvas (`iterm:nord`
-`#2e3440`, `iterm:gruvbox` `#1d2021`, `base16:kanagawa-verify` `#1f1f28`, `base16:dracula-verify`
-`#282a36`); a folder holding three themes plus a `README.md`, a `.css` and a malformed `.yaml` scans
-to **three rows and one rejection**, leaves the directory **byte-identical** (sha256 over name, size
-and mtime of every entry), and is idempotent on a second scan; **one click** on a row repaints
-`--ink-950` in **19 ms** with the modal still open and no ⌘↵ anywhere in the path; a `.yaml` dropped
-on the library grid produces **0** `importProgress` events where a control `.epub` produces 2; and the
-imported library survives a restart (five rows, five swatches each, the active one still active).
-Four mutations, each reddening only its own criterion: the per-row `stale` flag forced false (2 tests
-in `store.test.ts`), `readLibrary` accepting an invalid row (3 tests), `scanFolder` writing a marker
-file into the folder (AC4.3's hash test), and the library arm of the ladder never re-deriving an
-old-engine record (the two J3 tests). Every mutated file was restored byte-identically.
+**Measured on the returned tree, by the orchestrator, not self-reported by the implementers.** Gate: typecheck 0, lint 0, `npm test` **513 passed / 23 files** (slice 3's baseline 452/22 — the slice landed at 508 and the repair round above added five cases), `npm run build` 0. Live, on an isolated profile: a batch of five files with one malformed member imports **4 and rejects 1** with the engine's own reason, and each of the four then applies with its own canvas (`iterm:nord` `#2e3440`, `iterm:gruvbox` `#1d2021`, `base16:kanagawa-verify` `#1f1f28`, `base16:dracula-verify` `#282a36`); a folder holding three themes plus a `README.md`, a `.css` and a malformed `.yaml` scans to **three rows and one rejection**, leaves the directory **byte-identical** (sha256 over name, size and mtime of every entry), and is idempotent on a second scan; **one click** on a row repaints `--ink-950` in **19 ms** with the modal still open and no ⌘↵ anywhere in the path; a `.yaml` dropped on the library grid produces **0** `importProgress` events where a control `.epub` produces 2; and the imported library survives a restart (five rows, five swatches each, the active one still active). Four mutations, each reddening only its own criterion: the per-row `stale` flag forced false (2 tests in `store.test.ts`), `readLibrary` accepting an invalid row (3 tests), `scanFolder` writing a marker file into the folder (AC4.3's hash test), and the library arm of the ladder never re-deriving an old-engine record (the two J3 tests). Every mutated file was restored byte-identically.
 
 ### Amendment round 5 — 2026-09-19 (slice 5 landed)
 
-Slice 5 was built from the annex (`docs/superpowers/plans/2026-09-19-theming-slice5.md`, 8
-adjudicated decisions), then checked three ways: the orchestrator's own eight-mutation campaign
-against the shipped tree, a **live pass** on an isolated `MUSAEUM_USER_DATA` instance driven over
-CDP with a synthetic two-chapter EPUB and the book kept open across the theme switch, and a
-read-only pre-merge review whose brief was to falsify the implementation and its tests. Nine
-sentences lost; each is amended in place at its site as well, nothing here re-opens a product
-decision (J1–J11 stand), and A53's file count is the honest one.
+Slice 5 was built from the annex (`docs/superpowers/plans/2026-09-19-theming-slice5.md`, 8 adjudicated decisions), then checked three ways: the orchestrator's own eight-mutation campaign against the shipped tree, a **live pass** on an isolated `MUSAEUM_USER_DATA` instance driven over CDP with a synthetic two-chapter EPUB and the book kept open across the theme switch, and a read-only pre-merge review whose brief was to falsify the implementation and its tests. Nine sentences lost; each is amended in place at its site as well, nothing here re-opens a product decision (J1–J11 stand), and A53's file count is the honest one.
 
 | # | What changed | Why |
 |---|---|---|
@@ -233,63 +116,19 @@ decision (J1–J11 stand), and A53's file count is the honest one.
 | A52 | **The popover's third option is a two-tone dot** (ink over parchment, tokens only). §2.5 gives the three option values and nothing about their rendering. | The old branch (`ink` ? ink : parchment) would have drawn `auto` as a second `paper`. No new colour: both halves are existing tokens, which is what keeps the dot meaningful under an imported theme. |
 | A53 | **Slice 5 landed as 9 code + 4 test files**, not §5's 6 code + 2 test. §5's row and §2.5's budget sentence are corrected at their sites; the named absorber (`reader-palette.ts` + its test folding into `css.ts` + `css.test.ts`) is **not** taken. | Four files the row never counted: `src/lib/theme/css.ts` (A50's writer — the same undercount A30 found on slice 3), `ReaderSearch.tsx` (A46's consumer), `services/events.ts` and `test/mocks/electron.ts` (A51's wiring). Recorded rather than absorbed silently, as A30/A36 were. |
 
-**Built — slice 5 (2026-09-19).** Gate on the returned tree: typecheck 0, lint 0, `npm test`
-**814 passed / 35 files** (baseline 789/34), `npm run build` 0, `npx prettier --check` clean on all
-14 touched files. Live, on an isolated `MUSAEUM_USER_DATA` profile (a synthetic two-chapter EPUB in
-a scratch library, the app driven over CDP on 9222, the book opened by double-clicking its card and
-**never closed** for the whole run):
+**Built — slice 5 (2026-09-19).** Gate on the returned tree: typecheck 0, lint 0, `npm test` **814 passed / 35 files** (baseline 789/34), `npm run build` 0, `npx prettier --check` clean on all 14 touched files. Live, on an isolated `MUSAEUM_USER_DATA` profile (a synthetic two-chapter EPUB in a scratch library, the app driven over CDP on 9222, the book opened by double-clicking its card and **never closed** for the whole run):
 
-- **The page follows the theme, in place.** With the default theme active the reading pane's
-  screenshot is uniformly `rgb(20,18,16)` = `ink-900`, the *page* colour — not the reader frame's
-  `#0d0b09`. One `window.Musaeum.theme.set('builtin:solarized-light')`, with the book still open,
-  repaints it to `rgb(239,233,215)` = the derived page `#f1ecdb`, again not the frame's `#fdf6e3`
-  (macOS screenshots are colour-managed, so the comparison that matters is the ~13–14 unit distance
-  to the frame colour, not equality with the palette's hex). AC5.1 and AC5.2 both hold live.
-- **AC5.7's round trip is the same measurement.** The pane is uniform *page* colour edge to edge,
-  which is only true if `paginator.js:191`'s string comparison took the resolved branch and
-  `:626/:685/:1113` painted the paginator's own margin with it. A `var()`-valued stylesheet would
-  have left the pane showing the frame's colour instead.
-- **The live stylesheet, read from the live module.** Importing `src/lib/theme/reader-palette.ts` in
-  the running page (Vite serves it) with the live prefs and the live tokens gives exactly today's
-  `ink` row for the default theme (deep-equal to `INK_PALETTE`), a string containing **no `var(`**,
-  `::selection { background: #d4a24e44; }`, and — after the switch — `color-scheme: light`,
-  `background: #f1ecdb`, and `::selection { background: #cb4b1644; }` from the derived link
-  `#cb4b16`.
-- **AC5.4/AC1.7's flip, on the element:** `--shadow-a1/a2/a3` are `0.5/0.35/0.6` on the default and
-  `0.145/0.102/0.175` on solarized-light, with `color-scheme` dark↔light and
-  `getComputedStyle(documentElement).colorScheme` agreeing.
-- **AC5.5, live and stronger than the criterion asked:** `matchMedia('(prefers-color-scheme: light)')`
-  in the renderer flips false→true→false across the two switches. Nothing but the main process's
-  `nativeTheme.themeSource` can move that — the OS appearance never changed — so the on-change wiring
-  is observed, not inferred. *Residual:* `win.setBackgroundColor`'s own effect shows only during a
-  resize flash and is not observable over CDP (the A25 class); its deciders are
-  `windowBackgroundColor`'s unit test and the source walk in `theme/store.test.ts`.
-- **A46's hand-off, measured by pixels** — on a *hit-only* fixture, because the first run's numbers
-  were wrong: the book used then had a link in it, the link colour **is** the derived link colour,
-  and the "705 / 743 px" figures were the link line rather than the outlines. On a fixture with no
-  links in it, so that every coloured pixel on the page is an outline: a search for `ledger` (5
-  hits, one chapter) under solarized-light drew **1,784** px of that theme's derived orange
-  `#cb4b16` and **0** px of the previous hardcoded amber `#d4a24e`; under the default theme the same
-  run drew **1,783** px of `#d4a24e` and **0** px of the orange. The outline colour follows the
-  theme, which is the thing S1 could not do — and the correction is recorded rather than quietly
-  overwritten because it is the kind of figure a later session would otherwise reuse (repair round,
-  A58).
-- **Eight mutations, one per criterion, each reddening only its own case and every file restored
-  byte-identically:** the page mapped to `ink-950`, `SHADOW_REFERENCE` changed, `sanitizePrefs`'
-  fallback changed, `color-scheme` dropped from `OWNED_CSS_VARS`, `linkAlphaHex` reduced to `link`,
-  `nativeScheme` pinned to a constant, `var(--ink-900)` emitted into the page CSS, and the old
-  `${c.link}44` pasted back at the rule.
+- **The page follows the theme, in place.** With the default theme active the reading pane's screenshot is uniformly `rgb(20,18,16)` = `ink-900`, the *page* colour — not the reader frame's `#0d0b09`. One `window.Musaeum.theme.set('builtin:solarized-light')`, with the book still open, repaints it to `rgb(239,233,215)` = the derived page `#f1ecdb`, again not the frame's `#fdf6e3` (macOS screenshots are colour-managed, so the comparison that matters is the ~13–14 unit distance to the frame colour, not equality with the palette's hex). AC5.1 and AC5.2 both hold live.
+- **AC5.7's round trip is the same measurement.** The pane is uniform *page* colour edge to edge, which is only true if `paginator.js:191`'s string comparison took the resolved branch and `:626/:685/:1113` painted the paginator's own margin with it. A `var()`-valued stylesheet would have left the pane showing the frame's colour instead.
+- **The live stylesheet, read from the live module.** Importing `src/lib/theme/reader-palette.ts` in the running page (Vite serves it) with the live prefs and the live tokens gives exactly today's `ink` row for the default theme (deep-equal to `INK_PALETTE`), a string containing **no `var(`**, `::selection { background: #d4a24e44; }`, and — after the switch — `color-scheme: light`, `background: #f1ecdb`, and `::selection { background: #cb4b1644; }` from the derived link `#cb4b16`.
+- **AC5.4/AC1.7's flip, on the element:** `--shadow-a1/a2/a3` are `0.5/0.35/0.6` on the default and `0.145/0.102/0.175` on solarized-light, with `color-scheme` dark↔light and `getComputedStyle(documentElement).colorScheme` agreeing.
+- **AC5.5, live and stronger than the criterion asked:** `matchMedia('(prefers-color-scheme: light)')` in the renderer flips false→true→false across the two switches. Nothing but the main process's `nativeTheme.themeSource` can move that — the OS appearance never changed — so the on-change wiring is observed, not inferred. *Residual:* `win.setBackgroundColor`'s own effect shows only during a resize flash and is not observable over CDP (the A25 class); its deciders are `windowBackgroundColor`'s unit test and the source walk in `theme/store.test.ts`.
+- **A46's hand-off, measured by pixels** — on a *hit-only* fixture, because the first run's numbers were wrong: the book used then had a link in it, the link colour **is** the derived link colour, and the "705 / 743 px" figures were the link line rather than the outlines. On a fixture with no links in it, so that every coloured pixel on the page is an outline: a search for `ledger` (5 hits, one chapter) under solarized-light drew **1,784** px of that theme's derived orange `#cb4b16` and **0** px of the previous hardcoded amber `#d4a24e`; under the default theme the same run drew **1,783** px of `#d4a24e` and **0** px of the orange. The outline colour follows the theme, which is the thing S1 could not do — and the correction is recorded rather than quietly overwritten because it is the kind of figure a later session would otherwise reuse (repair round, A58).
+- **Eight mutations, one per criterion, each reddening only its own case and every file restored byte-identically:** the page mapped to `ink-950`, `SHADOW_REFERENCE` changed, `sanitizePrefs`' fallback changed, `color-scheme` dropped from `OWNED_CSS_VARS`, `linkAlphaHex` reduced to `link`, `nativeScheme` pinned to a constant, `var(--ink-900)` emitted into the page CSS, and the old `${c.link}44` pasted back at the rule.
 
 ---
 
-**Repair round (2026-09-19, after the pre-merge review).** The read-only review of the landed tree
-found **no blocking findings** — no invariant bends, and it re-ran the gate itself (typecheck 0,
-lint 0, prettier clean on all 14 files, 814/35, build 0) — and ten worth-fixing items, of which two
-were substantive: **AC5.1's promised source walk was never written** (the plan's own AC table named
-it, and no test mentioned `ReaderEngine` or `ReaderSearch` at all, so the slice's headline claim was
-undecided), and **AC5.6 had no decider of any kind**. Both are closed, and so is everything else the
-review named; each fix carries a mutation the orchestrator reproduced by hand (M9–M15, all killed,
-every file restored byte-identically). Seven more mutations, so the slice's campaign is **15/15**.
+**Repair round (2026-09-19, after the pre-merge review).** The read-only review of the landed tree found **no blocking findings** — no invariant bends, and it re-ran the gate itself (typecheck 0, lint 0, prettier clean on all 14 files, 814/35, build 0) — and ten worth-fixing items, of which two were substantive: **AC5.1's promised source walk was never written** (the plan's own AC table named it, and no test mentioned `ReaderEngine` or `ReaderSearch` at all, so the slice's headline claim was undecided), and **AC5.6 had no decider of any kind**. Both are closed, and so is everything else the review named; each fix carries a mutation the orchestrator reproduced by hand (M9–M15, all killed, every file restored byte-identically). Seven more mutations, so the slice's campaign is **15/15**.
 
 | # | What changed | Why |
 |---|---|---|
@@ -300,17 +139,11 @@ every file restored byte-identically). Seven more mutations, so the slice's camp
 | A58 | **The search highlight follows a *live* theme change, and the record of the first measurement is corrected.** `ReaderSearch` hoists the resolved colour (`searchColour`), draws with it, and re-runs its own query when it moves (through a `startRef` so a keystroke cannot trigger it). **Measured:** before, a run under solarized-light followed by a switch to the default theme left **1,780** px orange on a dark page; after, the same switch leaves **1,764** px amber on it, and a fresh run under solarized-light draws **1,784** px of `#cb4b16` with **0** amber. | The vendor stores the draw options per run (`view.js:545`), so an outline keeps the colour of the run that drew it — invisible while the reader's page palette was a pair of constants, and a visible mismatch the moment the page, the links and the highlight all follow the app theme. The review called it a suspicion it could not measure; measuring it also caught that round 5's "705/743 px" figures were the fixture's **link line** (the link colour *is* the derived link colour), not the outlines. Both are recorded here rather than quietly replaced. |
 | A59 | **Four small ones:** `SHADOW_VARS` is now the test's source for the four slice-5 names (one list, not two spellings); `OWNED_CSS_VARS`' comment says *names* rather than "vars" (one member, `color-scheme`, is a real property) and its removal reasoning no longer cites the pre-JS frame; the mock's `nativeTheme` entry says in place that it is inert and not AC5.5 coverage; and the vacuous `linkAlphaHex === \`${link}44\`` case became a shape assertion (`/^#[0-9a-f]{6}44$/` plus the link's own six digits), because as written it passed for any link at all — including one that is not a colour. | Each is a sentence a later reader would have trusted: a comment that explains a rule by the wrong mechanism, an export with no consumer, a test that restates the implementation. |
 
-**Recorded, not closed.** AC5.7's *structural* half — that the `html` and `body` rules carry the page
-literal, rather than those values appearing anywhere in the string — is asserted by value, not by
-placement: a swapped pair of rules would still pass the string tests (the live read covered the real
-outcome). And `subscribe`'s own unsubscribe/throw-isolation arms in `services/events.ts` still have
-no unit decider; both are in `tasks.md`.
+**Recorded, not closed.** AC5.7's *structural* half — that the `html` and `body` rules carry the page literal, rather than those values appearing anywhere in the string — is asserted by value, not by placement: a swapped pair of rules would still pass the string tests (the live read covered the real outcome). And `subscribe`'s own unsubscribe/throw-isolation arms in `services/events.ts` still have no unit decider; both are in `tasks.md`.
 
 ### Amendment round 6 — 2026-09-19 (slice 6 landed)
 
-Slice 6 shipped with its own annex (`plans/2026-09-19-theming-slice6.md`), written after the pre-build
-confirmation §2.6's *Not verified* list demanded. The confirmation is the round's first entry because
-it changed the design before any of it was built.
+Slice 6 shipped with its own annex (`plans/2026-09-19-theming-slice6.md`), written after the pre-build confirmation §2.6's *Not verified* list demanded. The confirmation is the round's first entry because it changed the design before any of it was built.
 
 | # | What changed, and the measurement | Why it matters |
 |---|---|---|
@@ -323,56 +156,19 @@ it changed the design before any of it was built.
 | A66 | **Three things this round did *not* decide, said out loud rather than claimed.** `isResolverWindow`'s contract has **no unit decider** — a mutation making it answer `false` leaves the suite green, because its only consumer is `main/index.ts`'s `activate` (no harness; the A25 class); the probe's window accounting (`resolver 1, other 0`) is what decides it today. The **timeout arm of AC6.6 has no decider at all** (no fixture makes Chromium's read hang). **AC6.3's renderer half** — that a real import leaves the renderer's `document.styleSheets` unchanged — needs the running app and was not run. | All three are in `tasks.md` with the instrument each would need. A criterion with no decider is a criterion with a green suite, not a verified one. |
 | A67 | **Two lossy steps the corpus made visible, with instances rather than predictions.** Obsidianite's `--background-modifier-border: rgba(14, 210, 247, 0.05)` is a 5 % veil; dropping the alpha makes it `#0ed2f7`, a saturated cyan hairline. Blue Topaz declares no `--color-*` and its accent is Style-Settings-injected (`var(--main-color)` / `var(--simple-blue-1)`), so it imports with the muted grey (`#8a8a8a`) in place of an accent — disclosed in the row's notes, but the app's amber goes grey for that row. Both have their reversal condition in the annex §8. | A rule whose cost is invisible until a real file exercises it is a rule nobody can weigh. |
 
-**Slice 6's own record.** Gates on the merged tree: `typecheck=0`, `lint=0`, `test=0` (**849 tests, 36
-files**), prettier clean on the ten touched files. Mutation campaign: 4 of my 5 killed (the survivor is
-A66's predicate), plus the implementer's two. Electron probe against the shipped resolver: the corpus
-above, AC6.2's rows, 5 MB in 144 ms, 2 000 declarations in 4 ms, one window at exit. Full evidence and
-the deviations from the annex: `plans/2026-09-19-theming-slice6.md` §8.
+**Slice 6's own record.** Gates on the merged tree: `typecheck=0`, `lint=0`, `test=0` (**849 tests, 36 files**), prettier clean on the ten touched files. Mutation campaign: 4 of my 5 killed (the survivor is A66's predicate), plus the implementer's two. Electron probe against the shipped resolver: the corpus above, AC6.2's rows, 5 MB in 144 ms, 2 000 declarations in 4 ms, one window at exit. Full evidence and the deviations from the annex: `plans/2026-09-19-theming-slice6.md` §8.
 
-One thing about the tree, recorded because it is not visible from the diff: the implementer
-**committed** this session's documentation and the renderer one-liner as `d101a25 "slice 6"` although
-the brief said not to — **and pushed it**, which is why the owner's first `git push` of the slice was
-rejected `non-fast-forward`: the local reset had removed that commit locally while it remained
-`origin/main`. The slice was rebased onto it (two conflicts — the annex as an add/add, and `tasks.md —
-both resolved to this session's newer content) and the rebase result is byte-identical to the commit
-that was gated. Round 6's first account of this said "nothing was pushed"; that was an assumption, not
-a measurement. The probe that decides this round's Electron criteria is a repo script
-(`scripts/theme-resolver-probe.ts`, two commands in its header) rather than a file in `/tmp`; it is not
-yet part of `npm test`.
+One thing about the tree, recorded because it is not visible from the diff: the implementer **committed** this session's documentation and the renderer one-liner as `d101a25 "slice 6"` although the brief said not to — **and pushed it**, which is why the owner's first `git push` of the slice was rejected `non-fast-forward`: the local reset had removed that commit locally while it remained `origin/main`. The slice was rebased onto it (two conflicts — the annex as an add/add, and `tasks.md — both resolved to this session's newer content) and the rebase result is byte-identical to the commit that was gated. Round 6's first account of this said "nothing was pushed"; that was an assumption, not a measurement. The probe that decides this round's Electron criteria is a repo script (`scripts/theme-resolver-probe.ts`, two commands in its header) rather than a file in `/tmp`; it is not yet part of `npm test`.
 
-**The app pass (2026-09-19, run after the round above — the last criterion with no decider).**
-AC6.3's renderer half and D1's dock-reopen regression are both closed, on the built artifact, an
-isolated `MUSAEUM_USER_DATA` profile and CDP. **The import was driven through the UI** — Settings →
-Appearance → *Rescan the theme folder*, with a synthetic Obsidian theme at
-`<userData>/themes/probe-obsidian/theme.css` whose values are computed (`hsl(…, calc(…))`,
-`color-mix()`, `rgba()`), so the resolver had to do real work: two rows landed
-(`obsidian:probe-obsidian`, `obsidian:probe-obsidian:light`) and the light one applied
-(`--ink-950: 245 244 240`, `color-scheme: light`).
+**The app pass (2026-09-19, run after the round above — the last criterion with no decider).** AC6.3's renderer half and D1's dock-reopen regression are both closed, on the built artifact, an isolated `MUSAEUM_USER_DATA` profile and CDP. **The import was driven through the UI** — Settings → Appearance → *Rescan the theme folder*, with a synthetic Obsidian theme at `<userData>/themes/probe-obsidian/theme.css` whose values are computed (`hsl(…, calc(…))`, `color-mix()`, `rgba()`), so the resolver had to do real work: two rows landed (`obsidian:probe-obsidian`, `obsidian:probe-obsidian:light`) and the light one applied (`--ink-950: 245 244 240`, `color-scheme: light`).
 
-- **AC6.3, renderer half:** `document.styleSheets`' *whole surface* — length, and per sheet its
-  `href`, owner tag and rule count, plus the document's `<style>` and `<link rel=stylesheet>` tags —
-  is identical before the import, after the import and after the apply: **1 sheet,
-  `out/renderer/assets/index-BE3r8EVF.css`, 484 rules, 0 style tags, the same link tag**. The
-  criterion's own instrument (`length` alone) would not have seen a sheet swapped for another, so
-  the probe reads the surface, not the count.
-- **D1:** with one `.css` imported, `/json/list` shows **two** page targets — the renderer's and the
-  resolver's `data:text/html;charset=utf-8,…` document. Closing the main window leaves the resolver
-  as the only target; a reopen AppleEvent (`open -a node_modules/electron/dist/Musaeum.app`) then
-  reopens the main window **in the same process** (`6700` before and after — no second instance
-  launched) and it comes up themed. The resolver's own liveness is therefore observable over CDP, and
-  a hidden window is not invisible to the target list.
-- Harness: `/tmp/musaeum-pass/app-pass-probe.py` (scratch, like the resolver probe was before it
-  moved into the repo; it re-takes its own numbers when re-run against a new build). It is the same
-  profile and the same theme the 7a pass below reuses.
+- **AC6.3, renderer half:** `document.styleSheets`' *whole surface* — length, and per sheet its `href`, owner tag and rule count, plus the document's `<style>` and `<link rel=stylesheet>` tags — is identical before the import, after the import and after the apply: **1 sheet, `out/renderer/assets/index-BE3r8EVF.css`, 484 rules, 0 style tags, the same link tag**. The criterion's own instrument (`length` alone) would not have seen a sheet swapped for another, so the probe reads the surface, not the count.
+- **D1:** with one `.css` imported, `/json/list` shows **two** page targets — the renderer's and the resolver's `data:text/html;charset=utf-8,…` document. Closing the main window leaves the resolver as the only target; a reopen AppleEvent (`open -a node_modules/electron/dist/Musaeum.app`) then reopens the main window **in the same process** (`6700` before and after — no second instance launched) and it comes up themed. The resolver's own liveness is therefore observable over CDP, and a hidden window is not invisible to the target list.
+- Harness: `/tmp/musaeum-pass/app-pass-probe.py` (scratch, like the resolver probe was before it moved into the repo; it re-takes its own numbers when re-run against a new build). It is the same profile and the same theme the 7a pass below reuses.
 
 ### Amendment round 7 — 2026-09-19 (slice 7a landed)
 
-Slice 7a was built from the annex (`docs/superpowers/plans/2026-09-19-theming-slice7a.md`, six
-adjudicated readings D1–D6), implemented by a dispatched renderer child and then **checked by the
-orchestrator on the returned tree**: gates re-run, mutation campaign re-run, and the app pass run —
-including the *before* column, taken on the same profile and the same instrument before the slice was
-built. Nothing here re-opens a product decision: J1, J2, J5 and A28 stand, and A13's scope cut is
-what made the slice ten files rather than fifteen.
+Slice 7a was built from the annex (`docs/superpowers/plans/2026-09-19-theming-slice7a.md`, six adjudicated readings D1–D6), implemented by a dispatched renderer child and then **checked by the orchestrator on the returned tree**: gates re-run, mutation campaign re-run, and the app pass run — including the *before* column, taken on the same profile and the same instrument before the slice was built. Nothing here re-opens a product decision: J1, J2, J5 and A28 stand, and A13's scope cut is what made the slice ten files rather than fifteen.
 
 | # | What changed | Why |
 |---|---|---|
@@ -385,25 +181,11 @@ what made the slice ten files rather than fifteen.
 | A74 | **§4's tallies were approximate; its rows were not.** 13 `text-red-400` sites (the fourteenth red text site is the `text-red-300` of A70), and the status migration is **21 lines / 26 utility names**, not "20 sites". The honest budget: **10 code files by §2.7's convention** (`src/index.css` counted 0) / 11 edited, **3 test files** rather than 1 — `store.test.ts`, `derive.test.ts` and `css.test.ts` each carried their own `:root` property-count assertion, which is the absence-inversion class this repo keeps meeting — and **J5's two-file `gold-200` dispatch after it**. | A spec's parenthetical is what the next session reconstructs the case from. The count assertion in a third file was found by the implementer's grep, not by the dispatch's — *grep for the count, not for the file*. |
 | A75 | **The `ok` family ships wired but unconsumed, and so do the `*-600` steps.** §2.7 item 4's `bg-emerald-500 → bg-ok-500` has no site inside the ten files (its only occurrence is `Sidebar.tsx:22`, beside its `bg-red-500` twin at `:25`), so both go to **7b**; `BookDetail.tsx`'s hairline is still the absorber. | J2's cut is what puts them there, and naming them is what stops a later reader concluding the family is dead code. |
 
-**Built — slice 7a.** Gates on the returned tree (the orchestrator's own run, not the
-implementer's): `typecheck=0`, `lint=0`, `npm test` **852 passed / 36 files** (slice 6's 849/36, so
-the new pin added three cases), `npm run build=0`. The emission check: `.bg-scrim\/80`,
-`.ring-parchment\/5`, `rgb(var(--status-danger-500) / 0.4)` and `/ 0.6`, `.text-gold-300`,
-`.bg-gold-400`, and **zero** `gold-200` rules. The migration's diff is 12 `bg-scrim/` lines, 1
-`ring-parchment/5`, 21 status lines, and `grep -c -E "red-|ink-950/|ring-white"` over the nine
-component files returns **0**. Live, the `gold-200` fix is exactly the tick the defect was measured
-on: `rgb(232,201,135)` = `gold-300`, where the four classes previously computed nothing and inherited
-`rgb(125,114,96)`. Row geometry is unmoved: `tr` 37 px (`style: 36px` + the 1 px collapsed border)
-and a card 146×294 = cover 218 + `CARD_META_MARGIN` 8 + `CARD_META_HEIGHT` 68. Full evidence,
-deviations and the escalations the child raised are in the annex §8.
+**Built — slice 7a.** Gates on the returned tree (the orchestrator's own run, not the implementer's): `typecheck=0`, `lint=0`, `npm test` **852 passed / 36 files** (slice 6's 849/36, so the new pin added three cases), `npm run build=0`. The emission check: `.bg-scrim\/80`, `.ring-parchment\/5`, `rgb(var(--status-danger-500) / 0.4)` and `/ 0.6`, `.text-gold-300`, `.bg-gold-400`, and **zero** `gold-200` rules. The migration's diff is 12 `bg-scrim/` lines, 1 `ring-parchment/5`, 21 status lines, and `grep -c -E "red-|ink-950/|ring-white"` over the nine component files returns **0**. Live, the `gold-200` fix is exactly the tick the defect was measured on: `rgb(232,201,135)` = `gold-300`, where the four classes previously computed nothing and inherited `rgb(125,114,96)`. Row geometry is unmoved: `tr` 37 px (`style: 36px` + the 1 px collapsed border) and a card 146×294 = cover 218 + `CARD_META_MARGIN` 8 + `CARD_META_HEIGHT` 68. Full evidence, deviations and the escalations the child raised are in the annex §8.
 
 ### Amendment round 8 — 2026-09-19 (slice 7b landed)
 
-Slice 7b — the sweep — was built from its annex (`docs/superpowers/plans/2026-09-19-theming-slice7b.md`,
-seven adjudicated readings D1–D7), the 15-line migration implemented by a dispatched child and then
-**checked by the orchestrator on the returned tree** (diff read against the annex's table, gates
-re-run, campaign run, app pass run, every claim re-measured). Nothing here re-opens J1, J2, A28 or
-A69; the two corrections below are *figures*, and the last row is the slice's own headline bug.
+Slice 7b — the sweep — was built from its annex (`docs/superpowers/plans/2026-09-19-theming-slice7b.md`, seven adjudicated readings D1–D7), the 15-line migration implemented by a dispatched child and then **checked by the orchestrator on the returned tree** (diff read against the annex's table, gates re-run, campaign run, app pass run, every claim re-measured). Nothing here re-opens J1, J2, A28 or A69; the two corrections below are *figures*, and the last row is the slice's own headline bug.
 
 | # | What changed | Why |
 |---|---|---|
@@ -414,72 +196,26 @@ A69; the two corrections below are *figures*, and the last row is the slice's ow
 | A80 | **AC8.4's decider is the walk in the gate plus the recorded grep; the two build-shaped criteria have none, and say so.** The walk (`src/lib/theme/palette-scan.test.ts`, three cases) decides *presence of a stock name* over `src/**` and `index.html` — no exemption, test files included. *That a migrated name emits its rule* is decided by the Tailwind build read; *that a site paints the theme's value* by the app pass. | A72's class is narrowed, not abolished: a class name still has no DOM harness. Naming which instrument decides which row is the difference between a closed criterion and one that merely has no red. |
 | A81 | **Residuals this slice does not close:** `Toasts.tsx:7`'s error row could not be lit in the probe (a nonexistent path and a malformed `.epub` raised no `[role=alert]` card, and the second import call did not return within 120 s — a probe observation, not a reproduced defect); and an import of a malformed file not reporting through the toast surface is **captured in `tasks.md` as an unscheduled observation about the refresh-feedback surface**, not as theming debt. | A residual with an owner is a decision; a residual left in a harness log is the next session's coin flip. The 120 s non-return is explicitly *not* called a bug because the eval was not timeout-bounded — the instrument could not tell "hung" from "slow". |
 
-**Built — slice 7b.** Gates on the returned tree (the orchestrator's own run): `typecheck=0`,
-`lint=0`, `npm test` **855 passed / 37 files** (7a's 852/36 — the walk adds one file and three
-cases), `npm run build=0`; prettier clean on 7 of the nine touched files, the two exceptions dirty at
-`HEAD` in regions the slice never touched (A73's rule, re-measured). Acceptance: **the grep reaches
-0** over `src/` + `index.html`; the emitted sheet carries **0 stock-hue rules** and **0 white/black
-rules** with all fourteen migrated rules and their alpha forms intact; the mutation campaign is
-**7/7 killed** (the last three are the walk's own anti-vacuity cases — the first slice of this feature
-with no GREEN row). The 15-line diff is the annex's table, name for name. Full evidence, the
-self-caught bug's numbers and the residuals are in the annex §8.
+**Built — slice 7b.** Gates on the returned tree (the orchestrator's own run): `typecheck=0`, `lint=0`, `npm test` **855 passed / 37 files** (7a's 852/36 — the walk adds one file and three cases), `npm run build=0`; prettier clean on 7 of the nine touched files, the two exceptions dirty at `HEAD` in regions the slice never touched (A73's rule, re-measured). Acceptance: **the grep reaches 0** over `src/` + `index.html`; the emitted sheet carries **0 stock-hue rules** and **0 white/black rules** with all fourteen migrated rules and their alpha forms intact; the mutation campaign is **7/7 killed** (the last three are the walk's own anti-vacuity cases — the first slice of this feature with no GREEN row). The 15-line diff is the annex's table, name for name. Full evidence, the self-caught bug's numbers and the residuals are in the annex §8.
 
 ---
 
 ## 1. The problem, and what is true today
 
-Musaeum's palette is compiled in. `tailwind.config.js` holds every *token* as a hex
-literal (`ink` 950/900/850/800/700/600/500, `parchment` DEFAULT/dim/faint, `gold`
-300/400/500/600), and 28 files under `src/` consume those values as Tailwind utility
-classes. Nothing can change a colour without editing that config and rebuilding, and
-there is no path for a user to say "make this look like Gruvbox".
+Musaeum's palette is compiled in. `tailwind.config.js` holds every *token* as a hex literal (`ink` 950/900/850/800/700/600/500, `parchment` DEFAULT/dim/faint, `gold` 300/400/500/600), and 28 files under `src/` consume those values as Tailwind utility classes. Nothing can change a colour without editing that config and rebuilding, and there is no path for a user to say "make this look like Gruvbox".
 
-**Amended (A1): "the app's entire palette lives in `tailwind.config.js`" is false, and
-therefore "config plus CSS is the change surface" is an insufficient one.** The config holds
-every token — but a token utility is only one of the ways a colour reaches a pixel. Seven
-classes of colour consumer sit outside it (§1.3), and for four of them no config or CSS change
-reaches the site at all. The 28-file figure above is still true (F3): it counts *token-utility*
-consumers, and it is a floor for the change surface, not the surface.
+**Amended (A1): "the app's entire palette lives in `tailwind.config.js`" is false, and therefore "config plus CSS is the change surface" is an insufficient one.** The config holds every token — but a token utility is only one of the ways a colour reaches a pixel. Seven classes of colour consumer sit outside it (§1.3), and for four of them no config or CSS change reaches the site at all. The 28-file figure above is still true (F3): it counts *token-utility* consumers, and it is a floor for the change surface, not the surface.
 
 Consequences, all measured — three from the first pass, one added in amendment round 1:
 
-1. **The reader carries a second, hand-copied palette.**
-   `src/components/reader/ReaderEngine.tsx:48-50` holds a `PALETTE` const with 8 hex
-   values — `ink` and `paper` rows — consumed at line 62 and interpolated into an
-   injected stylesheet at lines 64–106. Its own comment (line 46) states the `paper` row
-   "has no token counterpart — the app has no light theme to borrow from", and line 45
-   says "a palette change has to update this table too". It is a fork waiting to drift.
-   **[A46/A47 — slice 5 landed, and this paragraph's present tense is no longer true.** The
-   table is gone; the page is derived from the active theme in
-   `src/lib/theme/reader-palette.ts`, and the injected stylesheet moved there with it
-   (`readerPageCss`). The paragraph is kept because it is the *diagnosis* this slice answers
-   — the same treatment §1's consequence 2 got from A23.]**
-2. **Main process paints a colour the renderer may not agree with.**
-   `electron/main/index.ts:94` is `backgroundColor: '#0d0b09'` — the only hex literal
-   anywhere under `electron/` — so any light theme flashes near-black at window creation.
-   **Amended (A23, slice 3 landed):** the literal is gone. It is now
-   `backgroundColor: windowBackgroundColor(activeTheme().tokens)` at `index.ts:100`, and the hex
-   survives only as `MUSAEUM_DEFAULT_TOKENS`, which a test pins against `src/index.css`'s `:root`.
-   The paragraph's *diagnosis* is what slice 3 answers; its present-tense reading of the code is
-   no longer true.
-3. **The token names are shape, not role.** `ink` / `parchment` / `gold` describe today's
-   particular aesthetic. They keep their names in v1 (product decision 6), which is
-   fortunate for a different reason: the CSS variable names and the derived-value keys can
-   then be the same words, so the derivation output maps to the stylesheet with no
-   translation table.
-4. **Seven classes of colour consumer are not token utilities at all** (amendment round 1;
-   enumerated with file and line in §1.3): an undefined palette step used 4 times, 63
-   opacity-modified token utilities across 20 files, 12 veil sites across 9 files, 53
-   stock-palette utilities across 16 files, a root `color-scheme` that does not exist while
-   two native controls already consume the accent token, 2 gradient sites, and the reader's
-   injected stylesheet under two hard constraints from the vendored engine. Separately, a
-   token *rename* would reach 543 token-utility sites across 28 files (G7) — which is the
-   number product decision 6 is protecting.
+1. **The reader carries a second, hand-copied palette.** `src/components/reader/ReaderEngine.tsx:48-50` holds a `PALETTE` const with 8 hex values — `ink` and `paper` rows — consumed at line 62 and interpolated into an injected stylesheet at lines 64–106. Its own comment (line 46) states the `paper` row "has no token counterpart — the app has no light theme to borrow from", and line 45 says "a palette change has to update this table too". It is a fork waiting to drift. **[A46/A47 — slice 5 landed, and this paragraph's present tense is no longer true.** The table is gone; the page is derived from the active theme in `src/lib/theme/reader-palette.ts`, and the injected stylesheet moved there with it (`readerPageCss`). The paragraph is kept because it is the *diagnosis* this slice answers — the same treatment §1's consequence 2 got from A23.]**
+2. **Main process paints a colour the renderer may not agree with.** `electron/main/index.ts:94` is `backgroundColor: '#0d0b09'` — the only hex literal anywhere under `electron/` — so any light theme flashes near-black at window creation. **Amended (A23, slice 3 landed):** the literal is gone. It is now `backgroundColor: windowBackgroundColor(activeTheme().tokens)` at `index.ts:100`, and the hex survives only as `MUSAEUM_DEFAULT_TOKENS`, which a test pins against `src/index.css`'s `:root`. The paragraph's *diagnosis* is what slice 3 answers; its present-tense reading of the code is no longer true.
+3. **The token names are shape, not role.** `ink` / `parchment` / `gold` describe today's particular aesthetic. They keep their names in v1 (product decision 6), which is fortunate for a different reason: the CSS variable names and the derived-value keys can then be the same words, so the derivation output maps to the stylesheet with no translation table.
+4. **Seven classes of colour consumer are not token utilities at all** (amendment round 1; enumerated with file and line in §1.3): an undefined palette step used 4 times, 63 opacity-modified token utilities across 20 files, 12 veil sites across 9 files, 53 stock-palette utilities across 16 files, a root `color-scheme` that does not exist while two native controls already consume the accent token, 2 gradient sites, and the reader's injected stylesheet under two hard constraints from the vendored engine. Separately, a token *rename* would reach 543 token-utility sites across 28 files (G7) — which is the number product decision 6 is protecting.
 
 ### 1.1 The derived contract — 17 values, and how many the brief calls it
 
-A theme supplies a palette. It does not supply the structure Musaeum needs. The values
-that must exist for a theme to be a theme:
+A theme supplies a palette. It does not supply the structure Musaeum needs. The values that must exist for a theme to be a theme:
 
 | Group | Values | Count |
 |---|---|---|
@@ -491,36 +227,13 @@ that must exist for a theme to be a theme:
 | Shadow | a derived shadow *strength* | 1 |
 | **Total** | | **17** |
 
-**Three counting figures, and why two of them are superseded.** The dispatch brief calls this
-"the 15 derived tokens" and then lists 16 values; `theme-probe/derive.py:11` calls it
-"Musaeum's 14 design tokens"; the first pass of this spec recorded 16. **The figure for the
-set as amended is 17** — 7 ink steps + 3 parchment steps + 4 gold steps + `on-accent` +
-`scrim` + the derived `shadow` strength. The **15** and **16** are recorded here as superseded
-rather than overwritten, so anyone holding an older number finds out here why it moved. (The
-seventeen are the *core* set. If §2.7's slice 7 lands it adds a status *family*
-— `danger`/`ok`/`warn` with their `on-*` foregrounds — which is a new family, not a
-retroactive eighteenth core value; §2.3's validation rule is written as "every value the
-derivation emits" precisely so it grows with the family instead of being wrong about it.)
+**Three counting figures, and why two of them are superseded.** The dispatch brief calls this "the 15 derived tokens" and then lists 16 values; `theme-probe/derive.py:11` calls it "Musaeum's 14 design tokens"; the first pass of this spec recorded 16. **The figure for the set as amended is 17** — 7 ink steps + 3 parchment steps + 4 gold steps + `on-accent` + `scrim` + the derived `shadow` strength. The **15** and **16** are recorded here as superseded rather than overwritten, so anyone holding an older number finds out here why it moved. (The seventeen are the *core* set. If §2.7's slice 7 lands it adds a status *family* — `danger`/`ok`/`warn` with their `on-*` foregrounds — which is a new family, not a retroactive eighteenth core value; §2.3's validation rule is written as "every value the derivation emits" precisely so it grows with the family instead of being wrong about it.)
 
-**Why `scrim` is a role and not a ramp step** — this is G3, and it is the reason the figure
-moved at all. `ink-950` is already doing two unrelated jobs: *canvas* (`src/index.css:14` body
-background, `ReaderView.tsx:166` the reader's full-screen frame, `ReaderToc.tsx:12` the TOC
-sidebar, `ReaderPrefsPopover.tsx:48` a theme swatch) and *veil* (`bg-ink-950/70` and `/80` in
-twelve places, §1.3 C3). Those two jobs want **opposite** luminance under a flip. The ramp
-carries "how far from the canvas along the palette's own bg→fg axis" — so on a light provider
-palette, `ink-950` *is* the canvas and therefore becomes the **lightest** tone in the set. Every
-one of the twelve veils then inverts from a darkening curtain into a white wash, and the
-`text-gold-400` glyphs on the four over-cover chips (`BookCard.tsx:98, 114, 128, 167`) become
-gold on near-white. No ramp step can supply a veil, because a veil's requirement — "darker than
-whatever is behind it" — is not a position on the axis. It is the same class of role as
-`on-accent`: a value the app needs that no provider supplies, so it must be derived and
-floored like the others (§2.2), and it is the second such role this app has had to invent.
+**Why `scrim` is a role and not a ramp step** — this is G3, and it is the reason the figure moved at all. `ink-950` is already doing two unrelated jobs: *canvas* (`src/index.css:14` body background, `ReaderView.tsx:166` the reader's full-screen frame, `ReaderToc.tsx:12` the TOC sidebar, `ReaderPrefsPopover.tsx:48` a theme swatch) and *veil* (`bg-ink-950/70` and `/80` in twelve places, §1.3 C3). Those two jobs want **opposite** luminance under a flip. The ramp carries "how far from the canvas along the palette's own bg→fg axis" — so on a light provider palette, `ink-950` *is* the canvas and therefore becomes the **lightest** tone in the set. Every one of the twelve veils then inverts from a darkening curtain into a white wash, and the `text-gold-400` glyphs on the four over-cover chips (`BookCard.tsx:98, 114, 128, 167`) become gold on near-white. No ramp step can supply a veil, because a veil's requirement — "darker than whatever is behind it" — is not a position on the axis. It is the same class of role as `on-accent`: a value the app needs that no provider supplies, so it must be derived and floored like the others (§2.2), and it is the second such role this app has had to invent.
 
 ### 1.2 What is true today, as measured
 
-Every line below was executed or read on **clean HEAD `bdc54ec`** ("agent config + cc
-optimization"), working tree clean, on 2026-09-15. The dispatch brief's fact numbers are
-kept so a disagreement is traceable.
+Every line below was executed or read on **clean HEAD `bdc54ec`** ("agent config + cc optimization"), working tree clean, on 2026-09-15. The dispatch brief's fact numbers are kept so a disagreement is traceable.
 
 | # | Claim | Measured | Method |
 |---|---|---|---|
@@ -537,23 +250,13 @@ kept so a disagreement is traceable.
 | F11 | The prototype measured 7 palettes × 6 audits with zero failures, and established that a regex scrape resolves 1 of the 5 installed Obsidian themes | **TRUE** | re-ran `python3 derive.py`: gruvbox-dark-hard / nord / solarized-dark / catppuccin-latte / iterm gruvbox / iterm nord / obsidian halcyon each print 6 audits, all `OK`. `Things`, `Tokyo Night`, `Blue Topaz`, `Dracula + LYT` each print `roles unresolvable by scraping` |
 | F12 | tinted-theming/schemes default branch is `spec-0.11` with 340 files in `base16/`, MIT; mbadolato/iTerm2-Color-Schemes has 450+ schemes and its licence was not verified | **First half TRUE; second half now resolved (an upgrade, not a contradiction)** | GitHub API: `tinted-theming/schemes` → `default_branch: spec-0.11`, `license.spdx_id: MIT`, `base16/` at that ref → **340 entries** (339 `.yaml` + 1 `.yml`). `mbadolato/iTerm2-Color-Schemes` → `default_branch: master`, `license.spdx_id: NOASSERTION`, `schemes/` → **614** `.itermcolors` files (so "450-plus" is true but understated). I then fetched the repo's `LICENSE`: it **is MIT** ("Copyright (c) 2011 to Present Mark Badolato"), with an explicit carve-out — *"The copyright/license for each individual theme belongs to the author of that theme."* The collection licence therefore does **not** cover the schemes inside it; per-scheme attribution is required if any of them is ever vendored. Nothing in this spec vendors from that collection (see §2.3) |
 
-Facts F1–F12: **none false.** F8's count is the only wrong number; F12's second half moved
-from unverified to verified in the direction of a *stricter* constraint.
+Facts F1–F12: **none false.** F8's count is the only wrong number; F12's second half moved from unverified to verified in the direction of a *stricter* constraint.
 
-Two more things read but not asserted as facts: `vitest.config.ts` runs
-`environment: 'node'`, `pool: 'forks'`, and includes `src/**/*.test.ts`,
-`electron/**/*.test.ts`, `test/**/*.test.ts` — **there is no jsdom and no component test
-runner**, so anything that needs a DOM cannot be unit-tested (this shapes §3 and §5). And
-`test/mocks/electron.ts` exports `class BrowserWindow {}` — an empty class, so no existing
-test can observe window-construction options (slice 3 needs it to).
+Two more things read but not asserted as facts: `vitest.config.ts` runs `environment: 'node'`, `pool: 'forks'`, and includes `src/**/*.test.ts`, `electron/**/*.test.ts`, `test/**/*.test.ts` — **there is no jsdom and no component test runner**, so anything that needs a DOM cannot be unit-tested (this shapes §3 and §5). And `test/mocks/electron.ts` exports `class BrowserWindow {}` — an empty class, so no existing test can observe window-construction options (slice 3 needs it to).
 
 ### 1.3 The seven classes of colour consumer that live outside token-in-Tailwind-utilities
 
-"Outside" means the colour reaches a pixel through something that is not a token utility class
-— either because the class **does not exist**, or because the utility **resolves but carries
-the wrong role**, or because the value is **not a Tailwind class at all**. All figures
-re-measured on HEAD `bdc54ec` in amendment round 1 (§1.4 carries the raw numbers and what was
-found false).
+"Outside" means the colour reaches a pixel through something that is not a token utility class — either because the class **does not exist**, or because the utility **resolves but carries the wrong role**, or because the value is **not a Tailwind class at all**. All figures re-measured on HEAD `bdc54ec` in amendment round 1 (§1.4 carries the raw numbers and what was found false).
 
 | # | Class | Sites / files | Inside slice 1's config-and-CSS scope? |
 |---|---|---|---|
@@ -565,123 +268,25 @@ found false).
 | C6 | Token gradients | 2 / 1 line | **Yes** — both stops are utilities, no file changes |
 | C7 | The reader's injected stylesheet, plus the engine's read-back | 2 files, 8 interpolation sites | **No** — slice 5's, under two hard constraints |
 
-**C1 — a palette step that does not exist.** Four sites in two files, all naming `gold-200`:
-`src/components/library/SelectionPanel.tsx:77` (`text-gold-200`), and
-`src/components/library/ListView.tsx:88`, `:207` (`text-gold-200`) and `:211` (`bg-gold-200`).
-`tailwind.config.js:24-29` defines `gold` 300/400/500/600 — there is no `gold-200`.
-**Executed, not inferred:** a real Tailwind build (`./node_modules/.bin/tailwindcss -c
-tailwind.config.js -i src/index.css -o /tmp/tw-out.css`) contains **zero** rules matching
-`gold-200`, while `.text-gold-300` and `.bg-ink-950` are present as controls. The four classes
-therefore paint nothing at all: the selection panel's "Select" button (`SelectionPanel.tsx:77`)
-falls back to its inherited parchment on a gold tint instead of gold, and the list view's
-checkbox row and tri-state mark lose their gold. **This is a live pre-existing bug, independent
-of theming** — it exists at HEAD, before any slice. *Scope:* **not** slice 1. The config cannot
-fix it (inventing a `gold-200` step changes the ramp's shape and every theme's contrast
-relationships), and editing the two components changes pixels, which slice 1's AC1.1/AC1.2
-forbid. Registered, remedy recommended, and deliberately not fixed by this spec (§6, open
-questions).
+**C1 — a palette step that does not exist.** Four sites in two files, all naming `gold-200`: `src/components/library/SelectionPanel.tsx:77` (`text-gold-200`), and `src/components/library/ListView.tsx:88`, `:207` (`text-gold-200`) and `:211` (`bg-gold-200`). `tailwind.config.js:24-29` defines `gold` 300/400/500/600 — there is no `gold-200`. **Executed, not inferred:** a real Tailwind build (`./node_modules/.bin/tailwindcss -c tailwind.config.js -i src/index.css -o /tmp/tw-out.css`) contains **zero** rules matching `gold-200`, while `.text-gold-300` and `.bg-ink-950` are present as controls. The four classes therefore paint nothing at all: the selection panel's "Select" button (`SelectionPanel.tsx:77`) falls back to its inherited parchment on a gold tint instead of gold, and the list view's checkbox row and tri-state mark lose their gold. **This is a live pre-existing bug, independent of theming** — it exists at HEAD, before any slice. *Scope:* **not** slice 1. The config cannot fix it (inventing a `gold-200` step changes the ramp's shape and every theme's contrast relationships), and editing the two components changes pixels, which slice 1's AC1.1/AC1.2 forbid. Registered, remedy recommended, and deliberately not fixed by this spec (§6, open questions).
 
-**C2 — opacity-modified token utilities.** 63 sites across 20 files. Most frequent, measured:
-`bg-ink-950/80` 9, `focus:border-gold-500/60` 4, `placeholder:text-parchment-faint/50` 3,
-`focus:ring-gold-500/30` 3, `hover:border-gold-400/60` 3, `bg-ink-950/70` 3,
-`hover:bg-gold-500/10` 3, `focus-visible:ring-gold-400/70` 2, `text-gold-400/80` 2,
-`bg-gold-500/20` 2, `bg-ink-850/95` 2, and a tail of twos and ones down to
-`bg-gold-500/40` and `border-ink-800/60` (the full breakdown is recorded in the amendment
-round's measurement ledger, §7). The audit's broader count of **78** also swept in
-stock-palette opacity sites such as `bg-red-500/40` and `ring-white/5`; those are C4, not C2.
-**63 is the token-class figure and is the one this spec uses.** *Scope:* **yes, and only
-because of the form.** No file changes; but if the config emits a plain `var(--hex)`, all 63
-become invalid CSS in 20 files slice 1 is not permitted to touch — silently (§2.1, AC1.3).
+**C2 — opacity-modified token utilities.** 63 sites across 20 files. Most frequent, measured: `bg-ink-950/80` 9, `focus:border-gold-500/60` 4, `placeholder:text-parchment-faint/50` 3, `focus:ring-gold-500/30` 3, `hover:border-gold-400/60` 3, `bg-ink-950/70` 3, `hover:bg-gold-500/10` 3, `focus-visible:ring-gold-400/70` 2, `text-gold-400/80` 2, `bg-gold-500/20` 2, `bg-ink-850/95` 2, and a tail of twos and ones down to `bg-gold-500/40` and `border-ink-800/60` (the full breakdown is recorded in the amendment round's measurement ledger, §7). The audit's broader count of **78** also swept in stock-palette opacity sites such as `bg-red-500/40` and `ring-white/5`; those are C4, not C2. **63 is the token-class figure and is the one this spec uses.** *Scope:* **yes, and only because of the form.** No file changes; but if the config emits a plain `var(--hex)`, all 63 become invalid CSS in 20 files slice 1 is not permitted to touch — silently (§2.1, AC1.3).
 
-**C3 — scrim sites: `bg-ink-950` with a slash alpha, used as a veil.** Twelve sites in nine
-files: `src/components/settings/SettingsModal.tsx:137` (`/80`),
-`src/components/migration/MigrationWizard.tsx:110` (`/80`),
-`src/components/metadata/ConflictQueue.tsx:42` (`/80`),
-`src/components/library/RemoveFromDeviceDialog.tsx:49` (`/80`),
-`src/components/library/ImportOverlay.tsx:130` (`/70`),
-`src/components/library/DeleteSelectionDialog.tsx:59` (`/80`),
-`src/components/library/DeleteBookDialog.tsx:76` (`/80`),
-`src/components/library/BookEditor.tsx:195` (`/80`), and
-`src/components/library/BookCard.tsx:98` (`/70`), `:114` (`/80`), `:128` (`/70`),
-`:167` (`/80`). *(Correction, A8: the dispatch's file list named `BookDetail.tsx` — which
-contains no `bg-ink-950` at all — and omitted `BookCard.tsx`, which has four of the twelve.)
-Two jobs are mixed in this set and a slice must serve both: **eight are modal veils** (a `/80`
-or `/70` panel behind a dialog) and **four are over-cover legibility chips** — gold and
-`parchment-dim` glyphs on an `ink-950` chip laid over cover art, where the chip is the only
-thing keeping them readable. On a light theme all twelve invert: the modal backdrop goes from
-a darkening curtain to a white wash, and the chips become gold on near-white. *Scope:* **no.**
-The class itself keeps resolving (C2's form), and slice 1 leaves the pixels unchanged because
-`--scrim` defaults to `13 11 9` (A5) — but the *role* is wrong the moment the ramp flips, which
-is why `scrim` is a derived token (§1.1) and the twelve sites are a named migration (§2.7).
-The alphas stay as authored: the migration is a rename (`bg-ink-950/80` → `bg-scrim/80`), not a
-re-design, so the veils keep their measured strengths. Note the *other* meaning of the same
-class, which is exactly why a ramp step cannot be reused: `bg-ink-950` with **no** alpha means
-*canvas* at `src/index.css:14`, `ReaderView.tsx:166`, `ReaderToc.tsx:12` and
-`ReaderPrefsPopover.tsx:48` (a theme swatch) — one class, two roles, opposite requirements.
+**C3 — scrim sites: `bg-ink-950` with a slash alpha, used as a veil.** Twelve sites in nine files: `src/components/settings/SettingsModal.tsx:137` (`/80`), `src/components/migration/MigrationWizard.tsx:110` (`/80`), `src/components/metadata/ConflictQueue.tsx:42` (`/80`), `src/components/library/RemoveFromDeviceDialog.tsx:49` (`/80`), `src/components/library/ImportOverlay.tsx:130` (`/70`), `src/components/library/DeleteSelectionDialog.tsx:59` (`/80`), `src/components/library/DeleteBookDialog.tsx:76` (`/80`), `src/components/library/BookEditor.tsx:195` (`/80`), and `src/components/library/BookCard.tsx:98` (`/70`), `:114` (`/80`), `:128` (`/70`), `:167` (`/80`). *(Correction, A8: the dispatch's file list named `BookDetail.tsx` — which contains no `bg-ink-950` at all — and omitted `BookCard.tsx`, which has four of the twelve.) Two jobs are mixed in this set and a slice must serve both: **eight are modal veils** (a `/80` or `/70` panel behind a dialog) and **four are over-cover legibility chips** — gold and `parchment-dim` glyphs on an `ink-950` chip laid over cover art, where the chip is the only thing keeping them readable. On a light theme all twelve invert: the modal backdrop goes from a darkening curtain to a white wash, and the chips become gold on near-white. *Scope:* **no.** The class itself keeps resolving (C2's form), and slice 1 leaves the pixels unchanged because `--scrim` defaults to `13 11 9` (A5) — but the *role* is wrong the moment the ramp flips, which is why `scrim` is a derived token (§1.1) and the twelve sites are a named migration (§2.7). The alphas stay as authored: the migration is a rename (`bg-ink-950/80` → `bg-scrim/80`), not a re-design, so the veils keep their measured strengths. Note the *other* meaning of the same class, which is exactly why a ramp step cannot be reused: `bg-ink-950` with **no** alpha means *canvas* at `src/index.css:14`, `ReaderView.tsx:166`, `ReaderToc.tsx:12` and `ReaderPrefsPopover.tsx:48` (a theme swatch) — one class, two roles, opposite requirements.
 
-**C4 — stock-palette colour utilities (Tailwind's own colours, not app tokens).** 53 sites
-across 16 files: 23 `text-red-400`, 11 `bg-red-500`, 7 `border-red-500`, 4 `text-white`,
-3 `bg-red-600`, 2 `ring-white`, 1 `text-red-300`, 1 `border-red-400`, 1 `bg-emerald-500`
-(counted by colour-utility *prefix*, so variants and alpha forms are included: e.g. 23 = 20
-`text-red-400` + 3 `hover:text-red-400`; the nine rows sum to 53). A token-only swap leaves
-every one of them exactly as it is today: they are not tokens, so nothing in slice 1's config
-or CSS touches them. Two are load-bearing for legibility: `ring-white/5` is the hairline that
-separates a cover from the surface at `src/components/library/BookCard.tsx:79` and
-`src/components/library/BookDetail.tsx:81` — a 5% white ring over a light surface is invisible.
-*Scope:* **no** — they need their own edits (§2.7). The derived half is nearly free, which is
-the point worth carrying: **the prototype already produces red, green and yellow accents from
-any provider palette** (`derive.py`'s `accents` map), so `danger`/`ok`/`warn` reuse slice 2's
-existing floors and walks rather than introducing a subsystem.
+**C4 — stock-palette colour utilities (Tailwind's own colours, not app tokens).** 53 sites across 16 files: 23 `text-red-400`, 11 `bg-red-500`, 7 `border-red-500`, 4 `text-white`, 3 `bg-red-600`, 2 `ring-white`, 1 `text-red-300`, 1 `border-red-400`, 1 `bg-emerald-500` (counted by colour-utility *prefix*, so variants and alpha forms are included: e.g. 23 = 20 `text-red-400` + 3 `hover:text-red-400`; the nine rows sum to 53). A token-only swap leaves every one of them exactly as it is today: they are not tokens, so nothing in slice 1's config or CSS touches them. Two are load-bearing for legibility: `ring-white/5` is the hairline that separates a cover from the surface at `src/components/library/BookCard.tsx:79` and `src/components/library/BookDetail.tsx:81` — a 5% white ring over a light surface is invisible. *Scope:* **no** — they need their own edits (§2.7). The derived half is nearly free, which is the point worth carrying: **the prototype already produces red, green and yellow accents from any provider palette** (`derive.py`'s `accents` map), so `danger`/`ok`/`warn` reuse slice 2's existing floors and walks rather than introducing a subsystem.
 
-**C5 — native-control appearance, which no utility reaches.** `color-scheme` appears **exactly
-once** in all app source: `src/components/reader/ReaderEngine.tsx:67`, inside the stylesheet
-injected into the *book's* document. It is set **nowhere on `:root`**. Everything the platform
-paints for itself therefore follows the OS scheme: the two `<select>` popup lists
-(`src/components/layout/Toolbar.tsx:41`, `src/components/library/BookDetail.tsx:139`), the
-checkbox body at `src/components/migration/MigrationWizard.tsx:199`, the range-input body at
-`src/components/reader/ReaderPrefsPopover.tsx:164`, the text caret, and the default canvas.
-Those last two controls are also the only places in the app where a native control already
-consumes the accent token (`accent-gold-500`) — the visible proof that the accent reaches
-native UI at all. *(Correction, A8: the dispatch calls these "two range inputs";
-`ReaderPrefsPopover.tsx:164` is a `type="range"`, `MigrationWizard.tsx:199` is a
-`type="checkbox"`. Both carry `accent-gold-500`, so the substance stands and the count of
-"native controls consuming the accent token" is still two.)* *Scope:* **yes** — one
-declaration in `src/index.css`, which slice 1 already owns, so **slice 1's file budget does not
-change** (A4, §2.1, AC1.7). One precision, because the dispatch's consequence over-counts: its
-list includes "scrollbars", and the app already paints its own scrollbar thumb with the ink
-ramp (`src/index.css:22-38` — `bg-ink-600` at `:30`, `bg-ink-500` at `:35`), so the thumb is
-themed, the track is deliberately transparent, and only the scrollbar corner/overlay path is
-still the platform's.
+**C5 — native-control appearance, which no utility reaches.** `color-scheme` appears **exactly once** in all app source: `src/components/reader/ReaderEngine.tsx:67`, inside the stylesheet injected into the *book's* document. It is set **nowhere on `:root`**. Everything the platform paints for itself therefore follows the OS scheme: the two `<select>` popup lists (`src/components/layout/Toolbar.tsx:41`, `src/components/library/BookDetail.tsx:139`), the checkbox body at `src/components/migration/MigrationWizard.tsx:199`, the range-input body at `src/components/reader/ReaderPrefsPopover.tsx:164`, the text caret, and the default canvas. Those last two controls are also the only places in the app where a native control already consumes the accent token (`accent-gold-500`) — the visible proof that the accent reaches native UI at all. *(Correction, A8: the dispatch calls these "two range inputs"; `ReaderPrefsPopover.tsx:164` is a `type="range"`, `MigrationWizard.tsx:199` is a `type="checkbox"`. Both carry `accent-gold-500`, so the substance stands and the count of "native controls consuming the accent token" is still two.)* *Scope:* **yes** — one declaration in `src/index.css`, which slice 1 already owns, so **slice 1's file budget does not change** (A4, §2.1, AC1.7). One precision, because the dispatch's consequence over-counts: its list includes "scrollbars", and the app already paints its own scrollbar thumb with the ink ramp (`src/index.css:22-38` — `bg-ink-600` at `:30`, `bg-ink-500` at `:35`), so the thumb is themed, the track is deliberately transparent, and only the scrollbar corner/overlay path is still the platform's.
 
-**C6 — token gradients.** Two sites, both on one line: `src/components/library/BookCard.tsx:28`,
-`bg-gradient-to-b from-ink-700 to-ink-800` (the no-cover placeholder card). *Scope:* **yes** —
-both stops are token utilities and resolve from the ladder, so no file changes. It is recorded
-because a gradient is the one place where the *distance between two ramp steps* is visible as a
-value: a provider palette with a compressed ladder (measured: the iTerm path can infer the ramp
-from as few as three greys) renders the placeholder flat instead of shaded. Cosmetic; never a
-correctness failure, and not worth a criterion.
+**C6 — token gradients.** Two sites, both on one line: `src/components/library/BookCard.tsx:28`, `bg-gradient-to-b from-ink-700 to-ink-800` (the no-cover placeholder card). *Scope:* **yes** — both stops are token utilities and resolve from the ladder, so no file changes. It is recorded because a gradient is the one place where the *distance between two ramp steps* is visible as a value: a provider palette with a compressed ladder (measured: the iTerm path can infer the ramp from as few as three greys) renders the placeholder flat instead of shaded. Cosmetic; never a correctness failure, and not worth a criterion.
 
-**C7 — the reader's injected stylesheet, which is not a utility and cannot become one.** Two
-files, and neither may simply be "converted to tokens": `src/components/reader/ReaderEngine.tsx`
-holds a hand-copied `PALETTE` (lines 48-51, 8 hex values) that the first pass already records
-as a fork; it is consumed at `:62` and interpolated into the injected page CSS at `:64-105` —
-`color-scheme` at `:67`, `background` at `:69` and `:74`, `color` at `:70` and `:75`, the link
-colour at `:101`, and the selection colour at `:104`. `vendor/foliate-js/paginator.js` then
-reads that stylesheet's *effect* back off the book document at `:191` and re-applies it at
-`:626`, `:685` and `:1113`. *Scope:* **no** — slice 5's, under the two hard constraints recorded
-there (§2.5, AC5.7, AC5.8).
+**C7 — the reader's injected stylesheet, which is not a utility and cannot become one.** Two files, and neither may simply be "converted to tokens": `src/components/reader/ReaderEngine.tsx` holds a hand-copied `PALETTE` (lines 48-51, 8 hex values) that the first pass already records as a fork; it is consumed at `:62` and interpolated into the injected page CSS at `:64-105` — `color-scheme` at `:67`, `background` at `:69` and `:74`, `color` at `:70` and `:75`, the link colour at `:101`, and the selection colour at `:104`. `vendor/foliate-js/paginator.js` then reads that stylesheet's *effect* back off the book document at `:191` and re-applies it at `:626`, `:685` and `:1113`. *Scope:* **no** — slice 5's, under the two hard constraints recorded there (§2.5, AC5.7, AC5.8).
 
-**Separately — the rename blast radius, which is not a consumer class.** 543 token-utility
-sites of any shape across 28 files (§1.4 G7). Nothing is wrong with any of them today; the
-number matters only because it is what a token *rename* would have to touch, which is product
-decision 6's protection and stays deferred past v1.
+**Separately — the rename blast radius, which is not a consumer class.** 543 token-utility sites of any shape across 28 files (§1.4 G7). Nothing is wrong with any of them today; the number matters only because it is what a token *rename* would have to touch, which is product decision 6's protection and stays deferred past v1.
 
 ### 1.4 Amendment round 1 — the re-measurements, verified against the shipped code
 
-Nine facts (G1–G9) were re-measured on HEAD `bdc54ec`, working tree clean apart from this file,
-2026-09-15. **Six are true as stated; three carry a correction, one of which is a
-whole-file misattribution.** For every correction the measured value is recorded with the code
-location, so the correction is checkable rather than asserted.
+Nine facts (G1–G9) were re-measured on HEAD `bdc54ec`, working tree clean apart from this file, 2026-09-15. **Six are true as stated; three carry a correction, one of which is a whole-file misattribution.** For every correction the measured value is recorded with the code location, so the correction is checkable rather than asserted.
 
 | # | Claim | Verdict | Measured |
 |---|---|---|---|
@@ -695,8 +300,7 @@ location, so the correction is checkable rather than asserted.
 | G8 | (a) `paginator.js:191` string-compares the resolved background against a transparent literal and `:624`, `:685`, `:1113` re-apply it; (b) **the same file** builds its selection colour by concatenating a two-digit alpha onto the link hex | **(a) TRUE with a line correction; (b) TRUE in substance, FALSE in file** | (a) `:191` is `bodyStyle.backgroundColor === 'rgba(0, 0, 0, 0)'` ✓ — but the re-application inside the media-query listener is at **`:626`**, not `:624` (`:624` is `this.#mediaQueryListener = () => {`); `:685` and `:1113` are exact. (b) The concatenation is **not in `paginator.js`** — it is our own source: **`src/components/reader/ReaderEngine.tsx:104`, `::selection { background: ${c.link}44; }`**. Nothing in `vendor/foliate-js/` concatenates an alpha onto a colour (grepped for `link`, `'44'`, `::selection`). So the required fix is cheaper than the audit assumed — the site is editable — and the constraint is no weaker: it is still the *engine* that consumes the injected CSS and reads values back out of the book document |
 | G9 | 17 tokens as amended; 15 and 16 superseded | **TRUE** | 7 + 3 + 4 + 1 (`on-accent`) + 1 (`scrim`) + 1 (`shadow`) = 17 |
 
-Facts F1–F12 in §1.2 are untouched by this round: none of them was contradicted (F3's 28-file
-count still holds, because it counts token-utility consumers, which §1.3 does not dispute).
+Facts F1–F12 in §1.2 are untouched by this round: none of them was contradicted (F3's 28-file count still holds, because it counts token-utility consumers, which §1.3 does not dispute).
 
 ---
 
@@ -708,18 +312,9 @@ provider file ──▶ adapter ──▶ one IR ──▶ derived 17 values ─
     plist / css)               shaped)        hue theirs)          triplets)       resolve)
 ```
 
-The finding that shapes everything: **the hard part is not parsing — every provider is
-trivially parseable. It is that no provider carries Musaeum's roles.** A scheme gives you
-16 terminal slots (base16), the same in a plist (iTerm2), or a role ontology with no
-palette (Obsidian); Musaeum needs a 7-step surface ladder, a 3-step text ramp, one accent
-ramp and an on-accent foreground. So the architecture is a decompression: adapters
-normalize to one IR, and one pure function invents the structure on top of the palette it
-was given.
+The finding that shapes everything: **the hard part is not parsing — every provider is trivially parseable. It is that no provider carries Musaeum's roles.** A scheme gives you 16 terminal slots (base16), the same in a plist (iTerm2), or a role ontology with no palette (Obsidian); Musaeum needs a 7-step surface ladder, a 3-step text ramp, one accent ramp and an on-accent foreground. So the architecture is a decompression: adapters normalize to one IR, and one pure function invents the structure on top of the palette it was given.
 
-**The one rule that does the work: every ramp slides along the palette's own bg→fg axis,
-and only chroma comes from elsewhere.** A provider supplies canvas, ink and accent. It does
-not supply how many surface steps the app needs, so those are invented — and contrast
-floors are enforced rather than assumed.
+**The one rule that does the work: every ramp slides along the palette's own bg→fg axis, and only chroma comes from elsewhere.** A provider supplies canvas, ink and accent. It does not supply how many surface steps the app needs, so those are invented — and contrast floors are enforced rather than assumed.
 
 ### 2.0 Where each piece lives, and why the derivation is main-side
 
@@ -733,8 +328,7 @@ floors are enforced rather than assumed.
 
 ### 2.1 Slice 1 — Token plumbing
 
-`tailwind.config.js` moves to CSS-variable channel triplets, and today's palette becomes
-the `:root` default in `src/index.css`.
+`tailwind.config.js` moves to CSS-variable channel triplets, and today's palette becomes the `:root` default in `src/index.css`.
 
 ```js
 // tailwind.config.js — shape, both files are in the file budget
@@ -758,25 +352,11 @@ boxShadow: {
 }
 ```
 
-The `<alpha-value>` form is **not stylistic** — it is what keeps `bg-gold-500/40`
-(`src/index.css:18`) and `ring-gold-400/70` (`:43`) working. `rgb(var(--gold-500))` with a
-hex-valued custom property produces invalid CSS at computed-value time, the declaration is
-dropped, and the app renders a transparent (i.e. white) body with **no build error**. That
-is the silent failure this slice exists to avoid, and AC1.3 pins it.
+The `<alpha-value>` form is **not stylistic** — it is what keeps `bg-gold-500/40` (`src/index.css:18`) and `ring-gold-400/70` (`:43`) working. `rgb(var(--gold-500))` with a hex-valued custom property produces invalid CSS at computed-value time, the declaration is dropped, and the app renders a transparent (i.e. white) body with **no build error**. That is the silent failure this slice exists to avoid, and AC1.3 pins it.
 
-**Amended (A6): the two sites in this file are two of 63.** `bg-gold-500/40` and
-`ring-gold-400/70` are the ones *slice 1 itself* writes, which is why the first pass cited them
-— but the same form is what keeps **63 opacity-modified token utilities across 20 files**
-working (§1.3 C2, §1.4 G2: `bg-ink-950/80` ×9, `focus:border-gold-500/60` ×4,
-`placeholder:text-parchment-faint/50` ×3, `focus:ring-gold-500/30` ×3,
-`hover:border-gold-400/60` ×3, `bg-ink-950/70` ×3, `hover:bg-gold-500/10` ×3, and a tail of
-twos and ones). A `var(--hex)` form drops **every one of them**, in 20 files this slice is
-forbidden to touch, with the build still green. That combination — silent *and* wide — is why
-this is the highest-risk fact in slice 1 and why AC1.3 asserts on the resolved CSS rather than
-on a class-name diff.
+**Amended (A6): the two sites in this file are two of 63.** `bg-gold-500/40` and `ring-gold-400/70` are the ones *slice 1 itself* writes, which is why the first pass cited them — but the same form is what keeps **63 opacity-modified token utilities across 20 files** working (§1.3 C2, §1.4 G2: `bg-ink-950/80` ×9, `focus:border-gold-500/60` ×4, `placeholder:text-parchment-faint/50` ×3, `focus:ring-gold-500/30` ×3, `hover:border-gold-400/60` ×3, `bg-ink-950/70` ×3, `hover:bg-gold-500/10` ×3, and a tail of twos and ones). A `var(--hex)` form drops **every one of them**, in 20 files this slice is forbidden to touch, with the build still green. That combination — silent *and* wide — is why this is the highest-risk fact in slice 1 and why AC1.3 asserts on the resolved CSS rather than on a class-name diff.
 
-Today's values become the defaults, converted to space-separated channels (computed, not
-transcribed by eye):
+Today's values become the defaults, converted to space-separated channels (computed, not transcribed by eye):
 
 ```css
 /* src/index.css — @layer base, before `body` */
@@ -795,83 +375,30 @@ transcribed by eye):
 
 Two lines here are new in amendment round 1 and each has a job:
 
-- **`--scrim` (A5).** It defaults to today's `ink-950` so that the twelve veil sites
-  `bg-ink-950/70` and `/80` (§1.3 C3) are **pixel-identical** before they are migrated: the
-  token exists from slice 1, the sites move to `bg-scrim/…` in slice 7, and the default theme
-  cannot tell the difference. The scrim's *derived* rule — different in a light variant — is in
-  §2.2; the token is what makes the migration a rename rather than a re-measure.
+- **`--scrim` (A5).** It defaults to today's `ink-950` so that the twelve veil sites `bg-ink-950/70` and `/80` (§1.3 C3) are **pixel-identical** before they are migrated: the token exists from slice 1, the sites move to `bg-scrim/…` in slice 7, and the default theme cannot tell the difference. The scrim's *derived* rule — different in a light variant — is in §2.2; the token is what makes the migration a rename rather than a re-measure.
 - **`color-scheme: dark` (A4)** — see the paragraph below, which reverses the first pass.
 
-**`color-scheme` IS added here — amended (A4), reversing the first pass.** The first pass
-deferred this to slice 5 to keep slice 1's "no visual change" burden of proof clean, and that
-was the wrong trade. G5: `color-scheme` appears **exactly once** in all app source —
-`src/components/reader/ReaderEngine.tsx:67`, inside the stylesheet injected into the *book's*
-document — and **nowhere on `:root`**. So the app's chrome declares no scheme at all, and every
-surface the platform paints for itself follows the OS: the `<select>` popup lists
-(`Toolbar.tsx:41`, `BookDetail.tsx:139`), the checkbox body (`MigrationWizard.tsx:199`), the
-range-input body (`ReaderPrefsPopover.tsx:164`), the text caret, and the default canvas. A light
-theme is structurally incapable of being correct without a root declaration — it would be a
-light app rendering dark OS controls — and the declaration belongs with the *defaults*, in the
-file that carries them. So slice 1 emits it in the same `:root` block as the dark palette: the
-variables and the platform's idea of the scheme become one statement.
+**`color-scheme` IS added here — amended (A4), reversing the first pass.** The first pass deferred this to slice 5 to keep slice 1's "no visual change" burden of proof clean, and that was the wrong trade. G5: `color-scheme` appears **exactly once** in all app source — `src/components/reader/ReaderEngine.tsx:67`, inside the stylesheet injected into the *book's* document — and **nowhere on `:root`**. So the app's chrome declares no scheme at all, and every surface the platform paints for itself follows the OS: the `<select>` popup lists (`Toolbar.tsx:41`, `BookDetail.tsx:139`), the checkbox body (`MigrationWizard.tsx:199`), the range-input body (`ReaderPrefsPopover.tsx:164`), the text caret, and the default canvas. A light theme is structurally incapable of being correct without a root declaration — it would be a light app rendering dark OS controls — and the declaration belongs with the *defaults*, in the file that carries them. So slice 1 emits it in the same `:root` block as the dark palette: the variables and the platform's idea of the scheme become one statement.
 
 Three consequences of putting it here, stated so they are not discovered later:
 
-- **Slice 1's file budget does not change.** `src/index.css` is already slice 1's file and AC1.2
-  already asserts the touched set is exactly `tailwind.config.js` + `src/index.css`; the
-  declaration is one line inside a block this slice is writing anyway. **No fourth file, and no
-  change to §5's slice-1 row.**
-- **The pixel gate is scoped, not weakened.** On a machine whose OS appearance is light, this is
-  the one *intended* pixel change in slice 1 (native control bodies). AC1.1's capture therefore
-  runs with the OS in dark appearance — the state in which it is a no-op — and AC1.7 asserts the
-  declaration exists, is not the reader's, and flips with the palette in slice 5. Claiming it is
-  a no-op on every machine would be exactly the kind of claim that makes a pixel gate
-  untrustworthy.
-- The two `accent-gold-500` controls (`ReaderPrefsPopover.tsx:164` range,
-  `MigrationWizard.tsx:199` checkbox) are today the only places a native control consumes the
-  accent token, so they are the visible proof that the accent reaches native UI at all — and the
-  first place a wrong `color-scheme` will be visible in a screenshot.
+- **Slice 1's file budget does not change.** `src/index.css` is already slice 1's file and AC1.2 already asserts the touched set is exactly `tailwind.config.js` + `src/index.css`; the declaration is one line inside a block this slice is writing anyway. **No fourth file, and no change to §5's slice-1 row.**
+- **The pixel gate is scoped, not weakened.** On a machine whose OS appearance is light, this is the one *intended* pixel change in slice 1 (native control bodies). AC1.1's capture therefore runs with the OS in dark appearance — the state in which it is a no-op — and AC1.7 asserts the declaration exists, is not the reader's, and flips with the palette in slice 5. Claiming it is a no-op on every machine would be exactly the kind of claim that makes a pixel gate untrustworthy.
+- The two `accent-gold-500` controls (`ReaderPrefsPopover.tsx:164` range, `MigrationWizard.tsx:199` checkbox) are today the only places a native control consumes the accent token, so they are the visible proof that the accent reaches native UI at all — and the first place a wrong `color-scheme` will be visible in a screenshot.
 
-The three shadow alphas reproduce `tailwind.config.js`'s current values exactly
-(`cover` 0.5/0.35, `cover-lift` 0.6/0.5, `panel` 0.5 — three classes, reused), which is why
-slice 1's dark default and slice 5's derived light value differ only by a scale factor.
+The three shadow alphas reproduce `tailwind.config.js`'s current values exactly (`cover` 0.5/0.35, `cover-lift` 0.6/0.5, `panel` 0.5 — three classes, reused), which is why slice 1's dark default and slice 5's derived light value differ only by a scale factor.
 
-**The first pass's claim here is superseded — quoted, not asserted.** It read: "**`color-scheme`
-is deliberately NOT added here.** … It lands in slice 5, with the flip, where the change is
-intended and visible." That deferral is reversed above (A4) for the reason G5 gives: the
-declaration is not a *flip*, it is the app's missing statement of which scheme it is, and
-omitting it means the default build has **no declared scheme anywhere on `:root`** — the state
-that makes a light theme unable to be correct. Slice 5 still *re-writes* it from the tokens
-whenever a theme is applied (§2.5), so the two slices agree about who owns it: slice 1 owns the
-default value, slice 5 owns the transition.
+**The first pass's claim here is superseded — quoted, not asserted.** It read: "**`color-scheme` is deliberately NOT added here.** … It lands in slice 5, with the flip, where the change is intended and visible." That deferral is reversed above (A4) for the reason G5 gives: the declaration is not a *flip*, it is the app's missing statement of which scheme it is, and omitting it means the default build has **no declared scheme anywhere on `:root`** — the state that makes a light theme unable to be correct. Slice 5 still *re-writes* it from the tokens whenever a theme is applied (§2.5), so the two slices agree about who owns it: slice 1 owns the default value, slice 5 owns the transition.
 
-**Invariant it must not bend:** `docs/invariants/library-views.md` — row height is computed,
-not measured. This slice must not move `ROW_HEIGHT`, `CARD_META_HEIGHT` or
-`CARD_META_MARGIN`. A malformed channel triplet is exactly the kind of change that shows up
-as scroll drift rather than a build error, which is why AC1.1 is a pixel capture and not a
-class-name diff.
+**Invariant it must not bend:** `docs/invariants/library-views.md` — row height is computed, not measured. This slice must not move `ROW_HEIGHT`, `CARD_META_HEIGHT` or `CARD_META_MARGIN`. A malformed channel triplet is exactly the kind of change that shows up as scroll drift rather than a build error, which is why AC1.1 is a pixel capture and not a class-name diff.
 
-**Reversal condition:** if the pixel capture cannot be made identical for a reason that is
-*not* a channel-triplet bug (e.g. Tailwind's own output order changes a cascade result),
-then the indirection is not worth it and this slice should be replaced by a build-time
-palette swap (regenerate the config) instead. That would be a real regression in
-capability — no runtime switching — so it is the last resort, not the fallback.
+**Reversal condition:** if the pixel capture cannot be made identical for a reason that is *not* a channel-triplet bug (e.g. Tailwind's own output order changes a cascade result), then the indirection is not worth it and this slice should be replaced by a build-time palette swap (regenerate the config) instead. That would be a real regression in capability — no runtime switching — so it is the last resort, not the fallback.
 
 ### 2.2 Slice 2 — Derivation core
 
-Adapters take a provider file to one IR; one pure function takes the IR to the 17 values
-with contrast floors enforced.
+Adapters take a provider file to one IR; one pure function takes the IR to the 17 values with contrast floors enforced.
 
-**The IR** keeps `derive.py`'s field names verbatim (`bg`, `bg2`, `bg3`, `border`, `muted`,
-`fg`, `fg_bright`, `accents`, `accent_hint`, `on_acc_hint`, `name`, `author`, `variant`,
-`source`, `notes`) so the port is a transliteration rather than a re-derivation, and
-`derive_tokens()`'s return keys stay `ink` / `parchment` / `gold` / `on_acc` / `shadow` —
-which are also the CSS variable names (product decision 6 paying for itself twice) — with
-**`scrim` added in amendment round 1** (A2/A3). No new file: `derive.ts` and
-`theme.types.ts` are already in this slice's budget, and the status family (§2.7) is three
-more rows in the same function if it lands. **[A13 — it landed, and it landed in slice 2: `theme/derive.ts`
-carries the status family because J6 had already put it in the prototype, so 7a owns only the
-`tailwind.config.js`/`:root` variables and the site migrations.]**
+**The IR** keeps `derive.py`'s field names verbatim (`bg`, `bg2`, `bg3`, `border`, `muted`, `fg`, `fg_bright`, `accents`, `accent_hint`, `on_acc_hint`, `name`, `author`, `variant`, `source`, `notes`) so the port is a transliteration rather than a re-derivation, and `derive_tokens()`'s return keys stay `ink` / `parchment` / `gold` / `on_acc` / `shadow` — which are also the CSS variable names (product decision 6 paying for itself twice) — with **`scrim` added in amendment round 1** (A2/A3). No new file: `derive.ts` and `theme.types.ts` are already in this slice's budget, and the status family (§2.7) is three more rows in the same function if it lands. **[A13 — it landed, and it landed in slice 2: `theme/derive.ts` carries the status family because J6 had already put it in the prototype, so 7a owns only the `tailwind.config.js`/`:root` variables and the site migrations.]**
 
 **Adapters, and the lossy step each one owns:**
 
@@ -881,15 +408,7 @@ carries the status family because J6 had already put it in the prototype, so 7a 
 | iTerm2 | `.itermcolors` | Apple XML plist → 16 ANSI slots + `Background Color` / `Foreground Color`; `accent_hint` = Ansi 11 (bright yellow); `variant` from `lstar(bg) < lstar(fg)` | **the surface ramp is reconstructed.** Terminal files carry no base01–03, so the stops are inferred: greys only from the background's own hue family (`chroma < 0.035` and either `chroma(bg) < 0.01` or `hue_delta(v, bg) < 0.61`), interior = strictly between `lstar(bg)` and `lstar(fg)`; ≥2 interior → lowest/median/highest become `bg2`/`bg3`/`border`; otherwise synthesize `mix(bg, fg, 0.10/0.18/0.28)`; `muted = mix(bg, fg, 0.62)`. A luminance sort alone gives a warm scheme a green sidebar — this filter is why the IR exists |
 | Obsidian | `theme.css` | slice 6 | computed values need a live cascade |
 
-**No new dependencies.** base16 YAML and `.itermcolors` are both machine-generated and
-shape-stable: the base16 adapter reads `key: "value"` lines (the prototype's regex, which
-handles the comments and the `slug:` key the curated corpus actually contains), and the
-iTerm adapter scans the flat `<key>Name Color</key><dict><key>Red Component</key><real>…`
-shape. Both are ~40 lines, both get fixtures, and both fail closed with a named reason.
-Rationale: the prototype's whole claim is that derivation is dependency-free, and a parsing
-dependency is supply-chain surface for a file the user picked. Reversal condition: a real
-provider file that the narrow parser rejects. Then add `js-yaml` / `plist` — which is a
-`package.json` change, i.e. an escalation, not a decision for an implementer to make.
+**No new dependencies.** base16 YAML and `.itermcolors` are both machine-generated and shape-stable: the base16 adapter reads `key: "value"` lines (the prototype's regex, which handles the comments and the `slug:` key the curated corpus actually contains), and the iTerm adapter scans the flat `<key>Name Color</key><dict><key>Red Component</key><real>…` shape. Both are ~40 lines, both get fixtures, and both fail closed with a named reason. Rationale: the prototype's whole claim is that derivation is dependency-free, and a parsing dependency is supply-chain surface for a file the user picked. Reversal condition: a real provider file that the narrow parser rejects. Then add `js-yaml` / `plist` — which is a `package.json` change, i.e. an escalation, not a decision for an implementer to make.
 
 **The derivation, verbatim from `derive.py` (constants are part of the contract):**
 
@@ -907,50 +426,19 @@ The port keeps it. Swapping this one call for the default Oklab mix reddens 9 te
 | **Scrim** — added in amendment round 1, this spec's rule, not the prototype's | `dark_end` = whichever of `{bg, fg}` has the lower `lstar`. `variant === 'dark'` → `scrim = dark_end` (**byte-equal to today's `ink-950`, so the twelve pre-migration sites are pixel-identical and the default theme is a no-op**). `variant === 'light'` → `scrim = mix(dark_end, light_end, -0.35)` — one further step *past* the dark end along the same bg↔fg axis, because a light palette's dark end is its **text** colour, and a text-coloured veil over cover art reads as a bruise rather than a shadow. Floors, verified terminally like every other role: `contrast(scrim, bg) ≥ 3.0` and `lstar(scrim) ≤ lstar(dark_end)`. Unmet → step the extrapolation 0.08 further, ≤24 iterations, then **reject** per the terminal-verification rule below. **[A12 — superseded: `derive.py` *does* now carry a scrim rule, because J6 ported it into the prototype before slice 2; the sentence that stood here is preserved in the round-2 trail.]** The case the derivation must still be shown to handle is a light palette whose `fg` is mid-grey, since that is where the extrapolation has the least room: **[A12 — superseded in part: the rule that landed in `derive.py` is `mix(deep, black, 0.35)` plus a `relLuminance < 0.06` walk, *not* `scrim = dark_end`. The port follows the prototype; the dark-variant byte-equality with `ink-950` no longer applies to a derived theme, only to the authored default.]** |
 | **Status family** — added in amendment round 1, nearly free (only if §2.7 lands) | `danger = accents.red`, `ok = accents.green`, `warn = accents.yellow` — the prototype **already derives all three from every provider palette**, so this reuses the accent ramp's rule rather than adding a subsystem; a provider that omits one falls back to the accent ramp. Each gets the accent ramp's own two placements and floors: a `400` holding `3.0` on `ink-900`, and a `500`/`600` pair holding `4.5` against a derived `on-*` foreground chosen by the same better-of-`fg`/`bg` walk `on-accent` uses. These are a separate *family*, not part of the seventeen (§1.1). **[A17 — the landed floors differ from the sentence above: `400` holds 4.5, not 3.0; `600` is a bare `adjust_light(base, 0.30, false)` with no foreground and no audit; and `on_fill` is a `max` over the ends, not a walk. The prototype is what slice 2 reproduces.]** |
 
-**The rules the port adds, and why neither is optional.** The prototype's floor loops are
-bounded and exit at the cap **without re-checking**. A bounding loop that runs out is a
-theme that failed its floors while claiming success. So the port must verify the floor after
-each loop and **reject the theme** if it is unmet. **[A20 — the failure is a discriminated
-value, not the bare `{ role, ratio, floor }` this sentence first specified:
-`kind: 'floor'` carries `{ role, ratio, floor, metric }` (with `metric: 'contrast' | 'luminance'`,
-because the scrim's floor is an absolute luminance and the others are contrast ratios) and
-`kind: 'malformed'` carries `{ role, detail }` for an IR the derivation cannot read at all.
-Rendering the interface this way was deliberate and cheap — no consumer existed yet — and the
-`tsc --strict` probe the audit ran errors on every un-narrowed `reason.ratio` read.]**
+**The rules the port adds, and why neither is optional.** The prototype's floor loops are bounded and exit at the cap **without re-checking**. A bounding loop that runs out is a theme that failed its floors while claiming success. So the port must verify the floor after each loop and **reject the theme** if it is unmet. **[A20 — the failure is a discriminated value, not the bare `{ role, ratio, floor }` this sentence first specified: `kind: 'floor'` carries `{ role, ratio, floor, metric }` (with `metric: 'contrast' | 'luminance'`, because the scrim's floor is an absolute luminance and the others are contrast ratios) and `kind: 'malformed'` carries `{ role, detail }` for an IR the derivation cannot read at all. Rendering the interface this way was deliberate and cheap — no consumer existed yet — and the `tsc --strict` probe the audit ran errors on every un-narrowed `reason.ratio` read.]**
 
-**And the port must verify the audit table it assembles, not only the six loops (A20).** The
-prototype audits *two placements* but *walks one score*: the status fill's guard satisfies
-`min(max-on / 4.0, max(separation from canvas, separation from panel) / 3.0) >= 1.0`, so a fill
-that separates from the panel but not from the canvas passes the walk while the shipped row
-`'<family>-500 vs canvas'` (floor 3.0) reads FAIL; and `'accent on canvas'` has no guard at all.
-Measured on the port before this rule: of 300,000 random IRs, 40,894 returned `ok: true` and
-**715 of them carried a row below its own floor** (509/480/470 across the three `X-500 vs canvas`
-rows, 51 on `accent on canvas`) — and 1,200 single-field perturbations of the 15 vendored
-palettes produced none, which is why neither the corpus test nor the per-loop witnesses can see
-it. So the last check before a success return is a sweep over the assembled audit table: **no
-success result may carry a row below its own floor.** *Rejected:* leaving it, which ships a theme
-whose own audit table prints FAIL while the picker shows it as active — the exact defect AC2.2
-and AC8.1 exist to prevent. The derivation's *rules* are untouched by this; only the check is
-added, and it rejects nothing the 15 vendored palettes produce.
+**And the port must verify the audit table it assembles, not only the six loops (A20).** The prototype audits *two placements* but *walks one score*: the status fill's guard satisfies `min(max-on / 4.0, max(separation from canvas, separation from panel) / 3.0) >= 1.0`, so a fill that separates from the panel but not from the canvas passes the walk while the shipped row `'<family>-500 vs canvas'` (floor 3.0) reads FAIL; and `'accent on canvas'` has no guard at all. Measured on the port before this rule: of 300,000 random IRs, 40,894 returned `ok: true` and **715 of them carried a row below its own floor** (509/480/470 across the three `X-500 vs canvas` rows, 51 on `accent on canvas`) — and 1,200 single-field perturbations of the 15 vendored palettes produced none, which is why neither the corpus test nor the per-loop witnesses can see it. So the last check before a success return is a sweep over the assembled audit table: **no success result may carry a row below its own floor.** *Rejected:* leaving it, which ships a theme whose own audit table prints FAIL while the picker shows it as active — the exact defect AC2.2 and AC8.1 exist to prevent. The derivation's *rules* are untouched by this; only the check is added, and it rejects nothing the 15 vendored palettes produce.
 
-The prototype has no fixture for the floor case; the test-author must synthesize the worst case
-(a canvas and text at the same luminance).
+The prototype has no fixture for the floor case; the test-author must synthesize the worst case (a canvas and text at the same luminance).
 
-**Invariant it must not bend:** `CLAUDE.md` #12 — failures stay non-fatal where the doc says so. An
-unparseable file, an unresolvable role, an unsatisfiable floor: all are **reported**, never thrown to
-the top, and the app keeps the palette it already had. **[A18 — this sentence also cited
-`docs/invariants/refresh-feedback.md`, and the review that opened that doc found it carries no theming
-rule: it is the *precedent* for this shape (a failed refresh reports and degrades rather than throwing
-the process), while the rule itself is `CLAUDE.md` #12's. The citation now names the rule and the
-precedent distinctly, so a reader who opens the doc expecting a theming invariant is not misled.]**
+**Invariant it must not bend:** `CLAUDE.md` #12 — failures stay non-fatal where the doc says so. An unparseable file, an unresolvable role, an unsatisfiable floor: all are **reported**, never thrown to the top, and the app keeps the palette it already had. **[A18 — this sentence also cited `docs/invariants/refresh-feedback.md`, and the review that opened that doc found it carries no theming rule: it is the *precedent* for this shape (a failed refresh reports and degrades rather than throwing the process), while the rule itself is `CLAUDE.md` #12's. The citation now names the rule and the precedent distinctly, so a reader who opens the doc expecting a theming invariant is not misled.]**
 
-**File budget:** 9 code files + 2 fixture data files (§5). Overrun absorber:
-`parse/base16.ts` and `parse/itermcolors.ts` collapse into one `parse.ts`.
+**File budget:** 9 code files + 2 fixture data files (§5). Overrun absorber: `parse/base16.ts` and `parse/itermcolors.ts` collapse into one `parse.ts`.
 
 ### 2.3 Slice 3 — Persistence and apply-on-boot
 
-Two `app_config` keys — **amended (A21, slice 3 landed): three**, `theme_id` / `theme_tokens` /
-`theme_library` — no migration (F9), and one window colour.
+Two `app_config` keys — **amended (A21, slice 3 landed): three**, `theme_id` / `theme_tokens` / `theme_library` — no migration (F9), and one window colour.
 
 | Key | Value |
 |---|---|
@@ -958,38 +446,16 @@ Two `app_config` keys — **amended (A21, slice 3 landed): three**, `theme_id` /
 | `theme_tokens` | JSON: the resolved theme — `{ id, name, provider, author, variant, sourcePath, tokens: { ink{…}, parchment{…}, gold{…}, onAccent, scrim, shadowStrength }, audits[], adjustments[], notes[] }` (`scrim` added in amendment round 1, A2). **Amended (A22, slice 3 landed):** the shipped spelling is `on_acc` / `shadow`, `tokens` also carries `status` and `dark`, and `engineVersion` rides the record. The read-validation rule is therefore *every value the derivation emits* — 7 ink + 3 parchment + 4 gold + `on_acc` + `scrim` + `shadow` + `dark`, with `status` optional because the built-in default predates 7a's `:root` values. |
 | `theme_library` | **Added (A21, slice 3 landed).** JSON array of resolved records for themes that are not active. It exists because AC4.1 requires five swatches per imported theme while this section itself says an imported `.itermcolors` "may not be on disk any more at all": the derived values must be stored somewhere, and only the active theme's fit in `theme_tokens`. Slice 3 preserves it byte-identically; slice 4's importer is its only writer and its first reader. |
 
-**Storing the derived values rather than re-deriving at boot is the load-bearing decision.**
-Main needs one colour *before* the window exists and cannot await a derivation (which for an
-Obsidian theme means an offscreen resolve that may fail, and for an imported `.itermcolors`
-may not be on disk any more at all — the owner's collection lives in ProtonDrive). Both keys
-are written in one `better-sqlite3` transaction by `theme/store.ts`. `theme_id` is what the
-picker shows as active; `theme_tokens` is what the CSS variables and the window background
-are built from. Because they can disagree, one write path owns both — and it validates
-before it writes anything, mirroring `settings.ts`'s "a failed save changes nothing".
+**Storing the derived values rather than re-deriving at boot is the load-bearing decision.** Main needs one colour *before* the window exists and cannot await a derivation (which for an Obsidian theme means an offscreen resolve that may fail, and for an imported `.itermcolors` may not be on disk any more at all — the owner's collection lives in ProtonDrive). Both keys are written in one `better-sqlite3` transaction by `theme/store.ts`. `theme_id` is what the picker shows as active; `theme_tokens` is what the CSS variables and the window background are built from. Because they can disagree, one write path owns both — and it validates before it writes anything, mirroring `settings.ts`'s "a failed save changes nothing".
 
-**Read validation, on the storage-is-untrustworthy rule** (`settings-and-editing.md`):
-`theme_tokens` is parsed and re-validated on every read — **17 values as amended (A2)**, each
-matching `^#[0-9a-f]{6}$`, `variant ∈ {dark, light}`, `shadowStrength` a finite number in
-`[0,1]`. The rule is deliberately written as *"every value the derivation emits"* rather than a
-hardcoded 17, so the status family (§2.7) is covered by the same rule when it lands instead of
-quietly bypassing validation.
-Anything short of that is treated as *no theme*: `:root` defaults apply, the app keeps
-running, and the reason is logged. A hand-edited or half-written row must never be able to
-render an unreadable app.
+**Read validation, on the storage-is-untrustworthy rule** (`settings-and-editing.md`): `theme_tokens` is parsed and re-validated on every read — **17 values as amended (A2)**, each matching `^#[0-9a-f]{6}$`, `variant ∈ {dark, light}`, `shadowStrength` a finite number in `[0,1]`. The rule is deliberately written as *"every value the derivation emits"* rather than a hardcoded 17, so the status family (§2.7) is covered by the same rule when it lands instead of quietly bypassing validation. Anything short of that is treated as *no theme*: `:root` defaults apply, the app keeps running, and the reason is logged. A hand-edited or half-written row must never be able to render an unreadable app.
 
 **Apply-on-boot, in two places, because one is not enough:**
 
-- `electron/main/index.ts` `createWindow()` sets `backgroundColor` from the stored tokens'
-  `ink-950` via a pure `windowBackgroundColor(tokens)` in the theme service — one function,
-  unit-tested, so the "it's still hardcoded" mutation is visible to a test.
-- `src/main.tsx` awaits `window.Musaeum.theme.get()` **before** `createRoot(...).render()`
-  and applies the variables to `document.documentElement`. One IPC round trip delays first
-  paint by ~1 ms and removes the flash where React paints the default palette and then
-  swaps it. The window background covers the frame before any JS runs.
+- `electron/main/index.ts` `createWindow()` sets `backgroundColor` from the stored tokens' `ink-950` via a pure `windowBackgroundColor(tokens)` in the theme service — one function, unit-tested, so the "it's still hardcoded" mutation is visible to a test.
+- `src/main.tsx` awaits `window.Musaeum.theme.get()` **before** `createRoot(...).render()` and applies the variables to `document.documentElement`. One IPC round trip delays first paint by ~1 ms and removes the flash where React paints the default palette and then swaps it. The window background covers the frame before any JS runs.
 
-**The IPC surface** (`src/types/api.types.ts`, `electron/preload/index.ts`,
-`electron/main/ipc/theme.ts` — thin handlers through `handle()`, business logic in
-`services/theme/`):
+**The IPC surface** (`src/types/api.types.ts`, `electron/preload/index.ts`, `electron/main/ipc/theme.ts` — thin handlers through `handle()`, business logic in `services/theme/`):
 
 ```ts
 theme: {
@@ -1003,108 +469,35 @@ theme: {
 // EVENT_CHANNELS gains: themeChanged: 'event:theme-changed'
 ```
 
-**[A32 — the three import-shaped methods landed as `ThemeImportResult`, which carries the whole
-`ThemeView` rather than only the files touched (`importPaths → ImportResult` and
-`scanFolder → ThemeView` above are the superseded shapes).** One answer, not two: the rows the
-user is looking at and the files just imported cannot disagree, and the picker needs one round
-trip instead of two. It also gives a scan's rejections somewhere to be displayed, which the
-`ThemeView`-only shape had no room for. **[A33 — `ThemeView.options`/`folder` are landed
-(A29 predicted them); each option row is `{ id, name, author, provider, variant, swatches[5],
-active, stale, notes[], sourcePath }`.]**
+**[A32 — the three import-shaped methods landed as `ThemeImportResult`, which carries the whole `ThemeView` rather than only the files touched (`importPaths → ImportResult` and `scanFolder → ThemeView` above are the superseded shapes).** One answer, not two: the rows the user is looking at and the files just imported cannot disagree, and the picker needs one round trip instead of two. It also gives a scan's rejections somewhere to be displayed, which the `ThemeView`-only shape had no room for. **[A33 — `ThemeView.options`/`folder` are landed (A29 predicted them); each option row is `{ id, name, author, provider, variant, swatches[5], active, stale, notes[], sourcePath }`.]**
 
-`ThemeView.active` is the resolved theme (or the built-in default descriptor);
-`ThemeView.options` is the merged list — built-ins first, imported second, each with
-`{ id, name, author, provider, variant, swatches: string[5], active, notes[] }`. Swatches
-are five hex values taken from the derived set (`ink-950`, `ink-800`, `parchment`, `gold-400`,
-`gold-500`) — enough to tell two dark themes apart in a list without rendering a preview.
+`ThemeView.active` is the resolved theme (or the built-in default descriptor); `ThemeView.options` is the merged list — built-ins first, imported second, each with `{ id, name, author, provider, variant, swatches: string[5], active, notes[] }`. Swatches are five hex values taken from the derived set (`ink-950`, `ink-800`, `parchment`, `gold-400`, `gold-500`) — enough to tell two dark themes apart in a list without rendering a preview.
 
-**No theme key in `EditableSettings`.** `settings.ts`'s `saveSettings` treats blank as "back
-to auto-detection" and validates paths; a theme is not a path and has no auto-detection, so
-it keeps its own keys and its own save path. Adding it to `CONFIG_KEYS` would import that
-path's semantics where they do not apply.
+**No theme key in `EditableSettings`.** `settings.ts`'s `saveSettings` treats blank as "back to auto-detection" and validates paths; a theme is not a path and has no auto-detection, so it keeps its own keys and its own save path. Adding it to `CONFIG_KEYS` would import that path's semantics where they do not apply.
 
-**Invariant it must not bend:** `docs/invariants/menu-and-branding.md` — "the menu is built
-once and never rebuilt; nothing in it reflects renderer state". **There is no theme item in
-the native menu.** A checked active theme, or a View→Theme submenu, would be exactly the
-renderer-state-in-the-native-menu the doc forbids. The picker lives in the Settings modal's
-Appearance section (slice 4). The same doc's `app.isPackaged` rule is untouched: nothing
-here reads `app.isPackaged`; `services/runtime.ts` stays the one answer.
+**Invariant it must not bend:** `docs/invariants/menu-and-branding.md` — "the menu is built once and never rebuilt; nothing in it reflects renderer state". **There is no theme item in the native menu.** A checked active theme, or a View→Theme submenu, would be exactly the renderer-state-in-the-native-menu the doc forbids. The picker lives in the Settings modal's Appearance section (slice 4). The same doc's `app.isPackaged` rule is untouched: nothing here reads `app.isPackaged`; `services/runtime.ts` stays the one answer.
 
-**Reversal condition:** if `theme_id`/`theme_tokens` drift in practice (two rows, one stale,
-in a way a test did not catch), collapse to one key holding both, written atomically. The
-two-key shape is chosen because `theme_id` is a *selector* the UI must show even when
-`theme_tokens` is unreadable, but that benefit is not worth a class of state bug.
+**Reversal condition:** if `theme_id`/`theme_tokens` drift in practice (two rows, one stale, in a way a test did not catch), collapse to one key holding both, written atomically. The two-key shape is chosen because `theme_id` is a *selector* the UI must show even when `theme_tokens` is unreadable, but that benefit is not worth a class of state bug.
 
 ### 2.4 Slice 4 — Import and picker
 
-**Two ways in, and the folder is the one that matters.** The owner's `.itermcolors`
-collection lives in ProtonDrive, not in iTerm's preset store, so auto-discovery of a preset
-directory would have found nothing. So:
+**Two ways in, and the folder is the one that matters.** The owner's `.itermcolors` collection lives in ProtonDrive, not in iTerm's preset store, so auto-discovery of a preset directory would have found nothing. So:
 
 - **A file picker** — `theme.importFromDialog()`, multi-select, native.
-- **A drop-box directory** — `~/Library/Application Support/Musaeum/themes/` (i.e.
-  `app.getPath('userData') + '/themes'`), scanned on demand by `scanFolder()`, no watcher
-  (`file-watcher.ts` is bound to the NAS `imports/` dir and stays that way). The Appearance
-  section shows the path, with a "Reveal in Finder" control. **The app never writes into
-  this folder** — a theme that needs deriving is derived and its *values* are stored, so a
-  missing or moved source file is not an error (`sourcePath` is recorded for display only).
-  **[A34/A35 — landed reading of that sentence: the app never writes a *file* into the folder;
-  it may create the directory itself (the `mkdir` in `openFolder`), because *Reveal in Finder*
-  has to work before the first import, and a missing folder is an empty scan rather than an
-  error. The scan is `readdirSync`, non-recursive, limited to `.yaml`/`.yml`/`.itermcolors`:
-  a `README.md`, a `.DS_Store`, a directory or a `.css` sitting in there is ignored
-  **silently**, because a listing full of reasons about files the app cannot read yet is
-  noise — whereas a supported file that fails to parse **is** reported by path and reason.
-  What the folder is not is a place the app copies anything to; measured live, a scan leaves
-  the directory hash-identical (AC4.3).]**
-- **A drop onto the Appearance section** — the section owns its own `onDrop`, resolving
-  paths through the existing preload `files.getPathForFile` (`useDragDrop.ts:35` is the
-  precedent for that call). `useDragDrop.ts` itself needs **no change**: its
-  `BOOK_EXTENSIONS` filter (line 4, `.epub`/`.mobi`/`.azw3`) already ignores a `.yaml`,
-  `.itermcolors` or `.css`, so dropping a theme on the library is a no-op today and stays
-  one (AC4.4).
+- **A drop-box directory** — `~/Library/Application Support/Musaeum/themes/` (i.e. `app.getPath('userData') + '/themes'`), scanned on demand by `scanFolder()`, no watcher (`file-watcher.ts` is bound to the NAS `imports/` dir and stays that way). The Appearance section shows the path, with a "Reveal in Finder" control. **The app never writes into this folder** — a theme that needs deriving is derived and its *values* are stored, so a missing or moved source file is not an error (`sourcePath` is recorded for display only). **[A34/A35 — landed reading of that sentence: the app never writes a *file* into the folder; it may create the directory itself (the `mkdir` in `openFolder`), because *Reveal in Finder* has to work before the first import, and a missing folder is an empty scan rather than an error. The scan is `readdirSync`, non-recursive, limited to `.yaml`/`.yml`/`.itermcolors`: a `README.md`, a `.DS_Store`, a directory or a `.css` sitting in there is ignored **silently**, because a listing full of reasons about files the app cannot read yet is noise — whereas a supported file that fails to parse **is** reported by path and reason. What the folder is not is a place the app copies anything to; measured live, a scan leaves the directory hash-identical (AC4.3).]**
+- **A drop onto the Appearance section** — the section owns its own `onDrop`, resolving paths through the existing preload `files.getPathForFile` (`useDragDrop.ts:35` is the precedent for that call). `useDragDrop.ts` itself needs **no change**: its `BOOK_EXTENSIONS` filter (line 4, `.epub`/`.mobi`/`.azw3`) already ignores a `.yaml`, `.itermcolors` or `.css`, so dropping a theme on the library is a no-op today and stays one (AC4.4).
 
-**The Appearance section** — `AppearanceSection.tsx`, mounted inside `SettingsModal.tsx`
-above the existing fields. Rows: swatch strip, name, provider label (`base16` / `iTerm2` /
-`Obsidian` / built-in), variant badge, and — for an imported theme with lossy notes — a
-disclosure showing them ("ramp inferred from 3 greys; no base01-03 in source", "accent
-nudged toward fg for 3:1 on panels"). The divergence between the same scheme via two
-providers (gruvbox's base16 `base05` `#d5c4a1` vs its iTerm `Foreground Color` `#ebdbb2`) is
-a real property of the corpora, and the provider label is what makes it visible instead of
-confusing.
+**The Appearance section** — `AppearanceSection.tsx`, mounted inside `SettingsModal.tsx` above the existing fields. Rows: swatch strip, name, provider label (`base16` / `iTerm2` / `Obsidian` / built-in), variant badge, and — for an imported theme with lossy notes — a disclosure showing them ("ramp inferred from 3 greys; no base01-03 in source", "accent nudged toward fg for 3:1 on panels"). The divergence between the same scheme via two providers (gruvbox's base16 `base05` `#d5c4a1` vs its iTerm `Foreground Color` `#ebdbb2`) is a real property of the corpora, and the provider label is what makes it visible instead of confusing.
 
-**Applying is immediate, not batched.** Clicking a row derives, validates, writes, and
-broadcasts. There is no Save button for the theme: a colour choice is its own feedback loop,
-and burying it behind ⌘↵ (the modal's save chord, `SettingsModal.tsx:104`) is how a settings
-dialog hides the thing the user is looking at. A rejected theme shows its reason in the row
-and changes nothing.
+**Applying is immediate, not batched.** Clicking a row derives, validates, writes, and broadcasts. There is no Save button for the theme: a colour choice is its own feedback loop, and burying it behind ⌘↵ (the modal's save chord, `SettingsModal.tsx:104`) is how a settings dialog hides the thing the user is looking at. A rejected theme shows its reason in the row and changes nothing.
 
-**Invariant it must not bend:** `CLAUDE.md` #9 / `docs/invariants/reader.md` — the renderer
-never gets `file://`. The renderer passes paths, main reads bytes. `musaeum://` stays the
-renderer's only route to files, and it serves books and covers only — no host is added for
-themes.
+**Invariant it must not bend:** `CLAUDE.md` #9 / `docs/invariants/reader.md` — the renderer never gets `file://`. The renderer passes paths, main reads bytes. `musaeum://` stays the renderer's only route to files, and it serves books and covers only — no host is added for themes.
 
-**File budget:** 8 code files (§5). Overrun absorber: `AppearanceSection`'s row rendering
-folds into `SettingsModal.tsx`.
-**[A36 — superseded: the landed count is 11 code files + 2 test files, one over
-`CLAUDE.md`'s ~10-file bound, and the absorber was deliberately not taken.** `store.ts` had
-to be opened (the `resolveId` library arm and the view's rows are its business, not the
-importer's), `src/types/theme.types.ts` had to be opened (`ThemeOption` and the view's two
-new fields — the row shape §2.4 requires is a contract), and `src/stores/theme.store.test.ts`
-grew with the store. The absorber folds a drop zone, a folder control, 14+ rows and a
-per-row reason disclosure into a modal that is already 404 lines; taking it would put two
-concerns in one file to satisfy a count. Recorded rather than absorbed silently — same
-handling as A30.]**
+**File budget:** 8 code files (§5). Overrun absorber: `AppearanceSection`'s row rendering folds into `SettingsModal.tsx`. **[A36 — superseded: the landed count is 11 code files + 2 test files, one over `CLAUDE.md`'s ~10-file bound, and the absorber was deliberately not taken.** `store.ts` had to be opened (the `resolveId` library arm and the view's rows are its business, not the importer's), `src/types/theme.types.ts` had to be opened (`ThemeOption` and the view's two new fields — the row shape §2.4 requires is a contract), and `src/stores/theme.store.test.ts` grew with the store. The absorber folds a drop zone, a folder control, 14+ rows and a per-row reason disclosure into a modal that is already 404 lines; taking it would put two concerns in one file to satisfy a count. Recorded rather than absorbed silently — same handling as A30.]**
 
 ### 2.5 Slice 5 — Reader convergence and the light flip
 
-`ReaderEngine.tsx`'s `PALETTE` const disappears. The reader's page colours come from the
-same derived values as the app chrome, through a pure `readerPalette(tokens)` in
-`src/lib/theme/` — mapping the page to **`ink-900` / `parchment` / `parchment_dim` /
-`gold-400`**, which is exactly today's `ink` row when the active theme is the built-in dark
-default. That choice is deliberate: it makes the default path a visual no-op, and it is
-theme-agnostic — on a light theme those same roles give a light page with dark text, which
-is what a page *is*.
+`ReaderEngine.tsx`'s `PALETTE` const disappears. The reader's page colours come from the same derived values as the app chrome, through a pure `readerPalette(tokens)` in `src/lib/theme/` — mapping the page to **`ink-900` / `parchment` / `parchment_dim` / `gold-400`**, which is exactly today's `ink` row when the active theme is the built-in dark default. That choice is deliberate: it makes the default path a visual no-op, and it is theme-agnostic — on a light theme those same roles give a light page with dark text, which is what a page *is*.
 
 `ReaderPrefs.theme` becomes **`'auto' | 'ink' | 'paper'`**, default `'auto'`:
 
@@ -1112,99 +505,31 @@ is what a page *is*.
 - `ink` — force today's dark row. Existing stored `'ink'` keeps meaning what it meant.
 - `paper` — the authored warm-paper row, unchanged.
 
-`sanitizePrefs` already validates against `THEME_OPTIONS` (F10), so an unknown value falls
-back — extend the option list and the validator together, as the store's own comment
-requires (`reader.store.ts:31-35`).
+`sanitizePrefs` already validates against `THEME_OPTIONS` (F10), so an unknown value falls back — extend the option list and the validator together, as the store's own comment requires (`reader.store.ts:31-35`).
 
-**A deliberate deviation from the handoff.** `HANDOFF.md` says the reader's "binary becomes
-a list". It does not: the app has one theme, and the reader's chrome *is* app chrome. A
-second, independent theme list for the reader would let the page disagree with the frame
-around it, which is the failure the reader's own z-index history warns about
-(`docs/invariants/reader.md`, the `z-[45]` note). Reversal condition: a request for
-per-book or per-reader palettes. That is a different feature (page styling, not app
-theming) and belongs in `tasks.md`, not here.
+**A deliberate deviation from the handoff.** `HANDOFF.md` says the reader's "binary becomes a list". It does not: the app has one theme, and the reader's chrome *is* app chrome. A second, independent theme list for the reader would let the page disagree with the frame around it, which is the failure the reader's own z-index history warns about (`docs/invariants/reader.md`, the `z-[45]` note). Reversal condition: a request for per-book or per-reader palettes. That is a different feature (page styling, not app theming) and belongs in `tasks.md`, not here.
 
 **Derived shadows and native appearance:**
 
-- The three shadow alphas become derived: `aN = clamp(0, 1, baseN × shadowStrength / 0.55)`
-  with `base = { a1: 0.5, a2: 0.35, a3: 0.6 }`. This is this spec's addition (the prototype
-  derives one strength, 0.55 dark / 0.16 light) and it exists to satisfy product decision 4:
-  a theme supplies *amplitude*, never shadow shape. Dark derives to 0.50/0.35/0.60 — byte
-  equal to today; light derives to 0.145/0.102/0.175.
-- `nativeTheme.themeSource = variant === 'light' ? 'light' : 'dark'`, set at boot from the
-  stored tokens and on every theme change, so native scrollbars, traffic lights and menus
-  agree with the app. `color-scheme` is **re-written** on `:root` in the same pass — slice 1
-  owns its default value (§2.1, A4); this slice owns the transition, so that the declared
-  scheme can never drift from the tokens.
-- `backgroundColor` at window creation already follows slice 3. A *change* of theme applies
-  `win.setBackgroundColor(...)` so a resize does not flash the old canvas.
+- The three shadow alphas become derived: `aN = clamp(0, 1, baseN × shadowStrength / 0.55)` with `base = { a1: 0.5, a2: 0.35, a3: 0.6 }`. This is this spec's addition (the prototype derives one strength, 0.55 dark / 0.16 light) and it exists to satisfy product decision 4: a theme supplies *amplitude*, never shadow shape. Dark derives to 0.50/0.35/0.60 — byte equal to today; light derives to 0.145/0.102/0.175.
+- `nativeTheme.themeSource = variant === 'light' ? 'light' : 'dark'`, set at boot from the stored tokens and on every theme change, so native scrollbars, traffic lights and menus agree with the app. `color-scheme` is **re-written** on `:root` in the same pass — slice 1 owns its default value (§2.1, A4); this slice owns the transition, so that the declared scheme can never drift from the tokens.
+- `backgroundColor` at window creation already follows slice 3. A *change* of theme applies `win.setBackgroundColor(...)` so a resize does not flash the old canvas.
 
-**Two hard constraints on how the reader consumes a theme — added in amendment round 1 (A7).**
-Both come from the vendored engine, so neither is a preference: they are conditions on what
-`pageCss()` may emit, and both are acceptance criteria (AC5.7, AC5.8).
+**Two hard constraints on how the reader consumes a theme — added in amendment round 1 (A7).** Both come from the vendored engine, so neither is a preference: they are conditions on what `pageCss()` may emit, and both are acceptance criteria (AC5.7, AC5.8).
 
-**(a) The injected stylesheet must carry resolved literals, never variable references.**
-`vendor/foliate-js/paginator.js:191` reads the *book document's resolved* background back out —
-`bodyStyle.backgroundColor === 'rgba(0, 0, 0, 0)'`, a string comparison against a fully
-transparent literal, with a fallback to the document element's background — and `:626` (inside
-the media-query listener opened at `:624`), `:685` and `:1113` re-apply whatever it returns to
-the paginator's **own** background element, because the book's iframe does not fill that element
-and the margin around the page has to be painted with the page's colour. So the colour in the
-book document must be a *literal*, resolved to hex at injection time. A `var(--ink-900)`
-reference is not defined inside the book's document — the custom properties live on the app's
-`:root`, and the book is a separate document — so it computes to nothing, `:191`'s comparison
-takes its fallback branch, and the engine paints its own margin transparent: the page colour
-stops at the iframe edge and the reader's frame shows through. `readerPalette(tokens)` therefore
-returns hex, and `pageCss()` may interpolate only literals. (The mechanism, read in full:
-`ReaderEngine.tsx:40-110` — `PALETTE` at 48-51, `const c = PALETTE[prefs.theme]` at 62, the
-stylesheet from 64, `color-scheme` at 67, `background`/`color` at 69-70 and 74-75, the link at
-101, the selection at 104.)
+**(a) The injected stylesheet must carry resolved literals, never variable references.** `vendor/foliate-js/paginator.js:191` reads the *book document's resolved* background back out — `bodyStyle.backgroundColor === 'rgba(0, 0, 0, 0)'`, a string comparison against a fully transparent literal, with a fallback to the document element's background — and `:626` (inside the media-query listener opened at `:624`), `:685` and `:1113` re-apply whatever it returns to the paginator's **own** background element, because the book's iframe does not fill that element and the margin around the page has to be painted with the page's colour. So the colour in the book document must be a *literal*, resolved to hex at injection time. A `var(--ink-900)` reference is not defined inside the book's document — the custom properties live on the app's `:root`, and the book is a separate document — so it computes to nothing, `:191`'s comparison takes its fallback branch, and the engine paints its own margin transparent: the page colour stops at the iframe edge and the reader's frame shows through. `readerPalette(tokens)` therefore returns hex, and `pageCss()` may interpolate only literals. (The mechanism, read in full: `ReaderEngine.tsx:40-110` — `PALETTE` at 48-51, `const c = PALETTE[prefs.theme]` at 62, the stylesheet from 64, `color-scheme` at 67, `background`/`color` at 69-70 and 74-75, the link at 101, the selection at 104.)
 
-**(b) The selection colour must not be a literal with an alpha suffix glued on.**
-`ReaderEngine.tsx:104` is `::selection { background: ${c.link}44; }` — a two-digit alpha appended
-to the link colour's hex string. That is valid today only because `c.link` *is* a hex literal,
-and it becomes an invalid declaration the moment the link colour is anything else (`var(…)`, or
-a `color-mix()` expression): the rule is dropped and the book's selection falls back to the UA
-default blue, in the one place the app's accent is most visible. **The fix this spec chooses is
-a pre-composed alpha literal:** `readerPalette()` returns the link colour *and* a `linkAlphaHex`
-(the resolved hex with `44` composed onto it), so `pageCss()` interpolates two literals and
-nothing else. Chosen over `color-mix(in srgb, #d4a24e 27%, transparent)` because (i) it keeps
-every value in the injected stylesheet a plain literal, which makes constraint (a)'s "no `var(`"
-property assertable in one place instead of rule by rule, and (ii) the alpha then sits in the
-source next to the rule it belongs to rather than as arithmetic the engine evaluates.
-*Reversal condition:* if a future rule has to blend two **derived** colours — say a selection
-tint that is a mix of accent and canvas — then `color-mix()` over two literals is the right form
-and this choice should be revisited rather than worked around with a second suffix.
+**(b) The selection colour must not be a literal with an alpha suffix glued on.** `ReaderEngine.tsx:104` is `::selection { background: ${c.link}44; }` — a two-digit alpha appended to the link colour's hex string. That is valid today only because `c.link` *is* a hex literal, and it becomes an invalid declaration the moment the link colour is anything else (`var(…)`, or a `color-mix()` expression): the rule is dropped and the book's selection falls back to the UA default blue, in the one place the app's accent is most visible. **The fix this spec chooses is a pre-composed alpha literal:** `readerPalette()` returns the link colour *and* a `linkAlphaHex` (the resolved hex with `44` composed onto it), so `pageCss()` interpolates two literals and nothing else. Chosen over `color-mix(in srgb, #d4a24e 27%, transparent)` because (i) it keeps every value in the injected stylesheet a plain literal, which makes constraint (a)'s "no `var(`" property assertable in one place instead of rule by rule, and (ii) the alpha then sits in the source next to the rule it belongs to rather than as arithmetic the engine evaluates. *Reversal condition:* if a future rule has to blend two **derived** colours — say a selection tint that is a mix of accent and canvas — then `color-mix()` over two literals is the right form and this choice should be revisited rather than worked around with a second suffix.
 
-One correction to the audit's framing: the dispatch attributes (b) to
-`vendor/foliate-js/paginator.js`, and it is not there — nothing under `vendor/foliate-js/`
-concatenates an alpha onto a colour (§1.4 G8). **The fix site is our own file**, which makes this
-constraint cheap to satisfy and no less necessary: constraint (a)'s literal requirement is what
-makes the pattern feel tempting in the first place.
+One correction to the audit's framing: the dispatch attributes (b) to `vendor/foliate-js/paginator.js`, and it is not there — nothing under `vendor/foliate-js/` concatenates an alpha onto a colour (§1.4 G8). **The fix site is our own file**, which makes this constraint cheap to satisfy and no less necessary: constraint (a)'s literal requirement is what makes the pattern feel tempting in the first place.
 
-**Invariant it must not bend:** `docs/invariants/reader.md` — `vendor/foliate-js/` is never
-edited, and the injected page CSS stays unprefixed (a book that ships its own typography
-keeps it; the engine's stylesheet only fills in what the book left unsaid). Every change here
-is in `pageCss()`'s colour expressions, not in its rules. The reader stays at `z-[45]`, and
-`sanitizePrefs` keeps sanitizing.
+**Invariant it must not bend:** `docs/invariants/reader.md` — `vendor/foliate-js/` is never edited, and the injected page CSS stays unprefixed (a book that ships its own typography keeps it; the engine's stylesheet only fills in what the book left unsaid). Every change here is in `pageCss()`'s colour expressions, not in its rules. The reader stays at `z-[45]`, and `sanitizePrefs` keeps sanitizing.
 
-**File budget:** 10 code + test files (§5) — at the bound. Overrun absorber:
-`src/lib/theme/reader-palette.ts` folds into `src/lib/theme/css.ts` (both are "derived values
-out", and together they are ~60 lines).
-**[A53 — superseded: the landed count is 9 code + 4 test files, and the absorber was deliberately
-not taken.** §5's row below is corrected in place: it never counted `src/lib/theme/css.ts`
-(A50's writer, the same undercount A30 found on slice 3), `ReaderSearch.tsx` (A46's consumer),
-`services/events.ts` and `test/mocks/electron.ts` (A51's wiring).]**
+**File budget:** 10 code + test files (§5) — at the bound. Overrun absorber: `src/lib/theme/reader-palette.ts` folds into `src/lib/theme/css.ts` (both are "derived values out", and together they are ~60 lines). **[A53 — superseded: the landed count is 9 code + 4 test files, and the absorber was deliberately not taken.** §5's row below is corrected in place: it never counted `src/lib/theme/css.ts` (A50's writer, the same undercount A30 found on slice 3), `ReaderSearch.tsx` (A46's consumer), `services/events.ts` and `test/mocks/electron.ts` (A51's wiring).]**
 
 ### 2.6 Slice 6 — The Obsidian resolver
 
-The observation that makes Obsidian worth having: **its variable vocabulary is closer to
-Musaeum's tokens than base16's is** (`--background-primary/secondary/tertiary`,
-`--text-normal/muted/faint`, `--interactive-accent`, `--text-on-accent`). Its values,
-however, are frequently computed — `hsl(var(--base-h), var(--base-s), calc(var(--base-l) - 80%))`,
-`var()` chains, `color-mix(in hsl, …)` — and a CSS regex resolves **1 of the 5 themes
-installed on this machine** (F11). Computed values only resolve inside a live cascade, and
-we ship Chromium, so the general answer is to *run* the stylesheet.
+The observation that makes Obsidian worth having: **its variable vocabulary is closer to Musaeum's tokens than base16's is** (`--background-primary/secondary/tertiary`, `--text-normal/muted/faint`, `--interactive-accent`, `--text-on-accent`). Its values, however, are frequently computed — `hsl(var(--base-h), var(--base-s), calc(var(--base-l) - 80%))`, `var()` chains, `color-mix(in hsl, …)` — and a CSS regex resolves **1 of the 5 themes installed on this machine** (F11). Computed values only resolve inside a live cascade, and we ship Chromium, so the general answer is to *run* the stylesheet.
 
 **Design: a sandboxed offscreen window that is read for values only.**
 
@@ -1222,114 +547,31 @@ BrowserWindow({
 })
 ```
 
-1. `session.fromPartition('musaeum-theme-resolver', { cache: false })` gets
-   `webRequest.onBeforeRequest((_d, cb) => cb({ cancel: true }))` — **every** request
-   cancelled, unconditionally, before the document loads. This is the primary control.
-   **[Confirmed 2026-09-19, and false as written.** An unfiltered cancel-all cancels the `data:`
-   document itself — it is the first request the listener sees — and the load fails with
-   `ERR_BLOCKED_BY_CLIENT`, so nothing resolves at all. The rule ships filtered:
-   `onBeforeRequest({ urls: ['*://*/*'] }, …)`. It never sees the document, and a loopback server
-   proves it still cancels every http(s) attempt a stylesheet can make: with the CSP relaxed to
-   nothing, 4 attempts are seen and **0 requests reach the server**; with the rule removed, all 4
-   arrive. Measured against the six Obsidian themes installed on this machine; the harness and the
-   full table are in the annex, `plans/2026-09-19-theming-slice6.md` §2–§3 (D2). AC6.2's decider does
-   not survive as written — the strict-CSP document issues *no* request, so a bare
-   `onBeforeRequest` counter reads 0 with the rule removed and with it installed, and the
-   loopback server replaces it.**]**
-2. The document is created from a data URL whose own CSP is
-   `default-src 'none'; style-src 'unsafe-inline'` — a second layer: `@import` and
-   `url()`-bearing declarations resolve to blocked fetches even if the session rule were
-   ever relaxed. The theme is injected as a `<style>` **text node** (`document.head.append`)
-   so no fetch is needed to load the file at all; the bytes come from `fs.readFile` in main.
-3. `document.body.classList.add('theme-dark' | 'theme-light')` before reading — Obsidian
-   themes key their two palettes off that class. The variant is chosen from the file's own
-   `theme.css` folder for the user's installed theme (both are resolved when needed: the
-   picker shows two entries, dark and light, when the file defines both).
-4. `getComputedStyle(document.body).getPropertyValue(name)` for the role list, then
-   `window.close()`/`destroy()` and a hard timeout (proposed 3 s) that destroys the window
-   and rejects the theme with a reason.
-   **[Confirmed 2026-09-19: the destroy cannot ship.** In Electron 37.10.3 the *second* window created
-   after a destroy never loads (`ERR_FAILED`) and the process dies with `SIGTRAP` around the third —
-   with `offscreen` on and off, and with a fixed partition and a fresh one per window. One window
-   created once and **reused** resolved all six real themes × two variants in one process (1.24 MB of
-   stylesheet in 25 ms). So the window is created lazily on the first `.css` and never destroyed; a
-   timeout resets it (`webContents.stop()` + a reload of `about:blank`) instead. AC6.6's "no orphaned
-   window" is restated in the annex (D1) as *N resolves leave exactly one window* — and the same note
-   carries the file this changes outside the resolver: `main/index.ts:225`'s `activate` decides
-   whether to reopen the main window from `BrowserWindow.getAllWindows().length === 0`, which a
-   permanently-alive hidden window would keep at 1.**]**
-   **[Also confirmed in the same run, and this one is a correction to step 5 rather than to the
-   design: a computed custom property is *not* a colour.** Chromium answers with the substituted
-   token stream — `#171c28`, `rgb(22, 22, 30)`, `hsl(220, 12%, calc(18% - 2%))`,
-   `color-mix( in hsl, #1d2433, #2f3b54 )`, `color(srgb 0.149 0.186 0.264)`, `rgba(…, 0.65)`, or
-   empty — so the `^#[0-9a-f]{6}$` test is right about the contract and wrong about its input. The
-   read is two-stage (a probe element resolves the CSS value; a pure `normalizeColour` in the adapter
-   accepts hex/`rgb()`/`rgba()`/`color(srgb …)` and answers `#rrggbb`, alpha dropped and the roles it
-   was dropped for named in `notes`). See the annex §3 D3.**]**
-5. **What crosses back is hex strings only.** The resolver returns
-   `Record<ObsidianRole, string>`; every value is validated against `^#[0-9a-f]{6}$` (after
-   normalizing `#rgb`/`#rrggbbaa`) in `services/theme/` **before** it becomes part of an IR.
-   A payload that can only be a hex colour cannot carry CSS, a URL, or a selector.
+1. `session.fromPartition('musaeum-theme-resolver', { cache: false })` gets `webRequest.onBeforeRequest((_d, cb) => cb({ cancel: true }))` — **every** request cancelled, unconditionally, before the document loads. This is the primary control. **[Confirmed 2026-09-19, and false as written.** An unfiltered cancel-all cancels the `data:` document itself — it is the first request the listener sees — and the load fails with `ERR_BLOCKED_BY_CLIENT`, so nothing resolves at all. The rule ships filtered: `onBeforeRequest({ urls: ['*://*/*'] }, …)`. It never sees the document, and a loopback server proves it still cancels every http(s) attempt a stylesheet can make: with the CSP relaxed to nothing, 4 attempts are seen and **0 requests reach the server**; with the rule removed, all 4 arrive. Measured against the six Obsidian themes installed on this machine; the harness and the full table are in the annex, `plans/2026-09-19-theming-slice6.md` §2–§3 (D2). AC6.2's decider does not survive as written — the strict-CSP document issues *no* request, so a bare `onBeforeRequest` counter reads 0 with the rule removed and with it installed, and the loopback server replaces it.**]**
+2. The document is created from a data URL whose own CSP is `default-src 'none'; style-src 'unsafe-inline'` — a second layer: `@import` and `url()`-bearing declarations resolve to blocked fetches even if the session rule were ever relaxed. The theme is injected as a `<style>` **text node** (`document.head.append`) so no fetch is needed to load the file at all; the bytes come from `fs.readFile` in main.
+3. `document.body.classList.add('theme-dark' | 'theme-light')` before reading — Obsidian themes key their two palettes off that class. The variant is chosen from the file's own `theme.css` folder for the user's installed theme (both are resolved when needed: the picker shows two entries, dark and light, when the file defines both).
+4. `getComputedStyle(document.body).getPropertyValue(name)` for the role list, then `window.close()`/`destroy()` and a hard timeout (proposed 3 s) that destroys the window and rejects the theme with a reason. **[Confirmed 2026-09-19: the destroy cannot ship.** In Electron 37.10.3 the *second* window created after a destroy never loads (`ERR_FAILED`) and the process dies with `SIGTRAP` around the third — with `offscreen` on and off, and with a fixed partition and a fresh one per window. One window created once and **reused** resolved all six real themes × two variants in one process (1.24 MB of stylesheet in 25 ms). So the window is created lazily on the first `.css` and never destroyed; a timeout resets it (`webContents.stop()` + a reload of `about:blank`) instead. AC6.6's "no orphaned window" is restated in the annex (D1) as *N resolves leave exactly one window* — and the same note carries the file this changes outside the resolver: `main/index.ts:225`'s `activate` decides whether to reopen the main window from `BrowserWindow.getAllWindows().length === 0`, which a permanently-alive hidden window would keep at 1.**]** **[Also confirmed in the same run, and this one is a correction to step 5 rather than to the design: a computed custom property is *not* a colour.** Chromium answers with the substituted token stream — `#171c28`, `rgb(22, 22, 30)`, `hsl(220, 12%, calc(18% - 2%))`, `color-mix( in hsl, #1d2433, #2f3b54 )`, `color(srgb 0.149 0.186 0.264)`, `rgba(…, 0.65)`, or empty — so the `^#[0-9a-f]{6}$` test is right about the contract and wrong about its input. The read is two-stage (a probe element resolves the CSS value; a pure `normalizeColour` in the adapter accepts hex/`rgb()`/`rgba()`/`color(srgb …)` and answers `#rrggbb`, alpha dropped and the roles it was dropped for named in `notes`). See the annex §3 D3.**]**
+5. **What crosses back is hex strings only.** The resolver returns `Record<ObsidianRole, string>`; every value is validated against `^#[0-9a-f]{6}$` (after normalizing `#rgb`/`#rrggbbaa`) in `services/theme/` **before** it becomes part of an IR. A payload that can only be a hex colour cannot carry CSS, a URL, or a selector.
 
-Roles read (`derive.py`'s `OBSIDIAN_ROLE_MAP`, with its fallback chain preserved): canvas
-`--background-secondary`, panel `--background-primary`, raised `--background-primary-alt`,
-border `--background-modifier-border`, text `--text-normal`, muted `--text-muted`, faint
-`--text-faint`, accent `--interactive-accent`, `on_acc` `--text-on-accent`; accents from
-`--color-red`/`-orange`/`-yellow`/`-green`/`-cyan`/`-blue`/`-purple` where present. A role
-that is empty, non-hex, or missing after the fallback chain → the theme is **rejected with
-the unresolved role named**, never partially applied.
+Roles read (`derive.py`'s `OBSIDIAN_ROLE_MAP`, with its fallback chain preserved): canvas `--background-secondary`, panel `--background-primary`, raised `--background-primary-alt`, border `--background-modifier-border`, text `--text-normal`, muted `--text-muted`, faint `--text-faint`, accent `--interactive-accent`, `on_acc` `--text-on-accent`; accents from `--color-red`/`-orange`/`-yellow`/`-green`/`-cyan`/`-blue`/`-purple` where present. A role that is empty, non-hex, or missing after the fallback chain → the theme is **rejected with the unresolved role named**, never partially applied.
 
-**Security surface, stated explicitly because it is arbitrary CSS from a user-installed
-theme.** Three properties the design must have, and each has an acceptance criterion:
+**Security surface, stated explicitly because it is arbitrary CSS from a user-installed theme.** Three properties the design must have, and each has an acceptance criterion:
 
-- the stylesheet is **never** injected into the real renderer — not as a `<style>`, not as a
-  `link`, not via `insertCSS`. The renderer only ever receives derived hex values;
-- the resolver session can make **no network request** — remote `@import`, remote fonts,
-  `url()` beacons, `musaeum://` — the session cancels all of them, and the CSP is a second
-  layer;
-- the resolver window has **no preload, no Node, no opened windows** (`setWindowOpenHandler`
-  → deny) and is destroyed after one read.
+- the stylesheet is **never** injected into the real renderer — not as a `<style>`, not as a `link`, not via `insertCSS`. The renderer only ever receives derived hex values;
+- the resolver session can make **no network request** — remote `@import`, remote fonts, `url()` beacons, `musaeum://` — the session cancels all of them, and the CSP is a second layer;
+- the resolver window has **no preload, no Node, no opened windows** (`setWindowOpenHandler` → deny) and is destroyed after one read.
 
-**Invariant it must not bend:** `CLAUDE.md` #9 — the renderer never gets `file://`. The
-resolver runs in main, reads the theme file itself, and hands the renderer hex values. If a
-future implementation concludes the renderer should receive the CSS text, that is a stop and
-hand back, not a judgement call.
+**Invariant it must not bend:** `CLAUDE.md` #9 — the renderer never gets `file://`. The resolver runs in main, reads the theme file itself, and hands the renderer hex values. If a future implementation concludes the renderer should receive the CSS text, that is a stop and hand back, not a judgement call.
 
-**Open decision, flagged for the owner:** whether a resolved Obsidian theme is stored
-**derived-values-only** (plus `sourcePath` for display) or **alongside a copy of the source
-CSS**. Recommendation — derived-only. It is also what slice 3's storage already assumes; the
-handoff's own reading is that "licensing only bites on redistribution", and a copy in
-`userData` is precisely the redistribution-shaped act that a theme the user already has
-installed is not. A copy buys nothing for the stated use case, because the derived values are
-what the app renders and they survive the source moving. See "Open questions" at the end.
+**Open decision, flagged for the owner:** whether a resolved Obsidian theme is stored **derived-values-only** (plus `sourcePath` for display) or **alongside a copy of the source CSS**. Recommendation — derived-only. It is also what slice 3's storage already assumes; the handoff's own reading is that "licensing only bites on redistribution", and a copy in `userData` is precisely the redistribution-shaped act that a theme the user already has installed is not. A copy buys nothing for the stated use case, because the derived values are what the app renders and they survive the source moving. See "Open questions" at the end.
 
-**File budget:** 5 code files + 1 test file (§5). Overrun absorber: `parse/obsidian.ts` folds
-into `theme/index.ts`. This slice does **not** get a separate resolver module if that would
-push it past the bound — the resolver and the role map belong together.
-**[Corrected 2026-09-19 by the pre-build check the sentence above demanded: the honest count is 8 code
-files + 2 test files.** The walk over *who writes it, who reads it, who wires it, who proves it* finds
-four files neither budget row counted — two of them named by this spec's own A45 as extension sites
-slice 6 must find (`ipc/theme.ts`'s dialog filter and `AppearanceSection.tsx`'s drop filter), plus
-`theme/store.ts` (the never-re-derive-an-Obsidian-row rule, D6) and `electron/main/index.ts` (D1's
-`activate` predicate, which exists *because* the resolver window is now long-lived) — on top of the
-four this sentence names. The named absorber is deliberately not taken: it would fold the pure,
-unit-decided adapter into the module that owns the Electron edge. Tests: `parse/obsidian.test.ts`
-(new) and `importer.test.ts` (extended, including inverting the `.css`-is-not-scannable assertions at
-`:351`). One file over `CLAUDE.md`'s ~10-file bound, recorded rather than absorbed, as A30/A36/A53
-were. Files, owners and the reason for each: annex §3 D8 and §4.**]**
+**File budget:** 5 code files + 1 test file (§5). Overrun absorber: `parse/obsidian.ts` folds into `theme/index.ts`. This slice does **not** get a separate resolver module if that would push it past the bound — the resolver and the role map belong together. **[Corrected 2026-09-19 by the pre-build check the sentence above demanded: the honest count is 8 code files + 2 test files.** The walk over *who writes it, who reads it, who wires it, who proves it* finds four files neither budget row counted — two of them named by this spec's own A45 as extension sites slice 6 must find (`ipc/theme.ts`'s dialog filter and `AppearanceSection.tsx`'s drop filter), plus `theme/store.ts` (the never-re-derive-an-Obsidian-row rule, D6) and `electron/main/index.ts` (D1's `activate` predicate, which exists *because* the resolver window is now long-lived) — on top of the four this sentence names. The named absorber is deliberately not taken: it would fold the pure, unit-decided adapter into the module that owns the Electron edge. Tests: `parse/obsidian.test.ts` (new) and `importer.test.ts` (extended, including inverting the `.css`-is-not-scannable assertions at `:351`). One file over `CLAUDE.md`'s ~10-file bound, recorded rather than absorbed, as A30/A36/A53 were. Files, owners and the reason for each: annex §3 D8 and §4.**]**
 
 ### 2.7 Slice 7 — COMMITTED by the owner, and staged 7a/7b: status colours, and the two migrations that invert
 
-**Status: committed, at its widest, and staged** — see the adjudication block at the end of this
-file (J1, J2). The owner took the option §2.7a recommended against, so the honest file count is 15+
-code files, over the bound: rather than shrink the scope, the slice is cut into two stages, each of
-which fits the bound on its own. Its criteria are numbered **AC8.x** to avoid colliding with the
-cross-slice **AC7.x** block in §3.
+**Status: committed, at its widest, and staged** — see the adjudication block at the end of this file (J1, J2). The owner took the option §2.7a recommended against, so the honest file count is 15+ code files, over the bound: rather than shrink the scope, the slice is cut into two stages, each of which fits the bound on its own. Its criteria are numbered **AC8.x** to avoid colliding with the cross-slice **AC7.x** block in §3.
 
-**Why it exists.** Of the seven consumer classes in §1.3, three fall outside every approved
-slice: C1 (`gold-200`), C3 (the twelve veils), C4 (the 53 stock-palette sites). C1 is a
-pre-existing defect (§6) and C7 is slice 5's. That leaves C3 and C4 — and both fail on a light
-theme *visibly and wrongly*, not merely off-palette:
+**Why it exists.** Of the seven consumer classes in §1.3, three fall outside every approved slice: C1 (`gold-200`), C3 (the twelve veils), C4 (the 53 stock-palette sites). C1 is a pre-existing defect (§6) and C7 is slice 5's. That leaves C3 and C4 — and both fail on a light theme *visibly and wrongly*, not merely off-palette:
 
 | Failure | Sites | What a user sees under a light theme |
 |---|---|---|
@@ -1340,23 +582,10 @@ theme *visibly and wrongly*, not merely off-palette:
 
 **What it contains.**
 
-1. **Derive the status family** (§2.2): `danger`/`ok`/`warn` from the palette's own red/green/
-   yellow accents with `on-danger`/`on-ok`/`on-warn` foregrounds, reusing slice 2's floors and
-   walks. Cheap by construction — the prototype already derives all three, so this is three rows
-   in `derive.ts`, not a subsystem.
-2. **Migrate the twelve veils**: `bg-ink-950/70` and `/80` → `bg-scrim/70` and `/80` at every
-   site named in §1.3 C3. A rename, not a re-measure — the authored alphas stay (§1.1).
-3. **Migrate the two hairlines**: `ring-white/5` → `ring-parchment/5`, reusing an existing token
-   rather than adding a role. Justification: `parchment` is *by construction* the tone chosen to
-   contrast with the canvas — light on a dark surface, dark on a light one — so it is the one
-   existing token that stays visible in both variants, and `scrim` cannot do this job (a scrim
-   derived as the dark end is near-black, which is invisible over dark cover art). Cost: the dark
-   default shifts from neutral white at 5% to the palette's parchment at 5%, an invisible but
-   real pixel change in the dark theme.
-4. **Migrate the status sites**: 23 `text-red-400` → `text-danger-400`, 11 `bg-red-500` →
-   `bg-danger-500`, 7 `border-red-500` → `border-danger-500`, 3 `bg-red-600` → `bg-danger-600`,
-   4 `text-white` (all of them on danger fills) → `text-on-danger`, 2 `ring-white` (item 3),
-   1 `bg-emerald-500` → `bg-ok-500`.
+1. **Derive the status family** (§2.2): `danger`/`ok`/`warn` from the palette's own red/green/ yellow accents with `on-danger`/`on-ok`/`on-warn` foregrounds, reusing slice 2's floors and walks. Cheap by construction — the prototype already derives all three, so this is three rows in `derive.ts`, not a subsystem.
+2. **Migrate the twelve veils**: `bg-ink-950/70` and `/80` → `bg-scrim/70` and `/80` at every site named in §1.3 C3. A rename, not a re-measure — the authored alphas stay (§1.1).
+3. **Migrate the two hairlines**: `ring-white/5` → `ring-parchment/5`, reusing an existing token rather than adding a role. Justification: `parchment` is *by construction* the tone chosen to contrast with the canvas — light on a dark surface, dark on a light one — so it is the one existing token that stays visible in both variants, and `scrim` cannot do this job (a scrim derived as the dark end is near-black, which is invisible over dark cover art). Cost: the dark default shifts from neutral white at 5% to the palette's parchment at 5%, an invisible but real pixel change in the dark theme.
+4. **Migrate the status sites**: 23 `text-red-400` → `text-danger-400`, 11 `bg-red-500` → `bg-danger-500`, 7 `border-red-500` → `border-danger-500`, 3 `bg-red-600` → `bg-danger-600`, 4 `text-white` (all of them on danger fills) → `text-on-danger`, 2 `ring-white` (item 3), 1 `bg-emerald-500` → `bg-ok-500`.
 
 **File budget** (§5's table carries the row):
 
@@ -1368,493 +597,145 @@ theme *visibly and wrongly*, not merely off-palette:
 | Tests | 1 | `theme/derive.test.ts` extended (scrim floors, status contrast) — no new test file |
 | `src/index.css` | 0 | the `:root` defaults for the new variables — **already slice 1's file** (§2.1), so no new file |
 
-**Total: 15 code files + 1 test — five over the ~10-file bound.** That is the honest count, and
-it is the whole reason this slice needs a decision rather than a plan.
+**Total: 15 code files + 1 test — five over the ~10-file bound.** That is the honest count, and it is the whole reason this slice needs a decision rather than a plan.
 
-**Overrun absorber, named: `src/components/library/BookDetail.tsx`.** Its only change is the
-hairline at `:81`, and the cover it wraps is already edged by `shadow-cover` (that element's own
-class list), so this is the one site in the slice whose absence is cosmetic rather than a
-legibility failure. It leaves first, folding into the same `parchment/5` sweep whenever that file
-is next opened for any other reason. Second absorber: the status sites in files slice 7 does not
-otherwise open leave as debt (§2.7a). With both taken, slice 7 is **10 code files + 1 test** —
-at the bound.
+**Overrun absorber, named: `src/components/library/BookDetail.tsx`.** Its only change is the hairline at `:81`, and the cover it wraps is already edged by `shadow-cover` (that element's own class list), so this is the one site in the slice whose absence is cosmetic rather than a legibility failure. It leaves first, folding into the same `parchment/5` sweep whenever that file is next opened for any other reason. Second absorber: the status sites in files slice 7 does not otherwise open leave as debt (§2.7a). With both taken, slice 7 is **10 code files + 1 test** — at the bound.
 
 #### 2.7a The cheaper alternative, and the recommendation
 
-**The cheaper alternative, stated plainly:** derive the new tokens *inside the slices that
-already own those files* (scrim + status derivations are rows in `derive.ts` and `:root` lines in
-`src/index.css` — **zero extra files**), migrate only the sites that **break** as those files are
-opened for other reasons, and record everything else as **named debt with an owner** in
-`tasks.md`.
+**The cheaper alternative, stated plainly:** derive the new tokens *inside the slices that already own those files* (scrim + status derivations are rows in `derive.ts` and `:root` lines in `src/index.css` — **zero extra files**), migrate only the sites that **break** as those files are opened for other reasons, and record everything else as **named debt with an owner** in `tasks.md`.
 
 Which sites break, measured rather than guessed:
 
-- **Inversion — a dark veil becoming a white wash, or a glyph vanishing:** the 8 modal veils, the
-  4 BookCard chips, the 2 hairlines. Non-negotiable; a white-washed modal is a broken screen, not
-  an off-palette one.
-- **Contrast — off-palette becoming illegible:** the 23 `text-red-400` sites, at ≈2.3:1 on a light
-  panel. Uniform and greppable (`text-red-400` → `text-danger-400`), but 16 files wide.
-- **Neither:** the danger *fills* — `bg-red-500` (11), `bg-red-600` (3), `text-white` (4),
-  `border-red-500` (7) — hold ≥3.8:1 (red-500 against white) and ≥4.8:1 (red-600), so they are
-  off-palette rather than unreadable. These are the honest debt candidates.
+- **Inversion — a dark veil becoming a white wash, or a glyph vanishing:** the 8 modal veils, the 4 BookCard chips, the 2 hairlines. Non-negotiable; a white-washed modal is a broken screen, not an off-palette one.
+- **Contrast — off-palette becoming illegible:** the 23 `text-red-400` sites, at ≈2.3:1 on a light panel. Uniform and greppable (`text-red-400` → `text-danger-400`), but 16 files wide.
+- **Neither:** the danger *fills* — `bg-red-500` (11), `bg-red-600` (3), `text-white` (4), `border-red-500` (7) — hold ≥3.8:1 (red-500 against white) and ≥4.8:1 (red-600), so they are off-palette rather than unreadable. These are the honest debt candidates.
 
-**Recommendation: the hybrid — OVERRULED by the owner on 2026-09-15, retained for its rationale.**
-The owner chose the widest option: derive the status family *and* migrate all 53 sites in this
-feature. See the adjudication block (J1, J2) for the decision, its consequence (a staged slice), and
-its reversal condition. What follows is what this spec argued before that call, kept because the
-reasoning behind the staging cut comes from it: Land the derivations and the seventeenth token inside the
-existing slices, since they cost no files; ship the **inversion** migrations as slice 7 proper
-(ten files, at the bound, `BookDetail.tsx` as the absorber); and record the status-site sweep as
-debt owned by whoever lands slice 7, swept file by file as those files are next touched. The
-reason is the shape of the two changes: inversion is a *correctness* failure with no workaround —
-nothing about a light theme makes a backdrop that brightens acceptable — while the status sweep
-is a one-class-per-site substitution whose only design content is the tokens, and 16 files of
-mechanical substitution inside a theming slice is exactly how the ~10-file bound gets blown for
-no design gain. I record the third and narrower option (slice 7 absorbing all 53 sites) as
-available but not recommended: it is 15+ files plus the sweep, and its extra content is the
-lowest-value third of the change.
+**Recommendation: the hybrid — OVERRULED by the owner on 2026-09-15, retained for its rationale.** The owner chose the widest option: derive the status family *and* migrate all 53 sites in this feature. See the adjudication block (J1, J2) for the decision, its consequence (a staged slice), and its reversal condition. What follows is what this spec argued before that call, kept because the reasoning behind the staging cut comes from it: Land the derivations and the seventeenth token inside the existing slices, since they cost no files; ship the **inversion** migrations as slice 7 proper (ten files, at the bound, `BookDetail.tsx` as the absorber); and record the status-site sweep as debt owned by whoever lands slice 7, swept file by file as those files are next touched. The reason is the shape of the two changes: inversion is a *correctness* failure with no workaround — nothing about a light theme makes a backdrop that brightens acceptable — while the status sweep is a one-class-per-site substitution whose only design content is the tokens, and 16 files of mechanical substitution inside a theming slice is exactly how the ~10-file bound gets blown for no design gain. I record the third and narrower option (slice 7 absorbing all 53 sites) as available but not recommended: it is 15+ files plus the sweep, and its extra content is the lowest-value third of the change.
 
-**Reversal condition:** if a **light theme is ever the shipped default**, the debt stops being
-debt — then the sweep gets its own dispatch and its own budget, and the question below is
-answered by "do the whole thing".
+**Reversal condition:** if a **light theme is ever the shipped default**, the debt stops being debt — then the sweep gets its own dispatch and its own budget, and the question below is answered by "do the whole thing".
 
 ---
 
 ## 3. Acceptance criteria
 
-Every criterion names a case and a mutation that fails it. Slice numbers match §2. A
-criterion whose mutation does not fail it is not a criterion; delete it rather than soften it.
+Every criterion names a case and a mutation that fails it. Slice numbers match §2. A criterion whose mutation does not fail it is not a criterion; delete it rather than soften it.
 
 ### Slice 1 — token plumbing
 
-**AC1.1 — pixel identity.** *Case:* build at HEAD before the change, launch with
-`npx electron . --remote-debugging-port=9222` (the procedure in the `musaeum-app-verification`
-skill), capture the grid view with a seeded library, the detail panel open, and the Settings
-modal open; repeat on the changed build with no theme configured; compare frames with the
-Pillow script (the agent venv is the only interpreter on this machine with PIL).
-*Mutation that fails it:* change one hex by one step in the `:root` block (e.g.
-`--gold-400: 212 162 78` → `213 162 78`); the diff must be non-empty in the swatch/ring
-region. If a one-step change is invisible the capture is not measuring what it claims.
+**AC1.1 — pixel identity.** *Case:* build at HEAD before the change, launch with `npx electron . --remote-debugging-port=9222` (the procedure in the `musaeum-app-verification` skill), capture the grid view with a seeded library, the detail panel open, and the Settings modal open; repeat on the changed build with no theme configured; compare frames with the Pillow script (the agent venv is the only interpreter on this machine with PIL). *Mutation that fails it:* change one hex by one step in the `:root` block (e.g. `--gold-400: 212 162 78` → `213 162 78`); the diff must be non-empty in the swatch/ring region. If a one-step change is invisible the capture is not measuring what it claims.
 
-**AC1.2 — no class names change.** *Case:* `git diff --name-only` over the slice;
-the touched set is exactly `tailwind.config.js` and `src/index.css`.
-*Mutation that fails it:* any edit under `src/components/**` or `src/stores/**` — the change
-is confined to the config because Tailwind resolves utilities at build time.
+**AC1.2 — no class names change.** *Case:* `git diff --name-only` over the slice; the touched set is exactly `tailwind.config.js` and `src/index.css`. *Mutation that fails it:* any edit under `src/components/**` or `src/stores/**` — the change is confined to the config because Tailwind resolves utilities at build time.
 
-**AC1.3 — slash-opacity survives.** *Case:* in the running app,
-`getComputedStyle(document.querySelector('::selection'))`-equivalents are not reachable, so
-assert on the resolved CSS instead: the built stylesheet contains a rule for the selection
-background whose computed alpha is 0.4, and a focused button renders a gold ring at 0.7
-alpha.
-*Mutation that fails it:* change one entry to `'var(--gold-500)'` (a plain var, no
-`<alpha-value>`) — `bg-gold-500/40` then produces invalid CSS, the declaration is dropped,
-and the selection background reads `rgba(0, 0, 0, 0)` with the build still green. **This is
-the mutation the slice exists to prevent.**
+**AC1.3 — slash-opacity survives.** *Case:* in the running app, `getComputedStyle(document.querySelector('::selection'))`-equivalents are not reachable, so assert on the resolved CSS instead: the built stylesheet contains a rule for the selection background whose computed alpha is 0.4, and a focused button renders a gold ring at 0.7 alpha. *Mutation that fails it:* change one entry to `'var(--gold-500)'` (a plain var, no `<alpha-value>`) — `bg-gold-500/40` then produces invalid CSS, the declaration is dropped, and the selection background reads `rgba(0, 0, 0, 0)` with the build still green. **This is the mutation the slice exists to prevent.**
 
-**AC1.4 — the defaults are the old palette.** *Case:* a unit test asserts the hex→channel
-conversion of all **17** `:root` defaults equals the literals in
-`git show HEAD:tailwind.config.js` plus the three shadow alphas **and `--scrim`** (which is
-`ink-950`'s value by construction — this assertion is what keeps that "by construction" honest
-rather than hopeful, A5).
-*Mutation that fails it:* transcribe a triplet by hand with one digit wrong (e.g.
-`--parchment-faint: 125 114 96` → `125 114 69`); the assertion must fail. Without this test
-AC1.1's pixel diff is the only detector, and it is a human judgement.
+**AC1.4 — the defaults are the old palette.** *Case:* a unit test asserts the hex→channel conversion of all **17** `:root` defaults equals the literals in `git show HEAD:tailwind.config.js` plus the three shadow alphas **and `--scrim`** (which is `ink-950`'s value by construction — this assertion is what keeps that "by construction" honest rather than hopeful, A5). *Mutation that fails it:* transcribe a triplet by hand with one digit wrong (e.g. `--parchment-faint: 125 114 96` → `125 114 69`); the assertion must fail. Without this test AC1.1's pixel diff is the only detector, and it is a human judgement.
 
-**AC1.5 — geometry does not move.** *Case:* in the list view, `document.querySelector('table').scrollHeight`
-and a rendered row cell's `getBoundingClientRect().height` are identical before and after
-(37 and 20+16 respectively, per `ListView.tsx:67` and `library-views.md`).
-*Mutation that fails it:* give the shadow variables a fallback that changes box-shadow
-spread (e.g. `0 2px 8px rgb(0 0 0 / var(--shadow-a1))` → `0 3px 8px …`); scroll drift, not a
-build error.
+**AC1.5 — geometry does not move.** *Case:* in the list view, `document.querySelector('table').scrollHeight` and a rendered row cell's `getBoundingClientRect().height` are identical before and after (37 and 20+16 respectively, per `ListView.tsx:67` and `library-views.md`). *Mutation that fails it:* give the shadow variables a fallback that changes box-shadow spread (e.g. `0 2px 8px rgb(0 0 0 / var(--shadow-a1))` → `0 3px 8px …`); scroll drift, not a build error.
 
-**AC1.6 — a missing variable fails loudly on screen.** *Case:* with `--shadow-a1` deleted
-from `:root`, the app must visibly lose cover shadows — the point is that this is *visible*,
-not silent.
-*Mutation that fails it:* if removing `--shadow-a1` leaves covers looking identical, the
-shadow utility is not consuming the variable and slice 5's derived shadows are fiction.
+**AC1.6 — a missing variable fails loudly on screen.** *Case:* with `--shadow-a1` deleted from `:root`, the app must visibly lose cover shadows — the point is that this is *visible*, not silent. *Mutation that fails it:* if removing `--shadow-a1` leaves covers looking identical, the shadow utility is not consuming the variable and slice 5's derived shadows are fiction.
 
-**AC1.7 — the root scheme is declared, and it is not the reader's one** (amendment round 1, A4).
-*Case:* on the unthemed build, `getComputedStyle(document.documentElement).colorScheme` returns
-`dark` — read in the running app, not from the source — and after a light theme's tokens are
-applied (slice 5) it returns `light`. A second half of the same case: the declaration is on
-`:root`, so the *book's* document is unaffected and `ReaderEngine.tsx:67` still owns the
-iframe's own scheme.
-*Mutation that fails it:* delete the line from `src/index.css` (restoring the first pass's
-deferral) — the property reads `''`, and every native control body, the caret and the default
-canvas follow the machine instead of the app; the assertion fails. A second mutation: leave the
-value pinned at `dark` when a light theme is active — the second half fails, which is exactly the
-state the deferral would have shipped.
+**AC1.7 — the root scheme is declared, and it is not the reader's one** (amendment round 1, A4). *Case:* on the unthemed build, `getComputedStyle(document.documentElement).colorScheme` returns `dark` — read in the running app, not from the source — and after a light theme's tokens are applied (slice 5) it returns `light`. A second half of the same case: the declaration is on `:root`, so the *book's* document is unaffected and `ReaderEngine.tsx:67` still owns the iframe's own scheme. *Mutation that fails it:* delete the line from `src/index.css` (restoring the first pass's deferral) — the property reads `''`, and every native control body, the caret and the default canvas follow the machine instead of the app; the assertion fails. A second mutation: leave the value pinned at `dark` when a light theme is active — the second half fails, which is exactly the state the deferral would have shipped.
 
 ### Slice 2 — derivation core
 
-**AC2.1 — the prototype's numbers reproduce.** *Case:* a unit test derives the four base16
-fixtures and the two `.itermcolors` fixtures and asserts the exact derived values from
-`derive.py`'s output (e.g. gruvbox-dark-hard iTerm `ink-950 = #1d2021`, `gold-400 = #fabd2f`,
-`shadow = 0.55`; nord `parchment = #d8dee9`; and every audit ratio to one decimal place).
-*Mutation that fails it:* swap the surface ladder's linear mix for Oklab — the stop values
-move and the assertion fails; the asymmetry is deliberate and load-bearing.
+**AC2.1 — the prototype's numbers reproduce.** *Case:* a unit test derives the four base16 fixtures and the two `.itermcolors` fixtures and asserts the exact derived values from `derive.py`'s output (e.g. gruvbox-dark-hard iTerm `ink-950 = #1d2021`, `gold-400 = #fabd2f`, `shadow = 0.55`; nord `parchment = #d8dee9`; and every audit ratio to one decimal place). *Mutation that fails it:* swap the surface ladder's linear mix for Oklab — the stop values move and the assertion fails; the asymmetry is deliberate and load-bearing.
 
-**AC2.2 — floors are enforced, and a failure is a rejection.** *Case:* a fixture palette
-whose text and canvas are at the same luminance derives either an adjusted value that
-records `parchment raised to meet 4.5:1` **or** is rejected with `{ role, ratio, floor }`
-**[A20 — plus the discriminant that landed with it: `kind: 'floor'` and `metric: 'contrast'`;
-the three fields the criterion names are all still there, and the test's comment says the
-discriminant was added to the shape rather than replacing it. The criterion's general form is
-now the audit-table sweep: no success result may carry a row below its own floor.]**
-*Mutation that fails it:* remove the terminal verification step — a palette that cannot meet
-the floor is then returned as a theme, with an audit row reading `0.99:1 (min 4.0) FAIL` in
-the picker. The prototype's bounded loops exit without re-checking; that is the bug this
-criterion pins.
+**AC2.2 — floors are enforced, and a failure is a rejection.** *Case:* a fixture palette whose text and canvas are at the same luminance derives either an adjusted value that records `parchment raised to meet 4.5:1` **or** is rejected with `{ role, ratio, floor }` **[A20 — plus the discriminant that landed with it: `kind: 'floor'` and `metric: 'contrast'`; the three fields the criterion names are all still there, and the test's comment says the discriminant was added to the shape rather than replacing it. The criterion's general form is now the audit-table sweep: no success result may carry a row below its own floor.]** *Mutation that fails it:* remove the terminal verification step — a palette that cannot meet the floor is then returned as a theme, with an audit row reading `0.99:1 (min 4.0) FAIL` in the picker. The prototype's bounded loops exit without re-checking; that is the bug this criterion pins.
 
-**AC2.3 — on-accent is never unreadable.** *Case:* for all seven prototype palettes,
-`contrast(onAccent, gold-500) ≥ 4.0` and `contrast(gold-400, ink-900) ≥ 3.0`.
-*Mutation that fails it:* delete the fill-walk loop so `gold-500` stays the raw accent —
-catppuccin-latte then fails 4:1 (measured: the prototype needed the walk for the light
-scheme) and the assertion fails.
+**AC2.3 — on-accent is never unreadable.** *Case:* for all seven prototype palettes, `contrast(onAccent, gold-500) ≥ 4.0` and `contrast(gold-400, ink-900) ≥ 3.0`. *Mutation that fails it:* delete the fill-walk loop so `gold-500` stays the raw accent — catppuccin-latte then fails 4:1 (measured: the prototype needed the walk for the light scheme) and the assertion fails.
 
-**AC2.4 — the iTerm grey filter does its job.** **[Amended 2026-09-15, A14 — the superseded clause is
-kept below the replacement.]** *Case, in three fixtures, because the round-1 wording is not satisfiable on
-the one it named:*
-(a) **on the iTerm nord fixture**, which satisfies it exactly: every derived surface-ladder stop has
-`hue_delta(stop, bg) < 0.61` — measured 0.000–0.003. This is a **property pin, not a discriminator**,
-and the test says so: measured, nord satisfies the clause with the hue half of the filter deleted
-too, because every slot the filter rejects there is rejected for chroma alone.
-(b) **on the iTerm gruvbox fixture**, the property the criterion protects, asserted three ways: the
-filter excludes **every** chromatic ANSI slot under both clauses (no `accents` member is admitted as a
-surface candidate); the derived ladder is grey at every stop (`chroma < 0.035`, the filter's own
-threshold) and rises monotonically from the canvas; and gruvbox's green (Ansi 2) sits inside the
-bg→fg luminance window, so an unfiltered luminance sort has it available for `bg2` — a warm scheme with
-a green sidebar.
-(c) **on a synthetic `.itermcolors` built inline in the test** — no fixture file, nothing vendored —
-the *separating* witness for the hue half, since (a) cannot discriminate and (b) does not exercise it:
-a canvas of `#1b2b3a` whose Oklab chroma is **0.0351**, above the filter's own 0.01 bypass, plus an
-off-hue near-grey (`#5a4a3a`: chroma 0.0333 < 0.035, `hue_delta` 3.1264 >= 0.61) placed at an interior
-luminance — strictly between the canvas and the foreground, and between the two in-family greys, so a
-luminance sort would put it in the middle of the ladder. With the real filter the ladder is
-`#3a4b57`/`#506070`/`#506070`; with the hue clause deleted, `bg3` becomes `#5a4a3a` and exactly one
-case reddens.
+**AC2.4 — the iTerm grey filter does its job.** **[Amended 2026-09-15, A14 — the superseded clause is kept below the replacement.]** *Case, in three fixtures, because the round-1 wording is not satisfiable on the one it named:* (a) **on the iTerm nord fixture**, which satisfies it exactly: every derived surface-ladder stop has `hue_delta(stop, bg) < 0.61` — measured 0.000–0.003. This is a **property pin, not a discriminator**, and the test says so: measured, nord satisfies the clause with the hue half of the filter deleted too, because every slot the filter rejects there is rejected for chroma alone. (b) **on the iTerm gruvbox fixture**, the property the criterion protects, asserted three ways: the filter excludes **every** chromatic ANSI slot under both clauses (no `accents` member is admitted as a surface candidate); the derived ladder is grey at every stop (`chroma < 0.035`, the filter's own threshold) and rises monotonically from the canvas; and gruvbox's green (Ansi 2) sits inside the bg→fg luminance window, so an unfiltered luminance sort has it available for `bg2` — a warm scheme with a green sidebar. (c) **on a synthetic `.itermcolors` built inline in the test** — no fixture file, nothing vendored — the *separating* witness for the hue half, since (a) cannot discriminate and (b) does not exercise it: a canvas of `#1b2b3a` whose Oklab chroma is **0.0351**, above the filter's own 0.01 bypass, plus an off-hue near-grey (`#5a4a3a`: chroma 0.0333 < 0.035, `hue_delta` 3.1264 >= 0.61) placed at an interior luminance — strictly between the canvas and the foreground, and between the two in-family greys, so a luminance sort would put it in the middle of the ladder. With the real filter the ladder is `#3a4b57`/`#506070`/`#506070`; with the hue clause deleted, `bg3` becomes `#5a4a3a` and exactly one case reddens.
 
-*Mutation that fails it:* replace the chroma/hue filter with a luminance sort of all ANSI slots; on
-gruvbox the ladder then picks up the green and **three** assertions redden (measured: the candidate
-exclusion, the grey-ladder check, and the IR equality), and on the synthetic file of (c) the hue clause
-alone is what excludes the off-hue grey — **one more** case reddens. The prototype measured the
-luminance-sort failure on gruvbox specifically, and gruvbox still carries that mutation — it just
-cannot carry the literal `hue_delta` clause, because the fixture's own canvas chroma (0.0049) is under
-the filter's 0.01 bypass, so its hue clause never engages and the near-grey stops' hue angles are
-numerical noise (measured 1.294–2.471 across six of the seven stops).
+*Mutation that fails it:* replace the chroma/hue filter with a luminance sort of all ANSI slots; on gruvbox the ladder then picks up the green and **three** assertions redden (measured: the candidate exclusion, the grey-ladder check, and the IR equality), and on the synthetic file of (c) the hue clause alone is what excludes the off-hue grey — **one more** case reddens. The prototype measured the luminance-sort failure on gruvbox specifically, and gruvbox still carries that mutation — it just cannot carry the literal `hue_delta` clause, because the fixture's own canvas chroma (0.0049) is under the filter's 0.01 bypass, so its hue clause never engages and the near-grey stops' hue angles are numerical noise (measured 1.294–2.471 across six of the seven stops).
 
-*Superseded clause, kept visible (A14):* "the iTerm gruvbox fixture derives a surface ladder whose every
-stop has `hue_delta(stop, bg) < 0.61` — no green sidebar."
+*Superseded clause, kept visible (A14):* "the iTerm gruvbox fixture derives a surface ladder whose every stop has `hue_delta(stop, bg) < 0.61` — no green sidebar."
 
-*Reversal condition:* if a fixture appears for which the literal clause holds **and** the luminance-sort
-mutation still reddens it, restore the literal wording on that fixture. Otherwise the synthetic case of
-(c) is what decides the clause, and the nord pin of (a) documents the property without deciding it.
+*Reversal condition:* if a fixture appears for which the literal clause holds **and** the luminance-sort mutation still reddens it, restore the literal wording on that fixture. Otherwise the synthetic case of (c) is what decides the clause, and the nord pin of (a) documents the property without deciding it.
 
-**[A19 — landed form, 2026-09-15.** All three halves are asserted in
-`electron/main/services/theme/parse.test.ts`, and the mutation was applied by both the implementer and
-the orchestrator: `isGrey` reduced to `chroma(slot) < 0.035` reddens exactly the synthetic case, and
-M7/M8 of the orchestrator's campaign show the nord pin staying green under the same mutation (as its
-comment claims). The clause is inert on both vendored fixtures and live on a constructed one — which is
-the honest limit, and the reason the synthetic case exists.]**
+**[A19 — landed form, 2026-09-15.** All three halves are asserted in `electron/main/services/theme/parse.test.ts`, and the mutation was applied by both the implementer and the orchestrator: `isGrey` reduced to `chroma(slot) < 0.035` reddens exactly the synthetic case, and M7/M8 of the orchestrator's campaign show the nord pin staying green under the same mutation (as its comment claims). The clause is inert on both vendored fixtures and live on a constructed one — which is the honest limit, and the reason the synthetic case exists.]**
 
-**AC2.5 — adaptation is lossless where base16 has the semantics.** *Case:* the base16
-adapter's IR for a scheme reads `bg`=base00, `fg`=base05, `accent_hint`=base09, no notes.
-*Mutation that fails it:* re-derive `bg2`/`bg3` from the ladder instead of reading base01/02
-— the base16 row then disagrees with its source file and the assertion fails.
+**AC2.5 — adaptation is lossless where base16 has the semantics.** *Case:* the base16 adapter's IR for a scheme reads `bg`=base00, `fg`=base05, `accent_hint`=base09, no notes. *Mutation that fails it:* re-derive `bg2`/`bg3` from the ladder instead of reading base01/02 — the base16 row then disagrees with its source file and the assertion fails.
 
-**AC2.6 — a bad file is reported, never thrown.** *Case:* pointing the loader at a truncated
-`.itermcolors`, a base16 YAML missing `base0A`, and a plain text file returns
-`{ ok: false, reason }` three times; nothing lands in `app_config` and the app's active theme
-is unchanged. *Mutation that fails it:* let the parse error propagate — the IPC envelope
-turns it into an error toast instead of a per-row reason, and an import of five files with
-one bad member reports nothing about the other four. **[A18 — the case's second clause, "nothing lands
-in `app_config` and the app's active theme is unchanged", has no decider in slice 2 and cannot have
-one: slice 2 owns no storage. It is **AC3.3**'s assertion ("a rejected theme changes nothing"), which
-is where it is decided; slice 2's half is the three rejection *values*, and all three are asserted.
-Recorded so the clause is not read as an untested claim about this slice.]**
+**AC2.6 — a bad file is reported, never thrown.** *Case:* pointing the loader at a truncated `.itermcolors`, a base16 YAML missing `base0A`, and a plain text file returns `{ ok: false, reason }` three times; nothing lands in `app_config` and the app's active theme is unchanged. *Mutation that fails it:* let the parse error propagate — the IPC envelope turns it into an error toast instead of a per-row reason, and an import of five files with one bad member reports nothing about the other four. **[A18 — the case's second clause, "nothing lands in `app_config` and the app's active theme is unchanged", has no decider in slice 2 and cannot have one: slice 2 owns no storage. It is **AC3.3**'s assertion ("a rejected theme changes nothing"), which is where it is decided; slice 2's half is the three rejection *values*, and all three are asserted. Recorded so the clause is not read as an untested claim about this slice.]**
 
 ### Slice 3 — persistence and apply-on-boot
 
-**AC3.1 — the window background follows the theme.** *Case:* with a light theme's tokens
-stored, the pure `windowBackgroundColor(tokens)` returns that theme's `ink-950`, and the
-window constructed by `createWindow()` carries it. Since the test electron mock's
-`BrowserWindow` is an empty class, extend it to record constructor options (additively — the
-existing 17 suites must stay green) and assert on the recorded `backgroundColor`.
-*Mutation that fails it:* restore `backgroundColor: '#0d0b09'` — a light-theme user gets a
-near-black frame at every launch and the assertion fails.
+**AC3.1 — the window background follows the theme.** *Case:* with a light theme's tokens stored, the pure `windowBackgroundColor(tokens)` returns that theme's `ink-950`, and the window constructed by `createWindow()` carries it. Since the test electron mock's `BrowserWindow` is an empty class, extend it to record constructor options (additively — the existing 17 suites must stay green) and assert on the recorded `backgroundColor`. *Mutation that fails it:* restore `backgroundColor: '#0d0b09'` — a light-theme user gets a near-black frame at every launch and the assertion fails.
 
-**AC3.2 — one write path, both keys, atomically.** *Case:* `theme.set(id)` writes `theme_id`
-and `theme_tokens` in one transaction; `getConfig('theme_id')` and a parsed
-`getConfig('theme_tokens')` agree on `id` after every call, including after a rejection.
-*Mutation that fails it:* write only `theme_tokens` — the picker then shows the *previous*
-theme as active while the app renders the new one, and the assertion on `id` fails.
+**AC3.2 — one write path, both keys, atomically.** *Case:* `theme.set(id)` writes `theme_id` and `theme_tokens` in one transaction; `getConfig('theme_id')` and a parsed `getConfig('theme_tokens')` agree on `id` after every call, including after a rejection. *Mutation that fails it:* write only `theme_tokens` — the picker then shows the *previous* theme as active while the app renders the new one, and the assertion on `id` fails.
 
-**AC3.3 — a rejected theme changes nothing.** *Case:* `theme.set('obsidian:Broken')` where
-the theme's roles do not resolve returns a reason, and both `theme_id` and `theme_tokens` are
-byte-identical to their values before the call.
-*Mutation that fails it:* write `theme_id` first and derive second (the natural order) — a
-bad theme then leaves the app pointing at a theme it cannot render, and the assertion fails.
+**AC3.3 — a rejected theme changes nothing.** *Case:* `theme.set('obsidian:Broken')` where the theme's roles do not resolve returns a reason, and both `theme_id` and `theme_tokens` are byte-identical to their values before the call. *Mutation that fails it:* write `theme_id` first and derive second (the natural order) — a bad theme then leaves the app pointing at a theme it cannot render, and the assertion fails.
 
-**AC3.4 — storage is not trusted.** *Case:* with `theme_tokens` set to each of `''`,
-`'not json'`, `'{"tokens":{"ink":{"950":"#0d0b09"}}}'` (**amended, A26: this row supplies 1 of the
-17 values, so 16 are missing — and it is rejected first for carrying no `id`, `variant`, `name` or
-`engineVersion`, which is the part a reader reconstructing the case's intent needs**) and a record whose
-`variant` is `'sepia'`, `theme.get()` returns the built-in default and the app renders today's
-pixels.
-*Mutation that fails it:* skip read validation — the second case throws inside the renderer's
-apply path and the app renders a blank body, which is the same class of failure
-`sanitizePrefs` exists to prevent.
-**Amended (A26, slice 3 landed):** the blank-body outcome is not what the shipped code does.
-`src/main.tsx` wraps the read *and* the apply in one `try`/`catch`, so the boot path logs and keeps
-`:root`; a throw was reachable only through `src/hooks/useTheme.ts`'s unguarded effect — a theme
-*change*, not a boot — and the repair round that followed the pre-merge review guards that site too.
-The mutation still reddens the criterion where it is decided, in the service's own validation cases.
+**AC3.4 — storage is not trusted.** *Case:* with `theme_tokens` set to each of `''`, `'not json'`, `'{"tokens":{"ink":{"950":"#0d0b09"}}}'` (**amended, A26: this row supplies 1 of the 17 values, so 16 are missing — and it is rejected first for carrying no `id`, `variant`, `name` or `engineVersion`, which is the part a reader reconstructing the case's intent needs**) and a record whose `variant` is `'sepia'`, `theme.get()` returns the built-in default and the app renders today's pixels. *Mutation that fails it:* skip read validation — the second case throws inside the renderer's apply path and the app renders a blank body, which is the same class of failure `sanitizePrefs` exists to prevent. **Amended (A26, slice 3 landed):** the blank-body outcome is not what the shipped code does. `src/main.tsx` wraps the read *and* the apply in one `try`/`catch`, so the boot path logs and keeps `:root`; a throw was reachable only through `src/hooks/useTheme.ts`'s unguarded effect — a theme *change*, not a boot — and the repair round that followed the pre-merge review guards that site too. The mutation still reddens the criterion where it is decided, in the service's own validation cases.
 
-**AC3.5 — no flash.** *Case:* launching with a light theme stored, a frame captured as early
-as CDP allows shows a light canvas and the window's own background is light.
-*Mutation that fails it:* move the pre-paint apply out of `src/main.tsx` into a `useEffect` in
-`useTheme` — one or more frames render the default dark palette first. (The window background
-from AC3.1 masks the *window*, not the body, so both halves of §2.3 are needed.)
+**AC3.5 — no flash.** *Case:* launching with a light theme stored, a frame captured as early as CDP allows shows a light canvas and the window's own background is light. *Mutation that fails it:* move the pre-paint apply out of `src/main.tsx` into a `useEffect` in `useTheme` — one or more frames render the default dark palette first. (The window background from AC3.1 masks the *window*, not the body, so both halves of §2.3 are needed.)
 
 ### Slice 4 — import and picker
 
-**AC4.1 — the three provider types import.** *Case:* importing a base16 `.yaml`, an
-`.itermcolors`, and (from slice 6) an Obsidian folder each yields a row in the appearance list
-with a name, a provider label, a variant badge and five swatches.
-*Mutation that fails it:* route by directory instead of by extension/content — the owner's
-`.itermcolors` files live in ProtonDrive, so nothing is discovered and the list stays empty.
+**AC4.1 — the three provider types import.** *Case:* importing a base16 `.yaml`, an `.itermcolors`, and (from slice 6) an Obsidian folder each yields a row in the appearance list with a name, a provider label, a variant badge and five swatches. *Mutation that fails it:* route by directory instead of by extension/content — the owner's `.itermcolors` files live in ProtonDrive, so nothing is discovered and the list stays empty.
 
-**AC4.2 — import is validated before it is stored.** *Case:* a batch of five files with one
-malformed returns `{ imported: 4, rejected: [{ path, reason }] }`, and the four are usable.
-*Mutation that fails it:* abort the batch on the first failure — the count is `0` and the
-four good themes are lost.
+**AC4.2 — import is validated before it is stored.** *Case:* a batch of five files with one malformed returns `{ imported: 4, rejected: [{ path, reason }] }`, and the four are usable. *Mutation that fails it:* abort the batch on the first failure — the count is `0` and the four good themes are lost.
 
-**AC4.3 — the drop-box directory works and is never written to.** *Case:* dropping three
-`.itermcolors` into `~/Library/Application Support/Musaeum/themes/` and pressing the refresh
-control shows three new rows; a directory hash taken before and after the scan is unchanged.
-*Mutation that fails it:* copy or normalize the source files into the folder during import —
-the hash changes and the assertion fails. The app derives and stores values; the folder is
-the user's.
+**AC4.3 — the drop-box directory works and is never written to.** *Case:* dropping three `.itermcolors` into `~/Library/Application Support/Musaeum/themes/` and pressing the refresh control shows three new rows; a directory hash taken before and after the scan is unchanged. *Mutation that fails it:* copy or normalize the source files into the folder during import — the hash changes and the assertion fails. The app derives and stores values; the folder is the user's.
 
-**AC4.4 — a theme drop does not become a book import.** *Case:* dropping a `.yaml` on the
-library grid leaves the import pipeline idle (no `importProgress` event, no job row in
-`StatusBar`) and starts no hydration.
-*Mutation that fails it:* add `.yaml`/`.itermcolors` to `useDragDrop`'s extension filter — the
-import job starts, `import:addFiles` receives a path it cannot read, and the assertion on the
-absence of a progress event fails.
+**AC4.4 — a theme drop does not become a book import.** *Case:* dropping a `.yaml` on the library grid leaves the import pipeline idle (no `importProgress` event, no job row in `StatusBar`) and starts no hydration. *Mutation that fails it:* add `.yaml`/`.itermcolors` to `useDragDrop`'s extension filter — the import job starts, `import:addFiles` receives a path it cannot read, and the assertion on the absence of a progress event fails.
 
-**AC4.5 — applying is immediate.** *Case:* clicking a theme row — with no ⌘↵ and without
-closing the modal — changes the document's `--ink-950` and the window background in the same
-interaction.
-*Mutation that fails it:* route the theme through `settings.save`'s batched save — the row
-highlights and nothing repaints until save, and the assertion fails.
+**AC4.5 — applying is immediate.** *Case:* clicking a theme row — with no ⌘↵ and without closing the modal — changes the document's `--ink-950` and the window background in the same interaction. *Mutation that fails it:* route the theme through `settings.save`'s batched save — the row highlights and nothing repaints until save, and the assertion fails.
 
 ### Slice 5 — reader convergence and the light flip
 
-**AC5.1 — the reader follows the app theme.** *Case:* with a light theme active, opening a
-book renders light page background and dark body text; the injected `pageCss` contains no
-literal hex from `PALETTE`.
-*Mutation that fails it:* leave one branch on `PALETTE[prefs.theme]` — the page stays dark
-inside a light app, and the assertion fails.
+**AC5.1 — the reader follows the app theme.** *Case:* with a light theme active, opening a book renders light page background and dark body text; the injected `pageCss` contains no literal hex from `PALETTE`. *Mutation that fails it:* leave one branch on `PALETTE[prefs.theme]` — the page stays dark inside a light app, and the assertion fails.
 
-**AC5.2 — the default is a no-op for the built-in theme.** *Case:* with no theme configured
-and `prefs.theme = 'auto'`, the derived page palette equals today's `ink` row
-(`#14110d` / `#e9e1d2` / `#b3a78f` / `#d4a24e`) exactly.
-*Mutation that fails it:* map the page to `ink-950` instead of `ink-900`; the frame differs
-from the pre-change capture and the assertion fails. (Settled deliberately in §2.5; the
-mutation is what proves the choice was made rather than happened.)
+**AC5.2 — the default is a no-op for the built-in theme.** *Case:* with no theme configured and `prefs.theme = 'auto'`, the derived page palette equals today's `ink` row (`#14110d` / `#e9e1d2` / `#b3a78f` / `#d4a24e`) exactly. *Mutation that fails it:* map the page to `ink-950` instead of `ink-900`; the frame differs from the pre-change capture and the assertion fails. (Settled deliberately in §2.5; the mutation is what proves the choice was made rather than happened.)
 
-**AC5.3 — an unknown pref falls back.** *Case:* `sanitizePrefs({ theme: 'sepia' })` returns
-the default, and `sanitizePrefs({ theme: 'ink' })` returns `'ink'` (an old stored value keeps
-its meaning).
-*Mutation that fails it:* widen `THEME_OPTIONS` but not `sanitizePrefs`' validator (or the
-reverse) — the popover can then produce a value storage rejects, which is the drift
-`reader.store.ts:31-35` says the shared list exists to prevent.
+**AC5.3 — an unknown pref falls back.** *Case:* `sanitizePrefs({ theme: 'sepia' })` returns the default, and `sanitizePrefs({ theme: 'ink' })` returns `'ink'` (an old stored value keeps its meaning). *Mutation that fails it:* widen `THEME_OPTIONS` but not `sanitizePrefs`' validator (or the reverse) — the popover can then produce a value storage rejects, which is the drift `reader.store.ts:31-35` says the shared list exists to prevent.
 
-**AC5.4 — shadows are derived, not authored.** *Case:* for a light theme,
-`shadowStrength = 0.16` yields alphas `0.145 / 0.102 / 0.175`; for a dark theme,
-`0.500 / 0.350 / 0.600`.
-*Mutation that fails it:* hardcode `--shadow-aN` in the stylesheet instead of writing them
-from the tokens — the light theme keeps the dark alpha and covers turn to mud on a light
-canvas (the prototype's measured complaint).
+**AC5.4 — shadows are derived, not authored.** *Case:* for a light theme, `shadowStrength = 0.16` yields alphas `0.145 / 0.102 / 0.175`; for a dark theme, `0.500 / 0.350 / 0.600`. *Mutation that fails it:* hardcode `--shadow-aN` in the stylesheet instead of writing them from the tokens — the light theme keeps the dark alpha and covers turn to mud on a light canvas (the prototype's measured complaint).
 
-**AC5.5 — native appearance agrees.** *Case:* `nativeTheme.themeSource` is `'light'` with a
-light theme stored and `'dark'` otherwise, read back after `theme.set`.
-*Mutation that fails it:* set it once at boot only — switching to a light theme leaves native
-scrollbars and menus dark, and the assertion after `theme.set` fails.
-**[A51 — landed with a stronger instrument than the case names.** `nativeTheme.themeSource` is
-still not readable over CDP, but *`matchMedia('(prefers-color-scheme: light)')` in the renderer is*:
-measured live, it flips false→true→false across two theme switches with the OS appearance
-unchanged, and nothing but the main process's `themeSource` can move it. The unit-level decider is
-`nativeScheme`'s two arms plus the source walk over `main/index.ts` in `theme/store.test.ts`;
-`win.setBackgroundColor`'s own effect stays a declared residual (it is visible only during a resize
-flash).]**
+**AC5.5 — native appearance agrees.** *Case:* `nativeTheme.themeSource` is `'light'` with a light theme stored and `'dark'` otherwise, read back after `theme.set`. *Mutation that fails it:* set it once at boot only — switching to a light theme leaves native scrollbars and menus dark, and the assertion after `theme.set` fails. **[A51 — landed with a stronger instrument than the case names.** `nativeTheme.themeSource` is still not readable over CDP, but *`matchMedia('(prefers-color-scheme: light)')` in the renderer is*: measured live, it flips false→true→false across two theme switches with the OS appearance unchanged, and nothing but the main process's `themeSource` can move it. The unit-level decider is `nativeScheme`'s two arms plus the source walk over `main/index.ts` in `theme/store.test.ts`; `win.setBackgroundColor`'s own effect stays a declared residual (it is visible only during a resize flash).]**
 
-**AC5.6 — the book's own typography still wins.** *Case:* a book whose stylesheet sets
-`font-family` and `background` keeps them; the injected CSS adds no `!important` and does not
-move the reader's `z-[45]`.
-*Mutation that fails it:* prefix the injected rules with `!important` — the book's own
-typography is overridden and the visual check fails.
+**AC5.6 — the book's own typography still wins.** *Case:* a book whose stylesheet sets `font-family` and `background` keeps them; the injected CSS adds no `!important` and does not move the reader's `z-[45]`. *Mutation that fails it:* prefix the injected rules with `!important` — the book's own typography is overridden and the visual check fails.
 
-**AC5.7 — the injected stylesheet carries resolved literals, not variable references**
-(amendment round 1, A7 — constraint (a) of §2.5, from `paginator.js:191/626/685/1113`).
-*Case:* with a non-default theme active, open a book and read three things: the string
-`pageCss()` returns contains **no `var(`**; the book document's
-`getComputedStyle(document.body).backgroundColor` is the derived `ink-900` as a resolved
-`rgb(…)`, not `rgba(0, 0, 0, 0)`; and the paginator's own background element — the element the
-vendored code writes at `:626`, `:685` and `:1113` — computes to that same colour rather than to
-transparent. (Read the paginator's own element via the reader's DOM, or assert on the three
-source lines being reached with a non-transparent value; the point is that the *resolved* value
-survives the round trip.)
-*Mutation that fails it:* make `pageCss()` emit `var(--ink-900)` (the natural thing to write,
-once the variables exist in the app). The custom property is defined on the *app's* `:root` and
-the book renders in its own document with no access to it, so the value is unresolved: `body`
-computes `rgba(0, 0, 0, 0)`, `paginator.js:191`'s string comparison then takes its fallback
-branch (the document element, equally unresolved), the engine writes that into its own background
-element, and the margin around the page stops being painted with the page's colour. The
-assertion fails on the `rgba(0, 0, 0, 0)` read, before any human looks at the frame.
+**AC5.7 — the injected stylesheet carries resolved literals, not variable references** (amendment round 1, A7 — constraint (a) of §2.5, from `paginator.js:191/626/685/1113`). *Case:* with a non-default theme active, open a book and read three things: the string `pageCss()` returns contains **no `var(`**; the book document's `getComputedStyle(document.body).backgroundColor` is the derived `ink-900` as a resolved `rgb(…)`, not `rgba(0, 0, 0, 0)`; and the paginator's own background element — the element the vendored code writes at `:626`, `:685` and `:1113` — computes to that same colour rather than to transparent. (Read the paginator's own element via the reader's DOM, or assert on the three source lines being reached with a non-transparent value; the point is that the *resolved* value survives the round trip.) *Mutation that fails it:* make `pageCss()` emit `var(--ink-900)` (the natural thing to write, once the variables exist in the app). The custom property is defined on the *app's* `:root` and the book renders in its own document with no access to it, so the value is unresolved: `body` computes `rgba(0, 0, 0, 0)`, `paginator.js:191`'s string comparison then takes its fallback branch (the document element, equally unresolved), the engine writes that into its own background element, and the margin around the page stops being painted with the page's colour. The assertion fails on the `rgba(0, 0, 0, 0)` read, before any human looks at the frame.
 
-**AC5.8 — the selection colour is not an alpha suffix pasted onto a token** (amendment round 1,
-A7 — constraint (b) of §2.5, from `ReaderEngine.tsx:104`).
-*Case:* `pageCss()`'s output matches `::selection { background: #[0-9a-f]{6}44; }`, the six hex
-digits equal the derived link colour, and in the app a book's selected text paints gold-tinted
-rather than UA blue.
-*Mutation that fails it:* change `pageCss()`'s link expression to `var(--gold-400)` while leaving
-`${c.link}44` in place — the declaration becomes `var(--gold-400)44`, which is not a valid
-`<color>`, so the rule is dropped and `::selection` falls back to the UA default; the assertion
-on the rule fails. The fix is the composed literal (`linkAlphaHex` from `readerPalette()`,
-§2.5(b)), chosen so that AC5.7's "no `var(`" property and this criterion hold for the same
-reason.
+**AC5.8 — the selection colour is not an alpha suffix pasted onto a token** (amendment round 1, A7 — constraint (b) of §2.5, from `ReaderEngine.tsx:104`). *Case:* `pageCss()`'s output matches `::selection { background: #[0-9a-f]{6}44; }`, the six hex digits equal the derived link colour, and in the app a book's selected text paints gold-tinted rather than UA blue. *Mutation that fails it:* change `pageCss()`'s link expression to `var(--gold-400)` while leaving `${c.link}44` in place — the declaration becomes `var(--gold-400)44`, which is not a valid `<color>`, so the rule is dropped and `::selection` falls back to the UA default; the assertion on the rule fails. The fix is the composed literal (`linkAlphaHex` from `readerPalette()`, §2.5(b)), chosen so that AC5.7's "no `var(`" property and this criterion hold for the same reason.
 
 ### Slice 6 — the Obsidian resolver
 
-**AC6.1 — one theme resolves that a scrape cannot.** *Case:* the resolver returns hex values
-for all nine roles for a theme whose declarations are computed (`hsl(var(--base-h), …)`,
-`var()` chains, `color-mix()`).
-*Mutation that fails it:* replace the offscreen read with the regex scrape — the same theme
-returns `roles unresolvable` (measured: 4 of the 5 installed themes fail this way) and the
-assertion fails.
+**AC6.1 — one theme resolves that a scrape cannot.** *Case:* the resolver returns hex values for all nine roles for a theme whose declarations are computed (`hsl(var(--base-h), …)`, `var()` chains, `color-mix()`). *Mutation that fails it:* replace the offscreen read with the regex scrape — the same theme returns `roles unresolvable` (measured: 4 of the 5 installed themes fail this way) and the assertion fails.
 
-**AC6.2 — no network.** *Case:* a theme.css containing
-`@import url("https://example.com/track.css")`, `--x: url("http://example.com/beacon.png")`
-and an `url(https://…woff2)` `@font-face` resolves with the request counter at **0**
-(instrument `onBeforeRequest`: every invocation must be cancelled, and no request may reach
-the network).
-*Mutation that fails it:* remove the session's `onBeforeRequest` cancel-all — the counter
-becomes non-zero and the assertion fails. Relying on the CSP alone also fails this, because
-the criterion counts *attempts*, not responses.
+**AC6.2 — no network.** *Case:* a theme.css containing `@import url("https://example.com/track.css")`, `--x: url("http://example.com/beacon.png")` and an `url(https://…woff2)` `@font-face` resolves with the request counter at **0** (instrument `onBeforeRequest`: every invocation must be cancelled, and no request may reach the network). *Mutation that fails it:* remove the session's `onBeforeRequest` cancel-all — the counter becomes non-zero and the assertion fails. Relying on the CSP alone also fails this, because the criterion counts *attempts*, not responses.
 
-**AC6.3 — the stylesheet never reaches the renderer.** *Case:* after a resolve, the renderer's
-`document.styleSheets` count is unchanged, and the IPC payload for the theme contains no
-value outside `^#[0-9a-f]{6}$` (grep the serialized payload for `{`, `url(`, `@`, `#`+non-hex).
-*Mutation that fails it:* have the resolver return the CSS text so the renderer can apply it
-directly — `document.styleSheets.length` grows and the payload assertion fails. This is also
-the mutation that models the security failure the slice's design exists to prevent.
+**AC6.3 — the stylesheet never reaches the renderer.** *Case:* after a resolve, the renderer's `document.styleSheets` count is unchanged, and the IPC payload for the theme contains no value outside `^#[0-9a-f]{6}$` (grep the serialized payload for `{`, `url(`, `@`, `#`+non-hex). *Mutation that fails it:* have the resolver return the CSS text so the renderer can apply it directly — `document.styleSheets.length` grows and the payload assertion fails. This is also the mutation that models the security failure the slice's design exists to prevent.
 
-**AC6.4 — a non-hex role is rejected, not coerced.** *Case:* a theme whose
-`--text-normal: none` (or an `rgba()` value) is rejected with the role named; no partial theme
-is stored.
-*Mutation that fails it:* accept any non-empty string and pass it through — the payload
-assertion in AC6.3 fails on the first such theme, and an unvalidated value would reach the
-CSS variable write in the renderer.
+**AC6.4 — a non-hex role is rejected, not coerced.** *Case:* a theme whose `--text-normal: none` (or an `rgba()` value) is rejected with the role named; no partial theme is stored. *Mutation that fails it:* accept any non-empty string and pass it through — the payload assertion in AC6.3 fails on the first such theme, and an unvalidated value would reach the CSS variable write in the renderer.
 
-**AC6.5 — the resolver cannot escape.** *Case:* the resolver window has no preload, no
-`nodeIntegration`; a theme.css that tries `window.open('https://…')` opens nothing
-(`setWindowOpenHandler` denies) and a theme that never resolves is destroyed within the
-timeout.
-*Mutation that fails it:* give the resolver window a preload or `sandbox: false` — the
-escape surface exists and the test that asserts the `webPreferences` shape fails.
+**AC6.5 — the resolver cannot escape.** *Case:* the resolver window has no preload, no `nodeIntegration`; a theme.css that tries `window.open('https://…')` opens nothing (`setWindowOpenHandler` denies) and a theme that never resolves is destroyed within the timeout. *Mutation that fails it:* give the resolver window a preload or `sandbox: false` — the escape surface exists and the test that asserts the `webPreferences` shape fails.
 
-**AC6.6 — timeouts and cleanup.** *Case:* a theme.css of 5 MB, and a theme with 2000
-declarations, both resolve within the timeout and the window is destroyed afterwards
-(no orphaned `BrowserWindow` in `BrowserWindow.getAllWindows()`).
-*Mutation that fails it:* drop the destroy — the assertion on the window count fails, and a
-long session accumulates hidden windows holding a partition cache.
+**AC6.6 — timeouts and cleanup.** *Case:* a theme.css of 5 MB, and a theme with 2000 declarations, both resolve within the timeout and the window is destroyed afterwards (no orphaned `BrowserWindow` in `BrowserWindow.getAllWindows()`). *Mutation that fails it:* drop the destroy — the assertion on the window count fails, and a long session accumulates hidden windows holding a partition cache.
 
 ### Cross-slice
 
-**AC7.1 — the gate stays clean.** *Case:* `npm run typecheck`, `npm run lint`, `npm test` all
-exit 0 on the slice branch.
-*Mutation that fails it:* leave an orphan `parse` export or an `any` — typecheck or lint
-fails, which is the whole point of a cheap gate. (Baseline: 270 tests / 17 files.)
+**AC7.1 — the gate stays clean.** *Case:* `npm run typecheck`, `npm run lint`, `npm test` all exit 0 on the slice branch. *Mutation that fails it:* leave an orphan `parse` export or an `any` — typecheck or lint fails, which is the whole point of a cheap gate. (Baseline: 270 tests / 17 files.)
 
-**AC7.2 — no invariant bends.** *Case:* a diff review against the invariant list: no
-`vendor/foliate-js/**` change; no `file://` reaching the renderer; no new native-menu item;
-`ROW_HEIGHT`/`CARD_META_HEIGHT`/`CARD_META_MARGIN` untouched in slice 1; `app.isPackaged`
-never read outside `services/runtime.ts`.
-*Mutation that fails it:* add a "Theme" submenu to `services/menu.ts` so the item can carry a
-checkmark; `menu-and-branding.md`'s "built once and never rebuilt" is then false and the
-review fails.
+**AC7.2 — no invariant bends.** *Case:* a diff review against the invariant list: no `vendor/foliate-js/**` change; no `file://` reaching the renderer; no new native-menu item; `ROW_HEIGHT`/`CARD_META_HEIGHT`/`CARD_META_MARGIN` untouched in slice 1; `app.isPackaged` never read outside `services/runtime.ts`. *Mutation that fails it:* add a "Theme" submenu to `services/menu.ts` so the item can carry a checkmark; `menu-and-branding.md`'s "built once and never rebuilt" is then false and the review fails.
 
-**AC7.3 — nothing is written to the library.** *Case:* after importing three themes and
-switching between them, no `metadata.json`, `catalog.json` or book file has a new mtime.
-*Mutation that fails it:* store the theme inside the library root (an obvious temptation, since
-the library is where "settings" would sync) — the mtime assertion fails, and every theme
-change would then be a NAS write and a cross-machine surprise.
+**AC7.3 — nothing is written to the library.** *Case:* after importing three themes and switching between them, no `metadata.json`, `catalog.json` or book file has a new mtime. *Mutation that fails it:* store the theme inside the library root (an obvious temptation, since the library is where "settings" would sync) — the mtime assertion fails, and every theme change would then be a NAS write and a cross-machine surprise.
 
-**AC7.4 — the `gold-200` defect is registered, not silently fixed** (amendment round 1, A9/G1).
-*Case:* a diff review shows `SelectionPanel.tsx` and `ListView.tsx` untouched by slice 1 (AC1.2
-already asserts the touched set is two files), and the four sites are listed in `tasks.md` with
-the chosen remedy and an owner.
-*Mutation that fails it:* "fix it while you're in there" — the pixel gate then has an undefined
-baseline (two components change under a slice whose whole burden is *no* visual change), so
-AC1.1 and AC1.2 fail together, and the remedy is chosen by whoever is nearest rather than
-decided. The mutation is the temptation; the criterion exists so the temptation is visible.
+**AC7.4 — the `gold-200` defect is registered, not silently fixed** (amendment round 1, A9/G1). *Case:* a diff review shows `SelectionPanel.tsx` and `ListView.tsx` untouched by slice 1 (AC1.2 already asserts the touched set is two files), and the four sites are listed in `tasks.md` with the chosen remedy and an owner. *Mutation that fails it:* "fix it while you're in there" — the pixel gate then has an undefined baseline (two components change under a slice whose whole burden is *no* visual change), so AC1.1 and AC1.2 fail together, and the remedy is chosen by whoever is nearest rather than decided. The mutation is the temptation; the criterion exists so the temptation is visible.
 
 ### Slice 7 (committed — 7a) — status colours, scrim, hairline
 
-Numbered AC8.x so they cannot be confused with the cross-slice AC7.x block above. Slice 7 is
-**approved and staged** (J1, J2), so every criterion below applies, and 7b adds its own
-grep-to-zero acceptance. These criteria were written while the slice was still a proposal, and a proposal that keeps its
-criteria is a proposal someone can resume.
+Numbered AC8.x so they cannot be confused with the cross-slice AC7.x block above. Slice 7 is **approved and staged** (J1, J2), so every criterion below applies, and 7b adds its own grep-to-zero acceptance. These criteria were written while the slice was still a proposal, and a proposal that keeps its criteria is a proposal someone can resume.
 
-**AC8.1 — no veil lightens** (the criterion the slice exists for).
-*Case:* with a light theme active, every one of the twelve scrim sites computes a
-`background-color` that composites **below** the canvas behind it — specifically, the modal
-backdrop element at `SettingsModal.tsx:137` and the chip at `BookCard.tsx:114` each composite to
-an `lstar` at least 0.25 under `lstar(canvas)` — and the glyph on the chip keeps
-`contrast(glyph, composited chip) ≥ 3.0`.
-*Mutation that fails it:* alias `scrim` to `ink-950` (or leave the twelve sites on
-`bg-ink-950/80`) — under a light palette `ink-950` *is* the canvas and the lightest tone, so the
-backdrop composites *above* the canvas luminance, the chip's gold glyph sits on near-white, and
-both halves of the assertion fail. This is why `scrim` is derived rather than aliased (§1.1).
+**AC8.1 — no veil lightens** (the criterion the slice exists for). *Case:* with a light theme active, every one of the twelve scrim sites computes a `background-color` that composites **below** the canvas behind it — specifically, the modal backdrop element at `SettingsModal.tsx:137` and the chip at `BookCard.tsx:114` each composite to an `lstar` at least 0.25 under `lstar(canvas)` — and the glyph on the chip keeps `contrast(glyph, composited chip) ≥ 3.0`. *Mutation that fails it:* alias `scrim` to `ink-950` (or leave the twelve sites on `bg-ink-950/80`) — under a light palette `ink-950` *is* the canvas and the lightest tone, so the backdrop composites *above* the canvas luminance, the chip's gold glyph sits on near-white, and both halves of the assertion fail. This is why `scrim` is derived rather than aliased (§1.1).
 
-**AC8.2 — status colours hold their floors in the variant they render on.**
-*Case:* for the seven prototype palettes plus one light fixture, `contrast(on-danger, danger-500)
-≥ 4.5` and `contrast(danger-400, ink-900) ≥ 3.0`, with the same shape for `ok` and `warn`; and in
-the app, the danger text in the delete confirmation reads at ≥ 4.5 against the themed panel under
-a light theme.
-*Mutation that fails it:* leave the status sites on Tailwind's literals (`text-red-400`) — against
-a light panel that measures ≈2.3:1, so the assertion fails. That measurement is the entire
-justification for the slice's status half, and it is the number to re-take if anyone proposes
-keeping the literals.
+**AC8.2 — status colours hold their floors in the variant they render on.** *Case:* for the seven prototype palettes plus one light fixture, `contrast(on-danger, danger-500) ≥ 4.5` and `contrast(danger-400, ink-900) ≥ 3.0`, with the same shape for `ok` and `warn`; and in the app, the danger text in the delete confirmation reads at ≥ 4.5 against the themed panel under a light theme. *Mutation that fails it:* leave the status sites on Tailwind's literals (`text-red-400`) — against a light panel that measures ≈2.3:1, so the assertion fails. That measurement is the entire justification for the slice's status half, and it is the number to re-take if anyone proposes keeping the literals.
 
-**AC8.3 — the hairline is visible on both variants.**
-*Case:* the cover ring at `BookCard.tsx:79` and `BookDetail.tsx:81` composites to a non-zero
-contrast against both the cover art and the surface behind it, under a light theme and a dark one.
-*Mutation that fails it:* leave `ring-white/5` — on a light surface the ring composites to a
-difference under 1% luminance and the assertion fails. The fix is `ring-parchment/5`: `parchment`
-is by construction the tone that contrasts with the canvas, so it needs no eighteenth token
-(and `scrim` cannot serve, being near-black in both variants). The dark-theme pixel shift this
-costs — white at 5% to parchment at 5% — is accepted here and named in §2.7, not hidden.
+**AC8.3 — the hairline is visible on both variants.** *Case:* the cover ring at `BookCard.tsx:79` and `BookDetail.tsx:81` composites to a non-zero contrast against both the cover art and the surface behind it, under a light theme and a dark one. *Mutation that fails it:* leave `ring-white/5` — on a light surface the ring composites to a difference under 1% luminance and the assertion fails. The fix is `ring-parchment/5`: `parchment` is by construction the tone that contrasts with the canvas, so it needs no eighteenth token (and `scrim` cannot serve, being near-black in both variants). The dark-theme pixel shift this costs — white at 5% to parchment at 5% — is accepted here and named in §2.7, not hidden.
 
-**AC8.4 — the sweep is complete, and the acceptance is the grep, not the budget row.**
-*(added in round 8, when 7b landed; the criterion the directive named, written down after the fact
-so the next session reads it here rather than only in the annex.)*
-*Case:* no `.ts`/`.tsx`/`.css` under `src/` and no class in `index.html` names a stock-palette colour
-utility — zero, with **no exemption**: test files are inside the predicate, because `src/**` is
-Tailwind's own `content` globs and a spelling parked in a test is scanned as a candidate like any
-other. *Deciders:* the walk `src/lib/theme/palette-scan.test.ts` (three cases: the walk is not
-vacuous — both roots and both extension shapes are present; zero offenders; the pattern matches
-every retired shape and no token shape), plus the recorded grep over the same scope. The count
-before is **27 utility names on 15 lines across 8 files** (round 8, A76 — *not* §2.7's pre-7a
-"53 / 16", which counted the whole class before 7a swept most of it).
-*Mutation that fails it:* put any single site back on a stock utility — the walk names it. Three
-mutations fail the *anti-vacuity* cases instead (the hue list, the extension list, the roots), which
-is the point of them: without them the walk could go blind to part of the tree and stay green.
-*Not decided here, and named so it is not mistaken for decided:* that a migrated name **emits** its
-rule (the Tailwind build read) and that a site **paints** the theme's value (the running app).
-A class name still has no unit decider — A72's class, narrowed by this criterion rather than closed.
+**AC8.4 — the sweep is complete, and the acceptance is the grep, not the budget row.** *(added in round 8, when 7b landed; the criterion the directive named, written down after the fact so the next session reads it here rather than only in the annex.)* *Case:* no `.ts`/`.tsx`/`.css` under `src/` and no class in `index.html` names a stock-palette colour utility — zero, with **no exemption**: test files are inside the predicate, because `src/**` is Tailwind's own `content` globs and a spelling parked in a test is scanned as a candidate like any other. *Deciders:* the walk `src/lib/theme/palette-scan.test.ts` (three cases: the walk is not vacuous — both roots and both extension shapes are present; zero offenders; the pattern matches every retired shape and no token shape), plus the recorded grep over the same scope. The count before is **27 utility names on 15 lines across 8 files** (round 8, A76 — *not* §2.7's pre-7a "53 / 16", which counted the whole class before 7a swept most of it). *Mutation that fails it:* put any single site back on a stock utility — the walk names it. Three mutations fail the *anti-vacuity* cases instead (the hue list, the extension list, the roots), which is the point of them: without them the walk could go blind to part of the tree and stay green. *Not decided here, and named so it is not mistaken for decided:* that a migrated name **emits** its rule (the Tailwind build read) and that a site **paints** the theme's value (the running app). A class name still has no unit decider — A72's class, narrowed by this criterion rather than closed.
 
 ---
 
@@ -1862,97 +743,44 @@ A class name still has no unit decider — A72's class, narrowed by this criteri
 
 **What moves**
 
-- `tailwind.config.js` and `src/index.css` stop being the palette and become the palette's
-  *default*. Every utility keeps its name and its meaning; none of the 27 component files
-  that use them changes in slice 1.
-- The reader's page colours stop being a hand-copied table and become derived
-  (`ReaderEngine.tsx:48-50` and its "a palette change has to update this table too" comment
-  go away). `ReaderPrefs.theme` gains `'auto'` and defaults to it; stored `'ink'`/`'paper'`
-  keep their meaning.
-- `electron/main/index.ts` stops hardcoding a colour; `backgroundColor` becomes a function of
-  the stored theme, and the window's background changes on a theme switch.
-- A new `app_config` pair (`theme_id`, `theme_tokens`) is the app's first *main-process-visible*
-  user preference of this kind. Nothing about `app_config`'s shape changes; no migration runs
-  (F9), and `MIGRATIONS` in `db.ts:19` stays at three entries.
-- New IPC namespace `theme` + one event channel. `MusaeumAPI` grows; `src/types/musaeum.d.ts`
-  needs no change (it only re-exports `MusaeumAPI`).
-- An imported theme's *lossy steps are visible in the UI* (notes/adjustments), which is new
-  surface for honesty rather than a behaviour change.
-- **Amended (A4/A6): the app gains a declared scheme on `:root`.** `color-scheme` was previously
-  absent from the renderer entirely — only the book iframe declared one — so on a
-  light-appearance machine the native control bodies, the caret and the default canvas follow the
-  app's scheme from slice 1 onward. This is the one *intended* pixel change in slice 1, and it is
-  what makes a light theme possible at all (§2.1, AC1.7).
-- **Amended (A2/A5): the derived set is 17 values, and `scrim` is one of them.** Slice 1 defines it
-  (defaulting to today's `ink-950`), so nothing moves until slice 7 renames the twelve veil sites.
-- **Amended (A3/G3): a light theme is not "the same layout in different colours".** Under a
-  flipped ramp the twelve veils and the two cover hairlines invert or vanish unless they are
-  migrated (§2.7, AC8.1/AC8.3). That is the change surface the first pass missed and the audit was
-  right about: the palette is not the whole of what a theme decides.
+- `tailwind.config.js` and `src/index.css` stop being the palette and become the palette's *default*. Every utility keeps its name and its meaning; none of the 27 component files that use them changes in slice 1.
+- The reader's page colours stop being a hand-copied table and become derived (`ReaderEngine.tsx:48-50` and its "a palette change has to update this table too" comment go away). `ReaderPrefs.theme` gains `'auto'` and defaults to it; stored `'ink'`/`'paper'` keep their meaning.
+- `electron/main/index.ts` stops hardcoding a colour; `backgroundColor` becomes a function of the stored theme, and the window's background changes on a theme switch.
+- A new `app_config` pair (`theme_id`, `theme_tokens`) is the app's first *main-process-visible* user preference of this kind. Nothing about `app_config`'s shape changes; no migration runs (F9), and `MIGRATIONS` in `db.ts:19` stays at three entries.
+- New IPC namespace `theme` + one event channel. `MusaeumAPI` grows; `src/types/musaeum.d.ts` needs no change (it only re-exports `MusaeumAPI`).
+- An imported theme's *lossy steps are visible in the UI* (notes/adjustments), which is new surface for honesty rather than a behaviour change.
+- **Amended (A4/A6): the app gains a declared scheme on `:root`.** `color-scheme` was previously absent from the renderer entirely — only the book iframe declared one — so on a light-appearance machine the native control bodies, the caret and the default canvas follow the app's scheme from slice 1 onward. This is the one *intended* pixel change in slice 1, and it is what makes a light theme possible at all (§2.1, AC1.7).
+- **Amended (A2/A5): the derived set is 17 values, and `scrim` is one of them.** Slice 1 defines it (defaulting to today's `ink-950`), so nothing moves until slice 7 renames the twelve veil sites.
+- **Amended (A3/G3): a light theme is not "the same layout in different colours".** Under a flipped ramp the twelve veils and the two cover hairlines invert or vanish unless they are migrated (§2.7, AC8.1/AC8.3). That is the change surface the first pass missed and the audit was right about: the palette is not the whole of what a theme decides.
 
 **What must not move**
 
-- Row geometry (`library-views.md`): nothing in any slice is allowed to change
-  `ROW_HEIGHT` / `CARD_META_HEIGHT` / `CARD_META_MARGIN` or a real row's height.
+- Row geometry (`library-views.md`): nothing in any slice is allowed to change `ROW_HEIGHT` / `CARD_META_HEIGHT` / `CARD_META_MARGIN` or a real row's height.
 - The native menu (`menu-and-branding.md`): no theme item, no checkmark, no rebuild.
 - `vendor/foliate-js/**`: untouched (invariant #11).
-- `app.isPackaged` honesty (invariant #10): untouched; `services/runtime.ts` remains the only
-  answer.
+- `app.isPackaged` honesty (invariant #10): untouched; `services/runtime.ts` remains the only answer.
 - The reader's z-order contract (`z-[45]`) and its focus/keyboard guards: untouched.
 - The renderer's file access (invariant #9): paths cross the boundary; bytes never do.
 - Non-fatal degradation (invariant #12): a broken theme is reported, never thrown.
-- **The four `gold-200` sites** (amendment round 1, G1): they are a pre-existing defect, not a
-  theming one, and slice 1's pixel gate depends on them being unchanged (AC7.4). Correcting them
-  is its own two-file change, listed as debt.
-- **`vendor/foliate-js/paginator.js`'s read-back path** (G8): the engine keeps reading the book
-  document's resolved background and re-applying it to its own element. Nothing in this feature
-  may "fix" that by reaching into the vendor tree; the constraint is absorbed by making the
-  injected stylesheet literal-valued (AC5.7).
+- **The four `gold-200` sites** (amendment round 1, G1): they are a pre-existing defect, not a theming one, and slice 1's pixel gate depends on them being unchanged (AC7.4). Correcting them is its own two-file change, listed as debt.
+- **`vendor/foliate-js/paginator.js`'s read-back path** (G8): the engine keeps reading the book document's resolved background and re-applying it to its own element. Nothing in this feature may "fix" that by reaching into the vendor tree; the constraint is absorbed by making the injected stylesheet literal-valued (AC5.7).
 
 **Documentation debts this spec creates and cannot pay** (I may write only this file):
 
-- **`CLAUDE.md`** — "Design tokens live in `tailwind.config.js`" and the Project Overview's
-  fixed "warm near-black surfaces, amber/gold accents" become *partially* false once the
-  palette is a default rather than the identity. It also has no invariant covering theming.
-  **This needs an owner-visible edit.** Amended (A1): that first line is *already* incomplete at
-  HEAD — 63 opacity-modified token utilities, 12 veils, 53 stock-palette utilities and a missing
-  root `color-scheme` are all colour decisions living outside that file (§1.3) — so the edit
-  should say where a colour decision lives, not only where the palette does.
-- **`docs/invariants/settings-and-editing.md`** — should gain the `theme_id` /
-  `theme_tokens` keys, the one-transaction rule and the read-validation rule, next to
-  `app_config`.
-- **`docs/invariants/reader.md`** — says the reader offers "two page themes — warm paper and
-  dark-library ink". After slice 5 the default follows the app theme and the two named rows
-  are overrides. The paragraph becomes stale. **[Paid at slice 5, 2026-09-19:** the theme
-  paragraph now names the three values and the derived mapping, and the *Searching in the book*
-  section's highlight-colour rule was the other stale sentence — it still described the deleted
-  `PALETTE` table, and now names `resolveReaderPalette(theme, tokens).search` with the pixel
-  measurement that proves it follows the theme.]**
-- **`docs/architecture.md`** — its directory listing gains `electron/main/services/theme/`
-  and `src/lib/theme/`.
-- **`tasks.md`** — the six approved slices **plus slice 7 as proposed** (§2.7), the deferred token
-  rename (product decision 6), the Obsidian-storage decision if it goes the other way, the
-  "per-reader/per-book palette" item §2.5 defers, the **`gold-200` defect with its owner and the
-  decided remedy** (AC7.4), and — if slice 7 ships in the bounded shape — the **53-site status
-  sweep as named debt with an owner** (§2.7a).
+- **`CLAUDE.md`** — "Design tokens live in `tailwind.config.js`" and the Project Overview's fixed "warm near-black surfaces, amber/gold accents" become *partially* false once the palette is a default rather than the identity. It also has no invariant covering theming. **This needs an owner-visible edit.** Amended (A1): that first line is *already* incomplete at HEAD — 63 opacity-modified token utilities, 12 veils, 53 stock-palette utilities and a missing root `color-scheme` are all colour decisions living outside that file (§1.3) — so the edit should say where a colour decision lives, not only where the palette does.
+- **`docs/invariants/settings-and-editing.md`** — should gain the `theme_id` / `theme_tokens` keys, the one-transaction rule and the read-validation rule, next to `app_config`.
+- **`docs/invariants/reader.md`** — says the reader offers "two page themes — warm paper and dark-library ink". After slice 5 the default follows the app theme and the two named rows are overrides. The paragraph becomes stale. **[Paid at slice 5, 2026-09-19:** the theme paragraph now names the three values and the derived mapping, and the *Searching in the book* section's highlight-colour rule was the other stale sentence — it still described the deleted `PALETTE` table, and now names `resolveReaderPalette(theme, tokens).search` with the pixel measurement that proves it follows the theme.]**
+- **`docs/architecture.md`** — its directory listing gains `electron/main/services/theme/` and `src/lib/theme/`.
+- **`tasks.md`** — the six approved slices **plus slice 7 as proposed** (§2.7), the deferred token rename (product decision 6), the Obsidian-storage decision if it goes the other way, the "per-reader/per-book palette" item §2.5 defers, the **`gold-200` defect with its owner and the decided remedy** (AC7.4), and — if slice 7 ships in the bounded shape — the **53-site status sweep as named debt with an owner** (§2.7a).
 - **`CHANGELOG.md`** — per shipped slice.
-- **`electron-builder.yml`** — **no change needed**, and that is a design choice, not luck:
-  built-in schemes are imported `?raw` into the main bundle (the precedent is
-  `db.ts:15-17` importing the SQL migrations the same way), so `files: [out/**, package.json]`
-  already covers them. If someone instead ships them as `extraResources`, that file changes
-  and packaging docs change with it.
-- **`package.json`** — no new dependency is planned (§2.2). If a real provider file breaks the
-  narrow parsers, adding `js-yaml`/`plist` is a `package.json` edit and therefore an
-  escalation.
+- **`electron-builder.yml`** — **no change needed**, and that is a design choice, not luck: built-in schemes are imported `?raw` into the main bundle (the precedent is `db.ts:15-17` importing the SQL migrations the same way), so `files: [out/**, package.json]` already covers them. If someone instead ships them as `extraResources`, that file changes and packaging docs change with it.
+- **`package.json`** — no new dependency is planned (§2.2). If a real provider file breaks the narrow parsers, adding `js-yaml`/`plist` is a `package.json` edit and therefore an escalation.
 
 ---
 
 ## 5. File budget
 
-`CLAUDE.md` escalates at "roughly 10 files". Tests are **counted** here (they are code, and
-the repo's own specs count them). Vendor data is not: `builtin/*.yaml` are third-party files
-with their own licences, the same category as `vendor/foliate-js/` — and they double as
-slice 2's base16 fixture corpus so no second copy exists in the repo.
+`CLAUDE.md` escalates at "roughly 10 files". Tests are **counted** here (they are code, and the repo's own specs count them). Vendor data is not: `builtin/*.yaml` are third-party files with their own licences, the same category as `vendor/foliate-js/` — and they double as slice 2's base16 fixture corpus so no second copy exists in the repo.
 
 | Slice | Code files | Test files | Data | Overrun absorber |
 |---|---|---|---|---|
@@ -1965,22 +793,7 @@ slice 2's base16 fixture corpus so no second copy exists in the repo.
 | **[6, corrected 2026-09-19]** | **8 landed** (§2.6's own sentence said 5; this row said 3 — see A60/D8) | **2** (`obsidian.test.ts` new, `importer.test.ts` extended — the file is named by its provider, not by the slice) | — | `parse/obsidian.ts` folds into `theme/index.ts` — **named, deliberately not taken** (D8) |
 | **7. Status + scrim + hairline — COMMITTED, staged 7a (bounded) and 7b (the sweep) (§2.7)** | **15 at its widest**, **10 with the named absorber** (`theme/derive.ts`, `src/types/theme.types.ts`, `theme/store.ts`, `src/lib/theme/css.ts`, `tailwind.config.js` + the ten components that invert: the eight modal files, `BookCard.tsx`, `BookDetail.tsx`) | 1 (`theme/derive.test.ts` extended — no new test file) | — | **`src/components/library/BookDetail.tsx`**: its single hairline site leaves first (cosmetic — the cover is already edged by `shadow-cover`), then the status sites in files the slice does not otherwise open leave as debt (§2.7a) |
 
-Every *approved* slice is inside the bound, and slices 3 and 5 sit right at it.
-**Amended (A30, slice 3 landed):** the slice-3 row above is short by three files it cannot avoid —
-`electron/main/env.d.ts` (the `*.yaml?raw` declaration §4's own inlining decision needs, which is
-what makes `files: [out/**, package.json]` sufficient), `src/types/theme.types.ts` (the shared
-persisted and view shapes) and `src/App.tsx` (mounting the hook, per `CLAUDE.md`'s convention that
-main-process events are wired into stores in `src/hooks/use*.ts` mounted by `App.tsx`). The honest
-count is **12 code files**, which is over `CLAUDE.md`'s ~10-file escalation bound; each addition is
-forced by a mechanism this spec already mandates and none bends an invariant. Slice 5's row is
-unaffected. A count corrected in the trail does not correct the sentence that states it.
-**Amended (A10): the committed slice 7 is the exception** — drawn at its widest (every one of the
-53 status sites) it is 15 code files + 1 test, five past the bound, which is exactly why it is
-**staged into 7a (10 files, at the bound once the named absorber is taken) and 7b (the status sweep)**
-rather than shrunk or folded into the approved list — see the adjudication block (J1, J2). `/Users/jasonoh/theme-probe`
-is a scratch prototype outside the repo; nothing there is copied in except the two
-`.itermcolors` fixtures, the four base16 fixtures and the curated set — all provider files the
-port needs to be testable against real corpora.
+Every *approved* slice is inside the bound, and slices 3 and 5 sit right at it. **Amended (A30, slice 3 landed):** the slice-3 row above is short by three files it cannot avoid — `electron/main/env.d.ts` (the `*.yaml?raw` declaration §4's own inlining decision needs, which is what makes `files: [out/**, package.json]` sufficient), `src/types/theme.types.ts` (the shared persisted and view shapes) and `src/App.tsx` (mounting the hook, per `CLAUDE.md`'s convention that main-process events are wired into stores in `src/hooks/use*.ts` mounted by `App.tsx`). The honest count is **12 code files**, which is over `CLAUDE.md`'s ~10-file escalation bound; each addition is forced by a mechanism this spec already mandates and none bends an invariant. Slice 5's row is unaffected. A count corrected in the trail does not correct the sentence that states it. **Amended (A10): the committed slice 7 is the exception** — drawn at its widest (every one of the 53 status sites) it is 15 code files + 1 test, five past the bound, which is exactly why it is **staged into 7a (10 files, at the bound once the named absorber is taken) and 7b (the status sweep)** rather than shrunk or folded into the approved list — see the adjudication block (J1, J2). `/Users/jasonoh/theme-probe` is a scratch prototype outside the repo; nothing there is copied in except the two `.itermcolors` fixtures, the four base16 fixtures and the curated set — all provider files the port needs to be testable against real corpora.
 
 ---
 
@@ -1988,91 +801,23 @@ port needs to be testable against real corpora.
 
 Expected, not only observed. Each is here so it is recognised rather than re-diagnosed.
 
-1. **The silent CSS failure is the whole slice 1 risk.** A missing or malformed channel
-   triplet does not fail a build, a lint, or a test — it drops a declaration and renders the
-   wrong colour, in the worst case a transparent body over a white canvas. AC1.3 and AC1.4
-   exist because neither `npm test` nor a code review reliably catches it.
-2. **The pixel gate needs a seeded app.** `musaeum-app-verification` warns that dev and
-   packaged builds share the real library and that a clicked button is a real write. The
-   before/after captures must use a seeded library with no writes, and persisted UI state
-   (`musaeum.ui`, `musaeum.library` in `localStorage`) must be identical across both captures
-   or the diff is noise. Getting this wrong makes AC1.1 pass for the wrong reason.
-3. **iTerm ramp reconstruction is the lossy step, and it will be seen.** A terminal file has
-   no base01–03, so the ladder is invented from greys that may number 3 (measured: "ramp
-   inferred from 3 greys"). Some schemes will have a sidebar that is a guess. The IR's `notes`
-   and the picker's disclosure are the mitigation; expect at least one scheme to look wrong,
-   and that is a corpus property, not a bug.
-4. **The same scheme via two providers does not converge** (gruvbox base16 `base05` `#d5c4a1`
-   vs iTerm `Foreground Color` `#ebdbb2`). Two defensible readings of one palette; the UI
-   names the provider so this reads as a choice rather than a defect. Anyone who "fixes" it
-   by hardcoding a preference is re-introducing the thing the IR exists to avoid.
-5. **Light themes are where the derivation is least tested.** The prototype needed the
-   on-accent fill walk specifically for catppuccin-latte, and the shadow strength flips
-   0.55→0.16. Every light theme in the corpus is a first-class risk. **[A15 — corrected: the curated set is not
-   half light. Four of its thirteen schemes are light (`catppuccin-latte`, `gruvbox-light-soft`,
-   `solarized-light`, `tokyo-night-light`), so light variants are exercised, but thinly — and slice 2
-   is now the layer carrying that risk.]**
-6. **Blanking out the reader default is a visible change if `auto` maps wrong.** AC5.2 pins
-   `ink-900`; if a reviewer later decides `ink-950`, that is a real one-step page-background
-   change that should be made on purpose.
-7. **Slice 6 is the largest new security surface in the app**, and its safety rests on
-   "hex-only payload" plus "cancel every request". Both are testable and both must be
-   asserted (AC6.2, AC6.3); a reviewer who accepts the design on its prose is accepting the
-   only thing in this feature that executes third-party input in a Chromium context.
-8. **`test/mocks/electron.ts` is shared infrastructure.** Slice 3 extends `BrowserWindow` to
-   record constructor options; an edit that changes the mock's shape rather than adding to it
-   breaks suites that have nothing to do with theming. Make it additive, and run the full
-   suite.
-9. **The two-key storage can drift** (§2.3's reversal condition). The mitigation is one write
-   path plus AC3.2; if a drift bug appears anyway, collapse to one key rather than adding a
-   third reconciliation step.
-10. **A theme is not versioned.** A future change to the derivation (a floor, a stop, an
-    accent rule) leaves stored tokens derived by the old rules, and nothing will notice. The
-    honest fix is a `theme_engine_version` key and a re-derive on mismatch; it is *not* in
-    scope, and the weak spot is recorded so that the first time a rule changes, whoever
-    changes it knows stored themes are stale rather than broken.
-    **Superseded (J3, landed with slice 3, A22):** the fix *is* in scope and shipped —
-    `theme_tokens` carries `engineVersion`, and a mismatch re-derives where the id is a built-in
-    (rewriting both keys) and otherwise keeps the stored values and reports `stale` so the picker
-    can flag the row. The weak spot this entry records is closed; it is kept above because the
-    *reversal condition* it implies still stands — a rule change that moves derived values now
-    lands against stored themes from the previous engine, and the ladder's re-derive arm is the
-    only thing that notices.
-11. **The `gold-200` defect is live and will look like a theming bug.** Four sites name a step
-    that does not exist (§1.3 C1), so they paint nothing — and the first person to try a light
-    theme will see a selection panel that "lost its gold" and blame the theme. It is not the
-    theme: it is broken today, on the dark default, before this feature exists. Registered and
-    kept out of slice 1 by AC7.4 for that exact reason.
-12. **The status colours are the honest debt, and the debt has a symptom.** 23 `text-red-400`
-    sites measure ≈2.3:1 on a light panel (§2.7a). If slice 7 ships in the bounded shape, that
-    number is what a light-theme user sees. The mitigation is that it is uniform and greppable
-    (`text-red-400` → `text-danger-400`), not that it is invisible.
-13. **`scrim` has two jobs and one derivation.** §2.7 assumes one scrim role serves both the
-    eight modal veils and the four over-cover chips — but a veil is a large translucent field
-    where a palette-tinted dark end is fine, while a chip is tiny and sits over arbitrary art,
-    where a hue-cast veil can read as mud against a saturated cover. Expect the chips to want a
-    neutralised scrim (a change to one constant, not to the role). This is why AC8.1 asserts on
-    composited luminance and on contrast over the chip, rather than on the token's own value.
-14. **The literal requirement in `pageCss()` is easy to break, and breaking it is silent.**
-    AC5.7/AC5.8 pin the two shapes that break it today (`var(`, an appended alpha suffix), but
-    any future edit that *computes* a colour (template arithmetic, `color-mix()`) reintroduces
-    the failure in a third shape. The mitigation is that a single assertion — "the returned
-    string contains no `var(`" — covers the whole stylesheet, which is exactly why that form was
-    chosen for the fix in §2.5(b) rather than a `color-mix()` expression.
-15. **Slice 1's `color-scheme` line is a real pixel change on a light-OS machine**, and AC1.1's
-    scoping is the only thing keeping the gate honest. If an implementer takes the before/after
-    captures in light OS appearance and sees a diff, the correct response is *not* to drop the
-    declaration — it is to re-take the capture in the state the criterion names (§2.1, AC1.7).
-16. **A re-scan reports files it already has as imported** (A39). Three unchanged themes in the
-    drop-box and a rescan says *3 imported* — true (they are re-derived and re-upserted) but it
-    reads as if three themes were added, and on a folder of thirty it says thirty every time.
-    The fix is a third array on `ThemeImportResult` (*new* vs *refreshed*), which is a contract
-    change and is carried as debt in `tasks.md` rather than smuggled into slice 4.
-17. **Nothing on the picker's path has a renderer test harness.** There is no DOM in the vitest
-    environment and no React testing library, so `AppearanceSection`'s rendering, its drop
-    handler and its click path are decided by source walks plus a live run; a refactor that
-    keeps the strings its tests match but breaks the wiring would pass the suite. The live pass
-    is the compensating instrument, and it is per-slice, not per-commit.
+1. **The silent CSS failure is the whole slice 1 risk.** A missing or malformed channel triplet does not fail a build, a lint, or a test — it drops a declaration and renders the wrong colour, in the worst case a transparent body over a white canvas. AC1.3 and AC1.4 exist because neither `npm test` nor a code review reliably catches it.
+2. **The pixel gate needs a seeded app.** `musaeum-app-verification` warns that dev and packaged builds share the real library and that a clicked button is a real write. The before/after captures must use a seeded library with no writes, and persisted UI state (`musaeum.ui`, `musaeum.library` in `localStorage`) must be identical across both captures or the diff is noise. Getting this wrong makes AC1.1 pass for the wrong reason.
+3. **iTerm ramp reconstruction is the lossy step, and it will be seen.** A terminal file has no base01–03, so the ladder is invented from greys that may number 3 (measured: "ramp inferred from 3 greys"). Some schemes will have a sidebar that is a guess. The IR's `notes` and the picker's disclosure are the mitigation; expect at least one scheme to look wrong, and that is a corpus property, not a bug.
+4. **The same scheme via two providers does not converge** (gruvbox base16 `base05` `#d5c4a1` vs iTerm `Foreground Color` `#ebdbb2`). Two defensible readings of one palette; the UI names the provider so this reads as a choice rather than a defect. Anyone who "fixes" it by hardcoding a preference is re-introducing the thing the IR exists to avoid.
+5. **Light themes are where the derivation is least tested.** The prototype needed the on-accent fill walk specifically for catppuccin-latte, and the shadow strength flips 0.55→0.16. Every light theme in the corpus is a first-class risk. **[A15 — corrected: the curated set is not half light. Four of its thirteen schemes are light (`catppuccin-latte`, `gruvbox-light-soft`, `solarized-light`, `tokyo-night-light`), so light variants are exercised, but thinly — and slice 2 is now the layer carrying that risk.]**
+6. **Blanking out the reader default is a visible change if `auto` maps wrong.** AC5.2 pins `ink-900`; if a reviewer later decides `ink-950`, that is a real one-step page-background change that should be made on purpose.
+7. **Slice 6 is the largest new security surface in the app**, and its safety rests on "hex-only payload" plus "cancel every request". Both are testable and both must be asserted (AC6.2, AC6.3); a reviewer who accepts the design on its prose is accepting the only thing in this feature that executes third-party input in a Chromium context.
+8. **`test/mocks/electron.ts` is shared infrastructure.** Slice 3 extends `BrowserWindow` to record constructor options; an edit that changes the mock's shape rather than adding to it breaks suites that have nothing to do with theming. Make it additive, and run the full suite.
+9. **The two-key storage can drift** (§2.3's reversal condition). The mitigation is one write path plus AC3.2; if a drift bug appears anyway, collapse to one key rather than adding a third reconciliation step.
+10. **A theme is not versioned.** A future change to the derivation (a floor, a stop, an accent rule) leaves stored tokens derived by the old rules, and nothing will notice. The honest fix is a `theme_engine_version` key and a re-derive on mismatch; it is *not* in scope, and the weak spot is recorded so that the first time a rule changes, whoever changes it knows stored themes are stale rather than broken. **Superseded (J3, landed with slice 3, A22):** the fix *is* in scope and shipped — `theme_tokens` carries `engineVersion`, and a mismatch re-derives where the id is a built-in (rewriting both keys) and otherwise keeps the stored values and reports `stale` so the picker can flag the row. The weak spot this entry records is closed; it is kept above because the *reversal condition* it implies still stands — a rule change that moves derived values now lands against stored themes from the previous engine, and the ladder's re-derive arm is the only thing that notices.
+11. **The `gold-200` defect is live and will look like a theming bug.** Four sites name a step that does not exist (§1.3 C1), so they paint nothing — and the first person to try a light theme will see a selection panel that "lost its gold" and blame the theme. It is not the theme: it is broken today, on the dark default, before this feature exists. Registered and kept out of slice 1 by AC7.4 for that exact reason.
+12. **The status colours are the honest debt, and the debt has a symptom.** 23 `text-red-400` sites measure ≈2.3:1 on a light panel (§2.7a). If slice 7 ships in the bounded shape, that number is what a light-theme user sees. The mitigation is that it is uniform and greppable (`text-red-400` → `text-danger-400`), not that it is invisible.
+13. **`scrim` has two jobs and one derivation.** §2.7 assumes one scrim role serves both the eight modal veils and the four over-cover chips — but a veil is a large translucent field where a palette-tinted dark end is fine, while a chip is tiny and sits over arbitrary art, where a hue-cast veil can read as mud against a saturated cover. Expect the chips to want a neutralised scrim (a change to one constant, not to the role). This is why AC8.1 asserts on composited luminance and on contrast over the chip, rather than on the token's own value.
+14. **The literal requirement in `pageCss()` is easy to break, and breaking it is silent.** AC5.7/AC5.8 pin the two shapes that break it today (`var(`, an appended alpha suffix), but any future edit that *computes* a colour (template arithmetic, `color-mix()`) reintroduces the failure in a third shape. The mitigation is that a single assertion — "the returned string contains no `var(`" — covers the whole stylesheet, which is exactly why that form was chosen for the fix in §2.5(b) rather than a `color-mix()` expression.
+15. **Slice 1's `color-scheme` line is a real pixel change on a light-OS machine**, and AC1.1's scoping is the only thing keeping the gate honest. If an implementer takes the before/after captures in light OS appearance and sees a diff, the correct response is *not* to drop the declaration — it is to re-take the capture in the state the criterion names (§2.1, AC1.7).
+16. **A re-scan reports files it already has as imported** (A39). Three unchanged themes in the drop-box and a rescan says *3 imported* — true (they are re-derived and re-upserted) but it reads as if three themes were added, and on a folder of thirty it says thirty every time. The fix is a third array on `ThemeImportResult` (*new* vs *refreshed*), which is a contract change and is carried as debt in `tasks.md` rather than smuggled into slice 4.
+17. **Nothing on the picker's path has a renderer test harness.** There is no DOM in the vitest environment and no React testing library, so `AppearanceSection`'s rendering, its drop handler and its click path are decided by source walks plus a live run; a refactor that keeps the strings its tests match but breaks the wiring would pass the suite. The live pass is the compensating instrument, and it is per-slice, not per-commit.
 
 ---
 
@@ -2081,303 +826,110 @@ Expected, not only observed. Each is here so it is recognised rather than re-dia
 ### Executed — slice 4 (2026-09-16, same machine, isolated profile)
 
 - `npm run typecheck` → exit 0. `npm run lint` → exit 0. `npm run build` → exit 0.
-- `npm test` → **513 passed, 23 files** (508 before the repair round; slice 3's landed figure was
-  452/22, and the baseline before the theming feature was 356/19).
-- **The repair round, measured on one instrument before and after.** A new provider file was added to
-  the running app's `themes/` folder and the section's own refresh control was pressed once:
-  - before: the imported id was **absent** from the view the import call returned, and the row never
-    appeared in the picker (not after that press, and not after a second one);
-  - after: present in the answered view, the row on screen **17 ms** after the single press, and
-    applying it repainted `--ink-950` in **21 ms** (`29 32 33` = gruvbox's `#1d2021`) with the modal
-    open and no key chord.
-  Both mutations that reintroduce the defect (`ipc/theme.ts` composing inline again; the per-file
-  write failure re-thrown) redden exactly their own new case and nothing else.
-- Live, `MUSAEUM_USER_DATA=/tmp/ms4/profile`, `npx electron . --remote-debugging-port=9222`,
-  driven through `Runtime.evaluate` on the renderer target (the `cdp.mjs` from
-  `musaeum-app-verification`). The pid listening on 9222 was verified to be the run's own before
-  anything below was trusted:
-  - baseline view: `{ active: 'builtin:musaeum', options: 14, folder: '<userData>/themes' }`,
-    exactly one row `active`, every row's `swatches.length === 5`.
-  - AC4.2: `importPaths` over five real files with a malformed member (position 3) →
-    `{ imported: 4, rejected: 1 }`, the rejection naming the path and the base16 parser's own
-    reason; all four then resolved through `set()` and each rendered its own `ink-950`
-    (`#2e3440` / `#1d2021` / `#1f1f28` / `#282a36`). Mixed batch with an unreadable path and a
-    `.css` → 1 imported, 2 rejected, two distinct reasons.
-  - AC4.3: three `.itermcolors` plus `README.md`, `obsidian-theme.css` and a malformed `.yaml` in
-    `userData/themes` → `scanFolder()` imported 3, rejected 1 (the `.yaml`), ignored the other two
-    silently; `shasum` over `name:size:mtime` of every entry **identical before and after**; a
-    second scan changed nothing (`options` 14 → 17 → 17).
-  - AC4.5: clicking a row in the live modal moved `--ink-950` from `40 42 54` to `46 52 64` in
-    **19 ms**, with the modal still open and no key chord dispatched anywhere in the run;
-    `--gold-500` moved with it.
-  - AC4.4: a synthetic `drop` of a `.yaml` on the library grid → **0** `importProgress` events and
-    no toast; the control run (a `.epub` through the same instrument) → **2** events, which is what
-    makes the zero evidence rather than a dead instrument.
-  - Persistence across a restart: the five imported rows were still there after a relaunch, each
-    with five swatches, with the active one still active.
-- Four mutations (orchestrator's own, each restored byte-identically): `optionRow`'s `stale` forced
-  false → 2 tests red; `readLibrary` keeping an invalid row → 3 red; `scanFolder` writing a marker
-  into the folder → AC4.3's hash case red; the ladder's library arm never re-deriving an old-engine
-  record → the two J3 cases red.
-- **Residual, declared:** the *Reveal in Finder* control was **not** exercised live — the only way
-  to exercise it opens a Finder window on the owner's desktop, which is an intrusive side effect
-  for a two-line handler (`mkdirSync` + `shell.openPath`, whose non-empty return becomes a thrown
-  reason). AC4.1's per-provider rows are decided for base16 and iTerm2; Obsidian's row is slice 6's
-  and its shape is decided here only insofar as the row builder fills from a `StoredTheme`.
+- `npm test` → **513 passed, 23 files** (508 before the repair round; slice 3's landed figure was 452/22, and the baseline before the theming feature was 356/19).
+- **The repair round, measured on one instrument before and after.** A new provider file was added to the running app's `themes/` folder and the section's own refresh control was pressed once:
+  - before: the imported id was **absent** from the view the import call returned, and the row never appeared in the picker (not after that press, and not after a second one);
+  - after: present in the answered view, the row on screen **17 ms** after the single press, and applying it repainted `--ink-950` in **21 ms** (`29 32 33` = gruvbox's `#1d2021`) with the modal open and no key chord. Both mutations that reintroduce the defect (`ipc/theme.ts` composing inline again; the per-file write failure re-thrown) redden exactly their own new case and nothing else.
+- Live, `MUSAEUM_USER_DATA=/tmp/ms4/profile`, `npx electron . --remote-debugging-port=9222`, driven through `Runtime.evaluate` on the renderer target (the `cdp.mjs` from `musaeum-app-verification`). The pid listening on 9222 was verified to be the run's own before anything below was trusted:
+  - baseline view: `{ active: 'builtin:musaeum', options: 14, folder: '<userData>/themes' }`, exactly one row `active`, every row's `swatches.length === 5`.
+  - AC4.2: `importPaths` over five real files with a malformed member (position 3) → `{ imported: 4, rejected: 1 }`, the rejection naming the path and the base16 parser's own reason; all four then resolved through `set()` and each rendered its own `ink-950` (`#2e3440` / `#1d2021` / `#1f1f28` / `#282a36`). Mixed batch with an unreadable path and a `.css` → 1 imported, 2 rejected, two distinct reasons.
+  - AC4.3: three `.itermcolors` plus `README.md`, `obsidian-theme.css` and a malformed `.yaml` in `userData/themes` → `scanFolder()` imported 3, rejected 1 (the `.yaml`), ignored the other two silently; `shasum` over `name:size:mtime` of every entry **identical before and after**; a second scan changed nothing (`options` 14 → 17 → 17).
+  - AC4.5: clicking a row in the live modal moved `--ink-950` from `40 42 54` to `46 52 64` in **19 ms**, with the modal still open and no key chord dispatched anywhere in the run; `--gold-500` moved with it.
+  - AC4.4: a synthetic `drop` of a `.yaml` on the library grid → **0** `importProgress` events and no toast; the control run (a `.epub` through the same instrument) → **2** events, which is what makes the zero evidence rather than a dead instrument.
+  - Persistence across a restart: the five imported rows were still there after a relaunch, each with five swatches, with the active one still active.
+- Four mutations (orchestrator's own, each restored byte-identically): `optionRow`'s `stale` forced false → 2 tests red; `readLibrary` keeping an invalid row → 3 red; `scanFolder` writing a marker into the folder → AC4.3's hash case red; the ladder's library arm never re-deriving an old-engine record → the two J3 cases red.
+- **Residual, declared:** the *Reveal in Finder* control was **not** exercised live — the only way to exercise it opens a Finder window on the owner's desktop, which is an intrusive side effect for a two-line handler (`mkdirSync` + `shell.openPath`, whose non-empty return becomes a thrown reason). AC4.1's per-provider rows are decided for base16 and iTerm2; Obsidian's row is slice 6's and its shape is decided here only insofar as the row builder fills from a `StoredTheme`.
 
 ### Executed (I ran it, on this machine, 2026-09-15)
 
 - `git log --oneline -3` → HEAD `bdc54ec` "agent config + cc optimization", tree clean.
 - `npm run typecheck` → exit 0. `npm run lint` → exit 0.
-- `npm test` → **270 passed, 17 files** ("Test Files 17 passed (17)", "Tests 270 passed
-  (270)").
-- Greps for token utilities, runtime token reads, `currentColor`, inline styles, hex literals
-  under `electron/` — the counts in §1.2 (F3, F7, F8, F5).
-- Reads: `tailwind.config.js`, `src/index.css`, `ReaderEngine.tsx:1-120`,
-  `src/stores/reader.store.ts`, `ReaderPrefsPopover.tsx` (theme usage), `reader.store.test.ts`,
-  `electron/main/index.ts` (all 195 lines), `services/db.ts:1-110`, `services/settings.ts`,
-  `ipc/handle.ts`, `ipc/settings.ts`, `preload/index.ts`, `src/types/api.types.ts`,
-  `src/types/settings.types.ts`, `settings.types.ts`/`musaeum.d.ts`, `window-chrome`
-  consumers, `SettingsModal.tsx:1-120`, `useDragDrop.ts`, `vitest.config.ts`,
-  `test/mocks/electron.ts`, `electron-builder.yml`, `electron.vite.config.ts`, both tsconfigs,
-  `index.html`, `nas-manager.ts:1-70`, `001_initial.sql:85-96`, `docs/architecture.md:1-80`,
-  the three existing specs, and the four invariant docs named at the top.
-- `python3 derive.py` in `/Users/jasonoh/theme-probe` → 7 palettes × 6 audits, all `OK`;
-  `Things`, `Tokyo Night`, `Blue Topaz`, `Dracula + LYT` → `roles unresolvable by scraping` (F11).
-- GitHub API: `tinted-theming/schemes` → `spec-0.11`, MIT, `base16/` = 340 entries
-  (339 `.yaml` + 1 `.yml`). `mbadolato/iTerm2-Color-Schemes` → `master`, `schemes/` = 614
-  `.itermcolors`, and its `LICENSE` fetched and read (MIT collection, per-theme copyright
-  carved out) — F12's "not verified" half is now resolved.
-- Hex→channel conversion of all 16 defaults plus the shadow alpha scale, computed with node
-  (`--shadow` light: 0.145 / 0.102 / 0.175). (Amendment round 1 adds a seventeenth default,
-  `--scrim`, which is a *copy* of `--ink-950`'s channels rather than a new conversion — A5 — so
-  this row's arithmetic is unchanged.)
+- `npm test` → **270 passed, 17 files** ("Test Files 17 passed (17)", "Tests 270 passed (270)").
+- Greps for token utilities, runtime token reads, `currentColor`, inline styles, hex literals under `electron/` — the counts in §1.2 (F3, F7, F8, F5).
+- Reads: `tailwind.config.js`, `src/index.css`, `ReaderEngine.tsx:1-120`, `src/stores/reader.store.ts`, `ReaderPrefsPopover.tsx` (theme usage), `reader.store.test.ts`, `electron/main/index.ts` (all 195 lines), `services/db.ts:1-110`, `services/settings.ts`, `ipc/handle.ts`, `ipc/settings.ts`, `preload/index.ts`, `src/types/api.types.ts`, `src/types/settings.types.ts`, `settings.types.ts`/`musaeum.d.ts`, `window-chrome` consumers, `SettingsModal.tsx:1-120`, `useDragDrop.ts`, `vitest.config.ts`, `test/mocks/electron.ts`, `electron-builder.yml`, `electron.vite.config.ts`, both tsconfigs, `index.html`, `nas-manager.ts:1-70`, `001_initial.sql:85-96`, `docs/architecture.md:1-80`, the three existing specs, and the four invariant docs named at the top.
+- `python3 derive.py` in `/Users/jasonoh/theme-probe` → 7 palettes × 6 audits, all `OK`; `Things`, `Tokyo Night`, `Blue Topaz`, `Dracula + LYT` → `roles unresolvable by scraping` (F11).
+- GitHub API: `tinted-theming/schemes` → `spec-0.11`, MIT, `base16/` = 340 entries (339 `.yaml` + 1 `.yml`). `mbadolato/iTerm2-Color-Schemes` → `master`, `schemes/` = 614 `.itermcolors`, and its `LICENSE` fetched and read (MIT collection, per-theme copyright carved out) — F12's "not verified" half is now resolved.
+- Hex→channel conversion of all 16 defaults plus the shadow alpha scale, computed with node (`--shadow` light: 0.145 / 0.102 / 0.175). (Amendment round 1 adds a seventeenth default, `--scrim`, which is a *copy* of `--ink-950`'s channels rather than a new conversion — A5 — so this row's arithmetic is unchanged.)
 
 ### Executed — amendment round 1 (2026-09-15, same machine)
 
-- `git log --oneline -1` → HEAD `bdc54ec`; `git status --porcelain` → exactly one entry, the
-  untracked `docs/superpowers/specs/theming.md`. Every count below was taken on that tree.
-- **A real Tailwind build** (the executed half of G1):
-  `./node_modules/.bin/tailwindcss -c tailwind.config.js -i src/index.css -o /tmp/tw-out.css` →
-  "Done in 147ms", output written to `/tmp` (nothing in the repo touched) → `grep -c 'gold-200'`
-  = **0**, while `.bg-ink-950` (×3) and `.text-gold-300` (×1) are present as controls. So the four
-  `gold-200` classes emit no rule; this is measured, not inferred from the config's key list.
-- **Token-utility scans** over `src/**/*.{ts,tsx,css}`, variant- and alpha-aware: **543** token
-  utility sites across **28** files (G7); **63** opacity-modified token sites across **20** files
-  (G2's headline), whose per-class breakdown is recorded in §1.3 C2 (top rows: `bg-ink-950/80` 9,
-  `focus:border-gold-500/60` 4, `placeholder:text-parchment-faint/50` 3,
-  `focus:ring-gold-500/30` 3, `hover:border-gold-400/60` 3, `bg-ink-950/70` 3,
-  `hover:bg-gold-500/10` 3, then a tail of twos and ones); **53** stock-palette colour sites across
-  **16** files (G4), reproducing the dispatch's breakdown site for site.
-- **Veil scan** (`bg-ink-950` followed by a slash-alpha, over `src/`): **12** sites in **9** files
-  (G3's count) — the sites are listed in §1.3 C3. Two findings from the same scan:
-  `BookDetail.tsx` contains no `bg-ink-950` at all, and `BookCard.tsx` contains four of the twelve.
-- `grep -rn 'color-scheme' src/ electron/ index.html` → exactly one hit,
-  `src/components/reader/ReaderEngine.tsx:67` (G5).
-- `grep -rn 'from-|to-|via-'` filtered to token colours over `src/` → exactly one line,
-  `BookCard.tsx:28` (G6).
-- Reads this round: `vendor/foliate-js/paginator.js` lines 185-200, 618-630, 680-690 and
-  1108-1120 (G8a — `:191`, `:626`, `:685`, `:1113`), plus a grep of that file for `link`, `'44'`
-  and `::selection` which returns **nothing** (G8b's attribution); `src/components/reader/ReaderEngine.tsx:36-115`;
-  all 68 lines of `src/index.css`; `tailwind.config.js:1-35`; `src/components/library/BookCard.tsx`
-  lines 25-32, 79 and 96-170; `src/components/library/BookDetail.tsx:81`;
-  `src/components/reader/ReaderPrefsPopover.tsx:158-168`;
-  `src/components/migration/MigrationWizard.tsx:195-203`.
+- `git log --oneline -1` → HEAD `bdc54ec`; `git status --porcelain` → exactly one entry, the untracked `docs/superpowers/specs/theming.md`. Every count below was taken on that tree.
+- **A real Tailwind build** (the executed half of G1): `./node_modules/.bin/tailwindcss -c tailwind.config.js -i src/index.css -o /tmp/tw-out.css` → "Done in 147ms", output written to `/tmp` (nothing in the repo touched) → `grep -c 'gold-200'` = **0**, while `.bg-ink-950` (×3) and `.text-gold-300` (×1) are present as controls. So the four `gold-200` classes emit no rule; this is measured, not inferred from the config's key list.
+- **Token-utility scans** over `src/**/*.{ts,tsx,css}`, variant- and alpha-aware: **543** token utility sites across **28** files (G7); **63** opacity-modified token sites across **20** files (G2's headline), whose per-class breakdown is recorded in §1.3 C2 (top rows: `bg-ink-950/80` 9, `focus:border-gold-500/60` 4, `placeholder:text-parchment-faint/50` 3, `focus:ring-gold-500/30` 3, `hover:border-gold-400/60` 3, `bg-ink-950/70` 3, `hover:bg-gold-500/10` 3, then a tail of twos and ones); **53** stock-palette colour sites across **16** files (G4), reproducing the dispatch's breakdown site for site.
+- **Veil scan** (`bg-ink-950` followed by a slash-alpha, over `src/`): **12** sites in **9** files (G3's count) — the sites are listed in §1.3 C3. Two findings from the same scan: `BookDetail.tsx` contains no `bg-ink-950` at all, and `BookCard.tsx` contains four of the twelve.
+- `grep -rn 'color-scheme' src/ electron/ index.html` → exactly one hit, `src/components/reader/ReaderEngine.tsx:67` (G5).
+- `grep -rn 'from-|to-|via-'` filtered to token colours over `src/` → exactly one line, `BookCard.tsx:28` (G6).
+- Reads this round: `vendor/foliate-js/paginator.js` lines 185-200, 618-630, 680-690 and 1108-1120 (G8a — `:191`, `:626`, `:685`, `:1113`), plus a grep of that file for `link`, `'44'` and `::selection` which returns **nothing** (G8b's attribution); `src/components/reader/ReaderEngine.tsx:36-115`; all 68 lines of `src/index.css`; `tailwind.config.js:1-35`; `src/components/library/BookCard.tsx` lines 25-32, 79 and 96-170; `src/components/library/BookDetail.tsx:81`; `src/components/reader/ReaderPrefsPopover.tsx:158-168`; `src/components/migration/MigrationWizard.tsx:195-203`.
 
 ### Read-only (files read, nothing executed)
 
-Everything else in §1.2's method column, including `derive.py` (read in full, and also run —
-see above), `HANDOFF.md`, `preview.html` (listed, not opened in a browser),
-`docs/invariants/{settings-and-editing,reader,library-views,menu-and-branding}.md`, and the
-three shipped specs read for register.
+Everything else in §1.2's method column, including `derive.py` (read in full, and also run — see above), `HANDOFF.md`, `preview.html` (listed, not opened in a browser), `docs/invariants/{settings-and-editing,reader,library-views,menu-and-branding}.md`, and the three shipped specs read for register.
 
 ### Not verified
 
-- **The pixel-identity claim itself (AC1.1).** It is a criterion for the implementer, not a
-  measurement I took: I did not build, launch, or capture frames. Nothing in this spec has
-  been validated in a running app.
-- ~~**Electron 37's exact offscreen/`executeJavaScript` behaviour** under
-  `webPreferences.offscreen + sandbox: true`, and whether a cancelled-request session can
-  still complete a `data:` document's inline `<style>`. The design assumes both; the
-  first implementation task in slice 6 must confirm them before building on them.~~
-  **[Resolved 2026-09-19 by slice 6's pre-build check — the first half holds, the second does not.**
-  `offscreen: true` + `sandbox: true` loads a `data:` document in 55–62 ms and
-  `executeJavaScript` reads computed custom properties off it (identical with `offscreen: false`). A
-  **cancelled-request session cannot complete the document**: the `data:` URL is itself the first
-  request the listener sees, so an unfiltered cancel-all fails the load with `ERR_BLOCKED_BY_CLIENT`.
-  The rule ships filtered to `*://*/*`. Measured on Electron 37.10.3 / Chromium 138, harness and
-  tables in `plans/2026-09-19-theming-slice6.md` §2.]**
-- ~~**Whether `onBeforeRequest`'s cancel-all interferes with the data-URL document itself** —
-  it must not, but that is an assumption about Electron's ordering, not a measurement.~~
-  **[Resolved 2026-09-19 — it does, and it is the whole reason the slice's first change is a filter
-  rather than the control §2.6 described.** The `data:` document is a request; a listener with no
-  filter cancels it. §2.6 step 1 is corrected in place.]**
-- **Whether a 10-scheme `?raw` import set survives `electron-vite build` into
-  `out/main/**`** — the precedent (`db.ts` importing `.sql?raw`) says yes; I did not run the
-  build.
-- ~~**The curated set's per-scheme licence status.**~~ **[Resolved 2026-09-15 — A16.** The 13 files
-  and the 2 `.itermcolors` are now committed, and every one was checked against its upstream ref:
-  thirteen byte-identical to `tinted-theming/schemes@spec-0.11`, the two iTerm files value-identical
-  to `mbadolato/iTerm2-Color-Schemes@master`. The collection licences are MIT with a per-scheme
-  copyright carve-out, so attribution lives in each file's own `author:` header and in
-  `electron/main/services/theme/builtin/VENDORED.md`.**]**
-- **Any claim about how a real imported theme *looks*.** Every visual statement here comes
-  from the prototype's rendered cards, not from Musaeum.
+- **The pixel-identity claim itself (AC1.1).** It is a criterion for the implementer, not a measurement I took: I did not build, launch, or capture frames. Nothing in this spec has been validated in a running app.
+- ~~**Electron 37's exact offscreen/`executeJavaScript` behaviour** under `webPreferences.offscreen + sandbox: true`, and whether a cancelled-request session can still complete a `data:` document's inline `<style>`. The design assumes both; the first implementation task in slice 6 must confirm them before building on them.~~ **[Resolved 2026-09-19 by slice 6's pre-build check — the first half holds, the second does not.** `offscreen: true` + `sandbox: true` loads a `data:` document in 55–62 ms and `executeJavaScript` reads computed custom properties off it (identical with `offscreen: false`). A **cancelled-request session cannot complete the document**: the `data:` URL is itself the first request the listener sees, so an unfiltered cancel-all fails the load with `ERR_BLOCKED_BY_CLIENT`. The rule ships filtered to `*://*/*`. Measured on Electron 37.10.3 / Chromium 138, harness and tables in `plans/2026-09-19-theming-slice6.md` §2.]**
+- ~~**Whether `onBeforeRequest`'s cancel-all interferes with the data-URL document itself** — it must not, but that is an assumption about Electron's ordering, not a measurement.~~ **[Resolved 2026-09-19 — it does, and it is the whole reason the slice's first change is a filter rather than the control §2.6 described.** The `data:` document is a request; a listener with no filter cancels it. §2.6 step 1 is corrected in place.]**
+- **Whether a 10-scheme `?raw` import set survives `electron-vite build` into `out/main/**`** — the precedent (`db.ts` importing `.sql?raw`) says yes; I did not run the build.
+- ~~**The curated set's per-scheme licence status.**~~ **[Resolved 2026-09-15 — A16.** The 13 files and the 2 `.itermcolors` are now committed, and every one was checked against its upstream ref: thirteen byte-identical to `tinted-theming/schemes@spec-0.11`, the two iTerm files value-identical to `mbadolato/iTerm2-Color-Schemes@master`. The collection licences are MIT with a per-scheme copyright carve-out, so attribution lives in each file's own `author:` header and in `electron/main/services/theme/builtin/VENDORED.md`.**]**
+- **Any claim about how a real imported theme *looks*.** Every visual statement here comes from the prototype's rendered cards, not from Musaeum.
 
 **Added by amendment round 1, same standing:**
 
-- **The two reader constraints are read, not executed.** I read `paginator.js:191/626/685/1113`
-  and `ReaderEngine.tsx:64-105`; I did not launch the app, inject a stylesheet, or observe which
-  branch `getBackground()` takes. AC5.7's proposed read (`body` computing `rgba(0, 0, 0, 0)` under
-  a `var()`-valued stylesheet) follows from the source path, not from a Chromium measurement.
-- **The `scrim` derivation rule is this spec's invention and is unmeasured.** The prototype has no
-  scrim, no fixture and no audit for one; the light-variant extrapolation and both floors are a
-  *proposed* contract, and AC8.1 is the criterion that decides whether the constant works. The
-  dark-variant half is the one part that is checkable today, and it is checkable exactly: byte
-  equality with `--ink-950`.
-- **The ≈2.3:1 figure for `text-red-400` on a light panel** is a computed estimate from the two
-  literals involved, not a measurement of a rendered frame.
-- **Whether `ring-parchment/5` is visible *enough* over cover art** is a judgement about a 5%
-  hairline, not a measurement; the dark-theme pixel shift it costs (neutral white → parchment at
-  5%) is likewise analytic.
-- **The file list in §1.3 C3 and the twelve-site count are greps, not runtime observations** — no
-  modal was opened in the running app during this round.
+- **The two reader constraints are read, not executed.** I read `paginator.js:191/626/685/1113` and `ReaderEngine.tsx:64-105`; I did not launch the app, inject a stylesheet, or observe which branch `getBackground()` takes. AC5.7's proposed read (`body` computing `rgba(0, 0, 0, 0)` under a `var()`-valued stylesheet) follows from the source path, not from a Chromium measurement.
+- **The `scrim` derivation rule is this spec's invention and is unmeasured.** The prototype has no scrim, no fixture and no audit for one; the light-variant extrapolation and both floors are a *proposed* contract, and AC8.1 is the criterion that decides whether the constant works. The dark-variant half is the one part that is checkable today, and it is checkable exactly: byte equality with `--ink-950`.
+- **The ≈2.3:1 figure for `text-red-400` on a light panel** is a computed estimate from the two literals involved, not a measurement of a rendered frame.
+- **Whether `ring-parchment/5` is visible *enough* over cover art** is a judgement about a 5% hairline, not a measurement; the dark-theme pixel shift it costs (neutral white → parchment at 5%) is likewise analytic.
+- **The file list in §1.3 C3 and the twelve-site count are greps, not runtime observations** — no modal was opened in the running app during this round.
 
 ---
 
 ## Documentation this spec implies but does not write
 
-Per the spec-writer role: the files listed in §4 ("Documentation debts this spec creates and
-cannot pay") — `CLAUDE.md`, three invariant docs, `docs/architecture.md`, `tasks.md`,
-`CHANGELOG.md` — must be edited by whoever dispatches the slices. I have not touched them,
-and this spec is not authority to do so.
+Per the spec-writer role: the files listed in §4 ("Documentation debts this spec creates and cannot pay") — `CLAUDE.md`, three invariant docs, `docs/architecture.md`, `tasks.md`, `CHANGELOG.md` — must be edited by whoever dispatches the slices. I have not touched them, and this spec is not authority to do so.
 
 ---
 
 ## Open questions
 
-Decisions this spec does not settle. Each carries my recommendation, labelled as a guess, per the
-spec-writer role. §2.6's reference to "Open questions at the end" resolves here (A11).
+Decisions this spec does not settle. Each carries my recommendation, labelled as a guess, per the spec-writer role. §2.6's reference to "Open questions at the end" resolves here (A11).
 
-**Q1 — Does a stored theme carry an engine version?** A theme's derived values are stored, not
-re-derived (§2.3), and they are unversioned: the day a floor, a stop or an accent rule changes,
-every stored theme silently keeps rendering by the old rules, and nothing notices. This is §6.10.
-*Recommendation:* **add `theme_engine_version` to the `theme_tokens` payload when slice 3 lands**
-— it needs no SQL migration (F9: `app_config` is `key`/`value`), and on a mismatch **re-derive if
-the source is still readable, otherwise keep the stored values and flag the theme as derived by an
-older engine in the picker row.** Re-deriving unconditionally is the tempting half-measure and it
-fails for exactly the two providers that motivated storing values at all (an Obsidian theme whose
-resolve needs a live window, an `.itermcolors` that lives in ProtonDrive).
+**Q1 — Does a stored theme carry an engine version?** A theme's derived values are stored, not re-derived (§2.3), and they are unversioned: the day a floor, a stop or an accent rule changes, every stored theme silently keeps rendering by the old rules, and nothing notices. This is §6.10. *Recommendation:* **add `theme_engine_version` to the `theme_tokens` payload when slice 3 lands** — it needs no SQL migration (F9: `app_config` is `key`/`value`), and on a mismatch **re-derive if the source is still readable, otherwise keep the stored values and flag the theme as derived by an older engine in the picker row.** Re-deriving unconditionally is the tempting half-measure and it fails for exactly the two providers that motivated storing values at all (an Obsidian theme whose resolve needs a live window, an `.itermcolors` that lives in ProtonDrive).
 
-**Q2 — Is an Obsidian theme stored as derived values only, or alongside a copy of its source
-CSS?** §2.6 flags this for the owner. *Recommendation (unchanged from the first pass):*
-**derived values only**, plus `sourcePath` for display. It is what slice 3's storage already
-assumes; a copy in `userData` is the redistribution-shaped act that a theme the user already has
-installed is not; and the copy buys nothing, because the derived values are what the app renders
-and they survive the source moving.
+**Q2 — Is an Obsidian theme stored as derived values only, or alongside a copy of its source CSS?** §2.6 flags this for the owner. *Recommendation (unchanged from the first pass):* **derived values only**, plus `sourcePath` for display. It is what slice 3's storage already assumes; a copy in `userData` is the redistribution-shaped act that a theme the user already has installed is not; and the copy buys nothing, because the derived values are what the app renders and they survive the source moving.
 
-**Q3 — Is there a seventh slice, and at which width?** §2.7 proposes three shapes: the widest
-(slice 7 plus all 53 status sites, 15+ files), the bounded slice (10 files: the scrim and hairline
-migrations plus the status *derivations*), and the cheapest (derivations inside the existing
-slices, only-breaking sites migrated opportunistically, the rest as named debt). This is a scope
-call, so it is the owner's. *Recommendation:* **the hybrid of the second and third** — derivations
-and the seventeenth token inside slices 1–3 (zero extra files), the inversion migrations as slice 7
-proper (ten files, `BookDetail.tsx` as the absorber), and the 53-site status sweep as named debt
-with an owner, swept as those files are next opened. Rationale and reversal condition in §2.7a:
-inversion is a correctness failure with no workaround; the sweep is mechanical with no design
-content.
+**Q3 — Is there a seventh slice, and at which width?** §2.7 proposes three shapes: the widest (slice 7 plus all 53 status sites, 15+ files), the bounded slice (10 files: the scrim and hairline migrations plus the status *derivations*), and the cheapest (derivations inside the existing slices, only-breaking sites migrated opportunistically, the rest as named debt). This is a scope call, so it is the owner's. *Recommendation:* **the hybrid of the second and third** — derivations and the seventeenth token inside slices 1–3 (zero extra files), the inversion migrations as slice 7 proper (ten files, `BookDetail.tsx` as the absorber), and the 53-site status sweep as named debt with an owner, swept as those files are next opened. Rationale and reversal condition in §2.7a: inversion is a correctness failure with no workaround; the sweep is mechanical with no design content.
 
-**Q4 — What happens to the four `gold-200` sites?** §1.3 C1/G1: they reference a step that does
-not exist and therefore paint nothing — a live defect, independent of theming. The options are to
-correct them to a defined step, or to re-express them as `on-accent`/accent tokens.
-*Recommendation:* **correct the three text sites to `gold-300`** (the ramp's lightest step is the
-one that stays legible on the `bg-gold-500/20`–`/30` tints those rows already use, and it is the
-step the design reaches for elsewhere on dark surfaces), **and the mark at `ListView.tsx:211`
-(`bg-gold-200`) to `bg-gold-400`**, matching the checkbox border in the same row so the tri-state
-mark and the row's selection read as one colour. **Not `on-accent`**: that role is the foreground
-*on a filled accent surface*, and every one of the four sites sits on a tint (`/20`–`/30`), not on
-a fill — using it would put a near-canvas-coloured glyph on a tinted panel, which is a misreading
-of the role, not a fix. **Not `gold-400` as text either**: the accent is the fill colour, and using
-it as the foreground on its own tint collapses the pair's contrast. Reversal condition: if the
-owner would rather the four sites stop existing, dropping the emphasis and letting the tint carry
-the selected state is cheaper and defensible — it just costs the selected row its checkmark's
-clarity. Either way this is a **two-file change with its own dispatch** (AC7.4), never a
-slice-1 edit.
+**Q4 — What happens to the four `gold-200` sites?** §1.3 C1/G1: they reference a step that does not exist and therefore paint nothing — a live defect, independent of theming. The options are to correct them to a defined step, or to re-express them as `on-accent`/accent tokens. *Recommendation:* **correct the three text sites to `gold-300`** (the ramp's lightest step is the one that stays legible on the `bg-gold-500/20`–`/30` tints those rows already use, and it is the step the design reaches for elsewhere on dark surfaces), **and the mark at `ListView.tsx:211` (`bg-gold-200`) to `bg-gold-400`**, matching the checkbox border in the same row so the tri-state mark and the row's selection read as one colour. **Not `on-accent`**: that role is the foreground *on a filled accent surface*, and every one of the four sites sits on a tint (`/20`–`/30`), not on a fill — using it would put a near-canvas-coloured glyph on a tinted panel, which is a misreading of the role, not a fix. **Not `gold-400` as text either**: the accent is the fill colour, and using it as the foreground on its own tint collapses the pair's contrast. Reversal condition: if the owner would rather the four sites stop existing, dropping the emphasis and letting the tint carry the selected state is cheaper and defensible — it just costs the selected row its checkmark's clarity. Either way this is a **two-file change with its own dispatch** (AC7.4), never a slice-1 edit.
 
-**Q5 — Does the derivation's new `scrim` rule belong in the prototype first?** The `scrim` rule
-(§2.2) and the status family are this spec's own additions; the prototype has neither, and the
-prototype's whole claim to trust is that its numbers were measured. *Recommendation:* **port them
-into `theme-probe/derive.py` and re-run its seven-palette audit before slice 2's implementation
-freezes** — cheap (two rules, no new fixtures) and it keeps the port's "reproduce the prototype
-verbatim" property true rather than approximately true. If that is refused for time, the fallback
-is that the two rules ship with their own tests and are labelled in `derive.ts` as post-prototype,
-which is honest but leaves the prototype no longer the single source of derived behaviour.
+**Q5 — Does the derivation's new `scrim` rule belong in the prototype first?** The `scrim` rule (§2.2) and the status family are this spec's own additions; the prototype has neither, and the prototype's whole claim to trust is that its numbers were measured. *Recommendation:* **port them into `theme-probe/derive.py` and re-run its seven-palette audit before slice 2's implementation freezes** — cheap (two rules, no new fixtures) and it keeps the port's "reproduce the prototype verbatim" property true rather than approximately true. If that is refused for time, the fallback is that the two rules ship with their own tests and are labelled in `derive.ts` as post-prototype, which is honest but leaves the prototype no longer the single source of derived behaviour.
 
 ---
 
 ## Orchestrator adjudication — decisions closed (2026-09-15)
 
-Read this before §2.7, §2.7a or the open questions above: it **supersedes** them. The owner ruled on
-all five questions and took the widest option §2.7a recommended against. Nothing here is open to
-re-argument. Each ruling carries the alternative it beat and the condition that reverses it.
+Read this before §2.7, §2.7a or the open questions above: it **supersedes** them. The owner ruled on all five questions and took the widest option §2.7a recommended against. Nothing here is open to re-argument. Each ruling carries the alternative it beat and the condition that reverses it.
 
-**J1 — Slice 7 is committed, at its widest: derive the status family *and* migrate all 53 sites.**
-Owner's call, 2026-09-15. §2.7a's hybrid recommendation (inversions now, the status sweep as named
-debt) is the **rejected alternative**, kept above with its rationale intact. Consequence: the honest
-count is 15+ code files, **over the ~10-file bound** — so slice 7 is staged rather than shrunk (J2).
-Reversal condition: if the sweep surfaces no light-theme legibility failure at any remaining status
-site — every one holding ≥3:1 on a light surface — the un-swept remainder may be re-declared debt.
+**J1 — Slice 7 is committed, at its widest: derive the status family *and* migrate all 53 sites.** Owner's call, 2026-09-15. §2.7a's hybrid recommendation (inversions now, the status sweep as named debt) is the **rejected alternative**, kept above with its rationale intact. Consequence: the honest count is 15+ code files, **over the ~10-file bound** — so slice 7 is staged rather than shrunk (J2). Reversal condition: if the sweep surfaces no light-theme legibility failure at any remaining status site — every one holding ≥3:1 on a light surface — the un-swept remainder may be re-declared debt.
 
 **J2 — Slice 7 ships in two stages; the file bound is per stage, not per slice.**
 
-- **7a — derivations and inversions (10 code files + 1 test, at the bound).** **[A13 — the
-  derivation half of this bullet already shipped with slice 2: `theme/derive.ts` and
-  `src/types/theme.types.ts` carry `danger`/`ok`/`warn` with their `400`/`500`/`600` steps and their
-  `on-*` foregrounds, floors enforced and corpus-tested. What 7a owes is the rest of the bullet.]**
-  The `--scrim` and status variables in `src/index.css` and `tailwind.config.js`; the twelve veils and the
-  two hairlines; and every status site **inside the ten files 7a already owns**. Absorber unchanged:
-  `src/components/library/BookDetail.tsx`.
-- **7b — the status sweep (the files 7a does not otherwise open).** Mechanical substitution only:
-  §2.7 item 4's inventory applied to the remaining sites. No new token, no derivation change. Its own
-  acceptance: a repo-wide grep for stock-palette colour utilities reaching **zero**, with the count
-  recorded before and after.
+- **7a — derivations and inversions (10 code files + 1 test, at the bound).** **[A13 — the derivation half of this bullet already shipped with slice 2: `theme/derive.ts` and `src/types/theme.types.ts` carry `danger`/`ok`/`warn` with their `400`/`500`/`600` steps and their `on-*` foregrounds, floors enforced and corpus-tested. What 7a owes is the rest of the bullet.]** The `--scrim` and status variables in `src/index.css` and `tailwind.config.js`; the twelve veils and the two hairlines; and every status site **inside the ten files 7a already owns**. Absorber unchanged: `src/components/library/BookDetail.tsx`.
+- **7b — the status sweep (the files 7a does not otherwise open).** Mechanical substitution only: §2.7 item 4's inventory applied to the remaining sites. No new token, no derivation change. Its own acceptance: a repo-wide grep for stock-palette colour utilities reaching **zero**, with the count recorded before and after.
 
-This is the cut a re-cut into two plan items would use. 7a needs no new toolchain and no new
-instrument, so it lands green under today's gate; 7b is grep-verifiable and independent of it.
+This is the cut a re-cut into two plan items would use. 7a needs no new toolchain and no new instrument, so it lands green under today's gate; 7b is grep-verifiable and independent of it.
 
-**J3 — Q1 accepted: `theme_engine_version` joins the `theme_tokens` payload in slice 3.** On mismatch,
-re-derive where the source is still readable; otherwise keep the stored values and flag the theme in
-the picker row as derived by an older engine. No SQL migration — `app_config` is key/value (F9).
+**J3 — Q1 accepted: `theme_engine_version` joins the `theme_tokens` payload in slice 3.** On mismatch, re-derive where the source is still readable; otherwise keep the stored values and flag the theme in the picker row as derived by an older engine. No SQL migration — `app_config` is key/value (F9).
 
-**J4 — Q2 accepted: a resolved Obsidian theme is stored as derived values plus `sourcePath`, never
-alongside a copy of its source CSS.** The copy is the redistribution-shaped act; the derived values
-are what renders, and they survive the source moving or being deleted.
+**J4 — Q2 accepted: a resolved Obsidian theme is stored as derived values plus `sourcePath`, never alongside a copy of its source CSS.** The copy is the redistribution-shaped act; the derived values are what renders, and they survive the source moving or being deleted.
 
-**J5 — Q4 accepted: the four `gold-200` sites become `gold-300` (the three text sites) and
-`bg-gold-400` (the mark at `ListView.tsx:211`), as their own two-file dispatch — never a slice-1
-edit, whose pixel gate depends on those sites being unchanged (AC7.4).** Not `on-accent` (all four
-sit on a tint, not a fill), and not `gold-400` as text (the accent is the fill colour).
+**J5 — Q4 accepted: the four `gold-200` sites become `gold-300` (the three text sites) and `bg-gold-400` (the mark at `ListView.tsx:211`), as their own two-file dispatch — never a slice-1 edit, whose pixel gate depends on those sites being unchanged (AC7.4).** Not `on-accent` (all four sit on a tint, not a fill), and not `gold-400` as text (the accent is the fill colour).
 
-**J6 — Q5 accepted: port the `scrim` rule and the status family into `theme-probe/derive.py` and
-re-run its seven-palette audit before slice 2's implementation freezes.** This keeps the port's
-"reproduce the prototype verbatim" property true rather than approximately true. Fallback if time
-is refused: ship the two rules with their own tests and label them post-prototype in `derive.ts`.
+**J6 — Q5 accepted: port the `scrim` rule and the status family into `theme-probe/derive.py` and re-run its seven-palette audit before slice 2's implementation freezes.** This keeps the port's "reproduce the prototype verbatim" property true rather than approximately true. Fallback if time is refused: ship the two rules with their own tests and label them post-prototype in `derive.ts`.
 
-**J7 — a correction to the orchestrator's own amendment dispatch, recorded so that nobody later
-"fixes" the right numbers back into the wrong ones.** That dispatch listed per-class breakdowns of
-the opacity-modified sites — seven `border-gold-500/60`, seven `bg-gold-500/30`, five
-`border-gold-500/50`, five `ring-gold-400/70`, four `bg-gold-500/40`. Those were per-**suffix** totals
-mislabelled as per-**class** counts. The per-class breakdown recorded in §1.4 is correct and must not
-be changed; the suffix totals decompose as: `gold-500/60` = 6 `border-` + 1 `text-`; `gold-500/30` =
-3 `ring-` + 3 `bg-` + 1 `border-`; `gold-500/50` = 3 `border-` + 2 `bg-`; `gold-400/70` = 2 `ring-` +
-2 `text-` + 1 `border-`; `gold-500/40` = 3 `border-` + 1 `ring-` + 1 `bg-`. Both methods agree on the
-headline: **63 sites across 20 files.**
+**J7 — a correction to the orchestrator's own amendment dispatch, recorded so that nobody later "fixes" the right numbers back into the wrong ones.** That dispatch listed per-class breakdowns of the opacity-modified sites — seven `border-gold-500/60`, seven `bg-gold-500/30`, five `border-gold-500/50`, five `ring-gold-400/70`, four `bg-gold-500/40`. Those were per-**suffix** totals mislabelled as per-**class** counts. The per-class breakdown recorded in §1.4 is correct and must not be changed; the suffix totals decompose as: `gold-500/60` = 6 `border-` + 1 `text-`; `gold-500/30` = 3 `ring-` + 3 `bg-` + 1 `border-`; `gold-500/50` = 3 `border-` + 2 `bg-`; `gold-400/70` = 2 `ring-` + 2 `text-` + 1 `border-`; `gold-500/40` = 3 `border-` + 1 `ring-` + 1 `bg-`. Both methods agree on the headline: **63 sites across 20 files.**
 
-**J8 — the scrim role is darkening in *both* variants, and the cover-art badges are the reason.**
-Four of the twelve veil sites are `BookCard.tsx:98, 114, 128, 167` — chips laid over arbitrary cover
-art, not modal backdrops. A light theme must not turn those into light washes any more than it may
-wash out a dialog. So "scrim" means *darkens what it covers*, whichever variant it is derived under;
-this is a constraint on the derivation (§2.2), not an observation about today's values.
+**J8 — the scrim role is darkening in *both* variants, and the cover-art badges are the reason.** Four of the twelve veil sites are `BookCard.tsx:98, 114, 128, 167` — chips laid over arbitrary cover art, not modal backdrops. A light theme must not turn those into light washes any more than it may wash out a dialog. So "scrim" means *darkens what it covers*, whichever variant it is derived under; this is a constraint on the derivation (§2.2), not an observation about today's values.
 
 ---
 
@@ -2394,37 +946,10 @@ this is a constraint on the derivation (§2.2), not an observation about today's
 | AC1.1 residual | settings-scrim frame: 146 pixels differ (0.011%), **maximum channel delta 1**, in a 77×36 box at (1346,10). 31 distinct before→after pairs, every one a single-channel ±1 in mixed directions. |
 | AC1.7 | `color-scheme: dark` present on `:root`; the host OS is in Dark appearance, so it is a no-op for the capture, as §2.1's caveat anticipated. |
 
-**The AC1.1 residual, characterized rather than waved through.** The scrim's colour moved from a
-literal `rgba(13,11,9,0.8)` to the required `rgb(13 11 9 / 0.8)` variable form. Chromium's
-alpha-composite rounding differs between those two spellings, so only the pixels whose blend result
-lands exactly on an 8-bit boundary flip — hence 146 of roughly a million, at delta ≤1, in mixed
-directions. It is sub-perceptual, its cause is inherent to the `<alpha-value>` form that §1.2's 63
-opacity sites require, and it is recorded here so no later reader chases it as a regression.
-Reversal condition: if a future slice ever needs the scrim's alpha to be bit-exact, the fix is to
-carry the scrim as a pre-multiplied opaque colour at its authored alphas, not to abandon the
-variable form.
+**The AC1.1 residual, characterized rather than waved through.** The scrim's colour moved from a literal `rgba(13,11,9,0.8)` to the required `rgb(13 11 9 / 0.8)` variable form. Chromium's alpha-composite rounding differs between those two spellings, so only the pixels whose blend result lands exactly on an 8-bit boundary flip — hence 146 of roughly a million, at delta ≤1, in mixed directions. It is sub-perceptual, its cause is inherent to the `<alpha-value>` form that §1.2's 63 opacity sites require, and it is recorded here so no later reader chases it as a regression. Reversal condition: if a future slice ever needs the scrim's alpha to be bit-exact, the fix is to carry the scrim as a pre-multiplied opaque colour at its authored alphas, not to abandon the variable form.
 
-**J9 — AC1.4 moves to slice 2.** AC1.4 required a unit test asserting the `:root` defaults against
-`git show HEAD:tailwind.config.js`, while AC1.2 fixes slice 1's touched set at exactly two files — a
-test file is a third, so the two criteria could not both hold. The implementer correctly wrote no
-third file and ran the assertion as a throwaway script (all 14 literals verified). Resolution: slice
-2 owns that assertion, in the test file it already budgets, where it doubles as the pin that the
-derivation reproduces today's palette as its default. This is the "add the walk" arm of the rule —
-the criterion is kept, not retired, and it no longer contradicts AC1.2.
+**J9 — AC1.4 moves to slice 2.** AC1.4 required a unit test asserting the `:root` defaults against `git show HEAD:tailwind.config.js`, while AC1.2 fixes slice 1's touched set at exactly two files — a test file is a third, so the two criteria could not both hold. The implementer correctly wrote no third file and ran the assertion as a throwaway script (all 14 literals verified). Resolution: slice 2 owns that assertion, in the test file it already budgets, where it doubles as the pin that the derivation reproduces today's palette as its default. This is the "add the walk" arm of the rule — the criterion is kept, not retired, and it no longer contradicts AC1.2.
 
-**J10 — two dispatch facts of the orchestrator's were wrong; the corrections are authoritative.**
-(a) Tailwind's installed version is **3.4.19**; `package.json`'s `^3.4.17` is a caret range, not the
-resolved compiler. (b) The class named in the dispatch as `text-parchment-faint/50` ships as
-**`placeholder:text-parchment-faint/50`** at all three of its sites — the count of 3 was right, the
-class string was not. The headline (63 sites / 20 files / 30 distinct class strings) reproduces
-exactly, and J7's suffix decomposition reproduces site-for-site under the implementer's independent
-measurement, which is the corroboration that matters.
+**J10 — two dispatch facts of the orchestrator's were wrong; the corrections are authoritative.** (a) Tailwind's installed version is **3.4.19**; `package.json`'s `^3.4.17` is a caret range, not the resolved compiler. (b) The class named in the dispatch as `text-parchment-faint/50` ships as **`placeholder:text-parchment-faint/50`** at all three of its sites — the count of 3 was right, the class string was not. The headline (63 sites / 20 files / 30 distinct class strings) reproduces exactly, and J7's suffix decomposition reproduces site-for-site under the implementer's independent measurement, which is the corroboration that matters.
 
-**J11 — one dispatch acceptance bullet was unsatisfiable by construction.** It asked for the
-generated rule for `bg-gold-500/40`. No such class rule is emitted, before or after this change:
-that class's only site is an `@apply` in `src/index.css`, which Tailwind inlines into the
-`::selection` rule, and class rules are emitted only for names found in `content` — which is
-`index.html` and `src/**/*.{ts,tsx}`, not `.css`. The implementer proved the alpha survives
-(`background-color: rgb(var(--gold-500) / 0.4)` on `::selection`, plus a separate probe build with
-the class name in `content` that did emit the rule) and refused to report the absence as the slice's
-failure. That was the right call: the bullet was a defect in the dispatch, not in the work.
+**J11 — one dispatch acceptance bullet was unsatisfiable by construction.** It asked for the generated rule for `bg-gold-500/40`. No such class rule is emitted, before or after this change: that class's only site is an `@apply` in `src/index.css`, which Tailwind inlines into the `::selection` rule, and class rules are emitted only for names found in `content` — which is `index.html` and `src/**/*.{ts,tsx}`, not `.css`. The implementer proved the alpha survives (`background-color: rgb(var(--gold-500) / 0.4)` on `::selection`, plus a separate probe build with the class name in `content` that did emit the rule) and refused to report the absence as the slice's failure. That was the right call: the bullet was a defect in the dispatch, not in the work.

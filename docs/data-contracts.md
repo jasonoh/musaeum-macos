@@ -65,19 +65,13 @@
 }
 ```
 
-This is the canonical data contract (iOS companion depends on it). The writer
-is `importer.writeMetadataJson`. Known gap: cover `source`/`width`/`height`
-are not persisted yet (see tasks.md).
+This is the canonical data contract (iOS companion depends on it). The writer is `importer.writeMetadataJson`. Known gap: cover `source`/`width`/`height` are not persisted yet (see tasks.md).
 
 ---
 
 ## SQLite Schema
 
-Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the
-original spec plus: FTS5 sync triggers (insert/update/delete), indices on
-`isbn_13` / series / author, `device_history.error` column, and a partial
-index on unresolved conflicts. Schema versioning via `PRAGMA user_version`;
-new migrations are appended to the `MIGRATIONS` array in `services/db.ts`.
+Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the original spec plus: FTS5 sync triggers (insert/update/delete), indices on `isbn_13` / series / author, `device_history.error` column, and a partial index on unresolved conflicts. Schema versioning via `PRAGMA user_version`; new migrations are appended to the `MIGRATIONS` array in `services/db.ts`.
 
 ```sql
 CREATE TABLE books (
@@ -155,31 +149,15 @@ CREATE TABLE app_config (
 );
 ```
 
-`app_config` keys in use: `library_root`, `smb_url`, `python_path`,
-`ebook_convert_path`, `google_books_api_key`, `rest_api_enabled`, and the theming
-trio `theme_id` / `theme_tokens` / `theme_library` (slice 3, 2026-09-16). All but
-`rest_api_enabled` are editable in Settings; a key is deleted rather than blanked when
-cleared (see Settings above). The theming trio is the exception to that editability:
-a theme is not a path and has no auto-detection, so it keeps its own keys and its own
-save path (§2.3 — no theme key in `EditableSettings`), and the Appearance picker
-(slice 4) is what writes `theme_id`.
+`app_config` keys in use: `library_root`, `smb_url`, `python_path`, `ebook_convert_path`, `google_books_api_key`, `rest_api_enabled`, and the theming trio `theme_id` / `theme_tokens` / `theme_library` (slice 3, 2026-09-16). All but `rest_api_enabled` are editable in Settings; a key is deleted rather than blanked when cleared (see Settings above). The theming trio is the exception to that editability: a theme is not a path and has no auto-detection, so it keeps its own keys and its own save path (§2.3 — no theme key in `EditableSettings`), and the Appearance picker (slice 4) is what writes `theme_id`.
 
-The theme keys are the first *main-process-visible* preference of this kind —
-`createWindow()` reads them to colour the window before the renderer exists — and
-they carry three rules the rest of `app_config` does not: both keys are written in
-one transaction by `theme/store.ts` (the only legal states are "both absent" and
-"both present and agreeing"), `theme_tokens` is re-validated on *every* read with a
-failure degrading to the built-in default rather than throwing, and `theme_library`
-is preserved untouched until the picker (slice 4) becomes its only writer.
-`docs/invariants/settings-and-editing.md` carries the reasoning.
+The theme keys are the first *main-process-visible* preference of this kind — `createWindow()` reads them to colour the window before the renderer exists — and they carry three rules the rest of `app_config` does not: both keys are written in one transaction by `theme/store.ts` (the only legal states are "both absent" and "both present and agreeing"), `theme_tokens` is re-validated on *every* read with a failure degrading to the built-in default rather than throwing, and `theme_library` is preserved untouched until the picker (slice 4) becomes its only writer. `docs/invariants/settings-and-editing.md` carries the reasoning.
 
 ---
 
 ## Python Sidecar Communication
 
-JSON-RPC over stdio, newline-delimited JSON. All calls are async from Node's
-perspective (`sidecar.call(method, params, timeoutMs)`), dispatched on a
-thread pool in Python so long calls don't serialize.
+JSON-RPC over stdio, newline-delimited JSON. All calls are async from Node's perspective (`sidecar.call(method, params, timeoutMs)`), dispatched on a thread pool in Python so long calls don't serialize.
 
 ---
 
@@ -211,21 +189,13 @@ thread pool in Python so long calls don't serialize.
 | `migrate_library`       | Full Calibre migration; streams `migration_progress` notifications |
 | `topup_pdfs`            | Re-runnable Calibre PDF top-up; streams `migration_progress` |
 
-Python resolution order (`services/python-env.ts`, and see `docs/invariants/packaging-and-python.md`):
-`app_config.python_path` → bundled runtime → `sidecar/.venv/bin/python` →
-`userData/sidecar-venv/bin/python` → a system `python3.12`/`3.11`/`3` found by
-name *or absolute path* and version-checked against 3.11. The sidecar
-auto-restarts on crash (max 3 attempts); when unavailable the app degrades
-gracefully (imports fall back to filename metadata).
+Python resolution order (`services/python-env.ts`, and see `docs/invariants/packaging-and-python.md`): `app_config.python_path` → bundled runtime → `sidecar/.venv/bin/python` → `userData/sidecar-venv/bin/python` → a system `python3.12`/`3.11`/`3` found by name *or absolute path* and version-checked against 3.11. The sidecar auto-restarts on crash (max 3 attempts); when unavailable the app degrades gracefully (imports fall back to filename metadata).
 
 ---
 
 ## IPC API Surface (preload → renderer)
 
-Exposed via contextBridge as `window.Musaeum`. Full contract:
-`src/types/api.types.ts` (`MusaeumAPI`). Every handler returns an
-`IPCResult<T>` envelope which the preload unwraps — renderer code sees plain
-promises that reject with the error message.
+Exposed via contextBridge as `window.Musaeum`. Full contract: `src/types/api.types.ts` (`MusaeumAPI`). Every handler returns an `IPCResult<T>` envelope which the preload unwraps — renderer code sees plain promises that reject with the error message.
 
 ```typescript
 interface MusaeumAPI {

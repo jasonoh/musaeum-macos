@@ -1,45 +1,22 @@
 # Plan: Theming slice 6 — the Obsidian resolver
 
-**Date:** 2026-09-19
-**Slice:** §2.6 of `docs/superpowers/specs/theming.md`, acceptance criteria AC6.1–AC6.6
-**Annex to:** `docs/superpowers/specs/theming.md` — this file settles what §2.6 leaves open and
-reports the confirmation §2.6's *Not verified* list demanded before anything is built. The spec's
-amendment trail gains its round-6 entry when the slice **lands**, not when this annex is written.
-**Read first:** `CLAUDE.md` #8/#9/#12, `docs/invariants/settings-and-editing.md` (`app_config`,
-persisted UI state), `docs/invariants/menu-and-branding.md` (the menu is built once).
+**Date:** 2026-09-19 **Slice:** §2.6 of `docs/superpowers/specs/theming.md`, acceptance criteria AC6.1–AC6.6 **Annex to:** `docs/superpowers/specs/theming.md` — this file settles what §2.6 leaves open and reports the confirmation §2.6's *Not verified* list demanded before anything is built. The spec's amendment trail gains its round-6 entry when the slice **lands**, not when this annex is written. **Read first:** `CLAUDE.md` #8/#9/#12, `docs/invariants/settings-and-editing.md` (`app_config`, persisted UI state), `docs/invariants/menu-and-branding.md` (the menu is built once).
 
 ---
 
 ## 1. What this slice is
 
-Obsidian ships no palette format — it ships a *role ontology* whose values are frequently computed
-(`hsl(var(--base-h), …)`, `var()` chains, `color-mix()`), so they only exist inside a live cascade.
-The slice runs the stylesheet in a sandboxed window that cannot reach the network, reads the roles
-back, and stores the **derived values only** (J4). Three pieces:
+Obsidian ships no palette format — it ships a *role ontology* whose values are frequently computed (`hsl(var(--base-h), …)`, `var()` chains, `color-mix()`), so they only exist inside a live cascade. The slice runs the stylesheet in a sandboxed window that cannot reach the network, reads the roles back, and stores the **derived values only** (J4). Three pieces:
 
-1. **The resolver** (`theme/resolve-css.ts`) — the Electron half: one hidden window, one session
-   whose every network request is cancelled, two reads (dark class, light class) per file.
-2. **The adapter** (`theme/parse/obsidian.ts`) — pure: the role ladder, the colour normalizer, the
-   variant rule, and the rejection with the unresolved role named.
-3. **The wiring** — `.css` joins the four extension sites (A45), a theme is identified by its
-   *folder*, and the import pipeline becomes asynchronous for that one provider.
+1. **The resolver** (`theme/resolve-css.ts`) — the Electron half: one hidden window, one session whose every network request is cancelled, two reads (dark class, light class) per file.
+2. **The adapter** (`theme/parse/obsidian.ts`) — pure: the role ladder, the colour normalizer, the variant rule, and the rejection with the unresolved role named.
+3. **The wiring** — `.css` joins the four extension sites (A45), a theme is identified by its *folder*, and the import pipeline becomes asynchronous for that one provider.
 
-**What this slice deliberately does not need** (the sentence that keeps it unblocked): no SQL
-migration (`app_config` is `key`/`value`), no change to `index.html`'s CSP or to the real renderer's
-security surface (the stylesheet never reaches it), no vendored Obsidian CSS, no copy of the user's
-theme file in the repo or on disk, no change to `ThemeIr`/`DerivedTokens`, no new dependency, and
-no change to `src/lib/theme/css.ts`, `src/hooks/useTheme.ts` or `src/main.tsx` — the apply path
-already renders whatever `theme_tokens` carries.
+**What this slice deliberately does not need** (the sentence that keeps it unblocked): no SQL migration (`app_config` is `key`/`value`), no change to `index.html`'s CSP or to the real renderer's security surface (the stylesheet never reaches it), no vendored Obsidian CSS, no copy of the user's theme file in the repo or on disk, no change to `ThemeIr`/`DerivedTokens`, no new dependency, and no change to `src/lib/theme/css.ts`, `src/hooks/useTheme.ts` or `src/main.tsx` — the apply path already renders whatever `theme_tokens` carries.
 
 ## 2. The confirmation §2.6 asked for — both assumptions, measured
 
-§2.6's *Not verified* list said the first implementation task must confirm, before building on them,
-(a) Electron 37's `offscreen + sandbox: true` behaviour under `executeJavaScript`, (b) whether a
-cancelled-request session can still complete a `data:` document's inline `<style>`, and (c) whether
-`onBeforeRequest`'s **cancel-all** interferes with the data-URL document itself — "it must not, but
-that is an assumption about Electron's ordering, not a measurement". Measured on this machine
-(Electron **37.10.3**, Chromium 138.0.7204.251), against the six Obsidian themes actually installed
-here (read from disk, never copied):
+§2.6's *Not verified* list said the first implementation task must confirm, before building on them, (a) Electron 37's `offscreen + sandbox: true` behaviour under `executeJavaScript`, (b) whether a cancelled-request session can still complete a `data:` document's inline `<style>`, and (c) whether `onBeforeRequest`'s **cancel-all** interferes with the data-URL document itself — "it must not, but that is an assumption about Electron's ordering, not a measurement". Measured on this machine (Electron **37.10.3**, Chromium 138.0.7204.251), against the six Obsidian themes actually installed here (read from disk, never copied):
 
 | §2.6 assumed | Measured | Verdict |
 |---|---|---|
@@ -49,8 +26,7 @@ here (read from disk, never copied):
 | a window per resolve, destroyed after one read (AC6.6) | the **second** window created after a destroy never loads (`ERR_FAILED`), and the process dies with `SIGTRAP` around the third — with `offscreen` on *and* off, with one fixed partition and with a fresh one per window. Two windows created together, or **one window reused**, are unaffected | **the shape in §2.6 step 4 cannot ship — D1** |
 | a computed custom property is a colour that normalizes to `^#[0-9a-f]{6}$` after `#rgb`/`#rrggbbaa` handling | no: it comes back as the *substituted token stream* — `#171c28`, `rgb(22, 22, 30)`, `hsl(220, 12%, calc(18% - 2%))`, `color-mix( in hsl, #1d2433, #2f3b54 )`, `color(srgb 0.149 0.186 0.264)`, `rgba(40, 45, 55, 0.65)`, or empty | **D3** |
 
-The six-theme corpus, with §2.6's own role list and rejection rule (**L1**), against the ladder this
-annex proposes (**L3**, D4), nine roles, both classes:
+The six-theme corpus, with §2.6's own role list and rejection rule (**L1**), against the ladder this annex proposes (**L3**, D4), nine roles, both classes:
 
 | theme | size | dark | light | classes it declares | accents under L1 | with D4 |
 |---|---|---|---|---|---|---|
@@ -61,45 +37,15 @@ annex proposes (**L3**, D4), nine roles, both classes:
 | Dracula + LYT | 246 KB | 9/9 | 9/9 but *dark* canvas | both | 4/8 | 9/9, one entry (D5) |
 | Obsidianite | 32 KB | 7/9 (`muted`, `on_acc`) | 0/9 | `.theme-dark` only | **0/8** | 9/9 dark |
 
-**§2.6 as written admits 2 of the 6 themes installed on this machine; the ladder in D4 admits 6 of 6**,
-five of them without a single synthesized value and none of them by inventing a colour the theme did
-not supply. The reason is not exotic: these themes are written against Obsidian's *own* base
-stylesheet, so `--color-base-00…100`, `--color-red`, `--main-color` and dozens of others are declared
-by Obsidian, not by the theme. Our resolver document is a bare `data:` URL, so a theme that says
-`--background-primary: var(--color-base-00)` resolves to **empty** — which is the single largest
-failure class in the table above.
+**§2.6 as written admits 2 of the 6 themes installed on this machine; the ladder in D4 admits 6 of 6**, five of them without a single synthesized value and none of them by inventing a colour the theme did not supply. The reason is not exotic: these themes are written against Obsidian's *own* base stylesheet, so `--color-base-00…100`, `--color-red`, `--main-color` and dozens of others are declared by Obsidian, not by the theme. Our resolver document is a bare `data:` URL, so a theme that says `--background-primary: var(--color-base-00)` resolves to **empty** — which is the single largest failure class in the table above.
 
-Reproduce: the harness is outside the repo (`/tmp/musaeum-spike-obsidian/`, v3–v7), so nothing here
-is a claim about files that ship. It is Electron-as-script (`node_modules/.bin/electron <file>`), one
-window per process, writing progress with `fs.appendFileSync` so a renderer crash cannot eat the
-evidence — which is how the window-churn failure was caught at all.
+Reproduce: the harness is outside the repo (`/tmp/musaeum-spike-obsidian/`, v3–v7), so nothing here is a claim about files that ship. It is Electron-as-script (`node_modules/.bin/electron <file>`), one window per process, writing progress with `fs.appendFileSync` so a renderer crash cannot eat the evidence — which is how the window-churn failure was caught at all.
 
 ## 3. The readings §2.6 left open (D-series)
 
-**D1 — the resolver window is created once and lives until the app quits.** *(Measured, §2.)* The
-destroy-after-one-read shape in §2.6 step 4 does not survive its second call in this Electron build:
-`ERR_FAILED` on the reload, `SIGTRAP` soon after. The single reused window resolved all six themes ×
-two variants in one process — 1.24 MB of CSS in 25 ms, 1.36 million characters of stylesheet applied
-and read three times — with the window count back at zero only at exit. So: lazy creation on the
-first `.css`, one fixed `musaeum-theme-resolver` partition, `show: false`, and **no `destroy()` on
-any path**. A **timeout** (3 s, measured headroom: the slowest real file is 25 ms) is handled by
-`webContents.stop()` + a reload of `about:blank`, i.e. the window is *reset*, never recycled.
-*Consequence for a file this slice was not counting:* a permanently-alive window is invisible to the
-user but **not** to `BrowserWindow.getAllWindows().length`, which `electron/main/index.ts:225` uses to
-decide whether a dock-icon click should reopen the main window — with one resolver window alive that
-count is never 0, so the app would stop reopening. The check moves from "no windows" to "no window
-that is not the resolver's", via a predicate exported by `resolve-css.ts`. *Alternative rejected:* an
-`app.on('activate')` that closes the resolver window before counting — it would destroy-and-recreate,
-which is the shape that crashes. *Reversal:* Electron fixes the window-churn crash (re-test by
-running the loop in §2's harness) — the window can then be per-resolve again, which is cheaper in
-memory and loses nothing else.
+**D1 — the resolver window is created once and lives until the app quits.** *(Measured, §2.)* The destroy-after-one-read shape in §2.6 step 4 does not survive its second call in this Electron build: `ERR_FAILED` on the reload, `SIGTRAP` soon after. The single reused window resolved all six themes × two variants in one process — 1.24 MB of CSS in 25 ms, 1.36 million characters of stylesheet applied and read three times — with the window count back at zero only at exit. So: lazy creation on the first `.css`, one fixed `musaeum-theme-resolver` partition, `show: false`, and **no `destroy()` on any path**. A **timeout** (3 s, measured headroom: the slowest real file is 25 ms) is handled by `webContents.stop()` + a reload of `about:blank`, i.e. the window is *reset*, never recycled. *Consequence for a file this slice was not counting:* a permanently-alive window is invisible to the user but **not** to `BrowserWindow.getAllWindows().length`, which `electron/main/index.ts:225` uses to decide whether a dock-icon click should reopen the main window — with one resolver window alive that count is never 0, so the app would stop reopening. The check moves from "no windows" to "no window that is not the resolver's", via a predicate exported by `resolve-css.ts`. *Alternative rejected:* an `app.on('activate')` that closes the resolver window before counting — it would destroy-and-recreate, which is the shape that crashes. *Reversal:* Electron fixes the window-churn crash (re-test by running the loop in §2's harness) — the window can then be per-resolve again, which is cheaper in memory and loses nothing else.
 
-**D2 — the no-network control is a session *filter*, not a cancel-all.** *(Measured, §2.)* The rule is
-installed once, on `session.fromPartition('musaeum-theme-resolver', { cache: false })`, as
-`onBeforeRequest({ urls: ['*://*/*'] }, (_d, cb) => cb({ cancel: true }))`. It never sees the `data:`
-document, so the document loads; it sees and cancels every http(s) attempt a stylesheet can make.
-Measured with a loopback server as the instrument (the only thing that measures *reachability* rather
-than *listener invocation*):
+**D2 — the no-network control is a session *filter*, not a cancel-all.** *(Measured, §2.)* The rule is installed once, on `session.fromPartition('musaeum-theme-resolver', { cache: false })`, as `onBeforeRequest({ urls: ['*://*/*'] }, (_d, cb) => cb({ cancel: true }))`. It never sees the `data:` document, so the document loads; it sees and cancels every http(s) attempt a stylesheet can make. Measured with a loopback server as the instrument (the only thing that measures *reachability* rather than *listener invocation*):
 
 | document CSP | session rule | attempts the listener saw | requests the server received |
 |---|---|---|---|
@@ -108,103 +54,19 @@ than *listener invocation*):
 | none | none | 0 | **4** |
 | strict | none | 0 | 0 |
 
-Both layers hold alone, and the third row is AC6.2's mutation. That restates the criterion: **with
-the CSP relaxed to nothing, the session rule still leaves the server at zero** — so the criterion's
-decider is the loopback server plus the removed rule, and a bare counter is not a decider at all
-(rows 1 and 4 both count 0 with opposite causes).
+Both layers hold alone, and the third row is AC6.2's mutation. That restates the criterion: **with the CSP relaxed to nothing, the session rule still leaves the server at zero** — so the criterion's decider is the loopback server plus the removed rule, and a bare counter is not a decider at all (rows 1 and 4 both count 0 with opposite causes).
 
-**D3 — the page resolves the CSS, main validates the colour; neither side trusts the other.** §2.6's
-"every value is validated against `^#[0-9a-f]{6}$`" is right about the *contract* and wrong about the
-*input*: Chromium hands back the substituted token stream (`hsl(220, 12%, calc(18% - 2%))` is not a
-hex colour and its `calc()` has not been evaluated). So the read is two-stage:
-`getComputedStyle` → assign the string to a probe element's `color` and read it back (which is what
-evaluates `calc`, `color-mix()` and `var()` chains) → hand that back; then a **pure** `normalizeColour`
-in `parse/obsidian.ts` accepts `#rgb`/`#rrggbb`/`#rrggbbaa`, `rgb()`/`rgba()` and `color(srgb …)`
-(the form Chromium uses for a `color-mix()` result) and answers `#rrggbb`, or `null`. Alpha is
-**dropped**, not composited — the prototype's own rule ("surfaces are opaque") and the reason a
-60 %-alpha `#8695b799` reads as a surface at all — and every role it was dropped for is named in the
-theme's `notes`, so the loss is visible in the picker's disclosure rather than silent. *Alternative
-rejected:* compositing over the canvas. It is a guess about intent (halcyon's translucent `faint` is
-a text tone over several backdrops, not over one), it invents a colour the theme never declared, and
-it would put a second colour rule in a file whose whole job is to be checkable against the prototype.
-*Reversal:* a theme whose dropped-alpha role renders illegibly in the running app — then the IR gains
-a declared-alpha field, which is a `ThemeIr` change and therefore its own slice.
+**D3 — the page resolves the CSS, main validates the colour; neither side trusts the other.** §2.6's "every value is validated against `^#[0-9a-f]{6}$`" is right about the *contract* and wrong about the *input*: Chromium hands back the substituted token stream (`hsl(220, 12%, calc(18% - 2%))` is not a hex colour and its `calc()` has not been evaluated). So the read is two-stage: `getComputedStyle` → assign the string to a probe element's `color` and read it back (which is what evaluates `calc`, `color-mix()` and `var()` chains) → hand that back; then a **pure** `normalizeColour` in `parse/obsidian.ts` accepts `#rgb`/`#rrggbb`/`#rrggbbaa`, `rgb()`/`rgba()` and `color(srgb …)` (the form Chromium uses for a `color-mix()` result) and answers `#rrggbb`, or `null`. Alpha is **dropped**, not composited — the prototype's own rule ("surfaces are opaque") and the reason a 60 %-alpha `#8695b799` reads as a surface at all — and every role it was dropped for is named in the theme's `notes`, so the loss is visible in the picker's disclosure rather than silent. *Alternative rejected:* compositing over the canvas. It is a guess about intent (halcyon's translucent `faint` is a text tone over several backdrops, not over one), it invents a colour the theme never declared, and it would put a second colour rule in a file whose whole job is to be checkable against the prototype. *Reversal:* a theme whose dropped-alpha role renders illegibly in the running app — then the IR gains a declared-alpha field, which is a `ThemeIr` change and therefore its own slice.
 
-**D4 — the role ladder is three rungs: canonical → the prototype's names → Obsidian's `--color-base-*`
-ramp, and only the roles the derivation *requires* can reject a theme.** *(Measured, §2 table.)*
-`derive.ts` requires exactly `bg`, `fg`, `border` and `accents.red/orange/yellow/green`, and treats
-`muted`, `bg2`, `bg3` as optional; `on_acc_hint` is optional by contract in `ThemeIr:46`. So the
-adapter's rejection rule is: **a required role unresolved after the full ladder → reject the theme,
-naming every unresolved role** (AC6.4's shape, extended from one role to the list); an optional role
-unresolved → omit it and say so in `notes`. The ladder's middle rung is the prototype's own fallback
-column (`derive.py:258-267`), which §2.6 says to preserve; the new last rung is
-`--color-base-00/10/20/30/50/60/70/100` for the surface and text roles, because that is the
-vocabulary modern themes actually declare (Things: 2/9 → 9/9 on this rung alone). Accents get one
-more rule, also the prototype's: an accent the theme does not declare falls back to the theme's own
-**resolved muted tone**, with a note — otherwise the four required accents reject every theme that
-leans on Obsidian's defaults (Blue Topaz, Obsidianite: 0/8 measured). *Alternative rejected:* reject
-a theme whose accent is absent. It was measured to be the difference between 2 of 6 and 6 of 6 of
-this machine's installed themes, and the derivation already has a rule for "no chromatic accent
-supplied" (it keeps the app's own identity rather than inventing a hue). *Alternative rejected:*
-vendoring Obsidian's `app.css`. It is a proprietary sheet we would be redistributing to make other
-people's themes readable, and it would fix the measurement by importing the thing being measured.
+**D4 — the role ladder is three rungs: canonical → the prototype's names → Obsidian's `--color-base-*` ramp, and only the roles the derivation *requires* can reject a theme.** *(Measured, §2 table.)* `derive.ts` requires exactly `bg`, `fg`, `border` and `accents.red/orange/yellow/green`, and treats `muted`, `bg2`, `bg3` as optional; `on_acc_hint` is optional by contract in `ThemeIr:46`. So the adapter's rejection rule is: **a required role unresolved after the full ladder → reject the theme, naming every unresolved role** (AC6.4's shape, extended from one role to the list); an optional role unresolved → omit it and say so in `notes`. The ladder's middle rung is the prototype's own fallback column (`derive.py:258-267`), which §2.6 says to preserve; the new last rung is `--color-base-00/10/20/30/50/60/70/100` for the surface and text roles, because that is the vocabulary modern themes actually declare (Things: 2/9 → 9/9 on this rung alone). Accents get one more rule, also the prototype's: an accent the theme does not declare falls back to the theme's own **resolved muted tone**, with a note — otherwise the four required accents reject every theme that leans on Obsidian's defaults (Blue Topaz, Obsidianite: 0/8 measured). *Alternative rejected:* reject a theme whose accent is absent. It was measured to be the difference between 2 of 6 and 6 of 6 of this machine's installed themes, and the derivation already has a rule for "no chromatic accent supplied" (it keeps the app's own identity rather than inventing a hue). *Alternative rejected:* vendoring Obsidian's `app.css`. It is a proprietary sheet we would be redistributing to make other people's themes readable, and it would fix the measurement by importing the thing being measured.
 
-**D5 — the file's variant is *derived*, and a second entry needs both classes to resolve to different
-variants.** One window, one stylesheet, two reads: `theme-dark` then `theme-light` (measured: the
-swap is a class mutation on `body`, and both reads answer in the same window — halcyon's
-`body:is(.theme-dark)` matches, which a `documentElement` class would not have). The applied class is
-only a *probe*; the variant each read is labelled with comes from the resolved canvas's own luminance
-(the prototype's `lstar(canvas) < 0.5` rule). Then: the dark-class read is the theme's first entry;
-the light-class read becomes a second entry **only if all its required roles resolved and its derived
-variant differs from the first's** — which keeps Tokyo Night (a genuine pair) and Things (both) as two
-rows and collapses Dracula + LYT's "light" class (which resolves to a dark palette) and the dark-only
-themes' empty light read into one. Ids: `obsidian:<folder>` for the dark entry and
-`obsidian:<folder>:light` for the light one when there are two; the bare id otherwise, whatever that
-entry's variant. *Note for the spec's `theme_id` row:* `obsidian:<folder>` was written for the
-one-entry case, which stays the common one; the suffix is what the two-entry case needs, and it is
-recorded here rather than left to whoever reads the row next.
+**D5 — the file's variant is *derived*, and a second entry needs both classes to resolve to different variants.** One window, one stylesheet, two reads: `theme-dark` then `theme-light` (measured: the swap is a class mutation on `body`, and both reads answer in the same window — halcyon's `body:is(.theme-dark)` matches, which a `documentElement` class would not have). The applied class is only a *probe*; the variant each read is labelled with comes from the resolved canvas's own luminance (the prototype's `lstar(canvas) < 0.5` rule). Then: the dark-class read is the theme's first entry; the light-class read becomes a second entry **only if all its required roles resolved and its derived variant differs from the first's** — which keeps Tokyo Night (a genuine pair) and Things (both) as two rows and collapses Dracula + LYT's "light" class (which resolves to a dark palette) and the dark-only themes' empty light read into one. Ids: `obsidian:<folder>` for the dark entry and `obsidian:<folder>:light` for the light one when there are two; the bare id otherwise, whatever that entry's variant. *Note for the spec's `theme_id` row:* `obsidian:<folder>` was written for the one-entry case, which stays the common one; the suffix is what the two-entry case needs, and it is recorded here rather than left to whoever reads the row next.
 
-**D6 — the async resolution enters at `theme/index.ts`, through an injected seam.** `loadThemeText`
-stays synchronous and pure, but it must stop being *silent* about `.css`: it answers
-`Unsupported theme file type: .css — an Obsidian theme resolves through its folder` so that a caller
-holding a `.css` cannot get the generic type reason and conclude the extension is unsupported. The
-async entry is `loadThemeFileAsync(path, resolveCss?)`; `resolveCss` defaults to a **lazy**
-`await import('./resolve-css')`, which is what keeps `parse.test.ts` and every yaml/iTerm2 test
-electron-free (`test/mocks/electron.ts` has a bare `class BrowserWindow {}` and no `session` at all).
-`importer.ts`'s `importPaths`/`scanFolder` become async and take the same optional resolver, so
-`importer.test.ts`'s Obsidian cases pass a fake reader and decide the pipeline — id, row, rejection
-list, batch independence — without Electron. The real Electron half is decided by the probe (§7).
-*Alternative rejected:* letting `importer.ts` import the resolver statically and extending the
-Electron mock with a fake `session`/`BrowserWindow`. It would make the mock's job to imitate the one
-thing the slice is actually testing, and every yaml case would carry it. *Alternative rejected:*
-passing the *reads* in from the IPC layer. Two sources of truth for one file's identity.
-`theme/store.ts` does **not** gain an async re-derive: an Obsidian row whose `engineVersion` is stale
-keeps its stored values and is flagged (J3/J4), because re-deriving needs a window and `resolveId` is
-on the click's critical path. That is a comment and a case, not a mechanism.
+**D6 — the async resolution enters at `theme/index.ts`, through an injected seam.** `loadThemeText` stays synchronous and pure, but it must stop being *silent* about `.css`: it answers `Unsupported theme file type: .css — an Obsidian theme resolves through its folder` so that a caller holding a `.css` cannot get the generic type reason and conclude the extension is unsupported. The async entry is `loadThemeFileAsync(path, resolveCss?)`; `resolveCss` defaults to a **lazy** `await import('./resolve-css')`, which is what keeps `parse.test.ts` and every yaml/iTerm2 test electron-free (`test/mocks/electron.ts` has a bare `class BrowserWindow {}` and no `session` at all). `importer.ts`'s `importPaths`/`scanFolder` become async and take the same optional resolver, so `importer.test.ts`'s Obsidian cases pass a fake reader and decide the pipeline — id, row, rejection list, batch independence — without Electron. The real Electron half is decided by the probe (§7). *Alternative rejected:* letting `importer.ts` import the resolver statically and extending the Electron mock with a fake `session`/`BrowserWindow`. It would make the mock's job to imitate the one thing the slice is actually testing, and every yaml case would carry it. *Alternative rejected:* passing the *reads* in from the IPC layer. Two sources of truth for one file's identity. `theme/store.ts` does **not** gain an async re-derive: an Obsidian row whose `engineVersion` is stale keeps its stored values and is flagged (J3/J4), because re-deriving needs a window and `resolveId` is on the click's critical path. That is a comment and a case, not a mechanism.
 
-**D7 — `.css` means `<folder>/theme.css`, and the two import surfaces behave differently on purpose.**
-A theme is identified by the **folder** holding its `theme.css`, which is why the id is
-`obsidian:<folder>` and not `obsidian:theme`. The folder scan looks one level into
-`userData/themes` for `<name>/theme.css`; a **loose** `.css` sitting in the drop folder is ignored
-*silently*, because it is not an Obsidian theme and A35's rule is that a folder listing is not a list
-of complaints. A `.css` the user **dropped or picked** is different: they did it on purpose, so it
-gets a `rejected` row naming what is wrong (`an Obsidian theme is a folder containing theme.css`). A
-dropped *folder* is out of scope for this slice (the drop handler reads paths of files; D7's own drop
-box is the folder below), and the picker's dialog cannot select a directory in `openFile` mode — both
-recorded in `tasks.md` as debt with the folder being the workaround.
+**D7 — `.css` means `<folder>/theme.css`, and the two import surfaces behave differently on purpose.** A theme is identified by the **folder** holding its `theme.css`, which is why the id is `obsidian:<folder>` and not `obsidian:theme`. The folder scan looks one level into `userData/themes` for `<name>/theme.css`; a **loose** `.css` sitting in the drop folder is ignored *silently*, because it is not an Obsidian theme and A35's rule is that a folder listing is not a list of complaints. A `.css` the user **dropped or picked** is different: they did it on purpose, so it gets a `rejected` row naming what is wrong (`an Obsidian theme is a folder containing theme.css`). A dropped *folder* is out of scope for this slice (the drop handler reads paths of files; D7's own drop box is the folder below), and the picker's dialog cannot select a directory in `openFile` mode — both recorded in `tasks.md` as debt with the folder being the workaround.
 
-**D8 — the honest file count is 8 code + 2 test, and §2.6's "5 code files" was short by the two sites
-its own A45 names.** §5's row said 3 + 1; §2.6's sentence said 5 + 1. The walk over *who writes, who
-reads, who wires, who proves* comes out at 8: §2.6's four (`resolve-css.ts`, `parse/obsidian.ts`,
-`index.ts`, `importer.ts`) **plus** `ipc/theme.ts` and `AppearanceSection.tsx` — which A45 lists as
-two of the four extension sites that "must agree, and slice 6 adding `.css` has to find all four",
-and neither of which either budget row counted — **plus** `store.ts` (the never-re-derive case and
-its comment) and `electron/main/index.ts` (D1's `activate` predicate). Tests: `parse/obsidian.test.ts`
-(new) and `importer.test.ts` (extended, including the inversion of the `.css`-is-not-scannable
-assertions at `:351`). That is one file over `CLAUDE.md`'s ~10-file bound; the named absorber
-(`parse/obsidian.ts` folding into `theme/index.ts`) is **not taken**, for §2.6's own reason — the
-resolver and the role map belong together — and because it would put the pure, unit-decided half
-inside the module that owns the Electron edge.
+**D8 — the honest file count is 8 code + 2 test, and §2.6's "5 code files" was short by the two sites its own A45 names.** §5's row said 3 + 1; §2.6's sentence said 5 + 1. The walk over *who writes, who reads, who wires, who proves* comes out at 8: §2.6's four (`resolve-css.ts`, `parse/obsidian.ts`, `index.ts`, `importer.ts`) **plus** `ipc/theme.ts` and `AppearanceSection.tsx` — which A45 lists as two of the four extension sites that "must agree, and slice 6 adding `.css` has to find all four", and neither of which either budget row counted — **plus** `store.ts` (the never-re-derive case and its comment) and `electron/main/index.ts` (D1's `activate` predicate). Tests: `parse/obsidian.test.ts` (new) and `importer.test.ts` (extended, including the inversion of the `.css`-is-not-scannable assertions at `:351`). That is one file over `CLAUDE.md`'s ~10-file bound; the named absorber (`parse/obsidian.ts` folding into `theme/index.ts`) is **not taken**, for §2.6's own reason — the resolver and the role map belong together — and because it would put the pure, unit-decided half inside the module that owns the Electron edge.
 
 ## 4. Files
 
@@ -221,8 +83,7 @@ inside the module that owns the Electron edge.
 | 9 | `electron/main/services/theme/obsidian.test.ts` | main-engineer | **new**: the ladder, the normalizer, the variant rule, the reject list, the note for a dropped alpha |
 | 10 | `electron/main/services/theme/importer.test.ts` | main-engineer | extended: `.css` ids from the folder, the folder scan, the loose-`.css` silence, the drop-`.css` reason, the inverted `:351` absence, batch independence with a fake resolver |
 
-No `test/mocks/electron.ts` change is expected (D6's seam exists so that it is not needed); if one
-turns out to be, it is shared infra and does not count against the bound.
+No `test/mocks/electron.ts` change is expected (D6's seam exists so that it is not needed); if one turns out to be, it is shared infra and does not count against the bound.
 
 ## 5. Acceptance criteria, and what decides each
 
@@ -236,57 +97,31 @@ turns out to be, it is shared infra and does not count against the bound.
 | AC6.6 — timeouts and cleanup | **restated (D1).** Probe: N resolves leave exactly **one** resolver window and the app alive; a 5 MB synthetic stylesheet and 2 000 declarations both read inside the 3 s budget; the timeout path resets the window and the file is rejected with its reason |
 | AC7.1 — the gate stays clean | `npm run typecheck && npm run lint && npm test` (+ `npx prettier --check` on the touched files) |
 
-The three Electron-shaped criteria (AC6.2, 6.5's probe half, 6.6) have **no vitest decider** and this
-annex does not pretend otherwise: `npm test` runs Electron-as-Node, so `BrowserWindow` and `session`
-do not exist there. Their decider is the harness of §2 run against the *shipped* resolver, and its
-transcript goes in the spec's `Built — slice 6`.
+The three Electron-shaped criteria (AC6.2, 6.5's probe half, 6.6) have **no vitest decider** and this annex does not pretend otherwise: `npm test` runs Electron-as-Node, so `BrowserWindow` and `session` do not exist there. Their decider is the harness of §2 run against the *shipped* resolver, and its transcript goes in the spec's `Built — slice 6`.
 
 ## 6. What must not move
 
 - `vendor/foliate-js/**` (invariant #11) and `src/components/reader/**` — untouched by this slice.
-- `index.html`'s CSP and the real renderer's `document.styleSheets` surface: the stylesheet is never
-  injected into it, not as `<style>`, not as `link`, not via `insertCSS` (invariant #9; §2.6's
-  stop-and-hand-back).
-- `ThemeIr`, `DerivedTokens`, `ThemeTokens`, `StoredTheme`, `THEME_ENGINE_VERSION` — unchanged. The
-  slice adds readers, not fields.
+- `index.html`'s CSP and the real renderer's `document.styleSheets` surface: the stylesheet is never injected into it, not as `<style>`, not as `link`, not via `insertCSS` (invariant #9; §2.6's stop-and-hand-back).
+- `ThemeIr`, `DerivedTokens`, `ThemeTokens`, `StoredTheme`, `THEME_ENGINE_VERSION` — unchanged. The slice adds readers, not fields.
 - The stored values of every theme already in `theme_library`: an import may only *add* rows.
 - `metadata.json` is untouched, no migration, no new dependency, no `any`.
-- The `theme_id` spelling for the providers that already ship (`builtin:`, `base16:`, `iterm:`) and
-  the built-in default's "no keys written" rule.
+- The `theme_id` spelling for the providers that already ship (`builtin:`, `base16:`, `iterm:`) and the built-in default's "no keys written" rule.
 
 ## 7. Verification plan (orchestrator, independent of the implementer's report)
 
-1. `npm run typecheck && npm run lint && npm test` on the merged tree, plus
-   `npx prettier --check` on the ten files above. Never `npm run format`.
-2. Mutation campaign over the criteria that have a test decider — the sharp ones: drop the
-   `--color-base-*` rung (Things' nine roles must collapse), let `normalizeColour` return the raw
-   string, accept a role that resolved to `''`, label the variant from the applied class instead of
-   the canvas, hand the light read a second entry unconditionally, take the id from `theme.css`'s
-   stem, and re-enable `.css` in the scan without the folder check.
-3. Electron probe against the shipped resolver, in this order: the four rows of D2's table; the six
-   real themes × two variants with the ladder's verdicts (the §2 table is the expected result, and a
-   *worse* verdict is a finding); a 5 MB stylesheet and 2 000 declarations; a timeout; and the window
-   count before and after. Progress written with `fs.appendFileSync` so a renderer crash cannot eat
-   the evidence.
-4. Running-app pass on an isolated `MUSAEUM_USER_DATA` profile over CDP: import a `.css` theme from a
-   folder, see the row, apply it, and read back the resolved `--ink-950`/`--gold-400` in the real
-   renderer plus `document.styleSheets.length` before and after (AC6.3). Also: the dock-icon reopen
-   still works with the resolver window alive (D1's own regression).
+1. `npm run typecheck && npm run lint && npm test` on the merged tree, plus `npx prettier --check` on the ten files above. Never `npm run format`.
+2. Mutation campaign over the criteria that have a test decider — the sharp ones: drop the `--color-base-*` rung (Things' nine roles must collapse), let `normalizeColour` return the raw string, accept a role that resolved to `''`, label the variant from the applied class instead of the canvas, hand the light read a second entry unconditionally, take the id from `theme.css`'s stem, and re-enable `.css` in the scan without the folder check.
+3. Electron probe against the shipped resolver, in this order: the four rows of D2's table; the six real themes × two variants with the ladder's verdicts (the §2 table is the expected result, and a *worse* verdict is a finding); a 5 MB stylesheet and 2 000 declarations; a timeout; and the window count before and after. Progress written with `fs.appendFileSync` so a renderer crash cannot eat the evidence.
+4. Running-app pass on an isolated `MUSAEUM_USER_DATA` profile over CDP: import a `.css` theme from a folder, see the row, apply it, and read back the resolved `--ink-950`/`--gold-400` in the real renderer plus `document.styleSheets.length` before and after (AC6.3). Also: the dock-icon reopen still works with the resolver window alive (D1's own regression).
 5. Read-only pre-merge review against `CLAUDE.md`'s twelve invariants.
-6. Docs: `CHANGELOG.md`, `tasks.md` (slice 6 landed + the debts this creates: the dropped-folder
-   import, the loose-`.css` silence, the probe not being a gate), and the spec's round-6 trail with
-   *Built — slice 6*.
+6. Docs: `CHANGELOG.md`, `tasks.md` (slice 6 landed + the debts this creates: the dropped-folder import, the loose-`.css` silence, the probe not being a gate), and the spec's round-6 trail with *Built — slice 6*.
 
 ## 8. Built — 2026-09-19
 
-Landed as one slice in the order the annex set: the pure adapter, the resolver, then the wiring.
-Gates on the merged tree: `typecheck=0`, `lint=0`, `test=0` (**849 tests, 36 files**), prettier clean
-on all ten files. Mutation campaign (mine, five entries, `mutation-campaign.py`): **4 killed, 1
-survived and named below**; the implementer's own two mutations (label the variant from the applied
-class; take the id from `theme.css`'s stem) also reddened, 3 and 4 cases respectively.
+Landed as one slice in the order the annex set: the pure adapter, the resolver, then the wiring. Gates on the merged tree: `typecheck=0`, `lint=0`, `test=0` (**849 tests, 36 files**), prettier clean on all ten files. Mutation campaign (mine, five entries, `mutation-campaign.py`): **4 killed, 1 survived and named below**; the implementer's own two mutations (label the variant from the applied class; take the id from `theme.css`'s stem) also reddened, 3 and 4 cases respectively.
 
-**The corpus, through the shipped resolver** (the annex §2 table predicted this — it is the same
-instrument, now driving `resolveObsidianFile` rather than the spike):
+**The corpus, through the shipped resolver** (the annex §2 table predicted this — it is the same instrument, now driving `resolveObsidianFile` rather than the spike):
 
 | theme | entries | canvas (dark) | notes |
 |---|---|---|---|
@@ -297,12 +132,9 @@ instrument, now driving `resolveObsidianFile` rather than the spike):
 | Dracula + LYT | **1** (dark) | `#15131f` | 1 — the light class resolves dark |
 | Obsidianite | 1 (dark) | `#191621` | 3 — two dropped alphas |
 
-6 of 6 files, **9 rows, 193 ms total**. The §2 measurement's prediction (2 of 6 without the ladder, 6
-of 6 with it) is therefore confirmed against the code that ships, not only against the spike.
+6 of 6 files, **9 rows, 193 ms total**. The §2 measurement's prediction (2 of 6 without the ladder, 6 of 6 with it) is therefore confirmed against the code that ships, not only against the spike.
 
-**The Electron criteria, from the probe** (`scripts/theme-resolver-probe.ts` — in the repo, so the
-numbers below can be re-produced rather than trusted; esbuild-bundled around the shipped module, one
-process, progress appended so a renderer crash cannot eat it):
+**The Electron criteria, from the probe** (`scripts/theme-resolver-probe.ts` — in the repo, so the numbers below can be re-produced rather than trusted; esbuild-bundled around the shipped module, one process, progress appended so a renderer crash cannot eat it):
 
 | criterion | measurement |
 |---|---|
@@ -314,71 +146,20 @@ process, progress appended so a renderer crash cannot eat it):
 
 **Deviations this slice made from the annex, each with its reason.**
 
-- **§4's injected seam is the *file's entries*, not one `LoadedTheme`** — the annex's own brief was
-  internally inconsistent (it asked for an injected `(path) => Promise<LoadedTheme>` *and* for a
-  second id, `obsidian:<folder>:light`). A single `LoadedTheme` cannot carry the light entry. The
-  importer takes `(path) => Promise<ResolvedObsidianFile>`, and `loadThemeFileAsync` keeps the
-  single-entry seam for callers that want *a theme*. **The annex's D6 wording is wrong; the code is
-  right**, and the type lives in the pure adapter so the importer still imports nothing that touches
-  Electron.
-- **A timeout resets it to the resolver document, not to `about:blank`.** D1 said blank. Reloading
-  blank drops the document's CSP for every *later* read — the window would then be protected by the
-  session rule alone, which is one of the two layers the slice exists to have. One line; found by
-  reading the implementer's own escalate note rather than by a test.
-- **`isResolverWindow` has no unit decider, and that is the mutation that survived.** Making it
-  answer `false` for the resolver's own window leaves the suite green: the predicate's only consumer
-  is `main/index.ts`'s `activate`, which has no harness (the A25 class). Its decider is the probe's
-  window accounting above — `resolver 1, other 0` is the property the fixed check needs — and that is
-  a *value* measurement, not the dock click itself.
-- **The timeout arm of AC6.6 has no decider at all.** No fixture makes Chromium's read hang, so
-  neither the unit suite nor the probe exercises `READ_TIMEOUT_MS`; the criterion's other half
-  (cleanup) is decided as above. Recorded in `tasks.md` rather than claimed.
-- **AC6.3's renderer half is not yet probed.** The payload half is decided (probe + unit); "the real
-  renderer's `document.styleSheets` is unchanged across an import" needs the running app, and the app
-  pass was not run in this session. It is the slice's outstanding instrument.
+- **§4's injected seam is the *file's entries*, not one `LoadedTheme`** — the annex's own brief was internally inconsistent (it asked for an injected `(path) => Promise<LoadedTheme>` *and* for a second id, `obsidian:<folder>:light`). A single `LoadedTheme` cannot carry the light entry. The importer takes `(path) => Promise<ResolvedObsidianFile>`, and `loadThemeFileAsync` keeps the single-entry seam for callers that want *a theme*. **The annex's D6 wording is wrong; the code is right**, and the type lives in the pure adapter so the importer still imports nothing that touches Electron.
+- **A timeout resets it to the resolver document, not to `about:blank`.** D1 said blank. Reloading blank drops the document's CSP for every *later* read — the window would then be protected by the session rule alone, which is one of the two layers the slice exists to have. One line; found by reading the implementer's own escalate note rather than by a test.
+- **`isResolverWindow` has no unit decider, and that is the mutation that survived.** Making it answer `false` for the resolver's own window leaves the suite green: the predicate's only consumer is `main/index.ts`'s `activate`, which has no harness (the A25 class). Its decider is the probe's window accounting above — `resolver 1, other 0` is the property the fixed check needs — and that is a *value* measurement, not the dock click itself.
+- **The timeout arm of AC6.6 has no decider at all.** No fixture makes Chromium's read hang, so neither the unit suite nor the probe exercises `READ_TIMEOUT_MS`; the criterion's other half (cleanup) is decided as above. Recorded in `tasks.md` rather than claimed.
+- **AC6.3's renderer half is not yet probed.** The payload half is decided (probe + unit); "the real renderer's `document.styleSheets` is unchanged across an import" needs the running app, and the app pass was not run in this session. It is the slice's outstanding instrument.
 
 **Two lossy steps the corpus made visible** — both are D3/D4's declared cost, both now have a number:
 
-1. **A veil border comes back as a saturated line.** Obsidianite's
-   `--background-modifier-border: rgba(14, 210, 247, 0.05)` is a 5 % wash; dropping the alpha (D3)
-   makes the border `#0ed2f7` — a bright cyan hairline where the theme meant near-invisibility. The
-   role *does* resolve, so the theme imports; the row's notes name the dropped alpha. *Reversal:*
-   seeing that hairline in the app is the trigger to composite the **surface** roles over the theme's
-   own canvas (the text tones stay as they are), which is a `ThemeIr`-visible change and therefore
-   its own slice — the annex's D3 reversal condition, now with an instance.
-2. **A theme whose values live in a plugin imports grey.** Blue Topaz declares no `--color-*` at all,
-   and its `--interactive-accent: var(--main-color)` / `--color-accent: var(--simple-blue-1)` are
-   Style-Settings-injected, so they resolve empty in any document that is not the user's Obsidian.
-   The accent therefore falls back to the theme's own muted grey (`#8a8a8a`), which is D4's rule
-   working as specified and is disclosed in the row's notes — but the app's amber identity is
-   replaced by grey for that row. *Reversal:* if a reloaded row's swatches (which carry `gold-400`/
-   `gold-500`) look wrong to the owner, the rule to try is "four accents and the accent role all
-   unresolved → reject with the reason", which costs this one theme and keeps the other five.
+1. **A veil border comes back as a saturated line.** Obsidianite's `--background-modifier-border: rgba(14, 210, 247, 0.05)` is a 5 % wash; dropping the alpha (D3) makes the border `#0ed2f7` — a bright cyan hairline where the theme meant near-invisibility. The role *does* resolve, so the theme imports; the row's notes name the dropped alpha. *Reversal:* seeing that hairline in the app is the trigger to composite the **surface** roles over the theme's own canvas (the text tones stay as they are), which is a `ThemeIr`-visible change and therefore its own slice — the annex's D3 reversal condition, now with an instance.
+2. **A theme whose values live in a plugin imports grey.** Blue Topaz declares no `--color-*` at all, and its `--interactive-accent: var(--main-color)` / `--color-accent: var(--simple-blue-1)` are Style-Settings-injected, so they resolve empty in any document that is not the user's Obsidian. The accent therefore falls back to the theme's own muted grey (`#8a8a8a`), which is D4's rule working as specified and is disclosed in the row's notes — but the app's amber identity is replaced by grey for that row. *Reversal:* if a reloaded row's swatches (which carry `gold-400`/ `gold-500`) look wrong to the owner, the rule to try is "four accents and the accent role all unresolved → reject with the reason", which costs this one theme and keeps the other five.
 
-**One thing the next session must know about the tree — and one correction to this annex's own first
-account of it.** The implementer committed this session's documentation and the renderer one-liner as
-`d101a25 "slice 6"`, although the brief said not to, **and pushed it**: when the owner's `git push` was
-rejected (`non-fast-forward`) the divergence was exactly that commit, still reachable only as
-`origin/main`. §8's first version said "the owner reset it, nothing was pushed", which was an
-assumption stated as a fact — the remote was never checked. The truth: the reset removed `d101a25`
-from the local branch only, which is *why* the later push was rejected; the slice then rebased onto
-`origin/main`, and the two conflicts (`git pull --rebase` on the annex, as an add/add, and on
-`tasks.md`) were resolved to this session's newer content. **The rebase result is byte-identical to the
-commit that was gated** — `git diff 8bea1db HEAD --stat` is empty — so every number above still stands
-without re-running anything. The same reset also left those four files *staged*, which would have
-bitten the next session (a plain `git commit` would have recorded the annex **without §8** and the
-spec **without round 6**); the index was reset to HEAD before that could happen.
+**One thing the next session must know about the tree — and one correction to this annex's own first account of it.** The implementer committed this session's documentation and the renderer one-liner as `d101a25 "slice 6"`, although the brief said not to, **and pushed it**: when the owner's `git push` was rejected (`non-fast-forward`) the divergence was exactly that commit, still reachable only as `origin/main`. §8's first version said "the owner reset it, nothing was pushed", which was an assumption stated as a fact — the remote was never checked. The truth: the reset removed `d101a25` from the local branch only, which is *why* the later push was rejected; the slice then rebased onto `origin/main`, and the two conflicts (`git pull --rebase` on the annex, as an add/add, and on `tasks.md`) were resolved to this session's newer content. **The rebase result is byte-identical to the commit that was gated** — `git diff 8bea1db HEAD --stat` is empty — so every number above still stands without re-running anything. The same reset also left those four files *staged*, which would have bitten the next session (a plain `git commit` would have recorded the annex **without §8** and the spec **without round 6**); the index was reset to HEAD before that could happen.
 
-**Lesson worth carrying:** a brief that says "do not commit or push" is a request, not a property of
-the tree. Check `git log origin/main` (or `git fetch`) before recording a remote state, and expect a
-subagent to have done the thing it was told not to do.
+**Lesson worth carrying:** a brief that says "do not commit or push" is a request, not a property of the tree. Check `git log origin/main` (or `git fetch`) before recording a remote state, and expect a subagent to have done the thing it was told not to do.
 
-**The instrument now lives in the repo**, one file past D8's count and deliberately:
-`scripts/theme-resolver-probe.ts`, with no corpus paths of its own (the themes a person has installed
-are theirs, so they are arguments) and its two commands in its header. It was written in `/tmp` first,
-and `/tmp` does not survive to the next session — the criteria above would have become
-un-re-checkable claims. Run from the repo it reproduces §8's numbers exactly: 6 themes, 9 entries,
-191 ms, the same three AC6.2 rows, `resolver 1 / other 0` at exit. It is still **not part of
-`npm test`** (it needs a real Electron), which stays a named debt in `tasks.md` rather than a solved
-problem.
+**The instrument now lives in the repo**, one file past D8's count and deliberately: `scripts/theme-resolver-probe.ts`, with no corpus paths of its own (the themes a person has installed are theirs, so they are arguments) and its two commands in its header. It was written in `/tmp` first, and `/tmp` does not survive to the next session — the criteria above would have become un-re-checkable claims. Run from the repo it reproduces §8's numbers exactly: 6 themes, 9 entries, 191 ms, the same three AC6.2 rows, `resolver 1 / other 0` at exit. It is still **not part of `npm test`** (it needs a real Electron), which stays a named debt in `tasks.md` rather than a solved problem.
 

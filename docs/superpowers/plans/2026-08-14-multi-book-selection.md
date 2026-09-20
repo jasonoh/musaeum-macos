@@ -2,50 +2,32 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let the user select many books in either library view and act on the
-whole selection — delete, send to a device, or re-hydrate metadata.
+**Goal:** Let the user select many books in either library view and act on the whole selection — delete, send to a device, or re-hydrate metadata.
 
-**Architecture:** A pure selection-grammar module (`src/lib/selection.ts`)
-owns every gesture rule; `ui.store` holds one `Selection` slice and delegates
-to it; views call one action and never compute set math. The three bulk
-actions are deliberately asymmetric because the services under them are:
-delete gains a batched main-process operation, send is a store-level loop over
-an already-serial queue, and re-hydrate becomes a sequential cancellable job.
+**Architecture:** A pure selection-grammar module (`src/lib/selection.ts`) owns every gesture rule; `ui.store` holds one `Selection` slice and delegates to it; views call one action and never compute set math. The three bulk actions are deliberately asymmetric because the services under them are: delete gains a batched main-process operation, send is a store-level loop over an already-serial queue, and re-hydrate becomes a sequential cancellable job.
 
-**Tech Stack:** Electron, React 18, TypeScript (strict), Zustand, Tailwind,
-better-sqlite3, Vitest (run through Electron-as-Node).
+**Tech Stack:** Electron, React 18, TypeScript (strict), Zustand, Tailwind, better-sqlite3, Vitest (run through Electron-as-Node).
 
 **Spec:** `docs/superpowers/specs/2026-08-14-multi-book-selection-design.md`
 
 ## Global Constraints
 
 - **TypeScript strict; no `any`.** Shared types live in `src/types/`.
-- **Business logic never lives in an IPC handler** — handlers in
-  `electron/main/ipc/` are thin wrappers over `electron/main/services/`.
-- **Run tests only via `npm test`.** It sets `ELECTRON_RUN_AS_NODE=1` so the
-  better-sqlite3 native ABI matches. Never invoke `vitest` directly.
+- **Business logic never lives in an IPC handler** — handlers in `electron/main/ipc/` are thin wrappers over `electron/main/services/`.
+- **Run tests only via `npm test`.** It sets `ELECTRON_RUN_AS_NODE=1` so the better-sqlite3 native ABI matches. Never invoke `vitest` directly.
 - **`npm run typecheck && npm run lint` must pass** before every commit.
-- **`ListView`'s `ROW_HEIGHT` is 37 and must not change.** Every cell carries
-  explicit leading and a **block-level** child; an inline child inherits the
-  table's line strut and silently grows the row, which shows up as scroll
-  drift, not a build error.
-- **`GridView`'s row geometry is computed from constants, not measured.** Do
-  not change `BookCard`'s cover box or meta block.
-- **Icons are the hand-rolled set** in `src/components/shared/icons.tsx`. No
-  icon library. `CheckIcon` already exists.
+- **`ListView`'s `ROW_HEIGHT` is 37 and must not change.** Every cell carries explicit leading and a **block-level** child; an inline child inherits the table's line strut and silently grows the row, which shows up as scroll drift, not a build error.
+- **`GridView`'s row geometry is computed from constants, not measured.** Do not change `BookCard`'s cover box or meta block.
+- **Icons are the hand-rolled set** in `src/components/shared/icons.tsx`. No icon library. `CheckIcon` already exists.
 - **Never call NAS/file operations from the renderer** — always via IPC.
-- Existing exported names used throughout: `librarySync.writeFullCatalog()`,
-  `librarySync.upsertCatalog(books)`, `nas.assertOnline()`, `nas.isOnline()`,
-  `nas.getLibraryRoot()`, `db.getBook(id)`, `db.deleteBook(id)`,
-  `broadcast(channel, payload?)`.
+- Existing exported names used throughout: `librarySync.writeFullCatalog()`, `librarySync.upsertCatalog(books)`, `nas.assertOnline()`, `nas.isOnline()`, `nas.getLibraryRoot()`, `db.getBook(id)`, `db.deleteBook(id)`, `broadcast(channel, payload?)`.
 - Commit after every task with the message given in that task's final step.
 
 ---
 
 ### Task 1: Selection grammar module
 
-The whole gesture rule set, pure and testable with no React, no DOM, no
-Electron. Every later task depends on these names.
+The whole gesture rule set, pure and testable with no React, no DOM, no Electron. Every later task depends on these names.
 
 **Files:**
 - Create: `src/lib/selection.ts`
@@ -262,8 +244,7 @@ describe('selectedId', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm test -- src/lib/selection.test.ts`
-Expected: FAIL — cannot resolve `./selection`.
+Run: `npm test -- src/lib/selection.test.ts` Expected: FAIL — cannot resolve `./selection`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -379,8 +360,7 @@ export function selectedId(sel: Selection): string | null {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npm test -- src/lib/selection.test.ts`
-Expected: PASS, all tests.
+Run: `npm test -- src/lib/selection.test.ts` Expected: PASS, all tests.
 
 - [ ] **Step 5: Typecheck, lint, commit**
 
@@ -394,9 +374,7 @@ git commit -m "feat: pure selection grammar for multi-book selection"
 
 ### Task 2: Selection slice in the UI store
 
-Replace `selectedBookId` with a `Selection`, keeping a derived single-selection
-selector so existing consumers keep working, and prune the selection whenever
-the library reloads.
+Replace `selectedBookId` with a `Selection`, keeping a derived single-selection selector so existing consumers keep working, and prune the selection whenever the library reloads.
 
 **Files:**
 - Modify: `src/stores/ui.store.ts`
@@ -410,15 +388,13 @@ the library reloads.
 - Produces, on `useUIStore`:
   - state `selection: Selection`
   - `select(id: string, mods: ClickModifiers): void`
-  - `selectBook(id: string | null): void` — unchanged signature; selects
-    exactly that book, or clears
+  - `selectBook(id: string | null): void` — unchanged signature; selects exactly that book, or clears
   - `toggleBookSelection(id: string): void`
   - `extendSelectionTo(id: string): void`
   - `selectAllBooks(): void`
   - `clearSelection(): void`
   - `pruneSelection(existing: string[]): void`
-  - exported selectors `selectedBookId(s: UIState): string | null` and
-    `selectionCount(s: UIState): number`
+  - exported selectors `selectedBookId(s: UIState): string | null` and `selectionCount(s: UIState): number`
 
 - [ ] **Step 1: Replace the state and actions in `ui.store.ts`**
 
@@ -460,8 +436,7 @@ and replace the `selectBook(id: string | null): void` declaration with:
   pruneSelection(existing: string[]): void
 ```
 
-In the store body, replace `selectedBookId: null,` with `selection: EMPTY_SELECTION,`
-and replace the `selectBook:` line with:
+In the store body, replace `selectedBookId: null,` with `selection: EMPTY_SELECTION,` and replace the `selectBook:` line with:
 
 ```ts
       select: (id, mods) =>
@@ -510,8 +485,7 @@ export const selectionCount = (s: UIState): number => s.selection.ids.size
 
 - [ ] **Step 2: Update the three single-selection read sites**
 
-In `src/components/library/BookDetail.tsx`, change the import from
-`@/stores/ui.store` to also bring in the selector and swap line 29:
+In `src/components/library/BookDetail.tsx`, change the import from `@/stores/ui.store` to also bring in the selector and swap line 29:
 
 ```ts
 import { selectedBookId, useUIStore } from '@/stores/ui.store'
@@ -519,8 +493,7 @@ import { selectedBookId, useUIStore } from '@/stores/ui.store'
   const bookId = useUIStore(selectedBookId)
 ```
 
-Then rename its uses in that component: `selectedBookId` → `bookId` in the
-`useMemo` on line 42–45 and anywhere else it appears.
+Then rename its uses in that component: `selectedBookId` → `bookId` in the `useMemo` on line 42–45 and anywhere else it appears.
 
 In `src/components/library/DeleteBookDialog.tsx`, swap line 17 the same way:
 
@@ -530,8 +503,7 @@ import { selectedBookId, useUIStore } from '@/stores/ui.store'
   const currentSelection = useUIStore(selectedBookId)
 ```
 
-and update the `confirm()` body's `if (selectedBookId === book.id) selectBook(null)`
-to `if (currentSelection === book.id) selectBook(null)`.
+and update the `confirm()` body's `if (selectedBookId === book.id) selectBook(null)` to `if (currentSelection === book.id) selectBook(null)`.
 
 In `src/hooks/useBookNavigation.ts`, swap line 60:
 
@@ -562,9 +534,7 @@ In `src/hooks/useLibrary.ts`, add after the existing store reads:
 
 - [ ] **Step 4: Verify the app still builds and behaves as before**
 
-Run: `npm run typecheck && npm run lint && npm test`
-Expected: all pass. Single selection still works exactly as it did — this task
-adds no user-visible behaviour.
+Run: `npm run typecheck && npm run lint && npm test` Expected: all pass. Single selection still works exactly as it did — this task adds no user-visible behaviour.
 
 - [ ] **Step 5: Commit**
 
@@ -611,10 +581,7 @@ Replace the `onClick` on line 58:
 
 - [ ] **Step 2: Verify by hand in the running app**
 
-Run: `npm run dev`
-Expected: plain click selects one book; ⌘-click adds and removes books;
-⇧-click selects a contiguous run; every selected card shows the gold ring.
-Double-click still opens the reader.
+Run: `npm run dev` Expected: plain click selects one book; ⌘-click adds and removes books; ⇧-click selects a contiguous run; every selected card shows the gold ring. Double-click still opens the reader.
 
 - [ ] **Step 3: Commit**
 
@@ -645,8 +612,7 @@ import { selectionCount, useUIStore } from '@/stores/ui.store'
 import { CheckIcon, SortArrowIcon, StarIcon } from '@/components/shared/icons'
 ```
 
-Change the `COLUMNS` type and add the select column as the first entry, so
-`Spacer`'s `colSpan={COLUMNS.length}` stays correct by construction:
+Change the `COLUMNS` type and add the select column as the first entry, so `Spacer`'s `colSpan={COLUMNS.length}` stays correct by construction:
 
 ```ts
 /** Column definitions; `field` omitted means the column isn't sortable. */
@@ -769,8 +735,7 @@ Then add this as the **first** `<td>` in the row, before Title:
       </td>
 ```
 
-Finally, since Title is no longer the first column, change its `<td>` padding
-from `py-2 pl-6 pr-3` to `px-3 py-2`.
+Finally, since Title is no longer the first column, change its `<td>` padding from `py-2 pl-6 pr-3` to `px-3 py-2`.
 
 - [ ] **Step 4: Verify the row height did not move**
 
@@ -780,14 +745,9 @@ Run: `npm run dev`, switch to list view, open DevTools console and run:
 document.querySelector('tbody tr:not([aria-hidden])').getBoundingClientRect().height
 ```
 
-Expected: `36` (the `<tr>` height; the 37th px is the collapsed border). If it
-is anything else, the checkbox cell has grown the row and the virtualizer's
-`ROW_HEIGHT` is now wrong — fix the cell, do not change `ROW_HEIGHT`.
+Expected: `36` (the `<tr>` height; the 37th px is the collapsed border). If it is anything else, the checkbox cell has grown the row and the virtualizer's `ROW_HEIGHT` is now wrong — fix the cell, do not change `ROW_HEIGHT`.
 
-Also confirm: scrolling to the bottom of a long library lands on the last row
-with no gap, ⌘-click and ⇧-click work on rows, ticking a box adds one book
-without collapsing the selection, and the header box goes checked →
-indeterminate → empty as expected.
+Also confirm: scrolling to the bottom of a long library lands on the last row with no gap, ⌘-click and ⇧-click work on rows, ticking a box adds one book without collapsing the selection, and the header box goes checked → indeterminate → empty as expected.
 
 - [ ] **Step 5: Commit**
 
@@ -813,8 +773,7 @@ git commit -m "feat: checkbox column and select-all in the list view"
 
 - [ ] **Step 1: Navigate from the cursor, not the single selection**
 
-In `src/hooks/useBookNavigation.ts`, replace the selection reads (the line
-added in Task 2 plus `selectBook`) with:
+In `src/hooks/useBookNavigation.ts`, replace the selection reads (the line added in Task 2 plus `selectBook`) with:
 
 ```ts
   const cursorId = useUIStore((s) => s.selection.cursor)
@@ -854,8 +813,7 @@ and replace the final move with:
       else selectBook(books[next].id)
 ```
 
-Update the effect's dependency array: replace `selectedBookId, selectBook`
-with `selectionSize, selectBook, extendSelectionTo, clearSelection`.
+Update the effect's dependency array: replace `selectedBookId, selectBook` with `selectionSize, selectBook, extendSelectionTo, clearSelection`.
 
 - [ ] **Step 3: Give ⌘A to the library**
 
@@ -887,15 +845,9 @@ In `src/hooks/useMenuCommands.ts`, extend the handler:
 
 - [ ] **Step 4: Verify in the running app**
 
-Run: `npm run dev`
-Expected: arrows move a single selection as before; ⇧+arrow grows a range from
-the anchor; Escape clears everything; ⌘A selects every loaded book in both
-views; ⌘A inside the search box or a metadata-editor field still selects that
-field's text.
+Run: `npm run dev` Expected: arrows move a single selection as before; ⇧+arrow grows a range from the anchor; Escape clears everything; ⌘A selects every loaded book in both views; ⌘A inside the search box or a metadata-editor field still selects that field's text.
 
-If ⌘A does **not** reach the renderer at all, stop and report it: the
-documented fallback is to restore `{ role: 'selectAll' }` and leave the header
-checkbox as the only select-all, which is a spec-sanctioned outcome.
+If ⌘A does **not** reach the renderer at all, stop and report it: the documented fallback is to restore `{ role: 'selectAll' }` and leave the header checkbox as the only select-all, which is a spec-sanctioned outcome.
 
 - [ ] **Step 5: Commit**
 
@@ -920,16 +872,13 @@ git commit -m "feat: shift-arrow range selection and a library-aware Select All"
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
 - Produces:
-  - `interface BulkDeleteResult { deleted: number; failed: { id: string; title: string; error: string }[] }`
-    exported from `electron/main/services/book-delete.ts`
+  - `interface BulkDeleteResult { deleted: number; failed: { id: string; title: string; error: string }[] }` exported from `electron/main/services/book-delete.ts`
   - `deleteBooks(ids: string[]): Promise<BulkDeleteResult>`
   - `window.Musaeum.library.deleteBooks(ids: string[]): Promise<BulkDeleteResult>`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `electron/main/services/book-delete.test.ts` (and add
-`deleteBooks` to the existing `./book-delete` import, `vi` to the `vitest`
-import, and `readCatalog` is already imported):
+Append to `electron/main/services/book-delete.test.ts` (and add `deleteBooks` to the existing `./book-delete` import, `vi` to the `vitest` import, and `readCatalog` is already imported):
 
 ```ts
 describe('deleteBooks', () => {
@@ -998,14 +947,11 @@ describe('deleteBooks', () => {
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `npm test -- electron/main/services/book-delete.test.ts`
-Expected: FAIL — `deleteBooks` is not exported.
+Run: `npm test -- electron/main/services/book-delete.test.ts` Expected: FAIL — `deleteBooks` is not exported.
 
 - [ ] **Step 3: Implement `deleteBooks`**
 
-First add the shared result type to `src/types/api.types.ts`, near the other
-shared shapes — it crosses the IPC boundary, so it belongs there rather than
-in the service:
+First add the shared result type to `src/types/api.types.ts`, near the other shared shapes — it crosses the IPC boundary, so it belongs there rather than in the service:
 
 ```ts
 export interface BulkDeleteResult {
@@ -1014,8 +960,7 @@ export interface BulkDeleteResult {
 }
 ```
 
-Then append to `electron/main/services/book-delete.ts`, adding the import
-beside the existing `@shared/book.types` one:
+Then append to `electron/main/services/book-delete.ts`, adding the import beside the existing `@shared/book.types` one:
 
 ```ts
 import type { BulkDeleteResult } from '@shared/api.types'
@@ -1069,8 +1014,7 @@ export async function deleteBooks(ids: string[]): Promise<BulkDeleteResult> {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npm test -- electron/main/services/book-delete.test.ts`
-Expected: PASS, including the existing `deleteBook` and `deleteFormats` tests.
+Run: `npm test -- electron/main/services/book-delete.test.ts` Expected: PASS, including the existing `deleteBook` and `deleteFormats` tests.
 
 - [ ] **Step 5: Expose it over IPC**
 
@@ -1080,8 +1024,7 @@ In `electron/main/ipc/library.ts`, after the `library:deleteBook` handler:
   handle('library:deleteBooks', (ids: string[]) => bookDelete.deleteBooks(ids))
 ```
 
-In `src/types/api.types.ts`, in the `library` block after `deleteBook` (the
-`BulkDeleteResult` type itself went in during Step 3):
+In `src/types/api.types.ts`, in the `library` block after `deleteBook` (the `BulkDeleteResult` type itself went in during Step 3):
 
 ```ts
     /**
@@ -1121,8 +1064,7 @@ git commit -m "feat: batched bulk delete with one catalog write"
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
 - Produces:
-  - `interface BulkHydrateProgress { completed: number; total: number; failed: number; skipped: number; running: boolean }`
-    in `src/types/metadata.types.ts`
+  - `interface BulkHydrateProgress { completed: number; total: number; failed: number; skipped: number; running: boolean }` in `src/types/metadata.types.ts`
   - `startBulkHydrate(ids: string[]): void` (validates synchronously, then runs)
   - `cancelBulkHydrate(): void`
   - `findHydratableFile(bookDir: string): Promise<string | null>`
@@ -1151,8 +1093,7 @@ export async function hydrate(
 ): Promise<void> {
 ```
 
-Inside, guard the two calls (leave `writeMetadataJson` and `renameToTitle`
-alone):
+Inside, guard the two calls (leave `writeMetadataJson` and `renameToTitle` alone):
 
 ```ts
       await writeMetadataJson(bookDir, updated, result.metadata.metadata_sources)
@@ -1163,8 +1104,7 @@ alone):
     if (!options.batched) broadcast('libraryChanged')
 ```
 
-Leave the `conflictQueueUpdated` broadcast unconditional — it carries a count
-and does no I/O.
+Leave the `conflictQueueUpdated` broadcast unconditional — it carries a count and does no I/O.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -1335,8 +1275,7 @@ describe('startBulkHydrate', () => {
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `npm test -- electron/main/services/bulk-hydrate.test.ts`
-Expected: FAIL — cannot resolve `./bulk-hydrate`.
+Run: `npm test -- electron/main/services/bulk-hydrate.test.ts` Expected: FAIL — cannot resolve `./bulk-hydrate`.
 
 - [ ] **Step 4: Add the progress type**
 
@@ -1485,13 +1424,11 @@ export function resetForTests(): void {
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `npm test -- electron/main/services/bulk-hydrate.test.ts`
-Expected: PASS.
+Run: `npm test -- electron/main/services/bulk-hydrate.test.ts` Expected: PASS.
 
 - [ ] **Step 7: Expose it over IPC and share the file lookup**
 
-In `electron/main/ipc/metadata.ts`, import the service and rewrite the
-single-book handler to use the shared lookup, then add the two new handlers:
+In `electron/main/ipc/metadata.ts`, import the service and rewrite the single-book handler to use the shared lookup, then add the two new handlers:
 
 ```ts
 import * as bulkHydrate from '../services/bulk-hydrate'
@@ -1518,11 +1455,9 @@ import * as bulkHydrate from '../services/bulk-hydrate'
   })
 ```
 
-Remove the now-unused `fs` and `extname` imports from that file if nothing
-else uses them.
+Remove the now-unused `fs` and `extname` imports from that file if nothing else uses them.
 
-In `src/types/api.types.ts`: import `BulkHydrateProgress` alongside the other
-metadata types, extend the `metadata` block:
+In `src/types/api.types.ts`: import `BulkHydrateProgress` alongside the other metadata types, extend the `metadata` block:
 
 ```ts
     /** Re-hydrate many books as one sequential job; progress via events. */
@@ -1580,8 +1515,7 @@ git commit -m "feat: sequential, cancellable bulk metadata re-hydration"
 - Consumes: Task 7's `bulkHydrateProgress` event.
 - Produces:
   - `useDeviceStore.sendBooksToDevice(bookIds: string[], deviceId: string): Promise<void>`
-  - `useLibraryStore.bulkHydrate: BulkHydrateProgress | null` and
-    `setBulkHydrate(p: BulkHydrateProgress | null): void`
+  - `useLibraryStore.bulkHydrate: BulkHydrateProgress | null` and `setBulkHydrate(p: BulkHydrateProgress | null): void`
 
 - [ ] **Step 1: Add the bulk send loop to the device store**
 
@@ -1705,8 +1639,7 @@ git commit -m "feat: bulk send loop and bulk hydrate progress in the status bar"
 
 **Interfaces:**
 - Consumes: Tasks 2, 6, 7, 8.
-- Produces: `useUIStore.deletingSelection: boolean` and
-  `requestSelectionDelete(open: boolean): void`.
+- Produces: `useUIStore.deletingSelection: boolean` and `requestSelectionDelete(open: boolean): void`.
 
 - [ ] **Step 1: Add the dialog flag to the UI store**
 
@@ -1725,9 +1658,7 @@ to the initial state `deletingSelection: false,` and the action:
         set({ deletingSelection, contextMenu: null }),
 ```
 
-Also add `deletingSelection` to the guard list in `useBookNavigation`'s
-keyboard effect (both the condition and the dependency array), so arrows don't
-walk the library underneath the open dialog:
+Also add `deletingSelection` to the guard list in `useBookNavigation`'s keyboard effect (both the condition and the dependency array), so arrows don't walk the library underneath the open dialog:
 
 ```ts
   const deletingSelection = useUIStore((s) => s.deletingSelection)
@@ -2003,9 +1934,7 @@ read the flag:
   const deletingSelection = useUIStore((s) => s.deletingSelection)
 ```
 
-and render them beside their single-book counterparts (`SelectionPanel`
-returns null below two selected, and `BookDetail` already returns null when
-the derived single selection is null, so no conditional is needed here):
+and render them beside their single-book counterparts (`SelectionPanel` returns null below two selected, and `BookDetail` already returns null when the derived single selection is null, so no conditional is needed here):
 
 ```tsx
       <BookDetail />
@@ -2018,12 +1947,7 @@ the derived single selection is null, so no conditional is needed here):
 
 - [ ] **Step 5: Verify in the running app**
 
-Run: `npm run dev`
-Expected: selecting two books swaps the detail panel for the selection panel
-with no width change or grid re-flow; Delete opens the confirmation and
-removes them all; Refresh metadata starts a job whose progress appears in the
-status bar with a working Cancel; with a Kindle connected, Send skips books
-already on it and the status bar counts the transfers.
+Run: `npm run dev` Expected: selecting two books swaps the detail panel for the selection panel with no width change or grid re-flow; Delete opens the confirmation and removes them all; Refresh metadata starts a job whose progress appears in the status bar with a working Cancel; with a Kindle connected, Send skips books already on it and the status bar counts the transfers.
 
 - [ ] **Step 6: Commit**
 
@@ -2050,8 +1974,7 @@ git commit -m "feat: selection panel with bulk delete, send and refresh"
 
 - [ ] **Step 1: Replace the selection when right-clicking outside it**
 
-The rule is Finder's: right-clicking a book that isn't part of the selection
-makes it the selection first. Add this action to `src/stores/ui.store.ts`:
+The rule is Finder's: right-clicking a book that isn't part of the selection makes it the selection first. Add this action to `src/stores/ui.store.ts`:
 
 ```ts
   /** Right-click: books outside the selection become the selection first. */
@@ -2068,8 +1991,7 @@ makes it the selection first. Add this action to `src/stores/ui.store.ts`:
         })),
 ```
 
-In `BookCard.tsx` and in `ListView.tsx`'s `Row`, swap `openContextMenu` for
-`openContextMenuFor` (same call shape).
+In `BookCard.tsx` and in `ListView.tsx`'s `Row`, swap `openContextMenu` for `openContextMenuFor` (same call shape).
 
 - [ ] **Step 2: Show selection-scoped items for a multi-selection**
 
@@ -2125,17 +2047,11 @@ Add `CloseIcon` and `selectionCount` to that file's imports.
 
 - [ ] **Step 2b: Keep the menu positioned**
 
-The `useLayoutEffect` that flips the menu inside the window measures
-`ref.current`, which now belongs to whichever branch rendered. No change is
-needed — but confirm by right-clicking a multi-selection near the bottom-right
-corner of the window and checking the menu stays on screen.
+The `useLayoutEffect` that flips the menu inside the window measures `ref.current`, which now belongs to whichever branch rendered. No change is needed — but confirm by right-clicking a multi-selection near the bottom-right corner of the window and checking the menu stays on screen.
 
 - [ ] **Step 3: Verify in the running app**
 
-Run: `npm run dev`
-Expected: right-clicking a book inside a multi-selection shows the count,
-Clear and Delete N; right-clicking a book outside it selects that one book and
-shows the normal single-book menu.
+Run: `npm run dev` Expected: right-clicking a book inside a multi-selection shows the count, Clear and Delete N; right-clicking a book outside it selects that one book and shows the normal single-book menu.
 
 - [ ] **Step 4: Commit**
 
@@ -2157,8 +2073,7 @@ git commit -m "feat: selection-scoped context menu"
 
 - [ ] **Step 1: Document the selection model in `CLAUDE.md`**
 
-Replace the **Selection & keyboard navigation** section's first paragraph so it
-describes a selection rather than one book, and add underneath it:
+Replace the **Selection & keyboard navigation** section's first paragraph so it describes a selection rather than one book, and add underneath it:
 
 ```markdown
 Selection is a `Selection` (`src/lib/selection.ts`): a `Set` of ids plus an
@@ -2214,9 +2129,7 @@ Three, and deliberately not symmetric — the services under them are not.
 can be hydrated from. PDF-only books have nothing, and are skipped, not failed.
 ```
 
-Add the new API entries to the `MusaeumAPI` block in that file:
-`library.deleteBooks`, `metadata.rehydrateBooks`, `metadata.cancelRehydrate`,
-`on.bulkHydrateProgress`.
+Add the new API entries to the `MusaeumAPI` block in that file: `library.deleteBooks`, `metadata.rehydrateBooks`, `metadata.cancelRehydrate`, `on.bulkHydrateProgress`.
 
 - [ ] **Step 2: Update `tasks.md`**
 
@@ -2245,19 +2158,14 @@ npm run typecheck && npm run lint && npm test
 
 Then use the `verify` skill to drive an isolated instance, and confirm each of:
 
-1. ⌘-click adds and removes in both views; ⇧-click ranges; a second ⇧-click
-   re-ranges from the same anchor rather than creeping
-2. The list's checkbox column and header select-all (checked, indeterminate,
-   empty), and that `document.querySelector('tbody tr:not([aria-hidden])')`
-   still measures **36px** tall
+1. ⌘-click adds and removes in both views; ⇧-click ranges; a second ⇧-click re-ranges from the same anchor rather than creeping
+2. The list's checkbox column and header select-all (checked, indeterminate, empty), and that `document.querySelector('tbody tr:not([aria-hidden])')` still measures **36px** tall
 3. ⌘A selects all books; ⌘A inside the search field still selects its text
 4. ⇧+arrow extends; Escape clears
-5. Bulk delete of several books: one confirmation, all removed, `catalog.json`
-   correct afterwards
+5. Bulk delete of several books: one confirmation, all removed, `catalog.json` correct afterwards
 6. Bulk re-hydrate: status bar counts up, Cancel stops it within one book
 7. Bulk send with a device attached: books already present are skipped
-8. Selecting and deselecting does not re-flow or drift the grid's scroll
-   position
+8. Selecting and deselecting does not re-flow or drift the grid's scroll position
 
 - [ ] **Step 5: Commit**
 

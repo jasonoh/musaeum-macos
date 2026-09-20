@@ -1,12 +1,9 @@
 # Musaeum
 
-Personal ebook library management for macOS — replaces Calibre for a 7000+ book
-NAS-hosted library. Electron + React + TypeScript, with a Python sidecar for
-metadata hydration and format conversion.
+Personal ebook library management for macOS — replaces Calibre for a 7000+ book NAS-hosted library. Electron + React + TypeScript, with a Python sidecar for metadata hydration and format conversion.
 
 - [CLAUDE.md](CLAUDE.md) — project brief: invariants, conventions, where to look
-- [docs/project-overview.md](docs/project-overview.md) — features, status, and how
-  it compares to Calibre/Calibre-Web/Kavita and the rest
+- [docs/project-overview.md](docs/project-overview.md) — features, status, and how it compares to Calibre/Calibre-Web/Kavita and the rest
 - [docs/](docs/) — architecture, data contracts, and per-subsystem invariants
 - [tasks.md](tasks.md) — roadmap, known issues, backlog
 - [CHANGELOG.md](CHANGELOG.md) — release history
@@ -22,34 +19,22 @@ python3.12 -m venv sidecar/.venv
 sidecar/.venv/bin/pip install -r sidecar/requirements.txt
 ```
 
-**Calibre** must be installed for format conversion (`ebook-convert` is
-detected at `/Applications/calibre.app/Contents/MacOS/ebook-convert`; override
-via the `ebook_convert_path` app config key).
+**Calibre** must be installed for format conversion (`ebook-convert` is detected at `/Applications/calibre.app/Contents/MacOS/ebook-convert`; override via the `ebook_convert_path` app config key).
 
 ### Secrets
 
-`GOOGLE_BOOKS_API_KEY` reaches the Python sidecar
-([`sidecar/fetchers/google_books.py`](sidecar/fetchers/google_books.py)) from
-one of two places: the key set in **Settings**, or the environment. It is
-optional for casual use but **required before the 7000-book migration** (the
-free, keyless tier is rate-limited well below what a bulk run needs).
+`GOOGLE_BOOKS_API_KEY` reaches the Python sidecar ([`sidecar/fetchers/google_books.py`](sidecar/fetchers/google_books.py)) from one of two places: the key set in **Settings**, or the environment. It is optional for casual use but **required before the 7000-book migration** (the free, keyless tier is rate-limited well below what a bulk run needs).
 
-Settings wins over the environment, so a key entered there survives a
-double-clicked `.app`; leave it blank to keep using the environment.
+Settings wins over the environment, so a key entered there survives a double-clicked `.app`; leave it blank to keep using the environment.
 
-Secrets live in the Infisical project **`musaeum`**. Inject them by wrapping
-the dev/build commands in `infisical run` rather than exporting keys by hand:
+Secrets live in the Infisical project **`musaeum`**. Inject them by wrapping the dev/build commands in `infisical run` rather than exporting keys by hand:
 
 ```bash
 infisical run -- npm run dev      # sidecar inherits GOOGLE_BOOKS_API_KEY
 infisical run -- npm run build
 ```
 
-`infisical run` sets the variables only for the wrapped process, so a bare
-`npm run dev` still works (online metadata just falls back to the keyless
-tier). A packaged `.app` can't be launched through `infisical run` by a
-double-click, which is what the Settings field is for — set the key once and
-Infisical stops being a runtime dependency.
+`infisical run` sets the variables only for the wrapped process, so a bare `npm run dev` still works (online metadata just falls back to the keyless tier). A packaged `.app` can't be launched through `infisical run` by a double-click, which is what the Settings field is for — set the key once and Infisical stops being a runtime dependency.
 
 ## Development
 
@@ -61,9 +46,7 @@ npm test           # vitest main-process suite (Electron-as-Node)
 npm run build      # production bundles into out/
 ```
 
-First launch shows a banner to choose the library folder — point it at the
-mounted NAS share (or any local folder). Books dropped onto the window, or
-into `{library_root}/imports/`, are imported and hydrated automatically.
+First launch shows a banner to choose the library folder — point it at the mounted NAS share (or any local folder). Books dropped onto the window, or into `{library_root}/imports/`, are imported and hydrated automatically.
 
 ## Packaging
 
@@ -72,37 +55,105 @@ npm run pack       # build + electron-builder → dist/Musaeum-<version>-arm64.d
 npm run pack:dir   # unpacked dist/mac-arm64/Musaeum.app, for fast iteration
 ```
 
-**Packaging needs Node 20.19+** (electron-builder 26 loads an ESM-only
-dependency through `require`, which older Node refuses). Node 18 runs
-everything else in this repo fine but fails `npm run pack` with
-`ERR_REQUIRE_ESM`.
+**Packaging needs Node 20.19+** (electron-builder 26 loads an ESM-only dependency through `require`, which older Node refuses). Node 18 runs everything else in this repo fine but fails `npm run pack` with `ERR_REQUIRE_ESM`.
 
-The build is currently **unsigned** (`mac.identity: null` in
-`electron-builder.yml`), so macOS needs a right-click → Open the first time.
-Signing and notarization are tracked in [tasks.md](tasks.md).
+The build is currently **unsigned** (`mac.identity: null` in `electron-builder.yml`), so macOS needs a right-click → Open the first time. Signing and notarization are tracked in [tasks.md](tasks.md).
 
 ### Python in a packaged build
 
-The `.app` ships the sidecar as source but **not** `sidecar/.venv` — that venv
-is built against one machine's interpreter and hard-codes absolute paths, and
-nothing may write inside a signed bundle anyway. Instead, on first launch
-[`services/python-env.ts`](electron/main/services/python-env.ts) finds a system
-Python 3.11+, builds a venv in `~/Library/Application Support/Musaeum/
-sidecar-venv`, and installs `requirements.txt` into it (~20s, needs network,
-progress shown in the status bar). Later launches skip it; editing
-`requirements.txt` re-runs it, keyed on a hash recorded in the venv.
+The `.app` ships the sidecar as source but **not** `sidecar/.venv` — that venv is built against one machine's interpreter and hard-codes absolute paths, and nothing may write inside a signed bundle anyway. Instead, on first launch [`services/python-env.ts`](electron/main/services/python-env.ts) finds a system Python 3.11+, builds a venv in `~/Library/Application Support/Musaeum/ sidecar-venv`, and installs `requirements.txt` into it (~20s, needs network, progress shown in the status bar). Later launches skip it; editing `requirements.txt` re-runs it, keyed on a hash recorded in the venv.
 
-So a packaged Musaeum requires **Python 3.11+ on the host**. Homebrew's
-interpreter is found by absolute path as well as by name, because a
-double-clicked app inherits launchd's minimal `PATH` and would not otherwise
-see it.
+So a packaged Musaeum requires **Python 3.11+ on the host**. Homebrew's interpreter is found by absolute path as well as by name, because a double-clicked app inherits launchd's minimal `PATH` and would not otherwise see it.
 
 ## Layout
 
-- `electron/main/` — main process: IPC handlers (`ipc/`), business logic
-  (`services/`), SQLite schema (`schema/migrations/`)
+- `electron/main/` — main process: IPC handlers (`ipc/`), business logic (`services/`), SQLite schema (`schema/migrations/`)
 - `electron/preload/` — the `window.Musaeum` contextBridge API
 - `src/` — React renderer (components, Zustand stores, hooks)
 - `src/types/` — shared TypeScript contracts used by all three layers
-- `sidecar/` — Python JSON-RPC sidecar (extraction, fetchers, hydration
-  pipeline, conversion, Calibre migration)
+- `sidecar/` — Python JSON-RPC sidecar (extraction, fetchers, hydration pipeline, conversion, Calibre migration)
+
+---
+## How this was built
+
+Musaeum is AI-assisted. Its roughly 29,000 lines of application code (main process, renderer and Python sidecar, not counting the vendored reader engine) were written with an AI coding agent under my direction. The development stack consisted of Claude Code via Zed, DeepSeek 4.1 Pro/Flash API via Hermes, using orchestration and various subagents. All application code was generated by AI while I provided the requirements, constraints, and objectives. The first MVP landed on 12 July 2026, and the work described here runs through mid-September 2026.
+
+I'm saying so up front because it is the point of this section. What's interesting isn't that an agent wrote code. It's what made the output trustworthy enough to run a 7,000-book library on, and what a person still has to do.
+
+## Who decided what
+
+| I decided | The agent did |
+| --- | --- |
+| **The constraints.** The library lives on a flaky NAS and must survive it; beauty is a requirement, not a finish step. | Implementation across the Electron main process, the React renderer and the Python sidecar. |
+| **The design bets.** The canonical record is a per-book `metadata.json`; the database is a disposable local cache; devices are judged by content; reading position lives on three clocks. | Writing and maintaining the tests, the changelog and the invariant files. |
+| **Scope.** Multi-user and a web UI are rejected, not pending. A library-wide content index was rejected with its reversal condition recorded. OPDS is specified but conditional on a second reading device. | Mutation testing, and adversarial read-only review of changes before merge. **[Verify and fill in.]** |
+| **When the software asks a human.** Title, author and series conflicts go to a review queue with candidates side by side; publisher, date and language auto-resolve by source priority. | Drafting specs and plans. **[Fill in.]** |
+| **Acceptance.** Every slice was run against the real 7,000-book NAS library and a real Kindle, not just fixtures. | |
+| **The overrules.** Where the agent's default was wrong or the written spec was, I decided (examples below). | |
+
+## The operating model
+
+**The agent brief is an index.** `CLAUDE.md` points into `docs/`. On 15 September the payload moved out of it and into 12 invariant files, so that the agent, or a new human, reads the reasoning that applies rather than one giant brief.
+
+**Invariants carry their reasons.** Each file in `docs/invariants/` records the measurement that produced the rule and the approach that was rejected, so a later change meets the reasoning, not just the rule. Examples: nothing may read `formats[0]`, because array order is whatever the writing source left; sort keys are derived on every write path, or books strand under the wrong letter; row height is computed from constants and never measured, or the virtualizer drifts without a build error. **[Include one invariant file in full, scrubbed. See "Artifacts" below.]**
+
+**Specs carry triggers.** The OPDS spec's first precondition is a second reading device that speaks OPDS. The library-wide content index was rejected, with the condition that would reverse the decision written into the spec. A spec here means a decision is actionable when its trigger fires, not that work has started.
+
+**Verification is layered.**
+
+- 631 main-process tests and 65 sidecar tests, with cases chosen to kill specific mutations.
+- Strict TypeScript with no `any`. Typecheck and lint are gates, not suggestions.
+- Performance targets set against measured numbers: 115 ms to load and 18 ms to search at 7,000 books, about 1,000 DOM nodes at any scroll offset.
+- Acceptance against reality: a real NAS library and a real device.
+
+## What the guardrails caught
+
+First, the pattern behind the cases. By my reading of the changelog's *Fixed* sections, sorted by the discovery instrument each entry names, almost nothing was found by a test assertion failing. Defects were found, in rough order, by real hardware, by running the app and measuring it, and by an adversarial read-only review agent. The tests were the lock, not the detector: their job was to keep a fixed bug fixed. Where the suite itself had holes, it took a deliberately mutating harness to find them (see the next section). **[Replace "in rough order" with a real count of Fixed entries by discovery instrument.]**
+
+Each case below covers what failed, how it was found, and what prevents it now.
+
+**Kindle presence.** The app decided whether a book was already on the device by matching its title against the filenames on the Kindle. That only recognizes files the app wrote itself; Calibre, for one, names files `{author_sort}/{title} - {authors}.ext`. A census script split the device's 1,556 files: 86 matched by filename, and another 1,257 were found only by reading the title inside each file. "Send to Kindle" was being offered for roughly 1,400 books already there. I caught it as a feeling. The spec quotes my own complaint: "Difficult to ascertain whether a book is on or off the Kindle." A purpose-built script turned the feeling into a count. Now the app matches on each file's own embedded title and author, with an order-insensitive author key, and a cache keyed on path, size and mtime keeps the 5-second poll from ever opening a book. Recognition went from 86 to 1,343 of the 1,556 files, and a cold read that took 73 seconds now settles in 3.9 warm. (In library terms, presence now answers 1,347 of 6,460 books.)
+
+**The duplicate send.** The Send button was bound to the call that queues a transfer, which returns immediately. The button re-enabled mid-copy, and a second click put a byte-identical duplicate on the device. On a real Kindle, a book sent, retitled and sent again three minutes later left two files with the same embedded ID and the same md5. The retitle is why the fix has two parts: it defeated the session's filename receipt. The button now reads the transfer queue (*Sending… / On {device} / Couldn't send, retry*), and the receipt records the filename the send actually wrote.
+
+**The SMB `close()` failure.** Transfers reported `EBADF: bad file descriptor, close` while actually succeeding, because macOS's SMB client can fail `close()` on a file it has just read in full. I saw it on real hardware, on a 50 MB azw3 whose copy on the device was byte-identical, and the repo says plainly that it can't be simulated locally. Now the copy owns its source file descriptor and logs a close failure instead of raising, since a close error on a read-only descriptor can't affect bytes already read. It also verifies the destination size, so a genuinely truncated copy still fails.
+
+**The free-space figure.** The device row showed about 73 GB free for a Kindle with about 21 GB. `statfs` answers for whichever filesystem contains the path, and a `/Volumes/Kindle` folder left behind by an unclean unplug belongs to the boot disk. The figure was also read once, at recognition, and never again. I noticed a number that disagreed with one I already knew, and no test I would have thought to write catches that. Now free space is `null` unless the path is a real mount point, it's re-read every poll, and a stale mount shows no figure rather than a foreign one.
+
+**The wrong edition.** Google Books confidently matched a different edition and replaced a file's own ISBN. It surfaced during the first end-to-end verification against the real APIs on 12 July, not against fixtures. The fix replaced a confidence score with a precedence rule: embedded and Calibre identifiers always override fetched ones. A rule can't regress quietly the way a heuristic can.
+
+## Where it went wrong or needed a human
+
+**A green suite with code deleted.** In the theme engine, a rule ("every derived value must be validated") was implemented and asserted nowhere. A mutation harness, which deletes code to see whether any test notices, found that two of three validation walks could be removed with the suite fully green. Even the first test written to catch that was inert, because a whole-family deletion degraded on an earlier guard. The cases that landed drop a step inside a present family.
+
+**A green suite and a green live check, still broken.** Three theme-import handlers built their response inline as `{ view: getThemeView(), ...importPaths(paths) }`. JavaScript evaluates properties left to right, so the view was read before the import ran. A freshly imported theme was missing from the picker, and Refresh re-served the same stale list. No test could see it, because the handler layer has no harness, and no live check caught it, because each one read the view back through a separate call. Every instrument measured the right answer through a different door than the broken one. A read-only pre-merge review found it, and the composition now lives in the service, under a test that decides it.
+
+**Tests that asserted the wrong thing.** The scroll-reset fix counted filters during a search, but the store ignores filters while a query is active, so a facet click reset the scroll for a control that changes nothing. Three existing cases had encoded that false premise as correct and had to be rebuilt. Elsewhere, a delete test's fixture used `null` where a wrong value was needed, so it was structurally incapable of catching the bug it was written for. The mutation passes the old fixture and fails the new one.
+
+**Where I overruled the agent.** `books.file_size_bytes` was set at import and never recalculated. The agent's tidier default was to drop the column. I chose to recompute it, and one shared helper now serves four format-changing writes and the catalog read path. Separately, when porting the theme derivation, the measured prototype disagreed with the written spec in three places. I chose the prototype, because the tests pin it and it was measured across eight palettes. Evidence beat prose.
+
+**[Optional, only if the decision was yours: the decision that wasn't written down.]** The repo records that react-window was rejected but not who decided. The reason is a consequence, not a preference: react-window wants absolutely positioned cells, which would cost the grid its CSS grid and the list its real `<table>`, and that table is what keyboard navigation, checkbox selection and column-header sorting sit on. Virtualization was also the one substantial slice with no design doc, and it produced three defects found the day it landed (scroll reset, stale file sizes, unstable tie order) that sat open for seven weeks until the quality pass. I can't say a design doc would have prevented them. What kept the reasoning alive in the meantime wasn't a spec but the invariant file.
+
+## What this doesn't show
+
+- **It's a personal tool, not a supported product.** It's macOS-only and single-user, and the packaged build is unsigned and needs Python 3.11+ for its full feature set.
+- **It hasn't been tested where it's most likely to fail.** Offline mode was verified with a local folder; mount loss mid-import and mid-transfer are still not exercised, and the packaged build hasn't been run on a second Mac.
+- **Some bugs are still open.** The Kindle firmware stopped generating cover thumbnails for new files, and nothing writes covers on send yet, so a fresh send lands without one.
+- **The claim's scope is narrow.** This is software built with an LLM, not around one. It shows how I specify, direct and verify agent-built work, not that I've built LLM systems.
+
+## What I'd take from it
+
+1. **Institutional memory has to live where the next actor will read it**, whether that actor is a person or an agent.
+2. **Record the rejected alternative, not just the rule.** The rule tells you what to do; the rejected alternative tells you when it's safe to stop.
+3. **Give specs triggers.** A decision stays a decision until its written condition fires.
+4. **Verify against reality, not fixtures.** Tests are the lock; hardware, measurement and adversarial review are the detectors.
+5. **Make the system say what an action did, in the user's terms.** "No new metadata found" and "Couldn't send, retry" are features.
+
+**[Link: the essay this connects to.]**
+
+## Artifacts
+
+- **`CLAUDE.md`**, the agent-brief index, with personal paths and secrets setup scrubbed
+- **One invariant file**, in full (`docs/invariants/device-transfer.md` carries the presence and free-space measurements; scrub device specifics first)
+- **One spec**, with `docs/superpowers/specs/2026-09-19-reader-search-design.md` the safest choice
+- **The phase table**, or a changelog excerpt that shows the "why"

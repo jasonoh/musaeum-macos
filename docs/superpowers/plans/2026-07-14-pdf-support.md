@@ -53,8 +53,7 @@ Create `sidecar/requirements-dev.txt`:
 pytest>=8.0
 ```
 
-Run: `sidecar/.venv/bin/pip install -r sidecar/requirements-dev.txt`
-Expected: pypdf, pypdfium2, pytest install without errors.
+Run: `sidecar/.venv/bin/pip install -r sidecar/requirements-dev.txt` Expected: pypdf, pypdfium2, pytest install without errors.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -139,8 +138,7 @@ def test_render_cover_returns_none_for_corrupt_file(tmp_path):
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `sidecar/.venv/bin/python -m pytest sidecar/tests/test_pdf_metadata.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'extractors.pdf_metadata'`
+Run: `sidecar/.venv/bin/python -m pytest sidecar/tests/test_pdf_metadata.py -v` Expected: FAIL — `ModuleNotFoundError: No module named 'extractors.pdf_metadata'`
 
 - [ ] **Step 4: Implement the extractor**
 
@@ -198,8 +196,7 @@ def render_pdf_cover(file_path: str) -> Optional[bytes]:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `sidecar/.venv/bin/python -m pytest sidecar/tests/test_pdf_metadata.py -v`
-Expected: 5 passed.
+Run: `sidecar/.venv/bin/python -m pytest sidecar/tests/test_pdf_metadata.py -v` Expected: 5 passed.
 
 - [ ] **Step 6: Commit**
 
@@ -270,8 +267,7 @@ def test_hydrate_pdf_uses_embedded_metadata_and_renders_cover(
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `sidecar/.venv/bin/python -m pytest sidecar/tests/test_hydration_pdf.py -v`
-Expected: FAIL — `result["metadata"]` lacks the title (embedded step is epub-only today) and `result["cover"]` is None.
+Run: `sidecar/.venv/bin/python -m pytest sidecar/tests/test_hydration_pdf.py -v` Expected: FAIL — `result["metadata"]` lacks the title (embedded step is epub-only today) and `result["cover"]` is None.
 
 - [ ] **Step 3: Generalize the embedded step in hydration.py**
 
@@ -326,8 +322,7 @@ Add to the `METHODS` dict, after the `extract_epub_metadata` entry:
 
 - [ ] **Step 5: Run the full sidecar suite**
 
-Run: `sidecar/.venv/bin/python -m pytest sidecar/tests -v`
-Expected: all tests pass (Task 1's five + this one).
+Run: `sidecar/.venv/bin/python -m pytest sidecar/tests -v` Expected: all tests pass (Task 1's five + this one).
 
 - [ ] **Step 6: Commit**
 
@@ -448,8 +443,7 @@ In `electron/main/services/transfer-queue.ts`, replace the conversion fallback b
 
 - [ ] **Step 5: Typecheck and lint**
 
-Run: `npm run typecheck && npm run lint`
-Expected: both clean. (`BookFormat` widening is additive; grep for exhaustive switches on `BookFormat` if typecheck complains — none exist today.)
+Run: `npm run typecheck && npm run lint` Expected: both clean. (`BookFormat` widening is additive; grep for exhaustive switches on `BookFormat` if typecheck complains — none exist today.)
 
 - [ ] **Step 6: Manual smoke test**
 
@@ -621,8 +615,7 @@ def test_topup_is_idempotent(calibre_and_target):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `sidecar/.venv/bin/python -m pytest sidecar/tests/test_topup.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'pipeline.topup'`
+Run: `sidecar/.venv/bin/python -m pytest sidecar/tests/test_topup.py -v` Expected: FAIL — `ModuleNotFoundError: No module named 'pipeline.topup'`
 
 - [ ] **Step 3: Add the PDF cover fallback to `_migrate_one`**
 
@@ -834,8 +827,7 @@ Add to `METHODS` after `migrate_library`:
 
 - [ ] **Step 6: Run the full sidecar suite**
 
-Run: `sidecar/.venv/bin/python -m pytest sidecar/tests -v`
-Expected: all pass (Tasks 1, 2, and 4 tests).
+Run: `sidecar/.venv/bin/python -m pytest sidecar/tests -v` Expected: all pass (Tasks 1, 2, and 4 tests).
 
 - [ ] **Step 7: Commit**
 
@@ -992,8 +984,7 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
 
 - [ ] **Step 4: Typecheck and lint**
 
-Run: `npm run typecheck && npm run lint`
-Expected: both clean.
+Run: `npm run typecheck && npm run lint` Expected: both clean.
 
 - [ ] **Step 5: Commit**
 
@@ -1104,8 +1095,7 @@ type Step = 'source' | 'confirm' | 'running' | 'done' | 'topup-running' | 'topup
 
 - [ ] **Step 2: Typecheck and lint**
 
-Run: `npm run typecheck && npm run lint`
-Expected: both clean.
+Run: `npm run typecheck && npm run lint` Expected: both clean.
 
 - [ ] **Step 3: Manual smoke test (small scale)**
 

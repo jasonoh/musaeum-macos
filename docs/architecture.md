@@ -179,9 +179,7 @@ Musaeum/
     └── tests/                    # pytest — pdf_metadata, hydration_pdf, topup
 ```
 
-Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*`
-(all three layers), `@vendor/*` → `vendor/*` (renderer only — the reader
-engine). Configured in `electron.vite.config.ts` and both tsconfigs.
+Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*` (all three layers), `@vendor/*` → `vendor/*` (renderer only — the reader engine). Configured in `electron.vite.config.ts` and both tsconfigs.
 
 ---
 
@@ -197,20 +195,15 @@ engine). Configured in `electron.vite.config.ts` and both tsconfigs.
 | Format conversion (epub → mobi)     | < 30 seconds |
 | Memory footprint (typical use)      | < 500MB      |
 
-Both library views are virtualized (see `docs/invariants/library-views.md`); measured against a
-synthetic 7000-book library at ~1000 DOM nodes, 32MB heap, 115ms `getBooks`,
-18ms search.
+Both library views are virtualized (see `docs/invariants/library-views.md`); measured against a synthetic 7000-book library at ~1000 DOM nodes, 32MB heap, 115ms `getBooks`, 18ms search.
 
 ---
 
 ## External Dependencies
 
-- **Calibre** (host install) — for `ebook-convert` only; detected at
-  `/Applications/calibre.app/Contents/MacOS/ebook-convert`, overridable via
-  `app_config.ebook_convert_path`. No Calibre GUI is launched.
+- **Calibre** (host install) — for `ebook-convert` only; detected at `/Applications/calibre.app/Contents/MacOS/ebook-convert`, overridable via `app_config.ebook_convert_path`. No Calibre GUI is launched.
 - **Python 3.11+** — sidecar venv at `sidecar/.venv` (see README).
-- Sidecar deps: `sidecar/requirements.txt` (isbnlib, requests, bs4, lxml, Pillow,
-  pypdf, pypdfium2). Dev deps: `sidecar/requirements-dev.txt` (pytest).
+- Sidecar deps: `sidecar/requirements.txt` (isbnlib, requests, bs4, lxml, Pillow, pypdf, pypdfium2). Dev deps: `sidecar/requirements-dev.txt` (pytest).
 - Node deps: see `package.json`.
 
 ---
@@ -221,11 +214,9 @@ In place as of Phase 1:
 
 1. SQLite schema contains no UI-coupled fields
 2. `metadata.json` is the canonical data contract (documented above)
-3. REST API module stubbed at `electron/main/api/rest.ts` — disabled via
-   `app_config` flag `rest_api_enabled = false`
+3. REST API module stubbed at `electron/main/api/rest.ts` — disabled via `app_config` flag `rest_api_enabled = false`
 4. All book file paths stored as relative paths from library root
 5. Covers at two resolutions: `cover_thumb.jpg` (200px), `cover_full.jpg` (600px)
-6. All data access goes through the service layer (IPC handlers contain no
-   business logic) so extraction to a standalone API server stays cheap
+6. All data access goes through the service layer (IPC handlers contain no business logic) so extraction to a standalone API server stays cheap
 
 ---

@@ -6,12 +6,9 @@ model: sonnet
 color: blue
 ---
 
-Start from `CLAUDE.md` at the repo root: it carries the invariants list, the
-routing table, and the escalation rule, and points at the doc for your slice.
+Start from `CLAUDE.md` at the repo root: it carries the invariants list, the routing table, and the escalation rule, and points at the doc for your slice.
 
-You own `electron/main/` — `services/` (all business logic), `ipc/` (thin
-handlers), and `schema/migrations/`. You do not write to `src/` or `sidecar/`;
-if a change needs one of those, say so and hand back.
+You own `electron/main/` — `services/` (all business logic), `ipc/` (thin handlers), and `schema/migrations/`. You do not write to `src/` or `sidecar/`; if a change needs one of those, say so and hand back.
 
 ## Read before you edit
 
@@ -27,20 +24,12 @@ if a change needs one of those, say so and hand back.
 
 ## Rules
 
-- Business logic lives in `services/`. An IPC handler is a thin wrapper through
-  `handle()` returning `{success, data|error}` — never throw across IPC.
-- A new migration is **appended** to the `MIGRATIONS` array in `services/db.ts`.
-  Never edit a migration that has shipped; migration 002 registers
-  `musaeum_sort_title` / `musaeum_author_sort` as SQL functions on purpose.
-- `services/events.ts` `broadcast()` is how the renderer learns anything. If a
-  change alters book data, the `libraryChanged` broadcast is not optional.
-- Failures are non-fatal where the docs say so: NAS errors degrade to offline
-  mode, a failed hydration keeps embedded metadata and returns its failure
-  rather than throwing. Do not "fix" that by throwing.
-- Anything touching the catalog writes `metadata.json` first — the catalog is
-  derived, never the source of truth.
-- `npm run typecheck && npm run lint` must pass before you report back. Run
-  `npm test` when you touched the DB layer, the importer, or the sync path.
+- Business logic lives in `services/`. An IPC handler is a thin wrapper through `handle()` returning `{success, data|error}` — never throw across IPC.
+- A new migration is **appended** to the `MIGRATIONS` array in `services/db.ts`. Never edit a migration that has shipped; migration 002 registers `musaeum_sort_title` / `musaeum_author_sort` as SQL functions on purpose.
+- `services/events.ts` `broadcast()` is how the renderer learns anything. If a change alters book data, the `libraryChanged` broadcast is not optional.
+- Failures are non-fatal where the docs say so: NAS errors degrade to offline mode, a failed hydration keeps embedded metadata and returns its failure rather than throwing. Do not "fix" that by throwing.
+- Anything touching the catalog writes `metadata.json` first — the catalog is derived, never the source of truth.
+- `npm run typecheck && npm run lint` must pass before you report back. Run `npm test` when you touched the DB layer, the importer, or the sync path.
 
 ## Escalate — stop and hand back — when
 
@@ -51,6 +40,4 @@ if a change needs one of those, say so and hand back.
 
 ## Always end your response in this structure
 
-**## Done** — what you changed, in `file:line` terms.
-**## Verified** — the commands you ran and what they returned, or "not run" with the reason.
-**## Escalate** — only if you hit a judgement call you could not resolve. Omit otherwise.
+**## Done** — what you changed, in `file:line` terms. **## Verified** — the commands you ran and what they returned, or "not run" with the reason. **## Escalate** — only if you hit a judgement call you could not resolve. Omit otherwise.

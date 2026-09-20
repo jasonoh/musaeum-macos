@@ -98,8 +98,7 @@ describe('seriesDisplay', () => {
 
 - [ ] **Step 5: Run and verify**
 
-Run: `npm test`
-Expected: 3 passing tests, exit 0.
+Run: `npm test` Expected: 3 passing tests, exit 0.
 
 Also run: `npm run typecheck && npm run lint` — both clean.
 
@@ -279,8 +278,7 @@ describe('replaceCatalog', () => {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `npm test electron/main/services/catalog.test.ts`
-Expected: FAIL — cannot resolve `./catalog`.
+Run: `npm test electron/main/services/catalog.test.ts` Expected: FAIL — cannot resolve `./catalog`.
 
 - [ ] **Step 4: Implement `electron/main/services/catalog.ts`**
 
@@ -389,8 +387,7 @@ export function replaceCatalog(root: string, books: Book[]): Promise<void> {
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `npm test electron/main/services/catalog.test.ts`
-Expected: all PASS. Then `npm test` — everything green.
+Run: `npm test electron/main/services/catalog.test.ts` Expected: all PASS. Then `npm test` — everything green.
 
 - [ ] **Step 6: Commit**
 
@@ -514,8 +511,7 @@ describe('rebuildFromBookDirs', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npm test electron/main/services/catalog.test.ts`
-Expected: FAIL — `metadataJsonToBook` / `rebuildFromBookDirs` not exported.
+Run: `npm test electron/main/services/catalog.test.ts` Expected: FAIL — `metadataJsonToBook` / `rebuildFromBookDirs` not exported.
 
 - [ ] **Step 3: Append the implementation to `catalog.ts`**
 
@@ -650,8 +646,7 @@ export async function rebuildFromBookDirs(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm test electron/main/services/catalog.test.ts`
-Expected: all PASS.
+Run: `npm test electron/main/services/catalog.test.ts` Expected: all PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -776,8 +771,7 @@ describe('replaceAllBooks', () => {
 
 - [ ] **Step 3: Run to verify failure**
 
-Run: `npm test electron/main/services/db.test.ts`
-Expected: FAIL — `replaceAllBooks` is not exported.
+Run: `npm test electron/main/services/db.test.ts` Expected: FAIL — `replaceAllBooks` is not exported.
 
 - [ ] **Step 4: Implement `replaceAllBooks` in `db.ts`** (append after `findByTitleAuthor`)
 
@@ -811,8 +805,7 @@ export function replaceAllBooks(books: Book[]): void {
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `npm test electron/main/services/db.test.ts`
-Expected: all PASS. Then `npm test` for the full suite.
+Run: `npm test electron/main/services/db.test.ts` Expected: all PASS. Then `npm test` for the full suite.
 
 - [ ] **Step 6: Commit**
 
@@ -955,8 +948,7 @@ describe('upsertCatalog / removeBookFromCatalog', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npm test electron/main/services/library-sync.test.ts`
-Expected: FAIL — cannot resolve `./library-sync`.
+Run: `npm test electron/main/services/library-sync.test.ts` Expected: FAIL — cannot resolve `./library-sync`.
 
 - [ ] **Step 3: Implement `electron/main/services/library-sync.ts`**
 
@@ -1086,8 +1078,7 @@ export function flushForTests(): Promise<unknown> {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm test electron/main/services/library-sync.test.ts`
-Expected: all PASS.
+Run: `npm test electron/main/services/library-sync.test.ts` Expected: all PASS.
 
 - [ ] **Step 5: Extend the shared API contract** (`src/types/api.types.ts`)
 
@@ -1213,8 +1204,7 @@ export function registerNASHandlers(): void {
 
 - [ ] **Step 9: Verify**
 
-Run: `npm test && npm run typecheck && npm run lint`
-Expected: all green.
+Run: `npm test && npm run typecheck && npm run lint` Expected: all green.
 
 - [ ] **Step 10: Commit**
 
@@ -1315,8 +1305,7 @@ In `startPdfTopUp`'s success path, after `insertMigratedBooks(result.new_books)`
 
 - [ ] **Step 5: Verify**
 
-Run: `npm test && npm run typecheck && npm run lint`
-Expected: all green (no behavior change for existing tests).
+Run: `npm test && npm run typecheck && npm run lint` Expected: all green (no behavior change for existing tests).
 
 - [ ] **Step 6: Commit**
 
@@ -1452,8 +1441,7 @@ Insert after the "Migrate from Calibre…" button, inside the same `<nav>`:
 
 - [ ] **Step 4: Verify**
 
-Run: `npm test && npm run typecheck && npm run lint`
-Expected: all green.
+Run: `npm test && npm run typecheck && npm run lint` Expected: all green.
 
 - [ ] **Step 5: Commit**
 
@@ -1532,8 +1520,7 @@ Check off the five implemented items in "Multi-machine (Section B…)" (`catalog
 
 - [ ] **Step 5: Final verification + commit**
 
-Run: `npm test && npm run typecheck && npm run lint`
-Expected: all green.
+Run: `npm test && npm run typecheck && npm run lint` Expected: all green.
 
 ```bash
 git add CLAUDE.md tasks.md CHANGELOG.md

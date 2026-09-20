@@ -15,8 +15,7 @@
 - Never blocks import flow
 - Per-conflict: side-by-side candidate comparison, click to choose
 - "Accept all from Source X" shortcut
-- Resolutions logged (`metadata_conflicts.chosen_source`) and fed back into
-  auto-resolution scoring on future hydrations
+- Resolutions logged (`metadata_conflicts.chosen_source`) and fed back into auto-resolution scoring on future hydrations
 
 ---
 
@@ -32,8 +31,7 @@
 ```
 
 - `series_index` is float (supports 0.5, 1.5 for novellas)
-- Display format: drop `.0` for whole numbers — use the shared
-  `seriesDisplay()` helper in `src/types/book.types.ts`
+- Display format: drop `.0` for whole numbers — use the shared `seriesDisplay()` helper in `src/types/book.types.ts`
 - `series_total` from Goodreads where available
 
 ---

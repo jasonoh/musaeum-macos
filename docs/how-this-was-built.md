@@ -6,14 +6,14 @@ I'm saying so up front because it is the point of this section. What's interesti
 
 ## Who decided what
 
-| I decided | The agent did |
-| --- | --- |
-| **The constraints.** The library lives on a flaky NAS and must survive it; beauty is a requirement, not a finish step. | Implementation across the Electron main process, the React renderer and the Python sidecar. |
-| **The design bets.** The canonical record is a per-book `metadata.json`; the database is a disposable local cache; devices are judged by content; reading position lives on three clocks. | Writing and maintaining the tests, the changelog and the invariant files. |
+| I decided                                                                                                                                                                                                   | The agent did                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **The constraints.** The library lives on a flaky NAS and must survive it; beauty is a requirement, not a finish step.                                                                                      | Implementation across the Electron main process, the React renderer and the Python sidecar.           |
+| **The design bets.** The canonical record is a per-book `metadata.json`; the database is a disposable local cache; devices are judged by content; reading position lives on three clocks.                   | Writing and maintaining the tests, the changelog and the invariant files.                             |
 | **Scope.** Multi-user and a web UI are rejected, not pending. A library-wide content index was rejected with its reversal condition recorded. OPDS is specified but conditional on a second reading device. | Mutation testing, and adversarial read-only review of changes before merge. **[Verify and fill in.]** |
-| **When the software asks a human.** Title, author and series conflicts go to a review queue with candidates side by side; publisher, date and language auto-resolve by source priority. | Drafting specs and plans. **[Fill in.]** |
-| **Acceptance.** Every slice was run against the real 7,000-book NAS library and a real Kindle, not just fixtures. | |
-| **The overrules.** Where the agent's default was wrong or the written spec was, I decided (examples below). | |
+| **When the software asks a human.** Title, author and series conflicts go to a review queue with candidates side by side; publisher, date and language auto-resolve by source priority.                     | Drafting specs and plans. **[Fill in.]**                                                              |
+| **Acceptance.** Every slice was run against the real 7,000-book NAS library and a real Kindle, not just fixtures.                                                                                           |                                                                                                       |
+| **The overrules.** Where the agent's default was wrong or the written spec was, I decided (examples below).                                                                                                 |                                                                                                       |
 
 ## The operating model
 

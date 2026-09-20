@@ -20,45 +20,19 @@ env -u ELECTRON_RUN_AS_NODE \
 ```
 
 Gotchas learned the hard way:
-- **`ELECTRON_RUN_AS_NODE=1` is inherited from the VS Code extension host** —
-  without `env -u` the app runs as plain node and dies on
-  `protocol.registerSchemesAsPrivileged`.
-- **`HOME=` overrides do NOT isolate the profile on macOS** — Electron
-  resolves userData via the account home (getpwuid), so the app silently
-  opens the REAL `~/Library/Application Support/Musaeum`. Use the
-  `MUSAEUM_USER_DATA` env hook (electron/main/index.ts) instead, and verify
-  isolation by checking a `-wal` file appears in the scratch profile.
-- The double `--` in `npm run dev -- -- --flag` is required: one for npm,
-  one for electron-vite's passthrough to Electron.
+- **`ELECTRON_RUN_AS_NODE=1` is inherited from the VS Code extension host** — without `env -u` the app runs as plain node and dies on `protocol.registerSchemesAsPrivileged`.
+- **`HOME=` overrides do NOT isolate the profile on macOS** — Electron resolves userData via the account home (getpwuid), so the app silently opens the REAL `~/Library/Application Support/Musaeum`. Use the `MUSAEUM_USER_DATA` env hook (electron/main/index.ts) instead, and verify isolation by checking a `-wal` file appears in the scratch profile.
+- The double `--` in `npm run dev -- -- --flag` is required: one for npm, one for electron-vite's passthrough to Electron.
 
 ## Driving the app
 
-- **Import pipeline:** copy a book file into `$SCRATCH/library/imports/` —
-  chokidar picks it up in ~2-5s; poll the scratch DB
-  (`sqlite3 "file:$PROFILE/musaeum.db?mode=ro" 'SELECT ... FROM books'`).
-- **IPC surface (what UI buttons call):** CDP on port 9222.
-  `curl http://127.0.0.1:9222/json` → page target ws URL; connect with
-  python `websocket-client` using **`suppress_origin=True`** (Chromium 403s
-  the default Origin header), then `Runtime.evaluate` with
-  `awaitPromise: true` on `window.Musaeum.<domain>.<method>(...)`.
-  `Page.captureScreenshot` gives evidence PNGs of the live window.
-- Fixture PDFs/Calibre libraries: build with the sidecar venv's `pypdf`
-  (PdfWriter + add_metadata) and a hand-built `metadata.db` (schema slice in
-  sidecar/tests/ or git history of the verify session).
-- Kill with `pkill -f "electron-vite dev"; pkill -f "node_modules/electron/dist/Electron.app"`.
-  A SIGTERM'd instance leaves the profile DB's WAL needing recovery — a
-  read-only open then fails; a normal `sqlite3` open recovers it.
+- **Import pipeline:** copy a book file into `$SCRATCH/library/imports/` — chokidar picks it up in ~2-5s; poll the scratch DB (`sqlite3 "file:$PROFILE/musaeum.db?mode=ro" 'SELECT ... FROM books'`).
+- **IPC surface (what UI buttons call):** CDP on port 9222. `curl http://127.0.0.1:9222/json` → page target ws URL; connect with python `websocket-client` using **`suppress_origin=True`** (Chromium 403s the default Origin header), then `Runtime.evaluate` with `awaitPromise: true` on `window.Musaeum.<domain>.<method>(...)`. `Page.captureScreenshot` gives evidence PNGs of the live window.
+- Fixture PDFs/Calibre libraries: build with the sidecar venv's `pypdf` (PdfWriter + add_metadata) and a hand-built `metadata.db` (schema slice in sidecar/tests/ or git history of the verify session).
+- Kill with `pkill -f "electron-vite dev"; pkill -f "node_modules/electron/dist/Electron.app"`. A SIGTERM'd instance leaves the profile DB's WAL needing recovery — a read-only open then fails; a normal `sqlite3` open recovers it.
 
 ## The stale-instance trap (fired twice, on two different sessions)
 
-**An Electron that survived `pkill` keeps port 9222, and CDP answers from it
-happily while running the OLD bundle** — so you verify a build you are not
-testing, and the page reports the change you just made as absent. The second
-occurrence showed the other face of it: the fresh `npm run dev` logged a
-`bind() failed` for 9222 and carried on without a debugger, so nothing in the
-app's own output said which instance CDP was talking to.
+**An Electron that survived `pkill` keeps port 9222, and CDP answers from it happily while running the OLD bundle** — so you verify a build you are not testing, and the page reports the change you just made as absent. The second occurrence showed the other face of it: the fresh `npm run dev` logged a `bind() failed` for 9222 and carried on without a debugger, so nothing in the app's own output said which instance CDP was talking to.
 
-Before trusting anything the page reports, confirm the pid listening on 9222 is
-your own run — `lsof -nP -iTCP:9222 -sTCP:LISTEN`, then compare its start time
-(`ps -o lstart= -p <pid>`) against your launch. A screenshot from the wrong
-instance is indistinguishable from a change that didn't work.
+Before trusting anything the page reports, confirm the pid listening on 9222 is your own run — `lsof -nP -iTCP:9222 -sTCP:LISTEN`, then compare its start time (`ps -o lstart= -p <pid>`) against your launch. A screenshot from the wrong instance is indistinguishable from a change that didn't work.

@@ -11,11 +11,7 @@
 
 ## Metadata Hydration Pipeline
 
-Triggered automatically on every book import. Non-blocking: the book is
-inserted into the library immediately after copy; hydration continues async
-(`importer.hydrate` is fire-and-forget from the import path — it *returns* what
-it did, and the explicit re-fetch described in `docs/invariants/refresh-feedback.md`
-is the one caller that waits for that value).
+Triggered automatically on every book import. Non-blocking: the book is inserted into the library immediately after copy; hydration continues async (`importer.hydrate` is fire-and-forget from the import path — it *returns* what it did, and the explicit re-fetch described in `docs/invariants/refresh-feedback.md` is the one caller that waits for that value).
 
 ```
 1. Extract embedded metadata (EPUB OPF, or PDF Info dict + page-1 render as
@@ -28,21 +24,14 @@ is the one caller that waits for that value).
 7. Write metadata.json to NAS + update SQLite cache
 ```
 
-**Identifier precedence (learned in testing):** identifiers baked into the
-file or seeded from Calibre are definitive and always override fetched ones —
-online fetches may match a different *edition* of the same work.
-(`sidecar/pipeline/hydration.py`)
+**Identifier precedence (learned in testing):** identifiers baked into the file or seeded from Calibre are definitive and always override fetched ones — online fetches may match a different *edition* of the same work. (`sidecar/pipeline/hydration.py`)
 
 **Conflict policy** (`sidecar/pipeline/conflict.py`):
-- `title`, `author`, `series` — best candidate applied immediately AND a
-  review conflict queued when sources disagree (book is never left blank)
-- `publisher`, `published_date`, `language` — auto-resolved by source
-  priority, never queued
+- `title`, `author`, `series` — best candidate applied immediately AND a review conflict queued when sources disagree (book is never left blank)
+- `publisher`, `published_date`, `language` — auto-resolved by source priority, never queued
 - `description` — longest candidate wins, never queued
-- `cover` — top-scored applied; a review conflict is queued when the top two
-  score within 15% (candidate values are image URLs)
-- Source priority: google_books > openlibrary/goodreads > calibre > embedded,
-  biased by the user's past resolutions (`db.getSourcePreferences()`)
+- `cover` — top-scored applied; a review conflict is queued when the top two score within 15% (candidate values are image URLs)
+- Source priority: google_books > openlibrary/goodreads > calibre > embedded, biased by the user's past resolutions (`db.getSourcePreferences()`)
 
 Cover scoring formula:
 ```
@@ -50,11 +39,6 @@ score = (resolution × 0.4) + (aspect_ratio × 0.3)
       + (source_priority × 0.2) + (file_size × 0.1)
 ```
 
-Google Books API key: read from the `GOOGLE_BOOKS_API_KEY` environment
-variable (optional for normal use; required before bulk migration). Secrets
-live in the Infisical project `musaeum`; inject them for dev/build by wrapping
-the command — `infisical run -- npm run dev`. A packaged `.app` can't use
-`infisical run`; the planned path is to move the key into `app_config` via
-Settings (see tasks.md → Packaging & distribution).
+Google Books API key: read from the `GOOGLE_BOOKS_API_KEY` environment variable (optional for normal use; required before bulk migration). Secrets live in the Infisical project `musaeum`; inject them for dev/build by wrapping the command — `infisical run -- npm run dev`. A packaged `.app` can't use `infisical run`; the planned path is to move the key into `app_config` via Settings (see tasks.md → Packaging & distribution).
 
 ---
