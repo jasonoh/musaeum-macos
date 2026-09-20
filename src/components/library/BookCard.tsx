@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import type { Book } from '@shared/book.types'
 import { orderedFormats, primaryFormat, seriesDisplay } from '@shared/book.types'
 import { modifiersFrom } from '@/lib/selection'
@@ -20,6 +20,42 @@ export const CARD_META_MARGIN = 8
 export function coverUrl(book: Book, size: 'thumb' | 'full'): string | null {
   const path = size === 'thumb' ? book.coverThumbPath : book.coverFullPath
   return path ? `musaeum://cover/${book.id}/${size}` : null
+}
+
+/**
+ * A cover, or the placeholder when there is nothing to show *or* nothing to
+ * serve it from.
+ *
+ * `coverUrl` answers from the path the row records, and those names are fixed
+ * (`cover_thumb.jpg`/`cover_full.jpg`) — so a book whose folder is gone still
+ * produces a URL, and Chromium paints its broken-image glyph where the cover
+ * belongs. That reads as a rendering bug rather than as a book whose files
+ * are missing, which is exactly how a half-finished delete presents itself.
+ * The failed URL is remembered by value rather than as a boolean: a re-fetch
+ * that supplies a new cover changes the URL, and the card retries by itself.
+ */
+export function BookCover({
+  book,
+  size,
+  large
+}: {
+  book: Book
+  size: 'thumb' | 'full'
+  large?: boolean
+}) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const url = coverUrl(book, size)
+  if (!url || url === failedUrl) return <CoverFallback book={book} large={large} />
+  return (
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      className="h-full w-full object-cover"
+      draggable={false}
+      onError={() => setFailedUrl(url)}
+    />
+  )
 }
 
 /** Serif placeholder for books whose covers haven't been hydrated yet. */
@@ -48,7 +84,6 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
   const requestDelete = useUIStore((s) => s.requestDelete)
   // Boolean selector again: only the card being refreshed re-renders
   const refreshing = useUIStore((s) => Boolean(s.refreshingBooks[book.id]))
-  const thumb = coverUrl(book, 'thumb')
   const onDevice = useDeviceStore((s) => bookOnDevices(s, book.id).length > 0)
   const format = primaryFormat(book)
   const extraFormats = book.formats.length - 1
@@ -81,17 +116,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
               : 'ring-1 ring-parchment/5 group-hover:ring-gold-500/40'
           }`}
         >
-          {thumb ? (
-            <img
-              src={thumb}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover"
-              draggable={false}
-            />
-          ) : (
-            <CoverFallback book={book} />
-          )}
+          <BookCover book={book} size="thumb" />
           {book.readStatus === 'read' && (
             <div className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-gold-400 shadow" />
           )}

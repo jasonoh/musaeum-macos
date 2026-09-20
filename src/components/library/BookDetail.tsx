@@ -6,7 +6,7 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { selectedBookId, useUIStore } from '@/stores/ui.store'
-import { CoverFallback, coverUrl } from './BookCard'
+import { BookCover } from './BookCard'
 import {
   CheckIcon,
   CloseIcon,
@@ -52,7 +52,6 @@ export function BookDetail() {
 
   const book = useMemo(() => books.find((b) => b.id === bookId) ?? null, [books, bookId])
   if (!book) return null
-  const full = coverUrl(book, 'full')
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(label)
@@ -82,11 +81,7 @@ export function BookDetail() {
 
       <div className="flex-1 overflow-y-auto px-5 py-5">
         <div className="mx-auto aspect-[2/3] w-44 overflow-hidden rounded-md shadow-cover ring-1 ring-parchment/5">
-          {full ? (
-            <img src={full} alt="" className="h-full w-full object-cover" draggable={false} />
-          ) : (
-            <CoverFallback book={book} large />
-          )}
+          <BookCover book={book} size="full" large />
         </div>
 
         <h2 className="mt-4 text-center font-display text-xl leading-snug text-parchment">

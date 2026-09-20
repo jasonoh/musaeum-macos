@@ -70,7 +70,17 @@ function registerMusaeumProtocol(): void {
 
     // Cover paths are stored relative to the book dir; reject traversal
     if (file.includes('..') || file.includes('/')) return new Response(null, { status: 400 })
-    return net.fetch(pathToFileURL(join(root, book.nasPath, file)).toString())
+    const full = join(root, book.nasPath, file)
+    try {
+      return await net.fetch(pathToFileURL(full).toString())
+    } catch {
+      // A cover whose file is gone — a folder deleted outside the app, or half
+      // of a failed delete — answers 404 rather than throwing out of the
+      // handler. The row keeps fixed cover names, so such a book still asks;
+      // the renderer's placeholder needs a *response* it can fail on, and a
+      // thrown handler says the same thing noisily.
+      return new Response(null, { status: 404 })
+    }
   })
 }
 
