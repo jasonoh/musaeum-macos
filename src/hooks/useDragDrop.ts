@@ -1,22 +1,16 @@
 import { useEffect } from 'react'
+import { isBookFile } from '@shared/book.types'
 import { useUIStore } from '@/stores/ui.store'
-
-const BOOK_EXTENSIONS = ['.epub', '.mobi', '.azw3', '.pdf']
-
-/**
- * Whether a dropped file is one the import pipeline accepts. Exported so the
- * list has a decider: PDF became a first-class format in Phase 1.5 and this
- * gate was the one place that kept the old three, which made a dropped PDF a
- * silent no-op (`if (!files.length) return` below, with nothing said).
- */
-export function isBookFile(name: string): boolean {
-  const lower = name.toLowerCase()
-  return BOOK_EXTENSIONS.some((ext) => lower.endsWith(ext))
-}
 
 /**
  * Window-level drag-and-drop import. Files dropped anywhere on the app are
  * resolved to paths in the preload and handed to the import pipeline.
+ *
+ * The gate is `isBookFile` from `@shared/book.types`, not a list of its own:
+ * this hook and the File picker (`import:fromDialog`) have to accept the same
+ * files, and the one time this list lived here alone it kept the old three
+ * formats after PDF went first-class — a dropped PDF was silently discarded,
+ * because a file the gate rejects never reaches main and so never fails.
  */
 export function useDragDrop(): void {
   const setDraggingFiles = useUIStore((s) => s.setDraggingFiles)

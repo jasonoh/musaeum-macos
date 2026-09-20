@@ -9,6 +9,7 @@ import type {
   ThemeTokens,
   ThemeView
 } from '@shared/theme.types'
+import { isBookFile } from '@shared/book.types'
 import { useThemeStore } from './theme.store'
 
 /**
@@ -393,13 +394,23 @@ describe('AC4.4 (renderer half) — a theme drop is not a book import', () => {
   const section = readFileSync(APPEARANCE, 'utf8')
 
   it('leaves the window handler’s book-extension filter alone', () => {
-    // The mutation this guards: add `.yaml`/`.itermcolors` here and a theme
-    // dropped on the library starts an import job on a file it cannot read.
+    // The mutation this guards: add `.yaml`/`.itermcolors` to the book-file
+    // list and a theme dropped on the library starts an import job on a file it
+    // cannot read.
     //
-    // The list itself is the import pipeline's formats, not this feature's —
-    // it gained `.pdf` in Phase 1.5, and pinning the old three made this case
-    // guard a bug. Kept as an exact match so the mutation stays caught.
-    expect(dragDrop).toMatch(/const BOOK_EXTENSIONS = \['\.epub', '\.mobi', '\.azw3', '\.pdf'\]/)
+    // The list is no longer in the drop handler — slice 3 of the library-IA
+    // design derived it from `BookFormat` as `BOOK_FILE_EXTENSIONS` in
+    // `@shared/book.types`, so the drop gate and the new file picker cannot
+    // disagree. The case is decided against that shared module, which is now
+    // where the mutation would be made; `.pdf` is asserted by name because
+    // omitting it is the drift that produced the defect (PDF became first-class
+    // in Phase 1.5 and this gate kept the old three).
+    expect(isBookFile('dune.pdf')).toBe(true)
+    for (const ext of ['yaml', 'yml', 'itermcolors', 'css']) {
+      expect(isBookFile(`theme.${ext}`), ext).toBe(false)
+    }
+    // And the handler must still name no theme extension at all, shared list or
+    // not: this is the file a dropped theme would reach first
     expect(dragDrop).not.toMatch(/itermcolors|\.yaml/)
   })
 

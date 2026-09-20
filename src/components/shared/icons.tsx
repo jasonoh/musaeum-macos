@@ -207,3 +207,11 @@ export const SortIcon = ({ className }: IconProps) => (
     <path d="M17 20V7M17 7l-3 3M17 7l3 3" />
   </svg>
 )
+
+/** Add. The on-ramp control's own glyph — a plus, not a folder or a down-arrow. */
+export const PlusIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+)

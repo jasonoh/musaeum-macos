@@ -46,6 +46,17 @@ function buildTemplate(): MenuItemConstructorOptions[] {
     ]
   }
 
+  const fileMenu: MenuItemConstructorOptions = {
+    label: 'File',
+    // One item, and no state: the affordance (toolbar's Add Books) owns the
+    // menu of what "add" means, and this is the ⌘O route to its first entry.
+    // Close/Quit are deliberately absent — macOS's conventional File contents
+    // are a separate decision, and owning them here is not a prerequisite for
+    // Add Books. Nothing in this submenu may read renderer state: the menu is
+    // built once and never rebuilt.
+    submenu: [{ label: 'Add Books…', accelerator: 'CmdOrCtrl+O', click: command('add-books') }]
+  }
+
   const editMenu: MenuItemConstructorOptions = {
     label: 'Edit',
     submenu: [
@@ -89,7 +100,7 @@ function buildTemplate(): MenuItemConstructorOptions[] {
     ]
   }
 
-  return [appMenu, editMenu, viewMenu, { role: 'windowMenu' }]
+  return [appMenu, fileMenu, editMenu, viewMenu, { role: 'windowMenu' }]
 }
 
 export function installApplicationMenu(): void {

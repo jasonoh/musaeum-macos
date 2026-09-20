@@ -1,5 +1,6 @@
 import { useUIStore } from '@/stores/ui.store'
 import { BookIcon } from '@/components/shared/icons'
+import { importBooksFromDialog } from '@/lib/add-books'
 import type { LibraryViewState } from '@/lib/library-emptiness'
 
 /**
@@ -39,12 +40,20 @@ export function EmptyLibrary({ state, query }: { state: LibraryViewState; query:
             already have.
           </p>
           <div className="mt-1 flex items-center gap-2">
-            {/* The same wizard the sidebar used to open, and the same one the
-                Add Books menu will open: it is not a first-run-only action,
-                since the PDF top-up inside it is meant to be run again later */}
+            {/* The same two doors, in the same order, as the Add Books menu —
+                one habit covers both surfaces. The picker leads because it is
+                the generic path; the wizard is the bigger commitment, and it is
+                not first-run-only: the PDF top-up inside it is meant to be run
+                again later. */}
+            <button
+              onClick={() => void importBooksFromDialog()}
+              className="rounded-md bg-gold-500 px-3 py-1.5 text-[13px] font-semibold text-ink-950 hover:bg-gold-400"
+            >
+              Import files…
+            </button>
             <button
               onClick={() => openModal('migration')}
-              className="rounded-md bg-gold-500 px-3 py-1.5 text-[13px] font-semibold text-ink-950 hover:bg-gold-400"
+              className="rounded-md border border-ink-600 px-3 py-1.5 text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment"
             >
               Migrate from Calibre…
             </button>
