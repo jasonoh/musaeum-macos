@@ -1,7 +1,18 @@
 import { useEffect } from 'react'
 import { useUIStore } from '@/stores/ui.store'
 
-const BOOK_EXTENSIONS = ['.epub', '.mobi', '.azw3']
+const BOOK_EXTENSIONS = ['.epub', '.mobi', '.azw3', '.pdf']
+
+/**
+ * Whether a dropped file is one the import pipeline accepts. Exported so the
+ * list has a decider: PDF became a first-class format in Phase 1.5 and this
+ * gate was the one place that kept the old three, which made a dropped PDF a
+ * silent no-op (`if (!files.length) return` below, with nothing said).
+ */
+export function isBookFile(name: string): boolean {
+  const lower = name.toLowerCase()
+  return BOOK_EXTENSIONS.some((ext) => lower.endsWith(ext))
+}
 
 /**
  * Window-level drag-and-drop import. Files dropped anywhere on the app are
@@ -28,9 +39,7 @@ export function useDragDrop(): void {
       e.preventDefault()
       depth = 0
       setDraggingFiles(false)
-      const files = [...(e.dataTransfer?.files ?? [])].filter((f) =>
-        BOOK_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext))
-      )
+      const files = [...(e.dataTransfer?.files ?? [])].filter((f) => isBookFile(f.name))
       if (!files.length) return
       const paths = files.map((f) => window.Musaeum.files.getPathForFile(f))
       // Progress arrives via the importProgress event stream

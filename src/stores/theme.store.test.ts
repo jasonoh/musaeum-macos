@@ -394,8 +394,13 @@ describe('AC4.4 (renderer half) — a theme drop is not a book import', () => {
 
   it('leaves the window handler’s book-extension filter alone', () => {
     // The mutation this guards: add `.yaml`/`.itermcolors` here and a theme
-    // dropped on the library starts an import job on a file it cannot read
-    expect(dragDrop).toMatch(/const BOOK_EXTENSIONS = \['\.epub', '\.mobi', '\.azw3'\]/)
+    // dropped on the library starts an import job on a file it cannot read.
+    //
+    // The list itself is the import pipeline's formats, not this feature's —
+    // it gained `.pdf` in Phase 1.5, and pinning the old three made this case
+    // guard a bug. Kept as an exact match so the mutation stays caught.
+    expect(dragDrop).toMatch(/const BOOK_EXTENSIONS = \['\.epub', '\.mobi', '\.azw3', '\.pdf'\]/)
+    expect(dragDrop).not.toMatch(/itermcolors|\.yaml/)
   })
 
   it('hands the section’s drop to the theme importer, never to `import.addFiles`', () => {
