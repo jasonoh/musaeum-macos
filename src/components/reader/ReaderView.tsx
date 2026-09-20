@@ -215,7 +215,23 @@ export function ReaderView() {
   return (
     <div className="fixed inset-0 z-[45] flex animate-fade-in flex-col bg-ink-950">
       <header
-        className="flex shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 pr-3"
+        // `app-drag` is declared here rather than inherited by accident: this
+        // header *is* the window's titlebar while a book is open, so the empty
+        // space among these controls must drag the window — and until this
+        // class was added that drag came from the *library's* two strips still
+        // sitting under the overlay, which is also what made every control
+        // here unclickable. **Draggable regions ignore pointer events**, and
+        // the browser process collects them from the whole document: an
+        // overlay does not subtract the regions of the chrome it covers
+        // (Electron docs, *Custom Window Interactions* — "a button element
+        // that overlaps a draggable region will not emit mouse clicks"). The
+        // library's strips span the top 52px of the window, so the four
+        // controls below had no mouse input at all — hover, click, nothing —
+        // while the keyboard, the DOM and every synthetic `element.click()`
+        // reported them perfectly healthy. Hence `app-no-drag` on each of them
+        // and on the typography button: the documented pairing for a custom
+        // title bar. Reasoning: `docs/invariants/reader.md`.
+        className="app-drag flex shrink-0 items-center gap-1 border-b border-ink-800 bg-ink-900 pr-3"
         // The strip's height is derived from the lights' line rather than chosen:
         // this header *is* the window's titlebar while a book is open, and its
         // controls have to sit level with the dots behind the spacer below
@@ -234,7 +250,7 @@ export function ReaderView() {
           onClick={closeReader}
           title="Close reader (Esc)"
           aria-label="Close reader"
-          className="rounded p-1.5 text-parchment-faint hover:bg-ink-800 hover:text-parchment"
+          className="app-no-drag rounded p-1.5 text-parchment-faint hover:bg-ink-800 hover:text-parchment"
         >
           <CloseIcon className="h-4 w-4" />
         </button>
@@ -243,7 +259,7 @@ export function ReaderView() {
           title="Table of contents"
           aria-label="Table of contents"
           aria-pressed={tocOpen}
-          className={`rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
+          className={`app-no-drag rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
             tocOpen ? 'text-gold-300' : 'text-parchment-faint'
           }`}
         >
@@ -254,7 +270,7 @@ export function ReaderView() {
           title="Find in this book (⌘F)"
           aria-label="Find in this book"
           aria-pressed={searchOpen}
-          className={`rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
+          className={`app-no-drag rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
             searchOpen ? 'text-gold-300' : 'text-parchment-faint'
           }`}
         >
@@ -265,7 +281,7 @@ export function ReaderView() {
           title="Ask about this book"
           aria-label="Ask about this book"
           aria-pressed={askOpen}
-          className={`rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
+          className={`app-no-drag rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
             askOpen ? 'text-gold-300' : 'text-parchment-faint'
           }`}
         >
@@ -286,7 +302,7 @@ export function ReaderView() {
           title="Typography"
           aria-label="Typography"
           aria-expanded={prefsOpen}
-          className={`rounded px-1.5 py-1 hover:bg-ink-800 hover:text-parchment ${
+          className={`app-no-drag rounded px-1.5 py-1 hover:bg-ink-800 hover:text-parchment ${
             prefsOpen ? 'text-gold-300' : 'text-parchment-faint'
           }`}
         >
