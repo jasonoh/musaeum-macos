@@ -399,6 +399,20 @@ export function findByIsbn13(isbn13: string): Book | null {
   return row ? rowToBook(row) : null
 }
 
+/**
+ * Another book holding this ISBN-13, or null. Excludes the asking book, which
+ * is not a duplicate of itself — the caller is the one that just settled the
+ * ISBN it is asking about.
+ *
+ * `idx_books_isbn13` covers this, so it is a seek on one value.
+ */
+export function findOtherByIsbn13(bookId: string, isbn13: string): Book | null {
+  const row = getDb()
+    .prepare('SELECT * FROM books WHERE isbn_13 = ? AND id <> ? LIMIT 1')
+    .get(isbn13, bookId) as BookRow | undefined
+  return row ? rowToBook(row) : null
+}
+
 /** Loose title+author duplicate check: normalized case/punctuation equality. */
 export function findByTitleAuthor(title: string, author: string | null): Book | null {
   const norm = (s: string) =>

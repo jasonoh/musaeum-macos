@@ -227,6 +227,95 @@ describe('hydrate — the outcome it reports', () => {
 })
 
 /**
+ * The collision the pre-copy gate cannot see. The gate reads the *file*, and a
+ * file is frequently silent about its own identity — the real import that
+ * produced two rows sharing ISBN 9781707274123 declared no identifiers at all
+ * — so the ISBN a fetch settles is often the first one that could ever match,
+ * and nothing used to look at it.
+ *
+ * Reported, never acted on: a shared ISBN is not proof of the same file (a
+ * listing can copy a real book's ISBN), so the pair is a person's to judge.
+ * See `docs/superpowers/specs/2026-09-20-post-hydration-duplicate-report-design.md`.
+ */
+describe('hydrate — the duplicate it reports', () => {
+  const ISBN = '9781707274123'
+  let root: string
+  let dir: string
+
+  beforeEach(async () => {
+    closeDb()
+    const userData = app.getPath('userData')
+    for (const f of ['musaeum.db', 'musaeum.db-wal', 'musaeum.db-shm']) {
+      rmSync(join(userData, f), { force: true })
+    }
+    librarySync.resetForTests()
+    root = mkdtempSync(join(tmpdir(), 'musaeum-dup-'))
+    await nas.setLibraryRoot(root)
+    await writeCatalog(root, [])
+    dir = join(root, 'books/a')
+    await fs.mkdir(dir, { recursive: true })
+    insertBook(makeBook('a'))
+  })
+
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    await librarySync.flushForTests()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('names the other book when the ISBN the run settled is already held', async () => {
+    insertBook({ ...makeBook('b', 'Summary of Fair Play'), isbn13: ISBN })
+    // The fetch is what supplies the identity: this file carried none
+    vi.mocked(sidecar.call).mockResolvedValue(reply({ identifiers: { isbn_13: ISBN } }))
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(outcome.ok && outcome.duplicate).toEqual({
+      existingBookId: 'b',
+      existingTitle: 'Summary of Fair Play',
+      existingAuthor: null,
+      matchType: 'isbn'
+    })
+    // Reported, nothing acted on: both rows are exactly as they were
+    expect(
+      getBooks()
+        .map((b) => b.id)
+        .sort()
+    ).toEqual(['a', 'b'])
+    expect(getBook('b')?.isbn13).toBe(ISBN)
+  })
+
+  it('reports nothing when the settled ISBN is new to the library', async () => {
+    vi.mocked(sidecar.call).mockResolvedValue(reply({ identifiers: { isbn_13: ISBN } }))
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(outcome.ok).toBe(true)
+    expect(outcome.ok && outcome.duplicate).toBeUndefined()
+  })
+
+  it('never reports the book as its own duplicate', async () => {
+    updateBook('a', { isbn13: ISBN })
+    vi.mocked(sidecar.call).mockResolvedValue(reply({ identifiers: { isbn_13: ISBN } }))
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(outcome.ok && outcome.duplicate).toBeUndefined()
+  })
+
+  it('says nothing when the pre-copy gate already named this collision', async () => {
+    insertBook({ ...makeBook('b', 'Summary of Fair Play'), isbn13: ISBN })
+    vi.mocked(sidecar.call).mockResolvedValue(reply({ identifiers: { isbn_13: ISBN } }))
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir, undefined, {
+      gateReported: true
+    })
+
+    expect(outcome.ok && outcome.duplicate).toBeUndefined()
+  })
+})
+
+/**
  * The duplicate GATE (`docs/invariants/files-and-deletion.md` → "Duplicate
  * Detection"). An ISBN-13 match, else a normalized title+author match, pauses
  * `importOne` between the extract and the copy and waits for a decision keyed
@@ -396,6 +485,32 @@ describe('the import duplicate gate', () => {
       expect(progress.map((p) => p.step)).not.toContain('awaiting_dedup_decision')
       expect(getBooks()).toHaveLength(2)
       await settleHydration()
+    })
+
+    it('does not repeat a collision the gate already named (D5)', async () => {
+      const ISBN = '9781707274123'
+      await seed({ ...makeBook('existing', 'Fair Play'), isbn13: ISBN })
+      // The file carries the ISBN the library already holds, so the gate fires
+      // — and the hydration that follows settles the same one
+      vi.mocked(sidecar.isAvailable).mockReturnValue(true)
+      vi.mocked(sidecar.call).mockImplementation(((method: string) =>
+        Promise.resolve(
+          method === 'hydrate_metadata'
+            ? reply({ title: 'Fair Play', identifiers: { isbn_13: ISBN } })
+            : { identifiers: { isbn_13: ISBN } }
+        )) as typeof sidecar.call)
+
+      const { settled, jobId } = await startImport('Fair Play.epub')
+      resolveDuplicate(jobId, { action: 'add_new' })
+      await settled
+      await settleHydration()
+
+      // The gate's context dies with the decision it carried...
+      expect(progress.find((p) => p.step === 'copying')?.duplicate).toBeUndefined()
+      // ...so the finished card cannot present it as a post-hydration finding,
+      // and the check itself stays quiet for the run the gate already covered
+      expect(progress.filter((p) => p.step === 'done').at(-1)?.duplicate).toBeUndefined()
+      expect(getBooks()).toHaveLength(2)
     })
   })
 

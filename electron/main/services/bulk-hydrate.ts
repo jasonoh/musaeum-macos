@@ -83,6 +83,7 @@ async function run(ids: string[]): Promise<void> {
     failed: 0,
     skipped: 0,
     updated: 0,
+    duplicates: 0,
     running: true
   }
   broadcast('bulkHydrateProgress', { ...progress })
@@ -118,6 +119,9 @@ async function run(ids: string[]): Promise<void> {
             if (outcome.ok) {
               hydrated++
               if (outcome.changed.length > 0) progress.updated++
+              // Reported, never acted on — and counted here because this job's
+              // only report is a count of everything else it saw
+              if (outcome.duplicate) progress.duplicates++
             } else {
               progress.failed++
               progress.lastError = outcome.error

@@ -214,6 +214,33 @@ describe('bulk hydrate reporting', () => {
     return sent[sent.length - 1]
   }
 
+  it('counts the duplicates a run found, without touching either book', async () => {
+    await seed('a')
+    await seed('b')
+    vi.mocked(importer.hydrate).mockImplementation(async (id) =>
+      id === 'b'
+        ? {
+            ok: true,
+            changed: [],
+            conflicts: 0,
+            duplicate: {
+              existingBookId: 'a',
+              existingTitle: 'Book a',
+              existingAuthor: null,
+              matchType: 'isbn'
+            }
+          }
+        : { ok: true, changed: [], conflicts: 0 }
+    )
+    const spy = vi.spyOn(events, 'broadcast')
+
+    startBulkHydrate(['a', 'b'])
+    await flushForTests()
+
+    // A count, not a list: this job's report is a count of everything else too
+    expect(lastProgress(spy)).toMatchObject({ completed: 2, duplicates: 1 })
+  })
+
   it('counts a failed hydration as failed, with its reason', async () => {
     await seed('a')
     await seed('b')

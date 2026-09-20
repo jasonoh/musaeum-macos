@@ -6,6 +6,7 @@ import { makeBook } from '../../../test/helpers/book'
 import {
   closeDb,
   deleteBook,
+  findOtherByIsbn13,
   getBook,
   getBooks,
   getDb,
@@ -166,6 +167,24 @@ describe('deleteBook', () => {
 
     expect(() => deleteBook('b')).not.toThrow()
     expect(getUnresolvedConflictCount()).toBe(0)
+  })
+})
+
+describe('findOtherByIsbn13', () => {
+  it('finds the other book holding the ISBN, never the asking one', () => {
+    insertBook({ ...makeBook('a', 'Fair Play'), isbn13: '9781707274123' })
+    insertBook({ ...makeBook('b', 'Summary of Fair Play'), isbn13: '9781707274123' })
+
+    expect(findOtherByIsbn13('a', '9781707274123')?.id).toBe('b')
+    expect(findOtherByIsbn13('b', '9781707274123')?.id).toBe('a')
+  })
+
+  it('returns null when no other book holds it', () => {
+    insertBook({ ...makeBook('a', 'Fair Play'), isbn13: '9781707274123' })
+
+    expect(findOtherByIsbn13('a', '9781707274123')).toBeNull()
+    expect(findOtherByIsbn13('a', '9780547928227')).toBeNull()
+    expect(findOtherByIsbn13('missing', '9781707274123')?.id).toBe('a')
   })
 })
 

@@ -197,7 +197,10 @@ async function importOne(filePath: string): Promise<ImportResult> {
     }
 
     // 3. Copy into books/{uuid}/ on the NAS
-    emit(job, 'copying')
+    // The gate's context dies with the decision: once the file lands, the
+    // question it carried has been answered, and `duplicate` means one thing
+    // from here on — a collision hydration found (`duplicateFor`).
+    emit(job, 'copying', { duplicate: undefined })
     const bookId = randomUUID()
     const bookDir = join(libraryRoot, 'books', bookId)
     await fs.mkdir(bookDir, { recursive: true })
@@ -242,7 +245,7 @@ async function importOne(filePath: string): Promise<ImportResult> {
     librarySync.upsertCatalog([book])
 
     emit(job, 'hydrating', { bookId })
-    void hydrate(bookId, targetFile, bookDir, job)
+    void hydrate(bookId, targetFile, bookDir, job, { gateReported: Boolean(matchType) })
 
     return { jobId, fileName, success: true, bookId }
   } catch (err) {
@@ -272,7 +275,15 @@ export async function hydrate(
    * it is the canonical store and lives in the book's own folder, which is
    * exactly what catalog.json is not.
    */
-  options: { batched?: boolean } = {}
+  options: {
+    batched?: boolean
+    /**
+     * The pre-copy gate already named this collision and the user answered it
+     * (D5 of the duplicate-report design): the same pair is not reported twice
+     * seconds apart, once with buttons and once without.
+     */
+    gateReported?: boolean
+  } = {}
 ): Promise<HydrateOutcome> {
   const book = db.getBook(bookId)
   if (!book) return { ok: false, error: 'Book not found' }
@@ -302,6 +313,11 @@ export async function hydrate(
     if (job) emit(job, 'cover')
     const changed = applyHydration(bookId, result)
 
+    // The identity a *fetch* settles is one the pre-copy gate could never see:
+    // the gate reads the file, and a file is frequently silent about its own
+    // ISBN. Checked here, once, on the row that now exists.
+    const duplicate = options.gateReported ? null : duplicateFor(bookId)
+
     const updated = db.getBook(bookId)
     if (updated) {
       await writeMetadataJson(bookDir, updated, result.metadata.metadata_sources)
@@ -316,13 +332,49 @@ export async function hydrate(
       broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
     }
     if (!options.batched) broadcast('libraryChanged')
-    if (job) emit(job, 'done')
-    return { ok: true, changed, conflicts: result.conflicts.length }
+    if (job) emit(job, 'done', duplicate ? { duplicate } : undefined)
+    return {
+      ok: true,
+      changed,
+      conflicts: result.conflicts.length,
+      duplicate: duplicate ?? undefined
+    }
   } catch (err) {
     // Hydration failure is non-fatal — the book stays with embedded metadata
     console.error(`[import] hydration failed for ${bookId}:`, err)
     if (job) emit(job, 'done')
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
+ * The other book in the library carrying the ISBN this row now holds, or null.
+ *
+ * The pre-copy gate reads the *file*, which is often silent about its own
+ * identity — this EPUB declares no identifiers at all — so the ISBN a fetch
+ * settles is frequently the first one that could ever match, and nothing used
+ * to look at it. Reported, never acted on: a shared ISBN is not proof of the
+ * same file (a listing can copy a real book's ISBN), so the pair is a person's
+ * to judge.
+ *
+ * Best-effort by construction: a lookup that fails must never fail a
+ * hydration, which is non-fatal by design.
+ */
+function duplicateFor(bookId: string): DuplicateContext | null {
+  try {
+    const book = db.getBook(bookId)
+    if (!book?.isbn13) return null
+    const other = db.findOtherByIsbn13(bookId, book.isbn13)
+    if (!other) return null
+    return {
+      existingBookId: other.id,
+      existingTitle: other.title,
+      existingAuthor: other.author,
+      matchType: 'isbn'
+    }
+  } catch (err) {
+    console.error(`[import] duplicate check failed for ${bookId}:`, err)
+    return null
   }
 }
 

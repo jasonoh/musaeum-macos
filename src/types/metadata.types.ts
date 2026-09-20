@@ -1,3 +1,5 @@
+import type { DuplicateContext } from './book.types'
+
 export type MetadataSource = 'embedded' | 'calibre' | 'google_books' | 'openlibrary' | 'goodreads'
 
 export interface ConflictCandidate {
@@ -65,6 +67,13 @@ export type HydrateOutcome =
       changed: HydratedField[]
       /** Review conflicts queued by this run. */
       conflicts: number
+      /**
+       * Another book already carries the ISBN this run settled. Reported,
+       * never acted on: a shared ISBN is not proof of the same file, so the
+       * pair is a person's to judge. Absent when there is no collision, and
+       * when the pre-copy gate already named this one for this import.
+       */
+      duplicate?: DuplicateContext
     }
   | { ok: false; error: string }
 
@@ -78,6 +87,12 @@ export interface BulkHydrateProgress {
   skipped: number
   /** Books whose metadata actually changed — the rest were already current. */
   updated: number
+  /**
+   * Books whose settled ISBN already existed elsewhere in the library. A
+   * count, not a list: the job's report is a count of everything else too, and
+   * naming them needs storage this feature deliberately does not add.
+   */
+  duplicates: number
   /** Why the loop ended before the last book, when it did. */
   stopped?: 'cancelled' | 'offline'
   /** Last failure's message — one line, so the summary can say why. */
