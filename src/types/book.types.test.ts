@@ -1,6 +1,89 @@
 import { describe, expect, it } from 'vitest'
 import { makeBook } from '../../test/helpers/book'
-import { readableFormat, seriesDisplay, sortableAuthor, sortableTitle, primaryFormat, orderedFormats } from './book.types'
+import {
+  BOOK_FILE_EXTENSIONS,
+  bookFileFilter,
+  isBookFile,
+  primaryFormat,
+  orderedFormats,
+  readableFormat,
+  seriesDisplay,
+  sortableAuthor,
+  sortableTitle
+} from './book.types'
+
+/**
+ * The one declaration of "what is a book file" the on-ramps share.
+ *
+ * Both consumers are derived from `BOOK_FILE_EXTENSIONS` rather than each
+ * holding a copy: the drag-drop gate (`useDragDrop`) and the native picker's
+ * filter (`import:fromDialog`). The defect that produced it was a second
+ * declaration — the drop gate kept `.epub`/`.mobi`/`.azw3` after Phase 1.5 made
+ * PDF first-class, so a dropped PDF was silently discarded.
+ */
+describe('isBookFile — the drop gate and the picker', () => {
+  it('accepts every format the import pipeline supports', () => {
+    for (const [format, ext] of Object.entries(BOOK_FILE_EXTENSIONS)) {
+      expect(isBookFile(`dune${ext}`), format).toBe(true)
+    }
+    // AC18, named rather than implied: this is the extension the gate was
+    // missing when it owned a list of its own
+    expect(isBookFile('dune.pdf')).toBe(true)
+  })
+
+  it('matches regardless of case, since Finder hands over the on-disk name', () => {
+    expect(isBookFile('Dune.PDF')).toBe(true)
+    expect(isBookFile('Dune.EPUB')).toBe(true)
+  })
+
+  it('rejects anything else, including a near-miss suffix', () => {
+    for (const name of ['cover.jpg', 'notes.txt', 'dune.pdf.part', 'epub', 'dune.epub.part']) {
+      expect(isBookFile(name), name).toBe(false)
+    }
+  })
+
+  it('derives one extension per BookFormat, with the dot', () => {
+    const entries = Object.entries(BOOK_FILE_EXTENSIONS)
+    // A `BookFormat` added without a mapping reddens `npm run typecheck` — the
+    // map is a `Record<BookFormat, string>`, and a union has no runtime members
+    // to enumerate, so that is the only place an omission can be caught. What is
+    // decidable here is that no entry is a placeholder or a duplicate.
+    for (const [format, ext] of entries) {
+      expect(ext, format).toBe(`.${format}`)
+    }
+    expect(new Set(entries.map(([, ext]) => ext)).size).toBe(entries.length)
+  })
+})
+
+describe('bookFileFilter — the picker offers the same list', () => {
+  it('covers every extension in the map, without the dots Electron takes', () => {
+    // Derived by iterating the map rather than restating it, so a sixth format
+    // lands in the picker on its own. The mutation this pins is a hand-written
+    // filter array in the IPC handler.
+    expect(bookFileFilter().extensions).toEqual(
+      Object.values(BOOK_FILE_EXTENSIONS).map((ext) => ext.slice(1))
+    )
+  })
+
+  it('offers .pdf and nothing a book importer cannot read', () => {
+    const { extensions } = bookFileFilter()
+    expect(extensions).toContain('pdf')
+    // The theme drop-box's extensions are the near-miss worth naming: a theme
+    // file must never be pickable as a book (theming design, AC4.4)
+    for (const ext of ['yaml', 'yml', 'itermcolors', 'css']) {
+      expect(extensions, ext).not.toContain(ext)
+    }
+  })
+
+  it('hands Electron bare, non-empty extensions', () => {
+    // Electron matches on the extension without its dot; a dotted entry is
+    // silently never offered, which is the failure that looks like success
+    for (const ext of bookFileFilter().extensions) {
+      expect(ext.startsWith('.'), ext).toBe(false)
+      expect(ext.length, ext).toBeGreaterThan(0)
+    }
+  })
+})
 
 describe('seriesDisplay', () => {
   it('drops the trailing .0 on whole-number indices', () => {
@@ -107,10 +190,7 @@ describe('orderedFormats', () => {
   })
 
   it('keeps a format the order does not know, after the ones it does', () => {
-    expect(orderedFormats({ ...makeBook('a'), formats: ['pdf', 'epub'] })).toEqual([
-      'epub',
-      'pdf'
-    ])
+    expect(orderedFormats({ ...makeBook('a'), formats: ['pdf', 'epub'] })).toEqual(['epub', 'pdf'])
   })
 
   it('is empty for a book with no files', () => {

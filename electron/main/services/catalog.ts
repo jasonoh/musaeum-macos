@@ -52,9 +52,7 @@ function withSortKeys(book: Book): Book {
  * or written by a different version.
  */
 type UntrustedReadingState =
-  | { position?: unknown; percent?: unknown; updatedAt?: unknown }
-  | null
-  | undefined
+  { position?: unknown; percent?: unknown; updatedAt?: unknown } | null | undefined
 
 /**
  * The one validator for reading state off disk, used by both read paths: a
@@ -63,9 +61,10 @@ type UntrustedReadingState =
  */
 function validateReadingState(raw: UntrustedReadingState): ReadingState | null {
   if (!raw || typeof raw !== 'object') return null
-  const percent = typeof raw.percent === 'number' && Number.isFinite(raw.percent)
-    ? Math.min(1, Math.max(0, raw.percent))
-    : 0
+  const percent =
+    typeof raw.percent === 'number' && Number.isFinite(raw.percent)
+      ? Math.min(1, Math.max(0, raw.percent))
+      : 0
   return {
     position: typeof raw.position === 'string' ? raw.position : null,
     percent,
@@ -302,7 +301,9 @@ export async function metadataJsonToBook(
     dateAdded: json.date_added ?? null,
     lastModified: json.last_modified ?? null,
     fileSizeBytes,
-    readStatus: (READ_STATUSES.has(json.read_status ?? '') ? json.read_status : 'unread') as ReadStatus,
+    readStatus: (READ_STATUSES.has(json.read_status ?? '')
+      ? json.read_status
+      : 'unread') as ReadStatus,
     nasPath: join('books', dirName),
     readingState: toReadingState(json.reading_state)
   }
@@ -315,12 +316,22 @@ export interface RebuildProgress {
 
 /**
  * Recovery path: walk every books/<uuid>/metadata.json and rewrite the catalog.
- * Slow over SMB (minutes at library scale) — only run on user request or
- * when no catalog exists.
+ * Slow over SMB (minutes at library scale — measured at 1,281 s / 21.4 min for
+ * 7,101 folders) — only run on user request or when no catalog exists.
+ *
+ * `isCancelled` is polled once per folder, which is where the walk's whole cost
+ * is. On cancel this returns `[]` **without writing the catalog**: the single
+ * write is `replaceCatalog` at the end, so abandoning costs nothing on disk.
+ * That makes `[]` ambiguous between "cancelled" and "a library with no books",
+ * and the caller must resolve it from its own flag — `isCancelled` is the
+ * caller's own predicate, and `library-sync.rebuildCatalog` checks it with no
+ * await in between. Anything that ever writes mid-walk must move this
+ * guarantee (and that check) with it.
  */
 export async function rebuildFromBookDirs(
   root: string,
-  onProgress?: (p: RebuildProgress) => void
+  onProgress?: (p: RebuildProgress) => void,
+  isCancelled?: () => boolean
 ): Promise<Book[]> {
   let entries: Dirent[]
   try {
@@ -333,6 +344,7 @@ export async function rebuildFromBookDirs(
   const byId = new Map<string, Book>()
   let completed = 0
   for (const dir of dirs) {
+    if (isCancelled?.()) break
     const bookDir = join(root, 'books', dir.name)
     try {
       const raw = await fs.readFile(join(bookDir, 'metadata.json'), 'utf8')
@@ -350,6 +362,10 @@ export async function rebuildFromBookDirs(
     completed++
     onProgress?.({ completed, total: dirs.length })
   }
+  // Re-read after the loop as well as inside it: a cancel that arrives while the
+  // last folder is being read is still a cancel, and writing the catalog then
+  // would be the one outcome the user asked not to have.
+  if (isCancelled?.()) return []
   const books = [...byId.values()]
   await replaceCatalog(root, books)
   return books

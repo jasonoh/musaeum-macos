@@ -4,6 +4,7 @@ import type {
   BookFilters,
   BookFormat,
   BookSort,
+  CatalogSyncOutcome,
   DuplicateDecision,
   ImportProgress,
   ImportResult,
@@ -47,6 +48,11 @@ export type Unsubscribe = () => void
  */
 export type MenuCommand =
   | 'open-settings'
+  /**
+   * File ▸ Add Books… (⌘O). The menu owns the chord; the renderer runs the same
+   * picker the toolbar's Add Books menu opens as its first item.
+   */
+  | 'add-books'
   | 'view-grid'
   | 'view-list'
   | 'select-all'
@@ -86,14 +92,26 @@ export interface MusaeumAPI {
      */
     deleteFormats(id: string, formats: BookFormat[]): Promise<{ bookDeleted: boolean }>
     getFacets(): Promise<LibraryFacets>
-    /** Re-read catalog.json into the local cache; rebuilds when missing. */
-    refreshLibrary(): Promise<{ books: number }>
+    /**
+     * Re-read catalog.json into the local cache. Falls back to a full rebuild
+     * when the catalog can't be read — the same call, minutes instead of
+     * seconds, which is what `cancelled` and the Settings copy both disclose.
+     */
+    refreshLibrary(): Promise<CatalogSyncOutcome>
     /** Recovery: walk books/&#42;/metadata.json, rewrite catalog.json, reload. */
-    rebuildCatalog(): Promise<{ books: number }>
+    rebuildCatalog(): Promise<CatalogSyncOutcome>
+    /** Stop a running rebuild; nothing is written. A no-op when none is running. */
+    cancelRefresh(): Promise<void>
   }
 
   import: {
     addFiles(filePaths: string[]): Promise<ImportResult[]>
+    /**
+     * Native multi-select picker for book files. Empty when the dialog is
+     * cancelled — an empty list is already the no-op the caller wants, so
+     * "cancelled" needs no second representation.
+     */
+    fromDialog(): Promise<string[]>
     getImportProgress(jobId: string): Promise<ImportProgress | null>
     resolveDuplicate(jobId: string, decision: DuplicateDecision): Promise<void>
   }

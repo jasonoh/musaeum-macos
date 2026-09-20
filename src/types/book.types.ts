@@ -1,5 +1,55 @@
 export type BookFormat = 'epub' | 'mobi' | 'azw3' | 'pdf'
 
+/**
+ * The on-disk extension for each format, with its dot. The one declaration of
+ * "what is a book file" the on-ramps share: the drag-drop gate and the native
+ * picker's filter are both derived from this map, so they cannot disagree.
+ *
+ * The `Record<BookFormat, …>` is load-bearing — a sixth format without an
+ * extension is a `npm run typecheck` failure, which is the only place a new
+ * union member can be caught before it leaves an on-ramp behind. Five other
+ * declarations of this fact still exist in the main process
+ * (`services/importer.ts`, `services/book-files.ts`, `ipc/migration.ts`,
+ * `services/file-watcher.ts`, `sidecar/pipeline/migrate.py`); they are
+ * deliberately not folded in here, and each one still has to be updated by
+ * hand when a format is added.
+ */
+export const BOOK_FILE_EXTENSIONS: Record<BookFormat, string> = {
+  epub: '.epub',
+  mobi: '.mobi',
+  azw3: '.azw3',
+  pdf: '.pdf'
+}
+
+/**
+ * Whether a filename is one the import pipeline accepts. Case-insensitive
+ * because Finder hands over the on-disk name, and a suffix match rather than a
+ * `split('.')` so a name with no extension at all ("epub") is rejected.
+ *
+ * Exported (rather than left in the drop handler) because a file either on-ramp
+ * rejects never reaches main — a missing extension there is a silent no-op, not
+ * a failed import — and PDF became first-class in Phase 1.5 with the drop gate
+ * left behind on the old three formats.
+ */
+export function isBookFile(name: string): boolean {
+  const lower = name.toLowerCase()
+  return Object.values(BOOK_FILE_EXTENSIONS).some((ext) => lower.endsWith(ext))
+}
+
+/**
+ * `dialog.showOpenDialog`'s filter for the book-file picker, derived from the
+ * same map. Electron takes extensions without their dots, so the derivation
+ * lives here beside the list rather than at the call site: a hand-written
+ * filter array in the handler would be the sixth declaration of this fact, and
+ * the one a new format is most likely to miss.
+ */
+export function bookFileFilter(): { name: string; extensions: string[] } {
+  return {
+    name: 'Book files',
+    extensions: Object.values(BOOK_FILE_EXTENSIONS).map((ext) => ext.replace(/^\./, ''))
+  }
+}
+
 export type ReadStatus = 'unread' | 'reading' | 'read'
 
 /**
@@ -26,6 +76,36 @@ export interface ProgressReport {
   position: string | null
   percent: number
   final: boolean
+}
+
+/**
+ * What a manual Refresh or Rebuild reports back. Both return the same *shape*
+ * because either can become the other: `library-sync.refreshLibrary` walks and
+ * rebuilds when the catalog is missing, so a caller cannot tell which ran
+ * without being told. `cancelled` is true only for a rebuild the user stopped,
+ * and in that case nothing was written.
+ */
+export interface CatalogSyncOutcome {
+  books: number
+  cancelled: boolean
+}
+
+/**
+ * The refresh-or-rebuild the status bar is showing. One shape for the whole
+ * lifecycle — a live counter, then a settled line — because the job outlives
+ * both the Settings dialog that triggers it and the sidebar row that used to
+ * carry its progress. `outcome` settles in place rather than the line simply
+ * disappearing, which is the failure `docs/invariants/refresh-feedback.md`
+ * records for a job that stops reporting at the moment it matters.
+ */
+export interface CatalogSyncState {
+  kind: 'refresh' | 'rebuild'
+  completed: number
+  /** Null until the walk's first progress event reports the folder count. */
+  total: number | null
+  outcome: 'running' | 'done' | 'cancelled' | 'failed'
+  /** Books the settled run produced; null while running, and when cancelled. */
+  books: number | null
 }
 
 export interface Book {
@@ -109,13 +189,7 @@ export function primaryFormat(book: Book): BookFormat | null {
   return orderedFormats(book)[0] ?? null
 }
 
-export type SortField =
-  | 'title'
-  | 'author'
-  | 'series'
-  | 'date_added'
-  | 'rating'
-  | 'read_status'
+export type SortField = 'title' | 'author' | 'series' | 'date_added' | 'rating' | 'read_status'
 
 export interface BookSort {
   field: SortField
@@ -247,8 +321,27 @@ export function sortableTitle(title: string): string {
 
 /** Name particles that belong to the surname: "Ursula K. Le Guin" → "Le Guin, Ursula K." */
 const NAME_PARTICLES = new Set([
-  'af', 'bin', 'da', 'de', 'del', 'della', 'der', 'di', 'do', 'dos', 'du',
-  'la', 'le', 'san', 'st', 'st.', 'ten', 'ter', 'van', 'von', 'zu'
+  'af',
+  'bin',
+  'da',
+  'de',
+  'del',
+  'della',
+  'der',
+  'di',
+  'do',
+  'dos',
+  'du',
+  'la',
+  'le',
+  'san',
+  'st',
+  'st.',
+  'ten',
+  'ter',
+  'van',
+  'von',
+  'zu'
 ])
 
 /** Generational suffixes, kept with the surname so "King Jr." still sorts under K. */

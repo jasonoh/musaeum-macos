@@ -28,10 +28,12 @@ const api: MusaeumAPI = {
     deleteFormats: (id, formats) => invoke('library:deleteFormats', id, formats),
     getFacets: () => invoke('library:getFacets'),
     refreshLibrary: () => invoke('library:refreshLibrary'),
-    rebuildCatalog: () => invoke('library:rebuildCatalog')
+    rebuildCatalog: () => invoke('library:rebuildCatalog'),
+    cancelRefresh: () => invoke('library:cancelRefresh')
   },
   import: {
     addFiles: (filePaths) => invoke('import:addFiles', filePaths),
+    fromDialog: () => invoke('import:fromDialog'),
     getImportProgress: (jobId) => invoke('import:getImportProgress', jobId),
     resolveDuplicate: (jobId, decision) => invoke('import:resolveDuplicate', jobId, decision)
   },

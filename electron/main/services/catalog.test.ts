@@ -87,7 +87,12 @@ describe('readCatalogDetailed', () => {
     // A catalog written before sort keys were derived — adopting it as-is
     // would sort the book under "Seth" and undo the cache backfill
     await writeCatalog(root, [
-      { ...makeBook('a', 'The Traitor Baru Cormorant'), author: 'Seth Dickinson', sortTitle: null, authorSort: null }
+      {
+        ...makeBook('a', 'The Traitor Baru Cormorant'),
+        author: 'Seth Dickinson',
+        sortTitle: null,
+        authorSort: null
+      }
     ])
     const result = await readCatalogDetailed(root)
     expect(result.state).toBe('ok')
@@ -99,7 +104,12 @@ describe('readCatalogDetailed', () => {
 
   it('keeps sort keys the catalog already carries', async () => {
     await writeCatalog(root, [
-      { ...makeBook('a', 'The Hobbit'), author: 'J.R.R. Tolkien', sortTitle: 'Hobbit', authorSort: 'Tolkien' }
+      {
+        ...makeBook('a', 'The Hobbit'),
+        author: 'J.R.R. Tolkien',
+        sortTitle: 'Hobbit',
+        authorSort: 'Tolkien'
+      }
     ])
     const result = await readCatalogDetailed(root)
     if (result.state === 'ok') {
@@ -137,7 +147,11 @@ describe('readCatalogDetailed', () => {
 
   it('passes a well-formed reading state through untouched', async () => {
     const book = makeBook('rs-cat-ok')
-    book.readingState = { position: 'epubcfi(/6/4)', percent: 0.42, updatedAt: '2026-08-13T10:00:00Z' }
+    book.readingState = {
+      position: 'epubcfi(/6/4)',
+      percent: 0.42,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     await writeCatalog(root, [book])
     const result = await readCatalogDetailed(root)
     if (result.state === 'ok') {
@@ -240,7 +254,12 @@ describe('updateFieldsInCatalog', () => {
 
   it('inserts the whole record when the catalog has no entry for the book', async () => {
     await writeCatalog(root, [])
-    await updateFieldsInCatalog(root, [makeBook('new', 'Never Catalogued')], ['readingState'], () => [])
+    await updateFieldsInCatalog(
+      root,
+      [makeBook('new', 'Never Catalogued')],
+      ['readingState'],
+      () => []
+    )
     const cat = await readCatalog(root)
     expect(cat?.books.map((b) => b.id)).toEqual(['new'])
     expect(cat?.books[0].title).toBe('Never Catalogued')
@@ -326,7 +345,11 @@ describe('metadataJsonToBook', () => {
     const dir = await writeBookDir('uuid-1', makeMetadataJson('uuid-1', 'Leviathan Wakes'))
     await fs.writeFile(join(dir, 'Leviathan Wakes.epub'), 'x'.repeat(100))
     await fs.writeFile(join(dir, 'Leviathan Wakes.pdf'), 'y'.repeat(50))
-    const book = await metadataJsonToBook(makeMetadataJson('uuid-1', 'Leviathan Wakes'), 'uuid-1', dir)
+    const book = await metadataJsonToBook(
+      makeMetadataJson('uuid-1', 'Leviathan Wakes'),
+      'uuid-1',
+      dir
+    )
     expect(book).toMatchObject({
       id: 'uuid-1',
       title: 'Leviathan Wakes',
@@ -393,6 +416,65 @@ describe('rebuildFromBookDirs', () => {
     const cat = await readCatalog(root)
     expect(cat?.books.length).toBe(1)
   })
+
+  // The cancel contract, in two halves: the loop's own check, and the one after
+  // it that catches a cancel arriving while the final folder is being read. The
+  // guarantee both rest on is that `replaceCatalog` is the walk's *only* write —
+  // which is why a full library can be abandoned after 20 minutes at no cost
+  // (measured: 1,281 s for 7,101 folders over SMB).
+  it('returns nothing and writes nothing when cancelled mid-walk', async () => {
+    await writeBookDir('uuid-1', makeMetadataJson('uuid-1'))
+    await writeBookDir('uuid-2', makeMetadataJson('uuid-2'))
+    await writeBookDir('uuid-3', makeMetadataJson('uuid-3'))
+
+    let ticks = 0
+    const books = await rebuildFromBookDirs(
+      root,
+      () => ticks++,
+      () => ticks >= 1
+    )
+
+    expect(books).toEqual([])
+    expect(ticks).toBe(1)
+    // Nothing written: no catalog at all, since this root never had one
+    expect(await readCatalog(root)).toBeNull()
+  })
+
+  it('returns nothing when the cancel lands after the last folder', async () => {
+    await writeBookDir('uuid-1', makeMetadataJson('uuid-1'))
+    await writeBookDir('uuid-2', makeMetadataJson('uuid-2'))
+
+    let ticks = 0
+    const books = await rebuildFromBookDirs(
+      root,
+      () => ticks++,
+      () => ticks >= 2
+    )
+
+    expect(books).toEqual([])
+    expect(ticks).toBe(2)
+    expect(await readCatalog(root)).toBeNull()
+  })
+
+  it('leaves an existing catalog byte-identical when cancelled', async () => {
+    await writeBookDir('uuid-1', makeMetadataJson('uuid-1'))
+    const first = await rebuildFromBookDirs(root)
+    expect(first.map((b) => b.id)).toEqual(['uuid-1'])
+    const raw = await fs.readFile(join(root, 'catalog.json'), 'utf8')
+
+    // A second folder the cancelled walk was about to adopt: the catalog must
+    // still not mention it afterwards
+    await writeBookDir('uuid-2', makeMetadataJson('uuid-2'))
+    let ticks = 0
+    await rebuildFromBookDirs(
+      root,
+      () => ticks++,
+      () => ticks >= 1
+    )
+
+    expect(await fs.readFile(join(root, 'catalog.json'), 'utf8')).toBe(raw)
+    expect((await readCatalog(root))?.books.map((b) => b.id)).toEqual(['uuid-1'])
+  })
 })
 
 describe('writeMetadataJson atomicity', () => {
@@ -456,7 +538,11 @@ describe('reading state propagation', () => {
   it('survives a metadata.json round-trip', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'musaeum-rs-'))
     const book = makeBook('rs-1')
-    book.readingState = { position: 'epubcfi(/6/4!/2/10)', percent: 0.42, updatedAt: '2026-08-13T10:00:00Z' }
+    book.readingState = {
+      position: 'epubcfi(/6/4!/2/10)',
+      percent: 0.42,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
 
     await writeMetadataJson(dir, book)
     const json = JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')) as MetadataJson
@@ -474,7 +560,11 @@ describe('reading state propagation', () => {
   it('rejects a malformed reading_state rather than trusting it', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'musaeum-rs-'))
     const restored = await metadataJsonToBook(
-      { id: 'rs-3', title: 'Broken', reading_state: { percent: 5, position: 12 } } as unknown as MetadataJson,
+      {
+        id: 'rs-3',
+        title: 'Broken',
+        reading_state: { percent: 5, position: 12 }
+      } as unknown as MetadataJson,
       'rs-3',
       dir
     )

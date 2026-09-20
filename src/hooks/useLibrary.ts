@@ -8,7 +8,7 @@ export function useLibrary(): void {
   const load = useLibraryStore((s) => s.load)
   const upsertImportJob = useLibraryStore((s) => s.upsertImportJob)
   const removeImportJob = useLibraryStore((s) => s.removeImportJob)
-  const setRebuildProgress = useLibraryStore((s) => s.setRebuildProgress)
+  const setCatalogRebuildProgress = useLibraryStore((s) => s.setCatalogRebuildProgress)
   const setBulkHydrate = useLibraryStore((s) => s.setBulkHydrate)
   const setConflictCount = useUIStore((s) => s.setConflictCount)
   const notify = useUIStore((s) => s.notify)
@@ -33,7 +33,7 @@ export function useLibrary(): void {
     const unsubs = [
       window.Musaeum.on.libraryChanged(() => void load()),
       window.Musaeum.on.conflictQueueUpdated((count) => setConflictCount(count)),
-      window.Musaeum.on.catalogRebuildProgress((p) => setRebuildProgress(p)),
+      window.Musaeum.on.catalogRebuildProgress((p) => setCatalogRebuildProgress(p)),
       window.Musaeum.on.bulkHydrateProgress((p) => {
         setBulkHydrate(p.running ? p : null)
         // The status bar counter just disappears when the job ends, which is
@@ -57,7 +57,7 @@ export function useLibrary(): void {
     load,
     upsertImportJob,
     removeImportJob,
-    setRebuildProgress,
+    setCatalogRebuildProgress,
     setBulkHydrate,
     setConflictCount,
     notify

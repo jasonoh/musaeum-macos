@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
 import { closeDb, getBook, getBooks, insertBook } from './db'
+import { subscribe } from './events'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 
@@ -31,7 +32,11 @@ describe('syncOnConnect', () => {
   it('adopts an existing catalog into the local cache', async () => {
     await writeCatalog(root, [makeBook('a'), makeBook('b')])
     await librarySync.syncOnConnect()
-    expect(getBooks().map((b) => b.id).sort()).toEqual(['a', 'b'])
+    expect(
+      getBooks()
+        .map((b) => b.id)
+        .sort()
+    ).toEqual(['a', 'b'])
   })
 
   it('bootstraps the catalog from a non-empty local cache when missing', async () => {
@@ -72,7 +77,11 @@ describe('syncOnConnect', () => {
     insertBook(local)
 
     const incoming = makeBook('rs-sync-newer')
-    incoming.readingState = { position: 'cfi-stale', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    incoming.readingState = {
+      position: 'cfi-stale',
+      percent: 0.2,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     await writeCatalog(root, [incoming])
 
     await librarySync.syncOnConnect()
@@ -88,12 +97,20 @@ describe('applyCatalog', () => {
     await writeCatalog(root, [makeBook('a'), makeBook('b')])
     const count = await librarySync.applyCatalog(root)
     expect(count).toBe(2)
-    expect(getBooks().map((b) => b.id).sort()).toEqual(['a', 'b'])
+    expect(
+      getBooks()
+        .map((b) => b.id)
+        .sort()
+    ).toEqual(['a', 'b'])
   })
 
   it('preserves reading state across a catalog adoption', async () => {
     const book = makeBook('rs-adopt')
-    book.readingState = { position: 'epubcfi(/6/4)', percent: 0.6, updatedAt: '2026-08-13T10:00:00Z' }
+    book.readingState = {
+      position: 'epubcfi(/6/4)',
+      percent: 0.6,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     await writeCatalog(root, [book])
 
     await librarySync.applyCatalog(root)
@@ -107,7 +124,11 @@ describe('applyCatalog', () => {
     insertBook(local)
 
     const incoming = makeBook('rs-local-newer')
-    incoming.readingState = { position: 'cfi-stale', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    incoming.readingState = {
+      position: 'cfi-stale',
+      percent: 0.2,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     await writeCatalog(root, [incoming])
 
     await librarySync.applyCatalog(root)
@@ -122,7 +143,11 @@ describe('applyCatalog', () => {
     insertBook(local)
 
     const incoming = makeBook('rs-catalog-newer')
-    incoming.readingState = { position: 'cfi-fresh', percent: 0.9, updatedAt: '2026-08-13T12:00:00Z' }
+    incoming.readingState = {
+      position: 'cfi-fresh',
+      percent: 0.9,
+      updatedAt: '2026-08-13T12:00:00Z'
+    }
     await writeCatalog(root, [incoming])
 
     await librarySync.applyCatalog(root)
@@ -151,11 +176,19 @@ describe('applyCatalog', () => {
     // plain string comparison would wrongly let the incoming (chronologically
     // older) record win here.
     const local = makeBook('rs-precision')
-    local.readingState = { position: 'cfi-local-ms', percent: 0.6, updatedAt: '2026-08-13T10:00:00.500Z' }
+    local.readingState = {
+      position: 'cfi-local-ms',
+      percent: 0.6,
+      updatedAt: '2026-08-13T10:00:00.500Z'
+    }
     insertBook(local)
 
     const incoming = makeBook('rs-precision')
-    incoming.readingState = { position: 'cfi-incoming-sec', percent: 0.1, updatedAt: '2026-08-13T10:00:00Z' }
+    incoming.readingState = {
+      position: 'cfi-incoming-sec',
+      percent: 0.1,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     await writeCatalog(root, [incoming])
 
     await librarySync.applyCatalog(root)
@@ -170,7 +203,11 @@ describe('applyCatalog', () => {
     insertBook(local)
 
     const incoming = makeBook('rs-garbage-time')
-    incoming.readingState = { position: 'cfi-incoming', percent: 0.1, updatedAt: '2026-08-13T10:00:00Z' }
+    incoming.readingState = {
+      position: 'cfi-incoming',
+      percent: 0.1,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     await writeCatalog(root, [incoming])
 
     await librarySync.applyCatalog(root)
@@ -180,7 +217,11 @@ describe('applyCatalog', () => {
 
   it('keeps local reading state when the incoming record has none (quit-while-offline)', async () => {
     const local = makeBook('rs-offline-quit')
-    local.readingState = { position: 'cfi-stranded', percent: 0.4, updatedAt: '2026-08-13T09:00:00Z' }
+    local.readingState = {
+      position: 'cfi-stranded',
+      percent: 0.4,
+      updatedAt: '2026-08-13T09:00:00Z'
+    }
     insertBook(local)
 
     const incoming = makeBook('rs-offline-quit')
@@ -195,7 +236,11 @@ describe('applyCatalog', () => {
 
   it('keeps the incoming reading state when there is no local book, without crashing', async () => {
     const incoming = makeBook('rs-no-local')
-    incoming.readingState = { position: 'cfi-new-machine', percent: 0.1, updatedAt: '2026-08-13T08:00:00Z' }
+    incoming.readingState = {
+      position: 'cfi-new-machine',
+      percent: 0.1,
+      updatedAt: '2026-08-13T08:00:00Z'
+    }
     await writeCatalog(root, [incoming])
 
     await expect(librarySync.applyCatalog(root)).resolves.toBe(1)
@@ -208,7 +253,11 @@ describe('applyCatalog', () => {
     insertBook(local)
 
     const incoming = makeBook('rs-pushback')
-    incoming.readingState = { position: 'cfi-stale', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    incoming.readingState = {
+      position: 'cfi-stale',
+      percent: 0.2,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     await writeCatalog(root, [incoming])
 
     await librarySync.applyCatalog(root)
@@ -224,16 +273,19 @@ describe('refreshLibrary', () => {
   it('reloads the cache from the catalog', async () => {
     await writeCatalog(root, [makeBook('a')])
     const result = await librarySync.refreshLibrary()
-    expect(result).toEqual({ books: 1 })
+    expect(result).toEqual({ books: 1, cancelled: false })
     expect(getBooks().map((b) => b.id)).toEqual(['a'])
   })
 
   it('falls back to a rebuild walk when no catalog exists', async () => {
     const dir = join(root, 'books', 'uuid-9')
     await fs.mkdir(dir, { recursive: true })
-    await fs.writeFile(join(dir, 'metadata.json'), JSON.stringify({ id: 'uuid-9', title: 'Walked' }))
+    await fs.writeFile(
+      join(dir, 'metadata.json'),
+      JSON.stringify({ id: 'uuid-9', title: 'Walked' })
+    )
     const result = await librarySync.refreshLibrary()
-    expect(result).toEqual({ books: 1 })
+    expect(result).toEqual({ books: 1, cancelled: false })
     expect(getBooks()[0]?.title).toBe('Walked')
     expect((await readCatalog(root))?.books.length).toBe(1)
   })
@@ -244,7 +296,11 @@ describe('refreshLibrary', () => {
     insertBook(local)
 
     const incoming = makeBook('rs-refresh-newer')
-    incoming.readingState = { position: 'cfi-stale', percent: 0.2, updatedAt: '2026-08-13T10:00:00Z' }
+    incoming.readingState = {
+      position: 'cfi-stale',
+      percent: 0.2,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     await writeCatalog(root, [incoming])
 
     await librarySync.refreshLibrary()
@@ -274,8 +330,48 @@ describe('rebuildCatalog', () => {
     const result = await librarySync.rebuildCatalog()
     await librarySync.flushForTests()
 
-    expect(result).toEqual({ books: 1 })
+    expect(result).toEqual({ books: 1, cancelled: false })
     expect(getBook('rs-rebuild-newer')?.readingState).toEqual(local.readingState)
+  })
+
+  // The cancel, end to end: driven off the same event stream the renderer's
+  // status bar follows, through `events.subscribe` (which documents itself as
+  // usable by a test for exactly this). The deciders are the numbers, not the
+  // call: what must not change is the catalog's bytes and the cache's rows.
+  it('stops the walk on cancel and writes nothing', async () => {
+    for (const id of ['c1', 'c2', 'c3']) {
+      const dir = join(root, 'books', id)
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(join(dir, 'metadata.json'), JSON.stringify({ id, title: id }))
+    }
+    await writeCatalog(root, [makeBook('listed-before')])
+    const rawBefore = await fs.readFile(join(root, 'catalog.json'), 'utf8')
+    const rowsBefore = getBooks().length
+
+    const unsubscribe = subscribe((event) => {
+      if (event === 'catalogRebuildProgress') librarySync.cancelRefresh()
+    })
+    const result = await librarySync.rebuildCatalog().finally(unsubscribe)
+
+    expect(result).toEqual({ books: 0, cancelled: true })
+    expect(getBooks().length).toBe(rowsBefore)
+    expect(await fs.readFile(join(root, 'catalog.json'), 'utf8')).toBe(rawBefore)
+  })
+
+  it('a cancel with nothing running does not abort the next rebuild', async () => {
+    const dir = join(root, 'books', 'ok-1')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(join(dir, 'metadata.json'), JSON.stringify({ id: 'ok-1', title: 'Ok' }))
+
+    // Aimed at nothing (or at a plain refresh, which is a catalog read with
+    // nothing to stop). What makes that harmless is `rebuildCatalog` clearing
+    // the flag before the walk, not a guard inside `cancelRefresh` — a
+    // `rebuilding` guard was tried and the mutation campaign killed it: no test
+    // could tell the two apart, so this case pins the reset instead.
+    librarySync.cancelRefresh()
+
+    expect(await librarySync.rebuildCatalog()).toEqual({ books: 1, cancelled: false })
+    expect(getBook('ok-1')?.title).toBe('Ok')
   })
 })
 

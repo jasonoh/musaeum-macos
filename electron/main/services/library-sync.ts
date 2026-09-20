@@ -1,4 +1,4 @@
-import type { Book } from '@shared/book.types'
+import type { Book, CatalogSyncOutcome } from '@shared/book.types'
 import * as catalog from './catalog'
 import * as db from './db'
 import { broadcast } from './events'
@@ -168,7 +168,9 @@ export async function syncOnConnect(): Promise<void> {
     } else if (result.state === 'invalid') {
       // Never bootstrap over a catalog that exists but can't be read — this
       // machine's cache may be stale; recovery is the manual rebuild action
-      console.error('[catalog] catalog.json exists but is unreadable — skipping sync; use Rebuild Catalog')
+      console.error(
+        '[catalog] catalog.json exists but is unreadable — skipping sync; use Rebuild Catalog'
+      )
     }
   } catch (err) {
     // Transient read failure: log and delete from handledRoots so a later
@@ -178,8 +180,15 @@ export async function syncOnConnect(): Promise<void> {
   }
 }
 
-/** Manual refresh: re-read the catalog; walk-and-rebuild when it is missing. */
-export async function refreshLibrary(): Promise<{ books: number }> {
+/**
+ * Manual refresh: re-read the catalog; walk-and-rebuild when it is missing.
+ *
+ * The two outcomes are the same shape because this *becomes* the rebuild when
+ * the catalog can't be read — which is what the Settings copy has to disclose,
+ * since the only difference a user sees otherwise is a job that ought to take a
+ * second taking minutes.
+ */
+export async function refreshLibrary(): Promise<CatalogSyncOutcome> {
   nas.assertOnline()
   const root = nas.getLibraryRoot()!
   const result = await catalog.readCatalogDetailed(root)
@@ -187,20 +196,46 @@ export async function refreshLibrary(): Promise<{ books: number }> {
   db.replaceAllBooks(preserveLocalReadingState(result.file.books))
   handledRoots.add(root)
   broadcast('libraryChanged')
-  return { books: result.file.books.length }
+  return { books: result.file.books.length, cancelled: false }
+}
+
+// Read by the walk's per-folder predicate, set by `cancelRefresh`.
+//
+// No "is anything running?" guard: `rebuildCatalog` resets this before every
+// walk, so a cancel that arrives while nothing is running — or while a plain
+// refresh (a catalog read with nothing to stop) is — is wiped by the next run
+// rather than aborting it. That reset is the mechanism, and it is pinned by
+// `stops the walk on cancel and writes nothing`'s sibling in
+// `library-sync.test.ts`. A `rebuilding` flag was tried here first and removed:
+// it claimed to protect that case and the mutation campaign showed it could be
+// deleted without any test noticing.
+let rebuildCancelled = false
+
+/** Stop a running rebuild. A no-op when nothing is running. */
+export function cancelRefresh(): void {
+  rebuildCancelled = true
 }
 
 /** Recovery: walk books/<uuid>/metadata.json, rewrite the catalog, reload the cache. */
-export async function rebuildCatalog(): Promise<{ books: number }> {
+export async function rebuildCatalog(): Promise<CatalogSyncOutcome> {
   nas.assertOnline()
   const root = nas.getLibraryRoot()!
-  const books = await catalog.rebuildFromBookDirs(root, (p) =>
-    broadcast('catalogRebuildProgress', p)
+  rebuildCancelled = false
+  const walked = await catalog.rebuildFromBookDirs(
+    root,
+    (p) => broadcast('catalogRebuildProgress', p),
+    () => rebuildCancelled
   )
-  db.replaceAllBooks(preserveLocalReadingState(books))
+  // `walked` is [] both when the user stopped the walk and when the library has
+  // no books — the flag is the only thing that tells them apart, and the walk
+  // wrote nothing in the cancelled case (catalog.ts)
+  if (rebuildCancelled) return { books: 0, cancelled: true }
+  db.replaceAllBooks(preserveLocalReadingState(walked))
   handledRoots.add(root)
   broadcast('libraryChanged')
-  return { books: books.length }
+  // Bare `false`: the early return above holds whenever the flag is set, so
+  // reading it here would be the same value by a longer route
+  return { books: walked.length, cancelled: false }
 }
 
 /**

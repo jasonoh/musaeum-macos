@@ -3,7 +3,7 @@ import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { DevicePanel } from '@/components/device/DevicePanel'
 import { FilterSidebar } from '@/components/shared/FilterSidebar'
-import { GearIcon, SpinnerIcon, WarningIcon } from '@/components/shared/icons'
+import { GearIcon, WarningIcon } from '@/components/shared/icons'
 import { TRAFFIC_LIGHT_CENTER_Y, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 
 export function Sidebar() {
@@ -11,11 +11,6 @@ export function Sidebar() {
   const openModal = useUIStore((s) => s.openModal)
   const nasStatus = useNASStore((s) => s.status)
   const bookCount = useLibraryStore((s) => s.books.length)
-  const refreshing = useLibraryStore((s) => s.refreshing)
-  const rebuildProgress = useLibraryStore((s) => s.rebuildProgress)
-  const refreshLibrary = useLibraryStore((s) => s.refreshLibrary)
-  const rebuildCatalog = useLibraryStore((s) => s.rebuildCatalog)
-  const connected = nasStatus?.state === 'connected'
 
   const nasDot =
     nasStatus?.state === 'connected'
@@ -68,31 +63,13 @@ export function Sidebar() {
             </button>
           )}
 
-          <button
-            onClick={() => openModal('migration')}
-            className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment"
-          >
-            Migrate from Calibre…
-          </button>
-
-          <button
-            onClick={() => void refreshLibrary()}
-            disabled={!connected || refreshing}
-            className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            {refreshing && !rebuildProgress && <SpinnerIcon className="h-3.5 w-3.5" />}
-            Refresh Library
-          </button>
-
-          <button
-            onClick={() => void rebuildCatalog()}
-            disabled={!connected || refreshing}
-            className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            {rebuildProgress
-              ? `Rebuilding ${rebuildProgress.completed}/${rebuildProgress.total}…`
-              : 'Rebuild Catalog…'}
-          </button>
+          {/* Migration, the catalog refresh and the catalog rebuild all used to
+              sit here as three sibling rows. They are not navigation: one is an
+              acquisition that happens once (plus a re-runnable top-up), one is a
+              poll, and one is break-glass that costs 1,281 s over SMB at library
+              scale. Acquisition now lives on the empty view and the Add Books
+              control; both maintenance actions live in Settings → Library, with
+              descriptions. This column is for going places. */}
         </nav>
 
         <FilterSidebar />

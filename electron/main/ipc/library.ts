@@ -1,5 +1,7 @@
 import { join } from 'path'
+import { dialog } from 'electron'
 import type { Book, BookFilters, BookFormat, BookSort, DuplicateDecision } from '@shared/book.types'
+import { bookFileFilter } from '@shared/book.types'
 import type { HydratedField } from '@shared/metadata.types'
 import * as bookDelete from '../services/book-delete'
 import * as bookFiles from '../services/book-files'
@@ -35,6 +37,8 @@ export function registerLibraryHandlers(): void {
 
   handle('library:refreshLibrary', () => librarySync.refreshLibrary())
   handle('library:rebuildCatalog', () => librarySync.rebuildCatalog())
+  // Cancels a *rebuild*; a plain refresh is a catalog read with nothing to stop
+  handle('library:cancelRefresh', () => librarySync.cancelRefresh())
 
   handle('library:updateBook', async (id: string, updates: Partial<Book>) => {
     nas.assertOnline()
@@ -75,4 +79,26 @@ export function registerLibraryHandlers(): void {
   handle('import:resolveDuplicate', (jobId: string, decision: DuplicateDecision) =>
     importer.resolveDuplicate(jobId, decision)
   )
+
+  /**
+   * The app's first book-file picker — the only route into the library that
+   * isn't a drag or a Finder association. It exists in main because the
+   * renderer may not open a native dialog, and because the renderer never gets
+   * a `file://` path it made itself (`CLAUDE.md` #9): the paths the user picks
+   * are handed back and then go through `import:addFiles` like any other.
+   *
+   * The filter comes from `bookFileFilter()`, derived from `BookFormat`, so the
+   * picker and the drag-drop gate are one list. A cancelled dialog answers with
+   * an empty list rather than null: the caller's next step is a batch import,
+   * and an empty batch is already the no-op.
+   */
+  handle('import:fromDialog', async (): Promise<string[]> => {
+    const result = await dialog.showOpenDialog({
+      title: 'Add Books',
+      message: 'Select the book files to import',
+      properties: ['openFile', 'multiSelections'],
+      filters: [bookFileFilter()]
+    })
+    return result.canceled ? [] : result.filePaths
+  })
 }

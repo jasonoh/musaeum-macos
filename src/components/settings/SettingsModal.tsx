@@ -3,6 +3,7 @@ import type { EditableSettings, ExecutableKind, SettingsView } from '@shared/set
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { AppearanceSection } from './AppearanceSection'
+import { useLibraryStore } from '@/stores/library.store'
 import { EyeIcon, SpinnerIcon } from '@/components/shared/icons'
 
 /**
@@ -61,6 +62,12 @@ function changedFields(view: SettingsView, form: FormState): Partial<EditableSet
 export function SettingsModal() {
   const openModal = useUIStore((s) => s.openModal)
   const nasStatus = useNASStore((s) => s.status)
+  const sync = useLibraryStore((s) => s.catalogSync)
+  const refreshLibrary = useLibraryStore((s) => s.refreshLibrary)
+  const rebuildCatalog = useLibraryStore((s) => s.rebuildCatalog)
+
+  const connected = nasStatus?.state === 'connected'
+  const syncRunning = sync?.outcome === 'running'
 
   const [view, setView] = useState<SettingsView | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
@@ -216,6 +223,27 @@ export function SettingsModal() {
                     ? 'Default — the share Musaeum mounts when the library folder goes missing'
                     : 'Mounted automatically when the library folder goes missing'
                 }
+              />
+            </Section>
+
+            <Section title="Maintenance">
+              <MaintenanceRow
+                title="Reload from the shared catalog"
+                description="Re-reads the library's shared catalog and reloads Musaeum from it. This is what picks up what another machine has changed — the ordinary, quick case."
+                caveat="If that catalog can't be read, this rebuilds from disk instead, which takes minutes rather than a second."
+                action="Reload"
+                busy={syncRunning && sync?.kind === 'refresh'}
+                disabled={!connected || syncRunning}
+                onRun={() => void refreshLibrary()}
+              />
+              <MaintenanceRow
+                title="Rebuild the catalog"
+                description="Recovery: walks every book folder's metadata and rewrites the shared catalog from what it finds. Use it when the catalog is missing or unreadable, or when books on disk aren't showing up here."
+                caveat="Slow — around 21 minutes for a library this size, measured over the network. Nothing is written until the walk finishes, so cancelling it is free; the counter and its Cancel appear in the status bar."
+                action="Rebuild"
+                busy={syncRunning && sync?.kind === 'rebuild'}
+                disabled={!connected || syncRunning}
+                onRun={() => void rebuildCatalog()}
               />
             </Section>
 
@@ -378,6 +406,54 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Note({ children }: { children: React.ReactNode }) {
   return <p className="mt-1 text-[11px] leading-relaxed text-parchment-faint">{children}</p>
+}
+
+/**
+ * A maintenance action: what it does, what it costs, and the button. The
+ * description is the whole point of the row — these two actions used to be
+ * unlabelled rows in the sidebar, where "Refresh" and "Rebuild" were
+ * indistinguishable until one of them took twenty minutes, and where Refresh's
+ * fallback into a rebuild (`library-sync.refreshLibrary`) was invisible.
+ *
+ * The run's own progress deliberately does *not* live here: a rebuild outlives
+ * this dialog, so its counter and Cancel are in the status bar.
+ */
+function MaintenanceRow({
+  title,
+  description,
+  caveat,
+  action,
+  busy,
+  disabled,
+  onRun
+}: {
+  title: string
+  description: string
+  caveat: string
+  action: string
+  busy: boolean
+  disabled: boolean
+  onRun(): void
+}) {
+  return (
+    <div className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2.5">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] text-parchment">{title}</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-parchment-dim">{description}</p>
+        </div>
+        <button
+          disabled={disabled}
+          onClick={onRun}
+          className="mt-px flex shrink-0 items-center gap-1.5 rounded-md border border-ink-600 px-2.5 py-1 text-[12px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          {busy && <SpinnerIcon className="h-3.5 w-3.5" />}
+          {action}
+        </button>
+      </div>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-parchment-faint">{caveat}</p>
+    </div>
+  )
 }
 
 /** A tool path: type it, or browse for it; blank falls back to detection. */

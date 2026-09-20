@@ -1,6 +1,7 @@
 import { useLibraryStore } from '@/stores/library.store'
 import { useDeviceStore } from '@/stores/device.store'
 import { useUIStore } from '@/stores/ui.store'
+import { describeCatalogSync } from '@/lib/catalog-sync'
 import { SpinnerIcon } from '@/components/shared/icons'
 
 export function StatusBar() {
@@ -11,7 +12,13 @@ export function StatusBar() {
   const importJobs = useLibraryStore((s) => s.importJobs)
   const transfers = useDeviceStore((s) => s.transfers)
   const bulkHydrate = useLibraryStore((s) => s.bulkHydrate)
+  const sync = useLibraryStore((s) => s.catalogSync)
+  const cancelRefresh = useLibraryStore((s) => s.cancelRefresh)
+  const dismissCatalogSync = useLibraryStore((s) => s.dismissCatalogSync)
   const pythonEnv = useUIStore((s) => s.pythonEnv)
+
+  const line = sync ? describeCatalogSync(sync) : null
+  const syncRunning = sync?.outcome === 'running'
 
   const activeImports = Object.values(importJobs).filter(
     (j) => j.step !== 'done' && j.step !== 'error'
@@ -54,6 +61,43 @@ export function StatusBar() {
           >
             Cancel
           </button>
+        </span>
+      )}
+      {/* Its own surface, not the Settings dialog that triggers it: a rebuild is
+          1,281 s over SMB for 7,101 folders (measured), so closing the dialog
+          must not hide the job. Cancel stays until the run settles — and a
+          settled line stays put rather than vanishing, which is the failure
+          `refresh-feedback.md` records for a job that stops reporting at the
+          moment it matters. */}
+      {sync && line && (
+        <span
+          className={
+            line.tone === 'stopped'
+              ? 'flex items-center gap-1.5 text-danger-400'
+              : 'flex items-center gap-1.5 text-gold-400'
+          }
+        >
+          {syncRunning && <SpinnerIcon className="h-3 w-3" />}
+          <span className="tabular-nums">
+            {line.text}
+            {line.progress && ` ${line.progress}…`}
+          </span>
+          {syncRunning && sync.kind === 'rebuild' && (
+            <button
+              onClick={() => void cancelRefresh()}
+              className="underline underline-offset-2 hover:text-gold-300"
+            >
+              Cancel
+            </button>
+          )}
+          {!syncRunning && (
+            <button
+              onClick={dismissCatalogSync}
+              className="underline underline-offset-2 hover:text-gold-300"
+            >
+              Dismiss
+            </button>
+          )}
         </span>
       )}
       {/* First launch only: the packaged app builds its Python environment
