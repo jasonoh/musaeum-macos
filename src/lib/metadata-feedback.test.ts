@@ -8,6 +8,7 @@ const BULK_BASE: BulkHydrateProgress = {
   failed: 0,
   skipped: 0,
   updated: 0,
+  duplicates: 0,
   running: false
 }
 
@@ -83,6 +84,49 @@ describe('describeHydrate', () => {
     expect(t.detail!.length).toBeLessThanOrEqual(200)
     expect(t.detail).not.toContain('\n')
   })
+
+  /**
+   * The collision a fetch revealed — the one place the refresh report carries
+   * news the user did not ask for, and the only one it cannot fix itself.
+   */
+  const DUPLICATE = {
+    existingBookId: 'b',
+    existingTitle: 'Summary of Fair Play',
+    existingAuthor: 'Ctprint',
+    matchType: 'isbn' as const
+  }
+
+  it('leads with the collision and keeps what the run changed', () => {
+    const t = describeHydrate(
+      { ok: true, changed: ['title'], conflicts: 0, duplicate: DUPLICATE },
+      'Fair Play'
+    )
+    expect(t).toEqual({
+      kind: 'info',
+      message: 'Possible duplicate',
+      detail: 'Title · same ISBN as “Summary of Fair Play”'
+    })
+  })
+
+  it('still says it when nothing else changed', () => {
+    const t = describeHydrate(
+      { ok: true, changed: [], conflicts: 0, duplicate: DUPLICATE },
+      'Fair Play'
+    )
+    expect(t).toMatchObject({
+      kind: 'info',
+      message: 'Possible duplicate',
+      detail: 'No new metadata · same ISBN as “Summary of Fair Play”'
+    })
+  })
+
+  it('offers no action for a duplicate — the pair is a person’s to judge', () => {
+    const t = describeHydrate(
+      { ok: true, changed: [], conflicts: 0, duplicate: DUPLICATE },
+      'Fair Play'
+    )
+    expect(t.actionLabel).toBeUndefined()
+  })
 })
 
 describe('describeBulkHydrate', () => {
@@ -108,6 +152,26 @@ describe('describeBulkHydrate', () => {
   it('says nothing was new rather than claiming a refresh', () => {
     const t = describeBulkHydrate({ ...BULK_BASE, completed: 3, total: 3, updated: 0 })
     expect(t).toMatchObject({ kind: 'info', message: 'No new metadata found' })
+  })
+
+  it('counts the duplicates the job found', () => {
+    const t = describeBulkHydrate({
+      ...BULK_BASE,
+      completed: 3,
+      total: 3,
+      updated: 1,
+      duplicates: 2
+    })
+    expect(t).toMatchObject({
+      kind: 'success',
+      message: 'Refreshed 3 books',
+      detail: '1 updated · 2 already up to date · 2 possible duplicates'
+    })
+  })
+
+  it('reports a duplicate even when the job changed nothing', () => {
+    const t = describeBulkHydrate({ ...BULK_BASE, completed: 2, total: 2, duplicates: 1 })
+    expect(t?.detail).toBe('All 2 books already have the latest details · 1 possible duplicate')
   })
 
   it('distinguishes a cancel from the library dropping out', () => {

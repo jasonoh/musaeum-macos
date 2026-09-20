@@ -64,6 +64,20 @@ export function describeHydrate(outcome: HydrateOutcome, bookTitle: string): Toa
     }
   }
 
+  // A collision the fetch revealed is the one answer here that asks the user to
+  // look at something, so it leads — and what the run changed rides along in
+  // the detail rather than being replaced by it. No action button: the pair is
+  // a person's to judge, and there is nothing for the app to offer.
+  if (outcome.duplicate) {
+    return {
+      kind: 'info',
+      message: 'Possible duplicate',
+      detail: `${
+        outcome.changed.length ? fieldSummary(outcome.changed) : 'No new metadata'
+      } · same ISBN as “${truncate(outcome.duplicate.existingTitle, 60)}”`
+    }
+  }
+
   const review = outcome.conflicts > 0
   if (outcome.changed.length === 0) {
     return review
@@ -105,6 +119,11 @@ export function describeBulkHydrate(p: BulkHydrateProgress): ToastContent | null
   const parts = [changed]
   if (unchanged > 0) parts.push(`${unchanged} already up to date`)
   if (p.skipped > 0) parts.push(`${p.skipped} skipped`)
+  // A count, not a list — this report is a count of everything else too, and
+  // naming them would need storage the feature deliberately does not add
+  const duplicates =
+    p.duplicates > 0 ? `${p.duplicates} possible duplicate${p.duplicates === 1 ? '' : 's'}` : null
+  if (duplicates) parts.push(duplicates)
 
   if (p.stopped === 'offline') {
     return {
@@ -131,7 +150,9 @@ export function describeBulkHydrate(p: BulkHydrateProgress): ToastContent | null
     return {
       kind: 'info',
       message: 'No new metadata found',
-      detail: `All ${p.total} books already have the latest details`
+      detail: [`All ${p.total} books already have the latest details`, duplicates]
+        .filter(Boolean)
+        .join(' · ')
     }
   }
   return {

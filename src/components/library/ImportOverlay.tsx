@@ -74,6 +74,32 @@ function DuplicateGate({ job }: { job: ImportProgress }) {
   )
 }
 
+/**
+ * The collision hydration found *after* the file was copied.
+ *
+ * The gate's card above is for a decision that has not been taken yet — it has
+ * three buttons. By the time a job reaches `done`, the decision was made by
+ * keeping the file, so this is a note and not a question. `duplicate` only
+ * carries a post-hydration finding by then: the gate's own context is cleared
+ * when the import moves past it.
+ */
+function DuplicateNote({ job }: { job: ImportProgress }) {
+  const duplicate = job.duplicate
+  if (!duplicate) return null
+  const { existingTitle, existingAuthor } = duplicate
+
+  return (
+    <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-gold-400">
+      <WarningIcon className="mt-px h-3.5 w-3.5 shrink-0" />
+      <span>
+        Possible duplicate — already in library: “{existingTitle}”
+        {existingAuthor ? ` by ${existingAuthor}` : ''}
+        <span className="text-parchment-faint"> (Same ISBN)</span>
+      </span>
+    </p>
+  )
+}
+
 function JobCard({ job }: { job: ImportProgress }) {
   const failed = job.step === 'error'
   const skipped = job.step === 'skipped'
@@ -115,6 +141,8 @@ function JobCard({ job }: { job: ImportProgress }) {
           })}
         </ul>
       )}
+
+      {!failed && !skipped && !awaitingDecision && <DuplicateNote job={job} />}
     </div>
   )
 }
