@@ -62,8 +62,13 @@ export interface Book {
  * The format the in-app reader should open, in preference order. PDF is
  * deliberately absent until C2 ships — a PDF-only book falls through to the
  * system opener, where Preview handles it well.
+ *
+ * Exported because the order is not the reader's alone: a re-fetch asks the
+ * sidecar to read a book's embedded metadata, and only an EPUB (or a PDF)
+ * carries any as far as that extractor is concerned — so the file a card
+ * would open and the file a re-fetch reads have to be the same choice.
  */
-const READABLE_FORMATS: BookFormat[] = ['epub', 'azw3', 'mobi']
+export const READABLE_FORMATS: BookFormat[] = ['epub', 'azw3', 'mobi']
 
 export function readableFormat(book: Book): BookFormat | null {
   return READABLE_FORMATS.find((f) => book.formats.includes(f)) ?? null

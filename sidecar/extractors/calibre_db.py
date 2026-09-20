@@ -7,6 +7,8 @@ Calibre are intentionally not treated as canonical.
 import os
 import sqlite3
 
+from extractors.html_text import html_to_text
+
 
 def read_calibre_db(calibre_path: str) -> dict:
     db_path = os.path.join(calibre_path, "metadata.db")
@@ -50,7 +52,10 @@ def read_calibre_db(calibre_path: str) -> dict:
                 "path": row["path"],
                 "publisher": row["publisher"],
                 "published_date": (row["pubdate"] or "")[:10] or None,
-                "description": row["description"],
+                # `comments` is Calibre's HTML description field. It is stored
+                # as text here like every other description, which is what
+                # keeps markup out of the panel and out of FTS.
+                "description": html_to_text(row["description"]) or None,
                 "language": row["language"],
                 "rating": (row["rating"] or 0) // 2 or None,  # calibre uses 0-10
                 "series": (

@@ -21,6 +21,7 @@ import {
   WarningIcon
 } from '@/components/shared/icons'
 import { refreshBookMetadata } from '@/lib/metadata-refresh'
+import { descriptionText } from '@/lib/description'
 import { notifyError } from '@/lib/notify'
 
 const READ_STATUS_OPTIONS: { value: ReadStatus; label: string }[] = [
@@ -157,7 +158,9 @@ export function BookDetail() {
 
         {book.description && (
           <p className="mt-5 whitespace-pre-line text-[13px] leading-relaxed text-parchment-dim">
-            {book.description}
+            {/* Rows written before descriptions were normalised at ingestion
+                still hold HTML (see lib/description.ts) */}
+            {descriptionText(book.description)}
           </p>
         )}
 

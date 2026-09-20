@@ -5,6 +5,8 @@ import zipfile
 import xml.etree.ElementTree as ET
 from typing import Optional
 
+from extractors.html_text import html_to_text
+
 try:
     import isbnlib
 except ImportError:  # pragma: no cover — isbnlib is in requirements.txt
@@ -84,8 +86,10 @@ def extract_epub_metadata(file_path: str) -> dict:
 
     description = text("description")
     if description:
-        # OPF descriptions are often HTML fragments
-        description = re.sub(r"<[^>]+>", "", description).strip()
+        # OPF descriptions are routinely HTML fragments (`<p>`, `<br>`, and
+        # entities that survive XML decoding) — the stored description is
+        # plain text whose paragraph breaks are newlines
+        description = html_to_text(description) or None
 
     subjects = [s.text.strip() for s in meta.findall("dc:subject", NS) if s.text]
 

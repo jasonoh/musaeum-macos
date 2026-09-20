@@ -109,8 +109,27 @@ def test_date_is_trimmed_to_the_day(hobbit):
 
 def test_description_html_is_stripped(hobbit):
     # OPF descriptions are routinely HTML fragments; the tags must not reach
-    # the book record
-    assert extract_epub_metadata(hobbit)["description"] == "A hobbit leaves home."
+    # the book record. The `</p>` is a paragraph boundary rather than inline
+    # markup, so it survives as the newline the panel renders as a break —
+    # dropping it instead welds two paragraphs onto one line (measured on the
+    # real library: "…for a new generation of women.It started with the Sh*t
+    # I Do List."), which is what `extractors/html_text.py` exists to prevent.
+    assert extract_epub_metadata(hobbit)["description"] == "A hobbit\nleaves home."
+
+
+def test_description_entities_are_decoded(tmp_path):
+    # A blurb that arrived double-escaped, with an em dash as a numeric entity
+    # and a real markup break: neither may reach the panel as written
+    path = _epub(
+        tmp_path,
+        opf=_package(
+            '<dc:description>A hands-on guide&#8212;finally&lt;br&gt;'
+            "A second line</dc:description>"
+        ),
+    )
+    assert extract_epub_metadata(path)["description"] == (
+        "A hands-on guide—finally\nA second line"
+    )
 
 
 def test_an_isbn10_identifier_is_converted_to_isbn13(tmp_path):

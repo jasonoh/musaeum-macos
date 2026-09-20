@@ -76,6 +76,22 @@ describe('findHydratableFile', () => {
     expect(await findHydratableFile(join(root, 'books/b'))).toContain('.azw3')
     expect(await findHydratableFile(join(root, 'books/c'))).toBeNull()
   })
+
+  it('reads the folder in preference order, not readdir order', async () => {
+    // Written azw3-first in both cases, so a plain `find` over the listing
+    // would pick the azw3 and the `.mobi` respectively. The sidecar extracts
+    // embedded metadata from an EPUB and nothing else, so picking by
+    // `readdir` order (which is directory order, not sorted) silently drops a
+    // book's embedded identifiers, its cover fallback and the description
+    // `longest wins` would otherwise have preferred.
+    await seed('d', 'azw3')
+    await fs.writeFile(join(root, 'books/d/Book d.epub'), 'x')
+    expect(await findHydratableFile(join(root, 'books/d'))).toContain('.epub')
+
+    await seed('e', 'mobi')
+    await fs.writeFile(join(root, 'books/e/Book e.azw3'), 'x')
+    expect(await findHydratableFile(join(root, 'books/e'))).toContain('.azw3')
+  })
 })
 
 describe('startBulkHydrate', () => {
