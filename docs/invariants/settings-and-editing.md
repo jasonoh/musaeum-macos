@@ -53,6 +53,8 @@ The built-in schemes are inlined into the main bundle with `?raw` imports (`them
 
 `components/library/BookEditor.tsx` — a modal over `library.updateBook`, which already writes metadata.json and upserts the catalog, so the editor needs no main-process work of its own. Opened from the detail panel's pencil button or the context menu; mounted in `App.tsx` keyed on `ui.store.editingBookId`.
 
+**An edit here is the user's decision, and it outranks any fetch.** The fields a patch actually *changed* are recorded as overrides (`services/field-overrides.ts`, one JSON map in `app_config` under `field_overrides`, keyed by book id), and `importer.hydrate` then keeps the fetch off them — the sidecar is told not to propose them, and the reply is filtered before the write. The editor is therefore also where that is undone: a held field carries a gold padlock chip, and clicking it releases the field without touching its value. The map is machine-local by design — it is not in `metadata.json`, so a re-fetch run from another machine can still move an overridden field; see `docs/superpowers/specs/2026-09-20-field-overrides-design.md` (D1, and the condition that would move it into the book's record).
+
 Two rules keep it from doing damage: it sends **only changed fields**, so a save can't clobber what hydration wrote meanwhile; and a sort key equal to its derived form is shown as a live placeholder rather than a value, so renaming a book re-derives the sort title instead of stranding the old one (a genuinely custom key is shown and left alone). Renaming a book **does** rename its files (see `docs/invariants/files-and-deletion.md`).
 
 ---

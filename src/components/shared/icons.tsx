@@ -41,6 +41,18 @@ export const SearchIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+/**
+ * A field the user has set, which a metadata fetch will not touch. A padlock
+ * rather than a tick or a dot: the state is "held", and the click beside it
+ * hands it back rather than clearing the value.
+ */
+export const LockIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+    <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+  </svg>
+)
+
 /** The ask panel: a speech bubble, so it reads as a conversation rather than a search. */
 export const AskIcon = ({ className }: IconProps) => (
   <svg {...base(className)}>

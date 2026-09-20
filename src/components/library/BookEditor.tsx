@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Book } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
+import type { HydratedField } from '@shared/metadata.types'
+import { HYDRATED_FIELD_LABELS, HYDRATED_KEY_FIELD } from '@shared/metadata.types'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
-import { SpinnerIcon } from '@/components/shared/icons'
+import { LockIcon, SpinnerIcon } from '@/components/shared/icons'
 
 /**
  * Direct metadata editing — the manual counterpart to hydration, for the cases
@@ -15,6 +17,11 @@ import { SpinnerIcon } from '@/components/shared/icons'
  * series index can't corrupt the book. Only fields the user actually changed
  * are sent, so a save can't clobber a value hydration filled in meanwhile.
  * Sort keys left blank fall back to the derived form (shown as placeholder).
+ *
+ * A field the user changed here is *theirs* from then on: it is recorded as an
+ * override and a metadata fetch will not touch it. This panel is therefore also
+ * where that is undone — the padlock beside a held field hands it back without
+ * changing its value (see `docs/superpowers/specs/2026-09-20-field-overrides-design.md`).
  */
 
 interface FormState {
@@ -147,8 +154,43 @@ export function BookEditor() {
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /**
+   * The fields this book's fetches must not touch. Read when the panel opens
+   * for a book — it is mounted under a per-book key, so each book re-reads its
+   * own — and replaced wholesale by a release, which is the only thing that
+   * changes it from here.
+   */
+  const [overridden, setOverridden] = useState<HydratedField[]>([])
+
+  useEffect(() => {
+    if (!bookId) return
+    let live = true
+    void window.Musaeum.library
+      .getFieldOverrides(bookId)
+      .then((fields) => {
+        if (live) setOverridden(fields)
+      })
+      .catch(() => {
+        // Losing this only costs the markers: the override itself is enforced
+        // in the main process, not here
+        if (live) setOverridden([])
+      })
+    return () => {
+      live = false
+    }
+  }, [bookId])
 
   const close = () => requestEdit(null)
+
+  const overriddenFor = (key: keyof Book): HydratedField | null => {
+    const field = HYDRATED_KEY_FIELD[key]
+    return field && overridden.includes(field) ? field : null
+  }
+
+  const releaseOverride = async (field: HydratedField): Promise<void> => {
+    if (!book) return
+    setOverridden(await window.Musaeum.library.releaseFieldOverride(book.id, field))
+  }
 
   const save = async () => {
     if (!book) return
@@ -208,15 +250,41 @@ export function BookEditor() {
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          {overridden.length > 0 && (
+            <p className="flex items-start gap-2 rounded-md border border-gold-500/25 bg-gold-500/5 px-3 py-2 text-[12px] leading-relaxed text-parchment-dim">
+              <LockIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold-400" />
+              <span>
+                You set these, so a metadata fetch will not change them:{' '}
+                <span className="text-parchment">
+                  {overridden.map((f) => HYDRATED_FIELD_LABELS[f]).join(', ')}
+                </span>
+                . The padlock beside a field hands it back to Musaeum — its value stays.
+              </span>
+            </p>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Title" value={form.title} onChange={set('title')} required />
+            <Field
+              label="Title"
+              value={form.title}
+              onChange={set('title')}
+              required
+              overridden={overriddenFor('title')}
+              onReleaseOverride={releaseOverride}
+            />
             <Field
               label="Sort title"
               value={form.sortTitle}
               onChange={set('sortTitle')}
               placeholder={sortableTitle(form.title.trim() || book.title)}
             />
-            <Field label="Author" value={form.author} onChange={set('author')} />
+            <Field
+              label="Author"
+              value={form.author}
+              onChange={set('author')}
+              overridden={overriddenFor('author')}
+              onReleaseOverride={releaseOverride}
+            />
             <Field
               label="Author sort"
               value={form.authorSort}
@@ -226,7 +294,13 @@ export function BookEditor() {
           </div>
 
           <div className="grid grid-cols-[1fr_5rem_5rem] gap-3">
-            <Field label="Series" value={form.seriesName} onChange={set('seriesName')} />
+            <Field
+              label="Series"
+              value={form.seriesName}
+              onChange={set('seriesName')}
+              overridden={overriddenFor('seriesName')}
+              onReleaseOverride={releaseOverride}
+            />
             <Field
               label="Book #"
               value={form.seriesIndex}
@@ -244,14 +318,29 @@ export function BookEditor() {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Publisher" value={form.publisher} onChange={set('publisher')} />
+            <Field
+              label="Publisher"
+              value={form.publisher}
+              onChange={set('publisher')}
+              overridden={overriddenFor('publisher')}
+              onReleaseOverride={releaseOverride}
+            />
             <Field
               label="Published"
               value={form.publishedDate}
               onChange={set('publishedDate')}
               placeholder="2015-09-15"
+              overridden={overriddenFor('publishedDate')}
+              onReleaseOverride={releaseOverride}
             />
-            <Field label="Language" value={form.language} onChange={set('language')} placeholder="en" />
+            <Field
+              label="Language"
+              value={form.language}
+              onChange={set('language')}
+              placeholder="en"
+              overridden={overriddenFor('language')}
+              onReleaseOverride={releaseOverride}
+            />
           </div>
 
           <Field
@@ -260,11 +349,16 @@ export function BookEditor() {
             onChange={set('tags')}
             placeholder="science fiction, space opera"
             hint="Comma separated"
+            overridden={overriddenFor('tags')}
+            onReleaseOverride={releaseOverride}
           />
 
           <label className="block">
             <span className="text-[11px] font-semibold uppercase tracking-widest text-parchment-faint">
               Description
+              {overriddenFor('description') && (
+                <OverrideChip field={overriddenFor('description')!} onRelease={releaseOverride} />
+              )}
             </span>
             <textarea
               value={form.description}
@@ -275,16 +369,22 @@ export function BookEditor() {
           </label>
 
           <div className="grid grid-cols-4 gap-3 border-t border-ink-800 pt-4">
-            <Field label="ISBN-13" value={form.isbn13} onChange={set('isbn13')} />
+            <Field
+              label="ISBN-13"
+              value={form.isbn13}
+              onChange={set('isbn13')}
+              overridden={overriddenFor('isbn13')}
+              onReleaseOverride={releaseOverride}
+            />
             <Field label="ISBN-10" value={form.isbn10} onChange={set('isbn10')} />
             <Field label="Goodreads" value={form.goodreadsId} onChange={set('goodreadsId')} />
             <Field label="OpenLibrary" value={form.openlibraryId} onChange={set('openlibraryId')} />
           </div>
 
           <p className="text-[11px] leading-relaxed text-parchment-faint">
-            Edits are written straight to the book’s metadata.json and the catalog — a later
-            re-fetch can still overwrite them. Renaming a book leaves its files under their
-            original names.
+            Edits are written straight to the book’s metadata.json and the catalog, and a metadata
+            fetch will leave them alone — release a field with the padlock to let Musaeum manage it
+            again. Renaming a book leaves its files under their original names.
           </p>
         </div>
 
@@ -319,6 +419,43 @@ export function BookEditor() {
   )
 }
 
+/**
+ * The marker on a field the user holds, and the way out of it.
+ *
+ * Clicking hands the field back to Musaeum *without* touching its value, which
+ * is why it is a padlock labelled "Overridden" rather than an ✕ or a "clear":
+ * the gesture releases a decision, it does not undo an edit.
+ */
+function OverrideChip({
+  field,
+  onRelease
+}: {
+  field: HydratedField
+  onRelease(field: HydratedField): Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      title="Musaeum will not change this — click to hand it back"
+      aria-label={`Release the override on ${HYDRATED_FIELD_LABELS[field]}`}
+      onClick={(e) => {
+        // Inside a <label>, a click would otherwise also focus the input it
+        // belongs to — releasing a field is not "put the cursor in it"
+        e.preventDefault()
+        setBusy(true)
+        void onRelease(field).finally(() => setBusy(false))
+      }}
+      className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-gold-500/40 px-1.5 py-px text-[10px] normal-case tracking-normal text-gold-300 hover:border-gold-500 hover:bg-gold-500/10 disabled:opacity-40"
+    >
+      <LockIcon className="h-2.5 w-2.5" />
+      Overridden
+    </button>
+  )
+}
+
 function Field({
   label,
   value,
@@ -326,7 +463,9 @@ function Field({
   placeholder,
   hint,
   required,
-  disabled
+  disabled,
+  overridden,
+  onReleaseOverride
 }: {
   label: string
   value: string
@@ -335,12 +474,18 @@ function Field({
   hint?: string
   required?: boolean
   disabled?: boolean
+  /** The field the user holds, on the one input that shows it. */
+  overridden?: HydratedField | null
+  onReleaseOverride?(field: HydratedField): Promise<void>
 }) {
   return (
     <label className="block min-w-0">
       <span className="text-[11px] font-semibold uppercase tracking-widest text-parchment-faint">
         {label}
         {hint && <span className="ml-1.5 normal-case tracking-normal opacity-70">{hint}</span>}
+        {overridden && onReleaseOverride && (
+          <OverrideChip field={overridden} onRelease={onReleaseOverride} />
+        )}
       </span>
       <input
         value={value}
