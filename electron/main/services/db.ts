@@ -16,8 +16,9 @@ import migration001 from '../schema/migrations/001_initial.sql?raw'
 import migration002 from '../schema/migrations/002_sort_keys.sql?raw'
 import migration003 from '../schema/migrations/003_reading_state.sql?raw'
 import migration004 from '../schema/migrations/004_device_file_identity.sql?raw'
+import migration005 from '../schema/migrations/005_device_history_outlives_book.sql?raw'
 
-const MIGRATIONS: string[] = [migration001, migration002, migration003, migration004]
+const MIGRATIONS: string[] = [migration001, migration002, migration003, migration004, migration005]
 
 let db: Database.Database | null = null
 
@@ -375,6 +376,13 @@ export function setReadingState(id: string, state: ReadingState): void {
     .run(state.position, state.percent, state.updatedAt, id)
 }
 
+/**
+ * Remove a book's cache row. Dependent rows go with it — a conflict or a
+ * collection membership is about the book and means nothing without it — with
+ * one deliberate exception: `device_history` outlives the book, because it is
+ * a log of what this machine sent rather than a child of the row (migration
+ * 005; `replaceAllBooks` honours the same rule).
+ */
 export function deleteBook(id: string): void {
   const d = getDb()
   d.transaction(() => {

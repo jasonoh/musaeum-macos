@@ -56,6 +56,25 @@ describe('deleteBook', () => {
     expect(getBook('a')).toBeNull()
     expect((await readCatalog(root))?.books.map((b) => b.id)).toEqual([])
   })
+
+  it('leaves no entry behind when the folder cannot be removed', async () => {
+    // The row goes first, so a folder that will not go away costs a stray
+    // folder rather than a book the app shows, cannot open, and cannot delete
+    const dir = await seed('e', ['epub'])
+    librarySync.upsertCatalog([getBook('e')!])
+    await librarySync.flushForTests()
+    const rm = vi.spyOn(fs, 'rm').mockRejectedValueOnce(new Error('share dropped'))
+
+    await deleteBook('e')
+    rm.mockRestore()
+    await librarySync.flushForTests()
+
+    expect(getBook('e')).toBeNull()
+    expect((await readCatalog(root))?.books.map((b) => b.id)).toEqual([])
+    // The folder is still there — the honest cost of the ordering — and the
+    // next delete of a re-imported copy would remove it
+    expect((await fs.readdir(dir)).length).toBeGreaterThan(0)
+  })
 })
 
 describe('deleteFormats', () => {

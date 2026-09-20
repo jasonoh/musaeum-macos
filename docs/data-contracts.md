@@ -71,7 +71,7 @@ This is the canonical data contract (iOS companion depends on it). The writer is
 
 ## SQLite Schema
 
-Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the original spec plus: FTS5 sync triggers (insert/update/delete), indices on `isbn_13` / series / author, `device_history.error` column, and a partial index on unresolved conflicts. Schema versioning via `PRAGMA user_version`; new migrations are appended to the `MIGRATIONS` array in `services/db.ts`.
+Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the original spec plus: FTS5 sync triggers (insert/update/delete), indices on `isbn_13` / series / author, `device_history.error` column, and a partial index on unresolved conflicts. Schema versioning via `PRAGMA user_version`; new migrations are appended to the `MIGRATIONS` array in `services/db.ts`. `device_history.book_id` lost its `REFERENCES books(id)` in migration 005 — history outlives the book it was sent for, and the constraint made a sent book undeletable (`docs/invariants/files-and-deletion.md`).
 
 ```sql
 CREATE TABLE books (
@@ -125,7 +125,7 @@ CREATE TABLE book_collections (
 
 CREATE TABLE device_history (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  book_id     TEXT REFERENCES books(id),
+  book_id     TEXT,                -- provenance only: the row outlives the book (migration 005)
   device_id   TEXT,
   device_name TEXT,
   sent_at     TEXT,

@@ -9,14 +9,33 @@ import { writeMetadataJson } from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 
+/**
+ * A folder that will not go away is logged, never fatal: by the time this runs
+ * the book is already out of the library, and a delete must not report a
+ * failure it did not have.
+ */
+async function removeFolder(dir: string, id: string): Promise<void> {
+  try {
+    await fs.rm(dir, { recursive: true, force: true })
+  } catch (err) {
+    console.error(`[delete] could not remove ${dir} for ${id}:`, err)
+  }
+}
+
 /** Remove a book, its NAS folder, its cache row, and its catalog entry. */
 export async function deleteBook(id: string): Promise<void> {
   nas.assertOnline()
   const book = db.getBook(id)
-  if (book?.nasPath) {
-    await fs.rm(join(nas.getLibraryRoot()!, book.nasPath), { recursive: true, force: true })
-  }
+  // The row goes before the files. With the folder first, anything that made
+  // the row delete fail (a `device_history` FK on a book that had been sent —
+  // migration 005 — or any other SQLite error) left the library showing a book
+  // whose files were already gone: unopenable, and undeletable for the same
+  // reason. The reverse costs a stray folder on the share, which is visible in
+  // Finder and recoverable; an entry pointing at nothing is neither.
   db.deleteBook(id)
+  if (book?.nasPath) {
+    await removeFolder(join(nas.getLibraryRoot()!, book.nasPath), id)
+  }
   librarySync.removeBookFromCatalog(id)
   broadcast('libraryChanged')
 }
@@ -99,10 +118,11 @@ export async function deleteBooks(ids: string[]): Promise<BulkDeleteResult> {
       continue
     }
     try {
-      if (book.nasPath) {
-        await fs.rm(join(root, book.nasPath), { recursive: true, force: true })
-      }
+      // Same order as the single-book path, and for the same reason
       db.deleteBook(id)
+      if (book.nasPath) {
+        await removeFolder(join(root, book.nasPath), id)
+      }
       deleted++
     } catch (err) {
       failed.push({

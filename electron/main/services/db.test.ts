@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import {
   closeDb,
+  deleteBook,
   getBook,
   getBooks,
   getDb,
@@ -139,6 +140,32 @@ describe('searchBooks ordering', () => {
   it('keeps relevance rank when no sort is given', () => {
     seedMatches()
     expect(searchBooks('Voyage').length).toBe(3)
+  })
+})
+
+describe('deleteBook', () => {
+  it('deletes a book that was sent to a device, keeping the send history', () => {
+    // Sending a book writes a device_history row. With the FK that used to sit
+    // on device_history.book_id, that row made the book undeletable — "FOREIGN
+    // KEY constraint failed" — which is the failure this pins.
+    insertBook(makeBook('a', 'Fair Play'))
+    logDeviceTransfer('a', 'kindle:Kindle', 'Kindle', 'azw3')
+
+    expect(() => deleteBook('a')).not.toThrow()
+    expect(getBook('a')).toBeNull()
+    // The history outlives the book: it is a log of what this machine did,
+    // which is also why `replaceAllBooks` keeps those rows
+    expect(getDb().prepare('SELECT book_id, format_sent FROM device_history').all()).toEqual([
+      { book_id: 'a', format_sent: 'azw3' }
+    ])
+  })
+
+  it('deletes a book that carries unresolved conflicts', () => {
+    insertBook(makeBook('b'))
+    insertConflict('b', 'title', [{ source: 'google_books', value: 'Other Title' }])
+
+    expect(() => deleteBook('b')).not.toThrow()
+    expect(getUnresolvedConflictCount()).toBe(0)
   })
 })
 
