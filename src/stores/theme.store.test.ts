@@ -433,7 +433,93 @@ describe('AC4.5 (renderer half) — a row click applies without a save', () => {
 
   it('needs no second interaction: no save chord in the section', () => {
     // Prose in the section's header names the chord it deliberately avoids, so
-    // this looks for the machinery rather than the characters.
+    // this looks for the machinery rather than the characters. It also covers
+    // the filter box the fold added: `onKeyDown` is matched here, so a key
+    // handler of any kind in this file reddens a criterion about the picker
+    // growing no second interaction path.
     expect(section).not.toMatch(/metaKey|ctrlKey|onKeyDown|addEventListener\('keydown'/)
+  })
+})
+
+describe('the appearance fold — what it may hide, and what it may not', () => {
+  const section = readFileSync(APPEARANCE, 'utf8')
+  const fold = section.indexOf('listOpen &&')
+
+  it('leaves the list behind a real disclosure', () => {
+    // The mutation this guards: render the list unconditionally and give the
+    // summary row a chevron that does nothing.
+    expect(fold).toBeGreaterThan(-1)
+    expect(section.indexOf('{listOpen &&')).toBeGreaterThan(-1)
+    expect(section).toMatch(/aria-expanded=\{listOpen\}/)
+    expect(section).toMatch(/aria-controls=\{LIST_ID\}/)
+    expect(section).toMatch(/id=\{LIST_ID\}/)
+  })
+
+  it('hides the list and nothing else — the way in stays above the fold', () => {
+    // `tasks.md:166`'s constraint (a): "burying [the folder] under a hundred
+    // rows is how a picker hides its own import". The mutation this guards:
+    // move `<ImportControl>` or the drop-box row inside the `listOpen &&` block.
+    // Asserted positionally on purpose — existence alone is satisfied by the
+    // mutation, which is what makes the constraint worth a criterion.
+    //
+    // *Every* call site, not the first: the section renders the control from
+    // both branches (the `!view` one and the list one), so an `indexOf` finds
+    // the un-listable branch's render even after the view branch's has been
+    // moved under the fold — measured, that is exactly the mutation that got
+    // away in the campaign's first round.
+    const calls = [...section.matchAll(/<ImportControl/g)].map((m) => m.index ?? -1)
+    expect(fold).toBeGreaterThan(-1)
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    expect(Math.max(...calls)).toBeLessThan(fold)
+    expect(section.indexOf('{view.folder}')).toBeLessThan(fold)
+  })
+
+  it('keeps the drag feedback above the fold, since the list can be the hidden half', () => {
+    // Constraint (b): that sentence is in view precisely because the panel it
+    // used to highlight can be a screen below the pointer.
+    //
+    // The claim is made in two steps and not by comparing the render site's
+    // index with the fold's: `{dragging ? …}` lives inside `ImportControl`,
+    // which is a *later* function in this file, so that comparison asserts the
+    // opposite of what is true — this criterion's first version did exactly
+    // that and its own run caught it. What matters is that the sentence belongs
+    // to the control the fold may not cover, and is rendered there once:
+    const def = section.indexOf('function ImportControl')
+    const site = section.indexOf('{dragging ? DROP_HINT_ACTIVE')
+    expect(def).toBeGreaterThan(-1)
+    expect(site).toBeGreaterThan(def)
+    expect(section.split('{dragging ? DROP_HINT_ACTIVE')).toHaveLength(2)
+    expect(section).toMatch(/dragging \? DROP_HINT_ACTIVE : DROP_HINT/)
+  })
+
+  it('starts closed on every open, and remembers nothing between them', () => {
+    // The mutation this guards: `useState(true)`, or persisting the fold —
+    // either way the list the user sees is state whose cause they cannot see.
+    expect(section).toMatch(/\[listOpen, setListOpen\] = useState\(false\)/)
+    expect(section).not.toMatch(/localStorage|sessionStorage|\.persist\(/)
+  })
+
+  it('takes the summary row from the applied tokens, not from a list row', () => {
+    // The mutation this guards: `view.options.find(o => o.active)?.swatches`,
+    // which comes back empty whenever the active theme is not an option row.
+    expect(section).toMatch(/appliedSwatches\(view\.active\.tokens\)/)
+    expect(section).toMatch(
+      /tokens\.ink\['950'\][\s\S]*tokens\.ink\['800'\][\s\S]*tokens\.parchment\.parchment[\s\S]*tokens\.gold\['400'\][\s\S]*tokens\.gold\['500'\]/
+    )
+  })
+
+  it('names every extension its own drop filter accepts, and no other', () => {
+    // A45's rule: the four sites must agree. The hint is the site that tells the
+    // user what the filter takes, so a form added to the filter must appear in
+    // the sentence — and a form the sentence offers must be one it accepts.
+    const list = /const THEME_EXTENSIONS = \[([^\]]+)\]/.exec(section)?.[1] ?? ''
+    const accepted = [...list.matchAll(/'([^']+)'/g)].map((m) => m[1])
+    const hint = /const DROP_HINT =\s*'([^']+)'/.exec(section)?.[1] ?? ''
+    const named = [...hint.matchAll(/\.([a-z0-9]+)/g)].map((m) => `.${m[1]}`)
+
+    expect(accepted).toHaveLength(4)
+    expect(hint).not.toBe('')
+    for (const ext of accepted) expect(named, ext).toContain(ext)
+    for (const ext of named) expect(accepted, ext).toContain(ext)
   })
 })

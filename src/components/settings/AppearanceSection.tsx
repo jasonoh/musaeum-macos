@@ -1,6 +1,12 @@
 import { useRef, useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
-import type { ThemeOption, ThemeProvider, ThemeVariant } from '@shared/theme.types'
+import type {
+  ThemeOption,
+  ThemeProvider,
+  ThemeSwatches,
+  ThemeTokens,
+  ThemeVariant
+} from '@shared/theme.types'
 import { useThemeStore } from '@/stores/theme.store'
 import {
   CheckIcon,
@@ -22,6 +28,21 @@ import {
  * user is looking at (AC4.5). The row's reason therefore rides back on the click
  * instead of on the save.
  *
+ * *Why the list folds.* The section is the first child of a dialog with one
+ * scroll region, so it decides whether Library / Maintenance / Metadata are
+ * reachable at all: measured on 2026-09-20 at fourteen rows it was **950 px**
+ * tall and the Library heading sat 292 px below the body's visible bottom — the
+ * whole first screenful was the picker. The list therefore sits behind a
+ * `Select theme` disclosure whose row carries the *active* theme, so the
+ * collapsed section still answers what the app looks like right now.
+ *
+ * *What the fold may never hide.* Two things, both reasoned: the way in (the
+ * import control and the drop-box row) — burying those under a hundred rows is
+ * how a picker hides its own import — and the drag feedback, which is a sentence
+ * at the top rather than a highlight on the list, because the highlighted panel
+ * can be a screen below the pointer while the file is over the window. The
+ * disclosure is over the list and nothing else.
+ *
  * *Why this owns its drop handler.* `useDragDrop` listens on the window and
  * filters to book extensions, so a dropped `.yaml` is a no-op there and stays one
  * (AC4.4) — the theme drop is received here, by a handler that knows what a
@@ -37,8 +58,23 @@ import {
  * not a theme folder still passes this filter and comes back as a reported
  * rejection: a file the user dropped on purpose is not a folder listing, and
  * A35's rule about silence is about the listing.
+ *
+ * These are two of the four sites A45 requires to agree; the assertion in
+ * `theme.store.test.ts` reads `DROP_HINT` against this list, so a fifth form
+ * cannot be accepted without being offered.
  */
 const THEME_EXTENSIONS = ['.yaml', '.yml', '.itermcolors', '.css']
+
+/**
+ * One line, so the hint cannot push the rows further down than they need. The
+ * tail this used to carry ("or put files in the folder below") is what the
+ * drop-box row directly beneath already says.
+ */
+const DROP_HINT =
+  'Drop a .yaml, .yml, .itermcolors or an Obsidian theme.css anywhere on this section'
+
+/** The same sentence while a file is over the section — it replaces, never adds. */
+const DROP_HINT_ACTIVE = 'Release to import'
 
 /**
  * `native` is the built-in default, so it is named for what it is to the user
@@ -50,6 +86,15 @@ const PROVIDER_LABEL: Record<ThemeProvider, string> = {
   itermcolors: 'iTerm2',
   obsidian: 'Obsidian'
 }
+
+/**
+ * Above this many rows the picker offers a filter. Below it the box is chrome
+ * that cannot pay for itself on a list the user can see whole; above it a
+ * corpus plus a folder of imports is longer than anyone wants to scan.
+ */
+const FILTER_FROM = 8
+
+const LIST_ID = 'appearance-theme-list'
 
 const ROW_CONTROL =
   'shrink-0 rounded-md border border-ink-600 p-1.5 text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40'
@@ -68,6 +113,11 @@ export function AppearanceSection() {
 
   const [dragging, setDragging] = useState(false)
   const [openNotes, setOpenNotes] = useState<string | null>(null)
+  // Local and unpersisted on purpose: a list the user finds already open (or
+  // already closed) is state whose cause they cannot see, which is why this
+  // dialog persists no part of itself.
+  const [listOpen, setListOpen] = useState(false)
+  const [query, setQuery] = useState('')
   // Depth, not a boolean: dragleave fires for every child the pointer crosses, so
   // a plain flag flickers the highlight off while the file is still over us.
   const dragDepth = useRef(0)
@@ -99,6 +149,22 @@ export function AppearanceSection() {
     void importPaths(files.map((file) => window.Musaeum.files.getPathForFile(file)))
   }
 
+  /**
+   * Closing clears the query: a hidden filter would silently shorten the list
+   * the next time it opens, and the section must not hold state the user cannot
+   * see. Deliberately not an effect and not a key handler — this file carries no
+   * keyboard machinery (AC4.5).
+   */
+  const toggleList = () => {
+    if (listOpen) setQuery('')
+    setListOpen(!listOpen)
+  }
+
+  const options = view?.options ?? []
+  const filtering = options.length > FILTER_FROM
+  const needle = query.trim().toLowerCase()
+  const shown = needle ? options.filter((option) => matches(option, needle)) : options
+
   const imported = lastImport ? lastImport.imported.length : 0
   const rejected = lastImport ? lastImport.rejected.length : 0
 
@@ -126,10 +192,11 @@ export function AppearanceSection() {
         </>
       ) : (
         <>
-          {/* The way in comes first, the list second. With a corpus plus everything
-              the user has imported the rows run well past a screen, and the folder
-              is the doorway this feature was built around (§2.4) — burying it under
-              a hundred rows is how a picker hides its own import. */}
+          {/* The way in comes first, the list second — and the list now folds,
+              which is the only thing the disclosure may cover. With a corpus plus
+              everything the user has imported the rows run well past a screen, and
+              the folder is the doorway this feature was built around (§2.4) —
+              burying it under a hundred rows is how a picker hides its own import. */}
           <ImportControl busy={busy} dragging={dragging} onImport={() => void importFromDialog()} />
 
           {importError && <Report>{importError}</Report>}
@@ -177,28 +244,80 @@ export function AppearanceSection() {
             </div>
           </div>
 
-          <div
-            className={`overflow-hidden rounded-md border bg-ink-850 ${
-              dragging ? 'border-gold-500/40' : 'border-ink-700'
-            }`}
-          >
-            <ul>
-              {view.options.map((option) => (
-                <ThemeRow
-                  key={option.id}
-                  option={option}
-                  reason={themeError?.id === option.id ? themeError.reason : null}
-                  open={openNotes === option.id}
-                  onToggleNotes={() =>
-                    setOpenNotes((current) => (current === option.id ? null : option.id))
-                  }
-                  onApply={() => void setTheme(option.id)}
-                />
-              ))}
-            </ul>
-            <p className="border-t border-ink-800 px-3 py-2 text-[11px] leading-relaxed text-parchment-faint">
-              Click a theme to apply it — nothing here waits for Save.
-            </p>
+          <div className="overflow-hidden rounded-md border border-ink-700 bg-ink-850">
+            {/* The summary is the control: what the app looks like right now, and
+                the way into the list. Its swatches come from the *applied* tokens
+                rather than from a matching row, so it cannot disagree with the
+                screen or come back empty. */}
+            <button
+              onClick={toggleList}
+              aria-expanded={listOpen}
+              aria-controls={LIST_ID}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-ink-800"
+            >
+              <SwatchStrip colours={appliedSwatches(view.active.tokens)} />
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="truncate text-[13px] text-parchment">{view.active.name}</span>
+                <VariantBadge variant={view.active.variant} />
+                <span className="shrink-0 text-[11px] text-parchment-faint">
+                  {PROVIDER_LABEL[view.active.provider]}
+                </span>
+              </span>
+              <span className="shrink-0 text-[11px] text-parchment-faint">
+                {options.length} {options.length === 1 ? 'theme' : 'themes'}
+              </span>
+              <span className="shrink-0 text-[12px] text-parchment-dim">Select theme</span>
+              <ChevronIcon
+                className={`h-3.5 w-3.5 shrink-0 text-parchment-faint ${
+                  listOpen ? '-rotate-90' : 'rotate-90'
+                }`}
+              />
+            </button>
+
+            {listOpen && (
+              <div id={LIST_ID} className="border-t border-ink-800">
+                {filtering && (
+                  <div className="border-b border-ink-800 px-3 py-2">
+                    {/* No key handling on purpose: Escape-to-clear would be the
+                        first piece of keyboard machinery in this file, and the
+                        section's own rule is that it grows none (AC4.5). */}
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Filter themes…"
+                      spellCheck={false}
+                      autoComplete="off"
+                      className="w-full rounded-md border border-ink-700 bg-ink-900 px-2 py-1 text-[12px] text-parchment placeholder:text-parchment-faint/50 focus:border-gold-500/60 focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                {shown.length > 0 ? (
+                  <ul>
+                    {shown.map((option) => (
+                      <ThemeRow
+                        key={option.id}
+                        option={option}
+                        reason={themeError?.id === option.id ? themeError.reason : null}
+                        open={openNotes === option.id}
+                        onToggleNotes={() =>
+                          setOpenNotes((current) => (current === option.id ? null : option.id))
+                        }
+                        onApply={() => void setTheme(option.id)}
+                      />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-3 py-3 text-[11px] text-parchment-faint">
+                    No theme matches “{query.trim()}”.
+                  </p>
+                )}
+
+                <p className="border-t border-ink-800 px-3 py-2 text-[11px] leading-relaxed text-parchment-faint">
+                  Click a theme to apply it — nothing here waits for Save.
+                </p>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -212,9 +331,10 @@ export function AppearanceSection() {
  * that gets it back — every import answer carries a whole `ThemeView` (D10).
  *
  * `dragging` swaps the hint rather than highlighting a panel: the drop is
- * accepted anywhere on the section, and the rows panel that used to carry the
- * highlight can be a screen below the pointer while the file is over the window.
- * A sentence at the top is the one piece of feedback that is always in view.
+ * accepted anywhere on the section, and the panel the highlight used to sit on
+ * can be a screen below the pointer while the file is over the window. A
+ * sentence at the top is the one piece of feedback that is always in view — and
+ * it is the reason the fold may cover the list and nothing above it.
  */
 function ImportControl({
   busy,
@@ -236,9 +356,7 @@ function ImportControl({
         Import…
       </button>
       <span className={`text-[11px] ${dragging ? 'text-gold-300' : 'text-parchment-faint'}`}>
-        {dragging
-          ? 'Release to import'
-          : 'Drop a .yaml, .yml or .itermcolors anywhere on this section, or an Obsidian theme.css, or put files in the folder below'}
+        {dragging ? DROP_HINT_ACTIVE : DROP_HINT}
       </span>
     </div>
   )
@@ -246,6 +364,11 @@ function ImportControl({
 
 /**
  * One row: the five derived values, what the theme is, and what it is called.
+ *
+ * One line, not two. Everything the row carried still rides on it — name,
+ * variant, provider, `stale` — and the only thing the compression moved is the
+ * provider label, which no longer takes a line of its own (D3). The name
+ * truncates first, so a long title never pushes the provider off.
  *
  * The whole left-hand side is the button that applies it, with the notes
  * disclosure beside it rather than inside it — a button inside a button is
@@ -270,43 +393,30 @@ function ThemeRow({
         <button
           onClick={onApply}
           aria-pressed={option.active}
-          className={`flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left ${
+          className={`flex min-w-0 flex-1 items-center gap-2.5 px-3 py-1.5 text-left ${
             option.active ? 'bg-ink-800/60' : 'hover:bg-ink-800'
           }`}
         >
+          <SwatchStrip colours={option.swatches} />
           <span
-            aria-hidden
-            className="flex h-4 w-[52px] shrink-0 overflow-hidden rounded-sm border border-ink-700"
+            className={`min-w-0 flex-1 truncate text-[13px] ${
+              option.active ? 'text-parchment' : 'text-parchment-dim'
+            }`}
           >
-            {option.swatches.map((hex, at) => (
-              // The one literal colour the renderer is allowed: the swatch *is*
-              // the data, and a token would paint every theme the same.
-              <span key={at} className="h-full flex-1" style={{ backgroundColor: hex }} />
-            ))}
+            {option.name}
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-2">
-              <span
-                className={`truncate text-[13px] ${
-                  option.active ? 'text-parchment' : 'text-parchment-dim'
-                }`}
-              >
-                {option.name}
-              </span>
-              <VariantBadge variant={option.variant} />
-              {option.stale && (
-                <span
-                  className="flex shrink-0 items-center gap-1 text-[10px] text-parchment-dim"
-                  title="Saved by an older version of the app — the values still apply, and applying it again re-derives them if its source file is still there"
-                >
-                  <WarningIcon className="h-3 w-3" />
-                  stale
-                </span>
-              )}
+          <VariantBadge variant={option.variant} />
+          {option.stale && (
+            <span
+              className="flex shrink-0 items-center gap-1 text-[10px] text-parchment-dim"
+              title="Saved by an older version of the app — the values still apply, and applying it again re-derives them if its source file is still there"
+            >
+              <WarningIcon className="h-3 w-3" />
+              stale
             </span>
-            <span className="mt-0.5 block truncate text-[11px] text-parchment-faint">
-              {PROVIDER_LABEL[option.provider]}
-            </span>
+          )}
+          <span className="shrink-0 text-[11px] text-parchment-faint">
+            {PROVIDER_LABEL[option.provider]}
           </span>
           {option.active && <CheckIcon className="h-4 w-4 shrink-0 text-gold-400" />}
         </button>
@@ -336,6 +446,52 @@ function ThemeRow({
         </ul>
       )}
     </li>
+  )
+}
+
+/**
+ * The five derived values, side by side. Their order is fixed by
+ * `ThemeSwatches`, so two rows are comparable with each other.
+ *
+ * The one literal colour the renderer is allowed: the swatch *is* the data, and
+ * a token would paint every theme the same.
+ */
+function SwatchStrip({ colours }: { colours: readonly string[] }) {
+  return (
+    <span
+      aria-hidden
+      className="flex h-4 w-[52px] shrink-0 overflow-hidden rounded-sm border border-ink-700"
+    >
+      {colours.map((hex, at) => (
+        <span key={at} className="h-full flex-1" style={{ backgroundColor: hex }} />
+      ))}
+    </span>
+  )
+}
+
+/**
+ * The strip's five values, read off the *applied* tokens rather than off a
+ * matching list row (D2): the stored set is what is on screen, and unlike a row
+ * lookup it cannot come back empty. The five are `ink-950`, `ink-800`,
+ * `parchment`, `gold-400`, `gold-500` — `ThemeSwatches`' order, restated here
+ * because the tokens carry roles and the strip carries positions.
+ */
+function appliedSwatches(tokens: ThemeTokens): ThemeSwatches {
+  return [
+    tokens.ink['950'],
+    tokens.ink['800'],
+    tokens.parchment.parchment,
+    tokens.gold['400'],
+    tokens.gold['500']
+  ]
+}
+
+/** Does a row answer the filter box? Name, provider label or variant. */
+function matches(option: ThemeOption, needle: string): boolean {
+  return (
+    option.name.toLowerCase().includes(needle) ||
+    PROVIDER_LABEL[option.provider].toLowerCase().includes(needle) ||
+    option.variant.includes(needle)
   )
 }
 
