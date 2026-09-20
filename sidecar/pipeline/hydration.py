@@ -12,6 +12,7 @@ Order (per docs/invariants/metadata-hydration.md):
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 from extractors.epub_metadata import extract_embedded_cover, extract_epub_metadata
 from extractors.pdf_metadata import extract_pdf_metadata, render_pdf_cover
@@ -28,8 +29,13 @@ def hydrate_metadata(
     book_dir: str,
     known: dict,
     source_preferences: dict,
+    locked_fields: Optional[list] = None,
 ) -> dict:
+    """`locked_fields` are the fields the user has set themselves: the merge
+    does not propose them and no cover is selected when `cover` is one of them
+    (see `docs/superpowers/specs/2026-09-20-field-overrides-design.md`)."""
     sources = {}
+    locked = set(locked_fields or ())
 
     # 1. Embedded metadata
     embedded = {}
@@ -81,39 +87,45 @@ def hydrate_metadata(
             }
 
     # 5. Merge + conflicts
-    merged, conflicts = merge_metadata(sources, source_preferences)
+    merged, conflicts = merge_metadata(sources, source_preferences, locked)
 
     # Identifiers baked into the file (or seeded from Calibre) are definitive —
-    # online fetches may match a different edition of the same work
-    if identifiers:
+    # online fetches may match a different edition of the same work. Not when
+    # the user owns this field: then their value is the definitive one.
+    if identifiers and "identifiers" not in locked:
         merged.setdefault("identifiers", {}).update(identifiers)
 
-    # 6. Cover candidates: online sources + embedded cover (EPUB or PDF)
-    candidates = []
-    if google and google.get("cover_url"):
-        candidates.append({"source": "google_books", "url": google["cover_url"]})
-    if openlib and openlib.get("cover_url"):
-        candidates.append({"source": "openlibrary", "url": openlib["cover_url"]})
-    if lower.endswith(".epub"):
-        embedded_cover = extract_embedded_cover(file_path)
-    elif lower.endswith(".pdf"):
-        embedded_cover = render_pdf_cover(file_path)
+    # 6. Cover candidates: online sources + embedded cover (EPUB or PDF).
+    # A locked cover gathers no candidate at all: selecting one would spend a
+    # download on an image the user has already chosen over.
+    if "cover" in locked:
+        cover_result = {"cover": None, "review": False, "candidates": []}
     else:
-        embedded_cover = None
-    if embedded_cover:
-        candidates.append({"source": "embedded", "data": embedded_cover})
+        candidates = []
+        if google and google.get("cover_url"):
+            candidates.append({"source": "google_books", "url": google["cover_url"]})
+        if openlib and openlib.get("cover_url"):
+            candidates.append({"source": "openlibrary", "url": openlib["cover_url"]})
+        if lower.endswith(".epub"):
+            embedded_cover = extract_embedded_cover(file_path)
+        elif lower.endswith(".pdf"):
+            embedded_cover = render_pdf_cover(file_path)
+        else:
+            embedded_cover = None
+        if embedded_cover:
+            candidates.append({"source": "embedded", "data": embedded_cover})
 
-    cover_result = select_cover(candidates, book_dir)
-    if cover_result["review"] and len(cover_result["candidates"]) > 1:
-        conflicts.append(
-            {
-                "field": "cover",
-                "candidates": [
-                    {"source": c["source"], "value": c["url"]}
-                    for c in cover_result["candidates"]
-                ],
-            }
-        )
+        cover_result = select_cover(candidates, book_dir)
+        if cover_result["review"] and len(cover_result["candidates"]) > 1:
+            conflicts.append(
+                {
+                    "field": "cover",
+                    "candidates": [
+                        {"source": c["source"], "value": c["url"]}
+                        for c in cover_result["candidates"]
+                    ],
+                }
+            )
 
     return {
         "metadata": merged,

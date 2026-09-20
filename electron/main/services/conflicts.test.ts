@@ -8,6 +8,7 @@ import { makeBook } from '../../../test/helpers/book'
 import { resolveConflict } from './conflicts'
 import { writeCatalog } from './catalog'
 import { closeDb, getBook, getConflictQueue, insertBook, insertConflict } from './db'
+import { list } from './field-overrides'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 
@@ -58,6 +59,23 @@ describe('resolveConflict', () => {
 
     expect(getBook('a')?.publisher).toBe('Orbit Books')
     expect(getConflictQueue()).toHaveLength(0)
+  })
+
+  it('records the resolved field as the user’s decision, so a re-fetch cannot undo it', async () => {
+    // The incident behind this: an author resolved to "Eve Rodsky" came back as
+    // "Ctprint" on the next fetch, because nothing told the merge that a person
+    // had chosen (see the field-overrides design)
+    await seed('a')
+    insertConflict('a', 'author', [
+      { source: 'embedded', value: 'Eve Rodsky' },
+      { source: 'google_books', value: 'Ctprint' }
+    ])
+    const id = soleConflictId()
+
+    await resolveConflict(id, { author: 'embedded' })
+
+    expect(getBook('a')?.author).toBe('Eve Rodsky')
+    expect(list('a')).toEqual(['author'])
   })
 
   it('throws when no choice was provided for the conflict field', async () => {

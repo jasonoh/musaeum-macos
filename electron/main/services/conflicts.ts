@@ -4,6 +4,7 @@ import type { ConflictChoices } from '@shared/metadata.types'
 import * as bookFiles from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
+import * as fieldOverrides from './field-overrides'
 import * as importer from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
@@ -35,13 +36,14 @@ export async function resolveConflict(conflictId: number, choices: ConflictChoic
   if (!candidate) throw new Error(`Source "${chosenSource}" is not a candidate for this conflict`)
 
   const updates: Partial<Book> = {}
+  // The row before the write: the marking below needs the difference from it
+  const before = db.getBook(conflict.bookId)
   if (conflict.field === 'cover') {
     // Cover candidates carry the image URL; download + rewrite via sidecar
-    const current = db.getBook(conflict.bookId)
-    if (!current?.nasPath) throw new Error('Book not found')
+    if (!before?.nasPath) throw new Error('Book not found')
     nas.assertOnline()
     const cover = await sidecar.call<{ full: string; thumb: string }>('fetch_cover', {
-      book_dir: join(nas.getLibraryRoot()!, current.nasPath),
+      book_dir: join(nas.getLibraryRoot()!, before.nasPath),
       url: candidate.value,
       source: chosenSource
     })
@@ -61,6 +63,9 @@ export async function resolveConflict(conflictId: number, choices: ConflictChoic
   }
 
   db.updateBook(conflict.bookId, updates)
+  // A resolution is a user decision like an edit is: the field it settled must
+  // survive the next fetch (see the field-overrides design, D5)
+  fieldOverrides.markFromPatch(conflict.bookId, updates, before)
   db.markConflictResolved(conflictId, chosenSource)
 
   const book = db.getBook(conflict.bookId)

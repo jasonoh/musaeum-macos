@@ -1,4 +1,4 @@
-import type { DuplicateContext } from './book.types'
+import type { Book, DuplicateContext } from './book.types'
 
 export type MetadataSource = 'embedded' | 'calibre' | 'google_books' | 'openlibrary' | 'goodreads'
 
@@ -53,6 +53,35 @@ export const HYDRATED_FIELD_LABELS: Record<HydratedField, string> = {
   language: 'Language',
   identifiers: 'Identifiers',
   tags: 'Tags'
+}
+
+/**
+ * Which `books` columns belong to which `HydratedField`. One table, because
+ * two callers now ask two different questions of it: `applyHydration` asks
+ * "which field is this change", and the override store asks "which field did
+ * the user just set".
+ *
+ * `sort_title` and `author_sort` are absent on purpose — derived companions of
+ * `title` and `author`, so a change to one is a change to the field the user
+ * sees, and a lock on one would be a lock on something nobody typed.
+ */
+export const HYDRATED_KEY_FIELD: Partial<Record<keyof Book, HydratedField>> = {
+  title: 'title',
+  coverFullPath: 'cover',
+  coverThumbPath: 'cover',
+  author: 'author',
+  seriesName: 'series',
+  seriesIndex: 'series',
+  seriesTotal: 'series',
+  description: 'description',
+  publisher: 'publisher',
+  publishedDate: 'published_date',
+  language: 'language',
+  isbn10: 'identifiers',
+  isbn13: 'identifiers',
+  goodreadsId: 'identifiers',
+  openlibraryId: 'identifiers',
+  tags: 'tags'
 }
 
 /**

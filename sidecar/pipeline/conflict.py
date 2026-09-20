@@ -34,15 +34,26 @@ def _score(source: str, field: str, preferences: dict) -> float:
     return base + min(learned, 5) * 0.5
 
 
-def merge_metadata(sources: dict, preferences: dict) -> tuple:
+def merge_metadata(sources: dict, preferences: dict, locked_fields=()) -> tuple:
     """sources: {source_name: normalized metadata dict}.
+
+    `locked_fields` are the fields the user has set themselves: they are not
+    candidates at all, so nothing is merged for them and no conflict is queued
+    (the main process also drops them from the reply before writing — see the
+    field-overrides design, D3/D6).
 
     Returns (merged: dict, conflicts: list of {field, candidates}).
     """
     merged = {}
     conflicts = []
+    locked = set(locked_fields or ())
 
     def candidates_for(field, value_fn):
+        # One place decides what may be proposed: a locked field has no
+        # candidates, which is what keeps it out of the merge and out of the
+        # review queue without a second rule per field below.
+        if field in locked:
+            return []
         out = []
         for name, data in sources.items():
             if not data:
@@ -114,10 +125,14 @@ def merge_metadata(sources: dict, preferences: dict) -> tuple:
     for name, data in sorted(sources.items(), key=lambda kv: _score(kv[0], "identifiers", preferences)):
         if not data:
             continue
-        identifiers.update({k: v for k, v in (data.get("identifiers") or {}).items() if v})
-        for t in data.get("tags") or []:
-            if t not in tags:
-                tags.append(t)
+        # The union is the one place these two fields are built without going
+        # through `candidates_for`, so the lock is honoured here too
+        if "identifiers" not in locked:
+            identifiers.update({k: v for k, v in (data.get("identifiers") or {}).items() if v})
+        if "tags" not in locked:
+            for t in data.get("tags") or []:
+                if t not in tags:
+                    tags.append(t)
     if identifiers:
         merged["identifiers"] = identifiers
     if tags:

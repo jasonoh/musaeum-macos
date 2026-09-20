@@ -11,11 +11,13 @@ import type {
   ImportResult,
   ImportStep
 } from '@shared/book.types'
-import { sortableAuthor, sortableTitle } from '@shared/book.types'
+import { sameBookValue, sortableAuthor, sortableTitle } from '@shared/book.types'
 import type { ConflictCandidate, HydratedField, HydrateOutcome } from '@shared/metadata.types'
+import { HYDRATED_KEY_FIELD } from '@shared/metadata.types'
 import * as bookFiles from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
+import * as fieldOverrides from './field-overrides'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import * as sidecar from './sidecar'
@@ -289,6 +291,9 @@ export async function hydrate(
   if (!book) return { ok: false, error: 'Book not found' }
 
   try {
+    // Read once per run: this same list is the RPC param below (what the merge
+    // may propose) and the reply filter (what the write may apply). D6.
+    const locked = fieldOverrides.list(bookId)
     const result = await sidecar.call<HydrationResult>(
       'hydrate_metadata',
       {
@@ -305,13 +310,16 @@ export async function hydrate(
             openlibrary: book.openlibraryId ?? undefined
           }
         },
-        source_preferences: db.getSourcePreferences()
+        source_preferences: db.getSourcePreferences(),
+        // The user's own decisions: a field here is not even proposed by the
+        // fetch, so it queues no conflict and reads as unchanged (design D3)
+        locked_fields: locked
       },
       300_000
     )
 
     if (job) emit(job, 'cover')
-    const changed = applyHydration(bookId, result)
+    const changed = applyHydration(bookId, withLocksRespected(result, locked))
 
     // The identity a *fetch* settles is one the pre-copy gate could never see:
     // the gate reads the file, and a file is frequently silent about its own
@@ -379,41 +387,47 @@ function duplicateFor(bookId: string): DuplicateContext | null {
 }
 
 /**
- * The `books` columns hydration writes, mapped to the user-facing field each
- * one belongs to. Several columns are one field — the four identifier columns
- * are a single "identifiers" — so this map is what lets the refresh report read
- * "Title, cover and series" instead of naming columns.
- *
- * Only columns whose own value is what the user sees are listed. `sort_title`
- * and `author_sort` are derived from `title` and `author` and are written
- * through the same path, but a book whose sort key was only ever backfilled
- * has not had its title changed, and reporting it as such would put "Title"
- * on every refresh of every book that arrived without one.
+ * The sidecar's metadata keys, mapped onto the same vocabulary as the locks.
+ * `sort_title` follows `title`, so a locked title locks the sort key too — a
+ * fetch must not get to decide the *order* of a title the user owns.
  */
-const HYDRATED_KEY_FIELD: Partial<Record<keyof Book, HydratedField>> = {
+const HYDRATION_KEY_FIELD: Partial<Record<keyof HydrationResult['metadata'], HydratedField>> = {
   title: 'title',
-  coverFullPath: 'cover',
-  coverThumbPath: 'cover',
-  author: 'author',
-  seriesName: 'series',
-  seriesIndex: 'series',
-  seriesTotal: 'series',
-  description: 'description',
+  sort_title: 'title',
+  authors: 'author',
   publisher: 'publisher',
-  publishedDate: 'published_date',
+  published_date: 'published_date',
   language: 'language',
-  isbn10: 'identifiers',
-  isbn13: 'identifiers',
-  goodreadsId: 'identifiers',
-  openlibraryId: 'identifiers',
-  tags: 'tags'
+  description: 'description',
+  series: 'series',
+  tags: 'tags',
+  identifiers: 'identifiers'
 }
 
-/** Reference compare, except arrays (tags), which are compared by value. */
-function sameValue(a: unknown, b: unknown): boolean {
-  if (a === b) return true
-  if (Array.isArray(a) && Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b)
-  return false
+/**
+ * The sidecar's reply, stripped of everything the user has overridden: their
+ * keys from the merged record, their conflicts from the queue, and the cover
+ * when `cover` is one of them.
+ *
+ * The sidecar is *also* told (it must not propose a locked field, so no
+ * conflict is ever built for one) — but the file's own identifiers and the
+ * cover are merged *outside* `merge_metadata`, and this is the one point every
+ * hydration's write passes through. The two halves answer two questions; see D6.
+ */
+function withLocksRespected(result: HydrationResult, locked: HydratedField[]): HydrationResult {
+  if (!locked.length) return result
+  const metadata = Object.fromEntries(
+    Object.entries(result.metadata).filter(([key]) => {
+      const field = HYDRATION_KEY_FIELD[key as keyof HydrationResult['metadata']]
+      return !field || !locked.includes(field)
+    })
+  ) as HydrationResult['metadata']
+  return {
+    ...result,
+    metadata,
+    conflicts: result.conflicts.filter((c) => !locked.includes(c.field as HydratedField)),
+    cover: locked.includes('cover') ? null : result.cover
+  }
 }
 
 /** Applies a hydration result; returns the fields whose value really changed. */
@@ -426,7 +440,7 @@ function applyHydration(bookId: string, result: HydrationResult): HydratedField[
 
   const set = (key: keyof Book, value: Book[keyof Book]): void => {
     const field = HYDRATED_KEY_FIELD[key]
-    if (field && !sameValue(before[key], value)) changed.add(field)
+    if (field && !sameBookValue(before[key], value)) changed.add(field)
     ;(updates as Record<string, unknown>)[key] = value
   }
 

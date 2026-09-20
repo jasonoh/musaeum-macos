@@ -58,6 +58,13 @@ export interface Book {
   readingState: ReadingState | null
 }
 
+/** Reference compare, except arrays, which are compared by value. */
+export function sameBookValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b)
+  return false
+}
+
 /**
  * The format the in-app reader should open, in preference order. PDF is
  * deliberately absent until C2 ships — a PDF-only book falls through to the

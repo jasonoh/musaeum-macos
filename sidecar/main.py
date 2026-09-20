@@ -47,6 +47,7 @@ METHODS = {
         book_dir=p["book_dir"],
         known=p.get("known") or {},
         source_preferences=p.get("source_preferences") or {},
+        locked_fields=p.get("locked_fields") or [],
     ),
     "fetch_cover": lambda p: fetch_cover(
         book_dir=p["book_dir"], url=p.get("url"), source=p.get("source", "google_books")

@@ -19,6 +19,7 @@ import {
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import * as sidecar from './sidecar'
+import * as fieldOverrides from './field-overrides'
 
 /**
  * Stubbed for the same reason as bulk-hydrate's suite: the real
@@ -312,6 +313,100 @@ describe('hydrate — the duplicate it reports', () => {
     })
 
     expect(outcome.ok && outcome.duplicate).toBeUndefined()
+  })
+})
+
+/**
+ * A field the user set is not a field a fetch may move. Two halves, because two
+ * different questions are being answered: the sidecar is told so it does not
+ * even *propose* the field, and the reply is filtered before the write, because
+ * the file's own identifiers and the cover are merged outside `merge_metadata`.
+ * See `docs/superpowers/specs/2026-09-20-field-overrides-design.md`.
+ */
+describe('hydrate — a field the user has overridden', () => {
+  let root: string
+  let dir: string
+
+  beforeEach(async () => {
+    closeDb()
+    const userData = app.getPath('userData')
+    for (const f of ['musaeum.db', 'musaeum.db-wal', 'musaeum.db-shm']) {
+      rmSync(join(userData, f), { force: true })
+    }
+    librarySync.resetForTests()
+    root = mkdtempSync(join(tmpdir(), 'musaeum-override-'))
+    await nas.setLibraryRoot(root)
+    await writeCatalog(root, [])
+    dir = join(root, 'books/a')
+    await fs.mkdir(dir, { recursive: true })
+    insertBook(makeBook('a', 'Book a'))
+  })
+
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    await librarySync.flushForTests()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('leaves a locked field alone and reports it unchanged', async () => {
+    // The user renamed it; the fetch disagrees
+    updateBook('a', { title: 'My Own Title' })
+    fieldOverrides.markFromPatch('a', { title: 'My Own Title' }, makeBook('a', 'Book a'))
+    vi.mocked(sidecar.call).mockResolvedValue(reply({ title: 'Fetched Title' }))
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getBook('a')?.title).toBe('My Own Title')
+    expect(outcome.ok && outcome.changed).toEqual([])
+  })
+
+  it('tells the sidecar which fields the user owns', async () => {
+    fieldOverrides.markFromPatch('a', { publisher: 'Penguin' }, makeBook('a', 'Book a'))
+    vi.mocked(sidecar.call).mockResolvedValue(reply({}))
+
+    await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(sidecar.call).toHaveBeenCalledWith(
+      'hydrate_metadata',
+      expect.objectContaining({ locked_fields: ['publisher'] }),
+      300_000
+    )
+  })
+
+  it('drops a locked key from the reply even when it arrives there', async () => {
+    // The file's own identifiers are merged in after the sidecar's merge, so
+    // this end has to hold the line too
+    fieldOverrides.markFromPatch('a', { isbn13: '0306406152' }, makeBook('a', 'Book a'))
+    vi.mocked(sidecar.call).mockResolvedValue(
+      reply({ identifiers: { isbn_13: '9781707274123' }, title: 'Fetched Title' })
+    )
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getBook('a')?.isbn13).toBeNull()
+    // The fields that are not locked still arrive
+    expect(outcome.ok && outcome.changed).toEqual(['title'])
+  })
+
+  it('takes no fetched cover when the cover is locked', async () => {
+    fieldOverrides.markFromPatch('a', { coverFullPath: 'cover_full.jpg' }, makeBook('a', 'Book a'))
+    vi.mocked(sidecar.call).mockResolvedValue(reply({}, COVER))
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getBook('a')?.coverFullPath).toBeNull()
+    expect(outcome.ok && outcome.changed).toEqual([])
+  })
+
+  it('reads the override map once per run, not once per field', async () => {
+    // The map is one JSON value holding every book, so a read per field would
+    // parse all of it ten times for a book that has ten fields in play
+    const reads = vi.spyOn(fieldOverrides, 'list')
+    vi.mocked(sidecar.call).mockResolvedValue(reply({ title: 'Fetched Title' }))
+
+    await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(reads).toHaveBeenCalledTimes(1)
   })
 })
 

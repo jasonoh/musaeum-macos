@@ -204,6 +204,8 @@ interface MusaeumAPI {
     getBook(id: string): Promise<Book>
     searchBooks(query: string, sort?: BookSort): Promise<Book[]>  // sort ?? rank
     updateBook(id: string, updates: Partial<Book>): Promise<void>
+    getFieldOverrides(id: string): Promise<HydratedField[]>   // fields a fetch must not touch
+    releaseFieldOverride(id: string, field: HydratedField): Promise<HydratedField[]>
     deleteBook(id: string): Promise<void>
     deleteFormats(id: string, formats: BookFormat[]): Promise<{ bookDeleted: boolean }>
     deleteBooks(ids: string[]): Promise<BulkDeleteResult>  // batched; partial-tolerant

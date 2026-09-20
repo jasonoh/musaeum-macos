@@ -15,6 +15,7 @@ import type {
   BulkHydrateProgress,
   ConflictChoices,
   HydrateOutcome,
+  HydratedField,
   MetadataConflict,
   MigrationJob,
   MigrationOptions,
@@ -69,6 +70,10 @@ export interface MusaeumAPI {
     /** Sorted by `sort` when given, otherwise by FTS relevance rank. */
     searchBooks(query: string, sort?: BookSort): Promise<Book[]>
     updateBook(id: string, updates: Partial<Book>): Promise<void>
+    /** Fields the user has set, which a metadata fetch must not touch. */
+    getFieldOverrides(id: string): Promise<HydratedField[]>
+    /** Hand one field back to Musaeum. The value is untouched. */
+    releaseFieldOverride(id: string, field: HydratedField): Promise<HydratedField[]>
     deleteBook(id: string): Promise<void>
     /**
      * Delete many books in one batched operation. Partial success is normal:

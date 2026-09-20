@@ -248,6 +248,18 @@ Built in one pass as two slices — main process, then renderer — **10 code fi
 
 **Deliberately not done:** no library-wide duplicate scan (`GROUP BY isbn_13` was declined — it would surface the older pairs), no merge action, no stored marker or dismissal, and no per-book naming in the bulk job's count. **Reading this in a dev run:** unkeyed Google fetches settle no ISBN at all, so the check is inert without `GOOGLE_BOOKS_API_KEY` — measured, the first probe attempt reported nothing until the app was launched with the key.
 
+## Field overrides — a field you set outranks a fetch (design: `docs/superpowers/specs/2026-09-20-field-overrides-design.md` — built 2026-09-20)
+
+The reported case: an author corrected by hand to *Eve Rodsky* was re-fetched back to `Ctprint` on the row the correction had been typed into. Nothing in the app knew the user had made a decision. Fields a patch actually **changed** — a metadata-editor save, or a resolved conflict — are now recorded as overrides in one `app_config` map keyed by book id, and a fetch is kept off them at two boundaries: the sidecar's merge omits them from the candidate list (so nothing merges and no conflict queues) and the main process filters them out of the reply, because the file's own identifiers and the cover are merged outside `merge_metadata`. Jason settled the forks on 2026-09-20: a resolution **counts** as a user edit (D5), the map is **machine-local** — not in `metadata.json` (D1, with its reversal condition written down: a second machine editing the same library), and a lock is **invisible until you open the editor** (D3/D4 — nothing is re-proposed as a conflict).
+
+Built in two slices — main process + sidecar first, because all of it is verifiable without a screen, then the editor — **17 code files** (11 main/contracts, 2 renderer, 4 sidecar; 3 new files) and **+23 tests** (**897 vitest / 39 files**, **84 pytest**). `typecheck` / `lint` / `prettier` / `build` clean.
+
+**The bug the build's own criteria caught:** the first version marked the override *after* `db.updateBook`, so the "did the user decide anything?" diff ran against the row the write had just produced and always came out equal — the feature was a silent no-op with a green suite. Writing the guard criterion ("a patch that merely restates the row locks nothing") is what forced the question; `markFromPatch` now takes the pre-write row, and both call sites pass it.
+
+Verified in the running app on an isolated profile (one synthetic book, nothing overridden → no chip and no summary; a title save → `getFieldOverrides → ["title"]` over the real IPC and the card renamed; reopening → exactly one chip on Title plus the summary naming it; clicking the chip → overrides `[]` with the value left alone).
+
+**Deliberately not done:** no marker outside the editor (nothing on the card, the detail panel or the conflict queue says a field is held — the obvious next add, and the slice's stated risk 1), no expiry, no per-install sync, and `db.ts` needed nothing at all — the map rides on the existing `getConfig`/`setConfig`, so there is no column and no migration.
+
 ## Specified, not scheduled (2026-09-19)
 
 Three features have been analysed against this file and written up as designs. **None was scheduled when it was written**; the AI panel's first slice has since been signed off (below). Each was specified so the decision is actionable the moment a trigger fires, and so the reasoning is not re-derived from scratch. The analysis that produced them — what is in the roadmap, what is missing from it entirely, and which of those are worth building — is in `docs/project-overview.md` §7–8.
