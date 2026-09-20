@@ -7,6 +7,8 @@ import { selectionCount, useUIStore } from '@/stores/ui.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
 import { rowWindow, useResetScrollOnResultChange, useScrollMetrics } from '@/hooks/useVirtualRows'
 import { resultSetKey } from '@/lib/resultSetIdentity'
+import { libraryViewState } from '@/lib/library-emptiness'
+import { EmptyLibrary } from '@/components/shared/EmptyLibrary'
 import { CheckIcon, SortArrowIcon, StarIcon } from '@/components/shared/icons'
 
 /**
@@ -233,6 +235,10 @@ function Spacer({ height }: { height: number }) {
 
 export function ListView() {
   const books = useLibraryStore((s) => s.books)
+  const query = useLibraryStore((s) => s.query)
+  const loading = useLibraryStore((s) => s.loading)
+  const filters = useLibraryStore((s) => s.filters)
+  const view = libraryViewState({ loading, query, filters, resultCount: books.length })
   const resultKey = useLibraryStore((s) =>
     resultSetKey({ query: s.query, filters: s.filters, sort: s.sort })
   )
@@ -261,33 +267,41 @@ export function ListView() {
 
   return (
     <div ref={ref} className="no-scroll-anchor h-full overflow-y-auto">
-      <table className="w-full table-fixed border-collapse">
-        <thead className="sticky top-0 z-10 bg-ink-900">
-          <tr className="border-b border-ink-700 text-left text-[11px] font-semibold uppercase tracking-wider text-parchment-faint">
-            {COLUMNS.map((c, i) =>
-              c.select ? (
-                <SelectAllHeaderCell key="select" />
-              ) : (
-                <HeaderCell
-                  key={c.label}
-                  label={c.label}
-                  width={c.width}
-                  field={c.field}
-                  first={i === 0}
-                  last={i === COLUMNS.length - 1}
-                />
-              )
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          <Spacer height={padTop} />
-          {books.slice(start, end).map((book) => (
-            <Row key={book.id} book={book} />
-          ))}
-          <Spacer height={padBottom} />
-        </tbody>
-      </table>
+      {/* The column headers go with the rows: a header strip over "Your library
+          awaits" reads as a table with nothing in it rather than as a place to
+          start, and list mode is a persisted preference — so this empty pane is
+          the only one some users ever see. */}
+      {view !== 'books' ? (
+        <EmptyLibrary state={view} query={query} />
+      ) : (
+        <table className="w-full table-fixed border-collapse">
+          <thead className="sticky top-0 z-10 bg-ink-900">
+            <tr className="border-b border-ink-700 text-left text-[11px] font-semibold uppercase tracking-wider text-parchment-faint">
+              {COLUMNS.map((c, i) =>
+                c.select ? (
+                  <SelectAllHeaderCell key="select" />
+                ) : (
+                  <HeaderCell
+                    key={c.label}
+                    label={c.label}
+                    width={c.width}
+                    field={c.field}
+                    first={i === 0}
+                    last={i === COLUMNS.length - 1}
+                  />
+                )
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            <Spacer height={padTop} />
+            {books.slice(start, end).map((book) => (
+              <Row key={book.id} book={book} />
+            ))}
+            <Spacer height={padBottom} />
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

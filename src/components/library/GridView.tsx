@@ -8,8 +8,9 @@ import {
   useScrollMetrics
 } from '@/hooks/useVirtualRows'
 import { resultSetKey } from '@/lib/resultSetIdentity'
+import { libraryViewState } from '@/lib/library-emptiness'
 import { BookCard, CARD_META_HEIGHT, CARD_META_MARGIN } from './BookCard'
-import { BookIcon } from '@/components/shared/icons'
+import { EmptyLibrary } from '@/components/shared/EmptyLibrary'
 
 /**
  * Layout constants mirroring the Tailwind classes on the scroll container.
@@ -28,27 +29,12 @@ function columnCount(contentWidth: number): number {
   return Math.max(1, Math.floor((contentWidth + GAP_X) / (MIN_CARD_WIDTH + GAP_X)))
 }
 
-function EmptyLibrary({ query }: { query: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 text-parchment-faint">
-      <BookIcon className="h-10 w-10" />
-      {query.trim() ? (
-        <p className="text-sm">Nothing matches “{query.trim()}”</p>
-      ) : (
-        <>
-          <p className="font-display text-lg text-parchment-dim">Your library awaits</p>
-          <p className="max-w-xs text-center text-sm">
-            Drag EPUB, MOBI, or AZW3 files anywhere in this window to add them
-          </p>
-        </>
-      )}
-    </div>
-  )
-}
-
 export function GridView() {
   const books = useLibraryStore((s) => s.books)
   const query = useLibraryStore((s) => s.query)
+  const loading = useLibraryStore((s) => s.loading)
+  const filters = useLibraryStore((s) => s.filters)
+  const view = libraryViewState({ loading, query, filters, resultCount: books.length })
   const resultKey = useLibraryStore((s) =>
     resultSetKey({ query: s.query, filters: s.filters, sort: s.sort })
   )
@@ -80,8 +66,8 @@ export function GridView() {
 
   return (
     <div ref={ref} className="no-scroll-anchor h-full overflow-y-auto px-6 py-5">
-      {!books.length ? (
-        <EmptyLibrary query={query} />
+      {view !== 'books' ? (
+        <EmptyLibrary state={view} query={query} />
       ) : (
         // Width is 0 until the container is measured; rendering cards then
         // would flash them at zero width.
