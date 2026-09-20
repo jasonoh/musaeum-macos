@@ -79,3 +79,52 @@ export interface AiStatus {
   /** A key is in force. Never the key itself — this is a boolean on purpose. */
   hasKey: boolean
 }
+
+/**
+ * A Test press, against the values in the form rather than the stored config:
+ * the whole point of the button is to answer *before* committing, and a probe
+ * that read `app_config` could not report on a key just pasted.
+ *
+ * The key travels as a parameter. The parent spec's D2 sentence about the key
+ * never crossing the IPC boundary is about the streaming path (`ai:ask`);
+ * `settings:save` has always carried it, and so does this.
+ */
+export interface AiProbeRequest {
+  baseUrl: string
+  model: string | null
+  apiKey: string | null
+}
+
+/**
+ * What a probe learned. Six verdicts, because the honest answer to "is my key
+ * working?" has six shapes and three of them are not about the key at all:
+ *
+ * - `rejected` — a 401. The key is the problem.
+ * - `refused` — a status that says the *request* was refused rather than the
+ *   key rejected: a 403, a 429, a 5xx. A 403 is as often a network block as a
+ *   bad key (measured: `api.groq.com/openai/v1/models` answers 403 with a
+ *   network message and no key involved), so it is never reported as "your key
+ *   is bad".
+ * - `no-model-list` — 404/405/501. The endpoint has no `/models`, so the key
+ *   was *not checked*, and the sentence says that rather than blaming it.
+ */
+export type AiProbeVerdict =
+  'ok' | 'rejected' | 'refused' | 'no-model-list' | 'unreachable' | 'timeout'
+
+export interface AiProbeResult {
+  verdict: AiProbeVerdict
+  /** One sentence for the UI, in the diagnose-not-errno discipline. */
+  message: string
+  /** What was actually fetched, so the answer names what it hit. */
+  url: string
+  isLocal: boolean
+  hasKey: boolean
+  /** The ids the endpoint listed — sorted, capped, empty when it listed none. */
+  models: string[]
+  /** How many it listed before the cap, so a capped list says so. */
+  modelCount: number
+  /** Is the model in the request among them? Null when unasked or unlisted. */
+  modelOffered: boolean | null
+  /** Wall clock for the round trip, so "it works" can carry "and it is fast". */
+  elapsedMs: number
+}

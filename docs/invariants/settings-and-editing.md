@@ -19,7 +19,7 @@ Both stores `merge` through a validator (`isBookSort` in `book.types.ts`, a lite
 
 ## Settings
 
-`components/settings/SettingsModal.tsx` over `services/settings.ts` — the only way to change the four *editable* `app_config` fields (`smb_url`, `python_path`, `ebook_convert_path`, `google_books_api_key`) from the UI. The theming keys are edited by the Appearance picker instead (see the theme section below). Reached from the sidebar's NAS status row (or **⌘,**), so "Not configured" leads to where it's fixed.
+`components/settings/SettingsModal.tsx` over `services/settings.ts` — the only way to change the *editable* `app_config` fields (`smb_url`, `python_path`, `ebook_convert_path`, `google_books_api_key`) from the UI. The theming keys are edited by the Appearance picker instead (see the theme section below). Reached from the sidebar's NAS status row (or **⌘,**), so "Not configured" leads to where it's fixed.
 
 Two rules shape the service:
 - **It never re-implements detection.** What python and ebook-convert resolve to is asked of `sidecar.ts` (`resolvePython` / `resolveEbookConvert`, which return a `ToolResolution` carrying `configured | auto | none`) — the module that actually spawns them. Settings reporting a path the app doesn't use would be worse than showing nothing.
@@ -30,6 +30,13 @@ Two rules shape the service:
 The Google Books key resolves from `app_config` first and `process.env` second, so a key set here survives a double-clicked `.app` while `infisical run -- npm run dev` still works with nothing configured. It is returned to the renderer in `values` (to edit) but only ever masked in `resolved`.
 
 Library root keeps its own flow (`nas.chooseLibraryRoot`) rather than joining the batched save — picking a root can adopt an existing catalog, which is a question the user has to answer as it happens.
+
+### The Ask (AI) group (slice 4, 2026-09-20)
+
+Three keys — `ai_base_url`, `ai_model`, `ai_api_key` — with two rules of their own, both settled in `docs/superpowers/plans/2026-09-20-reader-ai-config-slice4.md`:
+
+- **The provider is a label derived from the endpoint, never a stored fact.** `src/lib/ai-providers.ts` (renderer-only) holds eleven rows — three loopback servers, seven cloud endpoints, and Custom — and a row's whole content is a base URL. Choosing one writes that URL into the Endpoint field; which row the select shows is *computed* from the value on screen (`matchProvider`, normalized for case and a trailing slash), so a URL nobody lists reads **Custom** and a stored provider id can never disagree with where requests actually go. **No main-process file may import that table**, and it exists only so a text field is easy to fill: the client stays vendor-blind — `probe()` takes a URL, a model and a key, and branches on no vendor at all. A provider that needed a header or a wire of its own would be a wire fact and would belong in the schema, which is a spec amendment rather than a row.
+- **Test answers about the form, not about what is saved.** `ai:test` takes its endpoint, model and key as **arguments** (`services/ai.ts` → `probe()`, one thin handler in `ipc/ai.ts`), because the button exists to answer *before* committing — the one exception being a blank endpoint, which falls back to the resolved value, so the first Test on a fresh install means something. It writes nothing. One request (`GET {base}/models`) and six verdicts, and the ladder is the part worth knowing: **401 is about the key, 403 is not** (measured 2026-09-20: `api.groq.com/openai/v1/models` answers 403 with a network message and no key involved), and **404/405/501 mean the endpoint has no model list** — so the key was never checked, and the sentence says exactly that rather than blaming it. The models it lists are the endpoint's own, sorted, capped at 100 with the total reported, and offered back to the Model field as a datalist that stays typable.
 
 ---
 

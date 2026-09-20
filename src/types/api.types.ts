@@ -1,4 +1,12 @@
-import type { AiChunkEvent, AiDoneEvent, AiErrorEvent, AiStatus, AskRequest } from './ai.types'
+import type {
+  AiChunkEvent,
+  AiDoneEvent,
+  AiErrorEvent,
+  AiProbeRequest,
+  AiProbeResult,
+  AiStatus,
+  AskRequest
+} from './ai.types'
 import type {
   Book,
   BookFilters,
@@ -214,6 +222,14 @@ export interface MusaeumAPI {
      * settled request reports that it released its slot.
      */
     cancel(requestId: string): Promise<boolean>
+    /**
+     * Settings' Test button: one `GET {base}/models` against the endpoint,
+     * model and key **as typed in the form**, returning one verdict about
+     * whether the key is hitting the endpoint. Writes nothing, and takes its
+     * values as arguments for exactly that reason — a probe that read the
+     * stored config could not report on a key just pasted.
+     */
+    test(request: AiProbeRequest): Promise<AiProbeResult>
   }
 
   theme: {

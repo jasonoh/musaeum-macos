@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { AiProbeResult } from '@shared/ai.types'
 import type { EditableSettings, ExecutableKind, SettingsView } from '@shared/settings.types'
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { AppearanceSection } from './AppearanceSection'
 import { useLibraryStore } from '@/stores/library.store'
-import { EyeIcon, SpinnerIcon } from '@/components/shared/icons'
+import { CheckIcon, EyeIcon, SpinnerIcon } from '@/components/shared/icons'
+import { AI_PROVIDERS, endpointHint, hostOf, matchProvider, providerById } from '@/lib/ai-providers'
 
 /**
  * The only way to change `app_config` from the UI. Everything here except the
@@ -16,6 +18,19 @@ import { EyeIcon, SpinnerIcon } from '@/components/shared/icons'
  * the app resolves to today, so clearing a path visibly falls back to it
  * rather than breaking the feature.
  */
+
+/** The model datalist, wired to the Model field by id. */
+const AI_MODELS_LIST_ID = 'musaeum-ai-models'
+
+/** One verdict's colour. `refused`/`no-model-list` are warnings, not failures. */
+const VERDICT_TONE: Record<AiProbeResult['verdict'], string> = {
+  ok: 'text-ok-400',
+  rejected: 'text-danger-400',
+  unreachable: 'text-danger-400',
+  timeout: 'text-danger-400',
+  refused: 'text-warn-400',
+  'no-model-list': 'text-warn-400'
+}
 
 interface FormState {
   smbUrl: string
@@ -78,6 +93,13 @@ export function SettingsModal() {
   // Its own switch: two keys in one dialog, and one Eye toggling both would
   // reveal a key nobody asked to see
   const [revealAiKey, setRevealAiKey] = useState(false)
+  // The Test verdict. Local and transient on purpose: a restored "the key
+  // works" would describe a request that is not in flight, against a key that
+  // may since have been revoked — the persisted-state rule this dialog already
+  // follows for everything it does not save.
+  const [probe, setProbe] = useState<AiProbeResult | null>(null)
+  const [probeError, setProbeError] = useState<string | null>(null)
+  const [probing, setProbing] = useState(false)
 
   const close = useCallback(() => openModal(null), [openModal])
 
@@ -132,6 +154,59 @@ export function SettingsModal() {
   const set = (key: keyof FormState) => (value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }))
 
+  /**
+   * The Ask fields write through here, so editing any of them drops a verdict
+   * that was about the values just replaced. A stale "the key works" beside a
+   * URL the user is halfway through changing is the one lie this section could
+   * tell.
+   */
+  const setAi = (key: 'aiBaseUrl' | 'aiModel' | 'aiApiKey') => (value: string) => {
+    set(key)(value)
+    setProbe(null)
+    setProbeError(null)
+  }
+
+  /**
+   * Choosing a provider writes its base URL into the form and nothing else —
+   * no key is stored for it, and nothing is saved until Save is pressed. The
+   * select's own value is *derived* from the endpoint (`matchProvider`), so
+   * this can only ever move the field, never record a second opinion about it.
+   */
+  const chooseProvider = (id: string) => {
+    const row = providerById(id)
+    if (!row.baseUrl) return
+    set('aiBaseUrl')(row.baseUrl)
+    setProbe(null)
+    setProbeError(null)
+  }
+
+  /**
+   * Test the endpoint, model and key **in the form** — not the stored ones.
+   * The button exists to answer before committing, so it can only report on
+   * what is on screen; where the field is blank the resolved value is what the
+   * app would actually use, which is what makes a first Test meaningful on a
+   * machine with nothing configured yet.
+   */
+  const test = async () => {
+    if (!view) return
+    setProbing(true)
+    setProbe(null)
+    setProbeError(null)
+    try {
+      setProbe(
+        await window.Musaeum.ai.test({
+          baseUrl: form.aiBaseUrl.trim() || view.resolved.aiBaseUrl.value || '',
+          model: form.aiModel.trim() || null,
+          apiKey: form.aiApiKey.trim() || null
+        })
+      )
+    } catch (err) {
+      setProbeError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setProbing(false)
+    }
+  }
+
   const browse = async (kind: ExecutableKind, key: keyof FormState) => {
     const picked = await window.Musaeum.settings.chooseExecutable(kind)
     if (picked) set(key)(picked)
@@ -149,6 +224,17 @@ export function SettingsModal() {
       setBusy(false)
     }
   }
+
+  // The provider is *derived* from the effective endpoint — the form's value, or
+  // what the app resolves to when the field is blank. Deriving it from the raw
+  // field would read "Custom" on a fresh install, where the app is in fact
+  // pointed at the compiled-in local model.
+  const effectiveBaseUrl = form.aiBaseUrl.trim() || view?.resolved.aiBaseUrl.value || null
+  const selected = providerById(matchProvider(effectiveBaseUrl))
+  const listedModels = probe?.models ?? []
+  const modelNote = listedModels.length
+    ? `${probe?.modelCount ?? listedModels.length} models listed by this endpoint — type to filter, or pick one.`
+    : view?.resolved.aiModel.detail
 
   return (
     <div
@@ -286,32 +372,60 @@ export function SettingsModal() {
             </Section>
 
             <Section title="Ask (AI)">
+              <label className="block min-w-0">
+                <span className="text-[11px] font-semibold uppercase tracking-widest text-parchment-faint">
+                  Provider
+                </span>
+                <select
+                  value={selected.id}
+                  onChange={(e) => chooseProvider(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-ink-700 bg-ink-850 px-2.5 py-1.5 text-[13px] text-parchment focus:border-gold-500/60 focus:outline-none focus:ring-1 focus:ring-gold-500/30"
+                >
+                  {AI_PROVIDERS.map((row) => (
+                    <option key={row.id} value={row.id} disabled={row.baseUrl === null}>
+                      {row.label}
+                      {row.local ? ' — local' : ''}
+                      {row.baseUrl === null ? ' — type an endpoint below' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <Field
                 label="Endpoint"
                 value={form.aiBaseUrl}
-                onChange={set('aiBaseUrl')}
+                onChange={setAi('aiBaseUrl')}
                 placeholder={view.resolved.aiBaseUrl.value ?? ''}
                 mono
-                hint={view.resolved.aiBaseUrl.detail}
+                hint={endpointHint(form.aiBaseUrl, view.resolved.aiBaseUrl)}
               />
               <Field
                 label="Model"
                 value={form.aiModel}
-                onChange={set('aiModel')}
+                onChange={setAi('aiModel')}
                 placeholder="No model set — the ask panel stays off"
                 mono
-                hint={view.resolved.aiModel.detail}
+                hint={modelNote}
+                list={listedModels.length ? AI_MODELS_LIST_ID : undefined}
               />
+              {listedModels.length > 0 && (
+                <datalist id={AI_MODELS_LIST_ID}>
+                  {listedModels.map((id) => (
+                    <option key={id} value={id} />
+                  ))}
+                </datalist>
+              )}
               <div className="flex items-end gap-2">
                 <div className="min-w-0 flex-1">
                   <Field
                     label="API key (optional)"
                     value={form.aiApiKey}
-                    onChange={set('aiApiKey')}
+                    onChange={setAi('aiApiKey')}
                     placeholder={
                       view.resolved.aiApiKey.source === 'env'
                         ? 'Set in the environment'
-                        : 'Not needed for a local model'
+                        : selected.local
+                          ? 'Not needed for a local model'
+                          : `Paste the key ${selected.baseUrl ? `for ${hostOf(selected.baseUrl)}` : 'for this endpoint'}`
                     }
                     mono
                     type={revealAiKey ? 'text' : 'password'}
@@ -325,6 +439,37 @@ export function SettingsModal() {
                   <EyeIcon className="h-4 w-4" off={revealAiKey} />
                 </button>
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void test()}
+                  disabled={probing}
+                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-ink-600 px-2.5 py-1 text-[12px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
+                >
+                  {probing ? (
+                    <SpinnerIcon className="h-3.5 w-3.5" />
+                  ) : (
+                    <CheckIcon className="h-3.5 w-3.5" />
+                  )}
+                  Test
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => void save()}
+                  className="shrink-0 rounded-md bg-gold-500 px-2.5 py-1 text-[12px] font-semibold text-ink-950 hover:bg-gold-400 disabled:opacity-40"
+                >
+                  Save
+                </button>
+                <span className="text-[11px] leading-relaxed text-parchment-faint">
+                  Test asks the endpoint for its model list — Save is the dialog’s save, every
+                  field.
+                </span>
+              </div>
+              {probeError && <p className="text-[12px] text-danger-400">{probeError}</p>}
+              {probe && (
+                <p className={`text-[12px] leading-relaxed ${VERDICT_TONE[probe.verdict]}`}>
+                  {probe.message}
+                </p>
+              )}
               <Note>
                 What the reader’s ask panel sends: the title, author, section and your highlight —
                 the book’s own text only when the model can’t place it, or when you ask for it. Read
@@ -512,7 +657,8 @@ function Field({
   placeholder,
   hint,
   mono,
-  type
+  type,
+  list
 }: {
   label: string
   value: string
@@ -521,6 +667,8 @@ function Field({
   hint?: string
   mono?: boolean
   type?: 'text' | 'password'
+  /** A `<datalist>` id, when the field has values the app has learned. */
+  list?: string
 }) {
   return (
     <label className="block min-w-0">
@@ -530,6 +678,7 @@ function Field({
       <input
         value={value}
         type={type ?? 'text'}
+        list={list}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         spellCheck={false}

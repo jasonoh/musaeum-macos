@@ -1,4 +1,11 @@
-import type { AiStatus, AskDoneReason, AskRequest } from '@shared/ai.types'
+import type {
+  AiProbeRequest,
+  AiProbeResult,
+  AiProbeVerdict,
+  AiStatus,
+  AskDoneReason,
+  AskRequest
+} from '@shared/ai.types'
 import type { ResolvedSetting, SettingSource } from '@shared/settings.types'
 import { getConfig } from './db'
 import { broadcast } from './events'
@@ -197,6 +204,233 @@ export function getStatus(): AiStatus {
     isLocal,
     hasKey: resolveKey().value !== null
   }
+}
+
+// ---------------------------------------------------------------------------
+// The probe (Settings' Test button)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a Test waits before giving up.
+ *
+ * Short on purpose, and unlike `IDLE_TIMEOUT_MS` it *is* a total deadline: a
+ * button press is not a stream, and a probe still running after this long is
+ * already a worse answer than "it didn't answer".
+ */
+const PROBE_TIMEOUT_MS = 15_000
+
+/** How many model ids a probe hands back — see the `modelCount` field. */
+export const PROBE_MODEL_CAP = 100
+
+export interface ProbeOptions {
+  /** Overridden in tests; the default is `PROBE_TIMEOUT_MS`. */
+  timeoutMs?: number
+}
+
+/**
+ * Test an endpoint and a key, from the values in the form.
+ *
+ * One request — `GET {base}/models` — and one of six verdicts. Deliberately
+ * *not* a tiny completion: the model list is free, needs no model to be chosen
+ * (which is the whole question a user has when they first paste a key), and
+ * answers "is this key hitting this endpoint" directly. The cost of that
+ * choice is stated in the slice plan (2026-09-20, O2): an endpoint with no
+ * `/models` cannot be probed, and `no-model-list` says exactly that instead of
+ * blaming a key it never checked.
+ *
+ * The verdict ladder is where this function's honesty lives:
+ *
+ * - **401 is about the key.** `rejected`, with the endpoint's own words.
+ * - **403 is not.** Measured 2026-09-20, `api.groq.com/openai/v1/models`
+ *   answers 403 `{"error":{"message":"Access denied. Please check your network
+ *   settings."}}` with no key involved at all — so a 403 reads as `refused`,
+ *   and telling someone to regenerate a key that was fine is the bug this
+ *   avoids.
+ * - **404/405/501 mean the route is absent**, so the key was not tested and
+ *   the sentence says so. Gemini's documented OpenAI-compatible `/models`
+ *   answers 404 today, which is why this must not read as a key failure.
+ */
+export async function probe(
+  request: AiProbeRequest,
+  options: ProbeOptions = {}
+): Promise<AiProbeResult> {
+  const started = Date.now()
+  const baseUrl = withoutTrailingSlash(request.baseUrl.trim())
+  const model = request.model?.trim() || null
+  // The form's key, or the one the app would actually use — a key set in the
+  // environment rather than in Settings is invisible to the renderer, and a
+  // Test that reported "none is set" while the reader posted with that key
+  // would be answering a different question than the one asked.
+  const key = request.apiKey?.trim() || resolveKey().value
+  const isLocal = isLoopback(baseUrl)
+  const url = `${baseUrl}/models`
+  const host = hostOf(baseUrl)
+
+  const result = (
+    verdict: AiProbeVerdict,
+    message: string,
+    models: string[] = [],
+    modelCount = 0,
+    modelOffered: boolean | null = null
+  ): AiProbeResult => ({
+    verdict,
+    message,
+    url,
+    isLocal,
+    hasKey: key !== null,
+    models,
+    modelCount,
+    modelOffered,
+    elapsedMs: Date.now() - started
+  })
+
+  if (!isHttpUrl(baseUrl)) {
+    return result(
+      'unreachable',
+      `Not an endpoint URL: "${baseUrl}" — it needs to start with http://`
+    )
+  }
+
+  const headers: Record<string, string> = { accept: 'application/json' }
+  if (key) headers.authorization = `Bearer ${key}`
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(options.timeoutMs ?? PROBE_TIMEOUT_MS)
+    })
+  } catch (err) {
+    if (isProbeTimeout(err)) {
+      const seconds = Math.round((options.timeoutMs ?? PROBE_TIMEOUT_MS) / 1000)
+      return result('timeout', `${host} did not answer within ${seconds} s.`)
+    }
+    return result('unreachable', describeConnectionError(err, baseUrl))
+  }
+
+  const body = await response.text().catch(() => '')
+  const detail = httpErrorMessage(body)
+
+  if (response.status === 401) {
+    // A 401 with no key sent is the endpoint asking for one, not rejecting
+    // one — the two sentences send the user to different places.
+    if (!key) return result('rejected', `${host} wants a key (HTTP 401) — none is set.`)
+    return result('rejected', `The endpoint rejected the key (HTTP 401)${suffix(detail)}`)
+  }
+  if (response.status === 403) {
+    return result('refused', `${host} refused the request (HTTP 403)${suffix(detail)}`)
+  }
+  if (response.status === 404 || response.status === 405 || response.status === 501) {
+    return result(
+      'no-model-list',
+      `No model list at ${url} (HTTP ${response.status}) — this endpoint can't be tested this way, and the key was not checked.`
+    )
+  }
+  if (!response.ok) {
+    return result('refused', `${host} answered HTTP ${response.status}${suffix(detail)}`)
+  }
+
+  // "accepted the key" is a claim about a key, and OpenRouter lists its models
+  // to anyone — measured live 2026-09-20, an unkeyed Test read "accepted the
+  // key" when no key had been sent at all. The subject names which happened.
+  const subject = key ? `${host} accepted the key` : `${host} answered (no key was sent)`
+
+  const ids = parseModelIds(body)
+  if (ids === null) {
+    return result('ok', `${subject} — its model list didn't parse, so it isn't shown.`)
+  }
+
+  const sorted = [...new Set(ids)].sort((a, b) => a.localeCompare(b))
+  const models = sorted.slice(0, PROBE_MODEL_CAP)
+  const modelCount = sorted.length
+  const modelOffered = model ? sorted.includes(model) : null
+
+  if (!modelCount) {
+    return result('ok', `${subject} — it lists no models yet.`)
+  }
+  if (!model) {
+    return result(
+      'ok',
+      `${subject} — it lists ${modelCount} model${modelCount === 1 ? '' : 's'}. Pick one below.`,
+      models,
+      modelCount
+    )
+  }
+  return modelOffered
+    ? result(
+        'ok',
+        `${subject} — ${model} is one of the ${modelCount} it lists.`,
+        models,
+        modelCount,
+        true
+      )
+    : result(
+        'ok',
+        `${subject}, but it doesn't list ${model} — of the ${modelCount} it lists, pick one below.`,
+        models,
+        modelCount,
+        false
+      )
+}
+
+/**
+ * `: detail` for an endpoint that said something, and nothing when it didn't —
+ * ending the sentence without doubling the full stop the endpoint's own message
+ * already carries (measured live: `…account/api-keys..`).
+ */
+function suffix(detail: string | null): string {
+  if (!detail) return '.'
+  return /[.!?]$/.test(detail) ? `: ${detail}` : `: ${detail}.`
+}
+
+/**
+ * A timeout reaches here as a `TimeoutError` from `AbortSignal.timeout`, and
+ * the errno shape is checked too so the verdict does not depend on which of
+ * undici's two paths surfaced it.
+ */
+function isProbeTimeout(err: unknown): boolean {
+  const name = (err as { name?: unknown })?.name
+  if (name === 'TimeoutError' || name === 'AbortError') return true
+  const code = errorCode(err)
+  return (
+    code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'UND_ERR_HEADERS_TIMEOUT'
+  )
+}
+
+/**
+ * The ids an OpenAI-compatible model list carries, or `null` when the body is
+ * not a list at all — an empty array and an unreadable body are different
+ * answers ("nothing is pulled yet" against "this isn't a model list"), and the
+ * probe's sentence differs for each.
+ *
+ * Tolerant by design: `{data:[{id}]}` is the OpenAI shape every row in our
+ * table answers with, a bare array and `{models:[…]}` are what other
+ * OpenAI-*-compatible servers send, and an entry's name is `id` or `name`.
+ */
+export function parseModelIds(body: string): string[] | null {
+  const parsed = parseJson(body)
+  const rows = Array.isArray(parsed)
+    ? parsed
+    : isRecord(parsed) && Array.isArray(parsed.data)
+      ? parsed.data
+      : isRecord(parsed) && Array.isArray(parsed.models)
+        ? parsed.models
+        : null
+  if (!rows) return null
+
+  const ids: string[] = []
+  for (const row of rows) {
+    if (typeof row === 'string' && row) ids.push(row)
+    else if (isRecord(row)) {
+      const id = row.id ?? row.name
+      if (typeof id === 'string' && id) ids.push(id)
+    }
+  }
+  return ids
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 // ---------------------------------------------------------------------------
@@ -539,13 +773,19 @@ export function describeConnectionError(err: unknown, endpoint: string): string 
  * An HTTP error body's own explanation. A local server that does not have the
  * model answers 400 with `{"error":{"message":"model 'x' not found"}}`, which is
  * the single most useful sentence available — the root object is checked as
- * well, because a few implementations answer `{message}` flat.
+ * well, because a few implementations answer `{message}` flat, and `detail`
+ * because Mistral answers `{"detail":"Invalid API Key"}` (measured 2026-09-20).
  */
 function httpErrorMessage(body: string): string | null {
   const parsed = parseJson(body)
   if (typeof parsed === 'string' && parsed) return parsed
   if (parsed && typeof parsed === 'object') {
-    return errorMessageOf((parsed as { error?: unknown }).error) ?? errorMessageOf(parsed)
+    const record = parsed as { error?: unknown; detail?: unknown }
+    return (
+      errorMessageOf(record.error) ??
+      errorMessageOf(parsed) ??
+      (typeof record.detail === 'string' && record.detail ? record.detail : null)
+    )
   }
   return null
 }

@@ -86,7 +86,8 @@ const api: MusaeumAPI = {
   ai: {
     getStatus: () => invoke('ai:getStatus'),
     ask: (request) => invoke('ai:ask', request),
-    cancel: (requestId) => invoke('ai:cancel', requestId)
+    cancel: (requestId) => invoke('ai:cancel', requestId),
+    test: (request) => invoke('ai:test', request)
   },
   theme: {
     get: () => invoke('theme:get'),

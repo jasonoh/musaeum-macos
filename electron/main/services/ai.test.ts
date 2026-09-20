@@ -11,11 +11,14 @@ import {
   AI_CONFIG_KEYS,
   AI_ENV_KEYS,
   DEFAULT_AI_BASE_URL,
+  PROBE_MODEL_CAP,
   ask,
   cancel,
   createSseParser,
   getStatus,
   isLoopback,
+  parseModelIds,
+  probe,
   readChunk,
   resolveBaseUrl,
   resolveKey,
@@ -83,6 +86,8 @@ afterEach(async () => {
 
 interface Stub {
   url: string
+  /** The server itself, so a case can close it and probe a dead port. */
+  server: Server
   /** Everything the client posted, for asserting on the request itself. */
   requests: { url: string; headers: IncomingMessage['headers']; body: unknown }[]
 }
@@ -103,7 +108,7 @@ async function startStub(
   servers.push(server)
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
-  return { url: `http://127.0.0.1:${port}/v1`, requests }
+  return { url: `http://127.0.0.1:${port}/v1`, server, requests }
 }
 
 function parse(text: string): unknown {
@@ -500,5 +505,235 @@ describe('ask', () => {
         messages: [{ role: 'user', content: 'x'.repeat(200_001) }]
       })
     ).toThrow(/too large to send/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The probe — Settings' Test button
+// ---------------------------------------------------------------------------
+
+/**
+ * The verdict ladder, against a real server, one rung per case.
+ *
+ * The three rungs that are *not* about the key are the ones worth having: a
+ * 403 is measured to arrive from a network block with no key involved
+ * (`api.groq.com/openai/v1/models`, 2026-09-20), and a 404 on `/models` is a
+ * documented, shipped shape (`gemini`). Both would read as "your key is bad"
+ * under a naive 401/403/404 mapping, and telling someone to regenerate a key
+ * that works is the failure this ladder exists to prevent.
+ */
+describe('probe', () => {
+  /** A model list in the shape every OpenAI-compatible row answers with. */
+  const LIST = JSON.stringify({
+    object: 'list',
+    data: [{ id: 'gpt-a' }, { id: 'gpt-b' }]
+  })
+
+  async function probeStub(status: number, body: string, type = 'application/json'): Promise<Stub> {
+    return startStub((_req, res) => {
+      res.writeHead(status, { 'content-type': type })
+      res.end(body)
+    })
+  }
+
+  it('accepts a key and reports the models the endpoint lists', async () => {
+    const stub = await probeStub(200, LIST)
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: 'sk-good' })
+
+    expect(result.verdict).toBe('ok')
+    expect(result.models).toEqual(['gpt-a', 'gpt-b'])
+    expect(result.modelCount).toBe(2)
+    expect(result.modelOffered).toBeNull()
+    expect(result.message).toContain('accepted the key')
+  })
+
+  it('asks for the model list and nothing else, and carries the key as a bearer', async () => {
+    const stub = await probeStub(200, LIST)
+    await probe({ baseUrl: stub.url, model: 'gpt-a', apiKey: 'sk-good' })
+
+    expect(stub.requests).toHaveLength(1)
+    expect(stub.requests[0].url).toBe('/v1/models')
+    expect(stub.requests[0].body).toBeNull()
+    expect(stub.requests[0].headers.authorization).toBe('Bearer sk-good')
+  })
+
+  it('sends no authorization header when no key is set, and says which that is', async () => {
+    // No app_config key and no env key: the 401 is the endpoint asking for a
+    // key, not rejecting one, and the two sentences go to different places
+    const stub = await probeStub(401, '{"error":{"message":"Missing bearer authentication"}}')
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: null })
+
+    expect(stub.requests[0].headers.authorization).toBeUndefined()
+    expect(result.hasKey).toBe(false)
+    expect(result.verdict).toBe('rejected')
+    expect(result.message).toMatch(/wants a key .*none is set/)
+    expect(result.message).not.toMatch(/rejected the key/)
+  })
+
+  it('reads a 401 with a key as the key being rejected, in the endpoint own words', async () => {
+    const stub = await probeStub(401, '{"error":{"message":"Incorrect API key provided"}}')
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: 'sk-bad' })
+
+    expect(result.verdict).toBe('rejected')
+    expect(result.hasKey).toBe(true)
+    expect(result.message).toContain('rejected the key')
+    expect(result.message).toContain('Incorrect API key provided')
+    // The endpoint's own sentence ends in a full stop and so does the line —
+    // measured live against api.openai.com, which shipped `…/api-keys..`
+    expect(result.message).not.toMatch(/\.\./)
+  })
+
+  it('claims no key was accepted when none was sent', async () => {
+    // OpenRouter lists its models to anyone (measured live 2026-09-20, 446 of
+    // them unkeyed), so a 200 is not evidence about a key that was never sent
+    const stub = await probeStub(200, LIST)
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: null })
+
+    expect(result.hasKey).toBe(false)
+    expect(result.message).toContain('answered (no key was sent)')
+    expect(result.message).not.toContain('accepted the key')
+  })
+
+  it('closes a sentence the endpoint left open, without doubling a full stop', async () => {
+    const open = await probeStub(403, '{"error":{"message":"Access denied"}}')
+    const noStop = await probe({ baseUrl: open.url, model: null, apiKey: null })
+    expect(noStop.message).toMatch(/Access denied\.$/)
+
+    const stopped = await probeStub(403, '{"error":{"message":"Access denied."}}')
+    const withStop = await probe({ baseUrl: stopped.url, model: null, apiKey: null })
+    expect(withStop.message).toMatch(/Access denied\.$/)
+    expect(withStop.message).not.toMatch(/\.\./)
+  })
+
+  it('reads a 403 as refused, never as a rejected key', async () => {
+    // The measured shape: a network block, with no key involved at all
+    const stub = await probeStub(
+      403,
+      '{"error":{"message":"Access denied. Please check your network settings."}}'
+    )
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: 'sk-fine' })
+
+    expect(result.verdict).toBe('refused')
+    expect(result.message).toContain('refused the request (HTTP 403)')
+    expect(result.message).toContain('Access denied')
+    expect(result.message).not.toMatch(/rejected the key/)
+  })
+
+  it('reads a 404 on /models as no model list, and says the key was not checked', async () => {
+    // Gemini's documented OpenAI-compatible /models answers 404 (measured
+    // 2026-09-20), so this rung is a shipped row's normal state
+    const stub = await probeStub(404, '{"error":{"message":"Requested entity was not found."}}')
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: 'sk-fine' })
+
+    expect(result.verdict).toBe('no-model-list')
+    expect(result.url).toBe(`${stub.url}/models`)
+    expect(result.message).toMatch(/the key was not checked/)
+  })
+
+  it('treats a 405 and a 501 the same way as a 404', async () => {
+    for (const status of [405, 501]) {
+      const stub = await probeStub(status, '')
+      const result = await probe({ baseUrl: stub.url, model: null, apiKey: null })
+      expect(result.verdict).toBe('no-model-list')
+    }
+  })
+
+  it('describes a connection nothing is listening on', async () => {
+    // A port that is genuinely closed. Port 9 is not usable here: Node refuses
+    // it as a bad port, so the failure arrives as "fetch failed" with no errno
+    // at all — which is a real finding about the diagnosis, and not the case
+    // this criterion is about.
+    const stub = await startStub((_req, res) => res.end())
+    await new Promise<void>((done) => {
+      stub.server.closeAllConnections()
+      stub.server.close(() => done())
+    })
+
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: null })
+
+    expect(result.verdict).toBe('unreachable')
+    expect(result.message).toMatch(/Nothing is listening/)
+    expect(result.message).not.toContain('ECONNREFUSED')
+  })
+
+  it('reports a timeout rather than hanging, and names the deadline it waited', async () => {
+    const stub = await startStub((_req, res) => {
+      // Answers nothing, ever — the idle endpoint a probe must give up on
+      res.writeHead(200, { 'content-type': 'application/json' })
+      void res
+    })
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: null }, { timeoutMs: 120 })
+
+    expect(result.verdict).toBe('timeout')
+    expect(result.message).toMatch(/did not answer within/)
+  })
+
+  it('distinguishes an empty list from an unreadable one', async () => {
+    const empty = await probeStub(200, '{"object":"list","data":[]}')
+    const emptyResult = await probe({ baseUrl: empty.url, model: null, apiKey: null })
+    expect(emptyResult.verdict).toBe('ok')
+    expect(emptyResult.message).toMatch(/lists no models yet/)
+
+    const nonsense = await probeStub(200, '<html>not json</html>', 'text/html')
+    const nonsenseResult = await probe({ baseUrl: nonsense.url, model: null, apiKey: null })
+    expect(nonsenseResult.verdict).toBe('ok')
+    expect(nonsenseResult.message).toMatch(/didn't parse/)
+  })
+
+  it('sorts, dedupes and caps the list, and reports the total it capped', async () => {
+    const many = Array.from({ length: PROBE_MODEL_CAP + 50 }, (_v, i) => ({
+      // Reversed order and a duplicate, so sorting and deduping both have work
+      id: `model-${String(PROBE_MODEL_CAP + 49 - i).padStart(3, '0')}`
+    }))
+    many.push({ id: 'model-000' })
+    const stub = await probeStub(200, JSON.stringify({ data: many }))
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: null })
+
+    expect(result.models).toHaveLength(PROBE_MODEL_CAP)
+    expect(result.modelCount).toBe(PROBE_MODEL_CAP + 50)
+    expect(result.models[0]).toBe('model-000')
+    expect(result.models).toEqual([...result.models].sort((a, b) => a.localeCompare(b)))
+    expect(new Set(result.models).size).toBe(PROBE_MODEL_CAP)
+  })
+
+  it('answers whether the model asked about is one the endpoint offers', async () => {
+    const stub = await probeStub(200, LIST)
+
+    const offered = await probe({ baseUrl: stub.url, model: 'gpt-b', apiKey: null })
+    expect(offered.modelOffered).toBe(true)
+    expect(offered.message).toContain('gpt-b is one of the 2')
+
+    const missing = await probe({ baseUrl: stub.url, model: 'gpt-zzz', apiKey: null })
+    expect(missing.modelOffered).toBe(false)
+    expect(missing.message).toMatch(/doesn't list gpt-zzz/)
+  })
+
+  it('reports a base URL that is not a URL instead of fetching it', async () => {
+    const result = await probe({ baseUrl: 'api.openai.com', model: null, apiKey: null })
+
+    expect(result.verdict).toBe('unreachable')
+    expect(result.message).toMatch(/Not an endpoint URL/)
+  })
+
+  it('uses the key in the environment when the form carries none', async () => {
+    // An env key is invisible to the renderer, so a Test that reported "none is
+    // set" while the reader posted with it would answer a different question
+    vi.stubEnv(AI_ENV_KEYS.apiKey, 'sk-from-env')
+    const stub = await probeStub(401, '{"error":{"message":"nope"}}')
+    const result = await probe({ baseUrl: stub.url, model: null, apiKey: null })
+
+    expect(stub.requests[0].headers.authorization).toBe('Bearer sk-from-env')
+    expect(result.hasKey).toBe(true)
+    expect(result.message).toContain('rejected the key')
+  })
+
+  it('reads the model list out of every shape an OpenAI-compatible server sends', () => {
+    expect(parseModelIds('{"data":[{"id":"a"}]}')).toEqual(['a'])
+    expect(parseModelIds('["a","b"]')).toEqual(['a', 'b'])
+    expect(parseModelIds('{"models":[{"name":"a"}]}')).toEqual(['a'])
+    expect(parseModelIds('{"data":[{"id":"a"},{"nope":1},null]}')).toEqual(['a'])
+    // Not a list at all — a different answer from an empty list
+    expect(parseModelIds('<html>x</html>')).toBeNull()
+    expect(parseModelIds('{"data":{}}')).toBeNull()
   })
 })
