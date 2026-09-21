@@ -20,6 +20,56 @@ export interface MetadataConflict {
 export type ConflictChoices = Record<string, MetadataSource>
 
 /**
+ * One cover a book could wear, as the picker receives it.
+ *
+ * Gathered live on every call and stored nowhere — `metadata.json` is untouched
+ * by this feature, so there is no candidate list to go stale and no new member
+ * in the file the iOS contract documents.
+ */
+export interface CoverCandidate {
+  source: MetadataSource
+  /**
+   * Where the gather fetched this candidate from. **Absent** for `embedded`,
+   * never null: the file's own jacket is re-extracted, and that absence is
+   * exactly what `setCover` refuses on.
+   */
+  url?: string
+  width: number
+  height: number
+  /** The shipped scoring formula's own number. The highest is the `winner`. */
+  score: number
+  /** What a fetch would write — the head of the scored list. */
+  winner: boolean
+  /**
+   * Byte-identical to the book's `cover_full.jpg` **now**. Byte identity, not
+   * provenance: a cover's source is recorded nowhere, so the bytes are the only
+   * thing that can say "this is the one your book is wearing".
+   */
+  applied: boolean
+  /**
+   * `data:image/jpeg;base64,…`, ≤240 px, produced by the sidecar's
+   * `preview_data_url` — the same function a cover conflict's tiles go through.
+   * The renderer's CSP names no remote origin (`img-src 'self' musaeum: data:
+   * blob:`), so this is the only form in which a candidate image can reach a
+   * component at all.
+   */
+  thumb: string
+}
+
+/**
+ * What a person chose: one candidate's `source`, plus its `url` if it had one.
+ *
+ * A picker only ever echoes back a pair the gather itself produced — the main
+ * process refuses anything else, because a renderer that could name its own URL
+ * would be handing the main process an arbitrary egress (the same reasoning that
+ * keeps `file://` out of the renderer).
+ */
+export interface CoverChoice {
+  source: MetadataSource
+  url?: string
+}
+
+/**
  * The fields hydration can rewrite, coarser than the `books` columns it
  * touches: `sort_title` follows `title`, and the four identifier columns are
  * one "identifiers" as far as the user is concerned. This is the unit of the

@@ -19,8 +19,8 @@ from conversion.converter import convert_format
 from extractors.calibre_db import read_calibre_db
 from extractors.epub_metadata import extract_epub_metadata
 from extractors.pdf_metadata import extract_pdf_metadata
-from pipeline.cover import fetch_cover, previews_for
-from pipeline.hydration import hydrate_metadata
+from pipeline.cover import fetch_cover, previews_for, write_choice
+from pipeline.hydration import cover_candidates, hydrate_metadata
 from pipeline.migrate import migrate_library
 from pipeline.topup import topup_pdfs
 
@@ -53,6 +53,22 @@ METHODS = {
         book_dir=p["book_dir"], url=p.get("url"), source=p.get("source", "google_books")
     ),
     "cover_previews": lambda p: previews_for(p.get("urls") or []),
+    # The cover picker's two calls. `known` travels for the same reason the
+    # hydration sends it: the gather has to score the candidates a fetch of
+    # *this row* would score, and a file that is silent about its own identifiers
+    # (which is how a fetched ISBN first arrives) would otherwise be searched by
+    # title and author alone and offer a different set of jackets (D1).
+    "cover_candidates": lambda p: cover_candidates(
+        file_path=p["file_path"],
+        book_dir=p["book_dir"],
+        known=p.get("known") or {},
+    ),
+    "set_cover": lambda p: write_choice(
+        file_path=p["file_path"],
+        book_dir=p["book_dir"],
+        source=p["source"],
+        url=p.get("url"),
+    ),
     "convert_format": lambda p: convert_format(
         input_path=p["input_path"],
         output_path=p["output_path"],

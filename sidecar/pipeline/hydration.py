@@ -7,6 +7,11 @@ Order (per docs/invariants/metadata-hydration.md):
   4. Goodreads series scrape (when a Goodreads id is known)
   5. conflict resolution
   6. cover fetch + scoring
+
+`hydrate_metadata` is the write path. `cover_candidates` runs steps 1 and 3 and
+then the scoring step, writing nothing: the cover picker's live gather (D1 of the
+cover-choice design), for a book whose jacket a person wants to choose rather
+than one a fetch is settling.
 """
 
 import json
@@ -14,13 +19,13 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from extractors.epub_metadata import extract_embedded_cover, extract_epub_metadata
-from extractors.pdf_metadata import extract_pdf_metadata, render_pdf_cover
+from extractors.epub_metadata import extract_epub_metadata
+from extractors.pdf_metadata import extract_pdf_metadata
 from fetchers.goodreads import fetch_series
 from fetchers.google_books import fetch_google_books
 from fetchers.openlibrary import fetch_openlibrary
 from pipeline.conflict import merge_metadata
-from pipeline.cover import select_cover
+from pipeline.cover import gather_candidates, score_candidates, select_cover, summarise_candidates
 
 
 def hydrate_metadata(
@@ -37,36 +42,10 @@ def hydrate_metadata(
     sources = {}
     locked = set(locked_fields or ())
 
-    # 1. Embedded metadata
-    embedded = {}
-    lower = file_path.lower()
-    if os.path.exists(file_path):
-        try:
-            if lower.endswith(".epub"):
-                embedded = extract_epub_metadata(file_path) or {}
-            elif lower.endswith(".pdf"):
-                embedded = extract_pdf_metadata(file_path) or {}
-        except Exception:
-            embedded = {}
+    # 1. Embedded metadata, and 3. the parallel online fetch
+    embedded, identifiers, google, openlib = _sources(file_path, known)
     if embedded:
         sources["embedded"] = embedded
-
-    identifiers = dict(embedded.get("identifiers") or {})
-    identifiers.update({k: v for k, v in (known.get("identifiers") or {}).items() if v})
-
-    isbn_13 = identifiers.get("isbn_13")
-    title = known.get("title") or embedded.get("title")
-    author = known.get("author") or (
-        (embedded.get("authors") or [{}])[0].get("name") if embedded.get("authors") else None
-    )
-
-    # 3. Parallel online fetch
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        f_google = pool.submit(_safe, fetch_google_books, isbn_13, title, author)
-        f_ol = pool.submit(_safe, fetch_openlibrary, isbn_13, title, author)
-        google = f_google.result()
-        openlib = f_ol.result()
-
     if google:
         sources["google_books"] = google
     if openlib:
@@ -97,36 +76,13 @@ def hydrate_metadata(
 
     # 6. Cover candidates: online sources + embedded cover (EPUB or PDF).
     # A locked cover gathers no candidate at all: selecting one would spend a
-    # download on an image the user has already chosen over.
+    # download on an image the user has already chosen over. The gather itself
+    # lives in `cover.gather_candidates`, shared with the picker's live gather
+    # so the two cannot offer different jackets for the same book.
     if "cover" in locked:
         cover_result = {"cover": None, "review": False, "candidates": []}
     else:
-        candidates = []
-        if google and google.get("cover_url"):
-            candidates.append(
-                {
-                    "source": "google_books",
-                    "url": google["cover_url"],
-                    # The fetcher already holds these bytes — it downloaded them
-                    # to check they are not Google's placeholder tile — so
-                    # passing them on saves the scoring step a second download
-                    # of up to ~500 KB. A source that supplies none is
-                    # downloaded from its url, exactly as before.
-                    "data": google.get("cover_data"),
-                }
-            )
-        if openlib and openlib.get("cover_url"):
-            candidates.append({"source": "openlibrary", "url": openlib["cover_url"]})
-        if lower.endswith(".epub"):
-            embedded_cover = extract_embedded_cover(file_path)
-        elif lower.endswith(".pdf"):
-            embedded_cover = render_pdf_cover(file_path)
-        else:
-            embedded_cover = None
-        if embedded_cover:
-            candidates.append({"source": "embedded", "data": embedded_cover})
-
-        cover_result = select_cover(candidates, book_dir)
+        cover_result = select_cover(gather_candidates(file_path, google, openlib), book_dir)
         if cover_result["review"] and len(cover_result["candidates"]) > 1:
             conflicts.append(
                 {
@@ -143,6 +99,71 @@ def hydrate_metadata(
         "conflicts": conflicts,
         "cover": cover_result["cover"],
     }
+
+
+def cover_candidates(file_path: str, book_dir: str, known: dict) -> list:
+    """Every jacket a fetch would consider for this book — the picker's gather.
+
+    Nothing is written and nothing is persisted: `metadata.json` is untouched by
+    this (D1), the candidates are recomputed live on every call, and the answer
+    is `cover.summarise_candidates`' payload — one entry per candidate carrying
+    its source, its dimensions, its score, whether it is the one that would win,
+    whether it is the one on disk now, and a small inlined image the renderer can
+    actually display (its CSP names no remote origin, so a bare URL could not be
+    shown at all).
+
+    It deliberately does **not** honour a `cover` lock. The lock belongs to the
+    fetch: `hydrate_metadata` gathers no candidate for a locked cover, but a
+    person reopening the picker to choose a different jacket is exactly what the
+    lock must not prevent — otherwise locking once would be a one-way door (D4).
+    """
+    _, _, google, openlib = _sources(file_path, known)
+    return summarise_candidates(
+        score_candidates(gather_candidates(file_path, google, openlib)), book_dir
+    )
+
+
+def _sources(file_path: str, known: dict) -> tuple:
+    """Steps 1 and 3: the file's own metadata, then the two online fetches.
+
+    One home for "the three requests a hydration makes", because two callers now
+    need the same answers for the same book: `hydrate_metadata`, which merges
+    them, and `cover_candidates`, which has to score the same candidate set the
+    fetch would have scored. A second copy of the identifier precedence — the
+    file's own values, the caller's `known` ones over them, and title/author as
+    the search fallback — would let the picker offer jackets the fetch never
+    considered at all (D1).
+
+    Returns `(embedded, identifiers, google, openlib)`. Either fetcher may be
+    `None`: a fetcher that raises is a miss, not a failed hydration.
+    """
+    embedded = {}
+    lower = file_path.lower()
+    if os.path.exists(file_path):
+        try:
+            if lower.endswith(".epub"):
+                embedded = extract_epub_metadata(file_path) or {}
+            elif lower.endswith(".pdf"):
+                embedded = extract_pdf_metadata(file_path) or {}
+        except Exception:
+            embedded = {}
+
+    identifiers = dict(embedded.get("identifiers") or {})
+    identifiers.update({k: v for k, v in (known.get("identifiers") or {}).items() if v})
+
+    isbn_13 = identifiers.get("isbn_13")
+    title = known.get("title") or embedded.get("title")
+    author = known.get("author") or (
+        (embedded.get("authors") or [{}])[0].get("name") if embedded.get("authors") else None
+    )
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_google = pool.submit(_safe, fetch_google_books, isbn_13, title, author)
+        f_ol = pool.submit(_safe, fetch_openlibrary, isbn_13, title, author)
+        google = f_google.result()
+        openlib = f_ol.result()
+
+    return embedded, identifiers, google, openlib
 
 
 def _safe(fn, *args):

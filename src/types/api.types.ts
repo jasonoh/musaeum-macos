@@ -23,6 +23,8 @@ import type { Device, TransferJob, TransferProgress } from './device.types'
 import type {
   BulkHydrateProgress,
   ConflictChoices,
+  CoverCandidate,
+  CoverChoice,
   HydrateOutcome,
   HydratedField,
   MetadataConflict,
@@ -145,6 +147,27 @@ export interface MusaeumAPI {
      * two empty tiles. A URL the sidecar could not fetch is absent from the map.
      */
     coverPreviews(urls: string[]): Promise<Record<string, string>>
+    /**
+     * Every jacket a metadata fetch would consider for this book, gathered live
+     * — nothing is written and nothing is persisted (`metadata.json` is
+     * untouched). Each candidate carries a `data:` thumbnail, so a person can see
+     * the choice before making it.
+     *
+     * Rejects with the reason when the gather cannot run: the library is offline,
+     * there is no metadata engine, or the book's folder holds no EPUB/MOBI/AZW3
+     * — a sentence, never an empty grid.
+     */
+    coverCandidates(bookId: string): Promise<CoverCandidate[]>
+    /**
+     * Choose one of those candidates: writes the cover bytes, updates the row,
+     * rewrites `metadata.json`, upserts the catalog and records `cover` as the
+     * user's own decision (so the next fetch cannot move it again). Returns the
+     * updated book.
+     *
+     * Rejects — writing nothing, recording nothing, and reaching no network —
+     * for a pair the gather never produced.
+     */
+    setCover(bookId: string, choice: CoverChoice): Promise<Book>
   }
 
   devices: {

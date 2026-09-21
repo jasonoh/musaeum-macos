@@ -258,6 +258,44 @@ async function importOne(filePath: string): Promise<ImportResult> {
 }
 
 /**
+ * What a *row* tells a fetch: the identifiers a lookup may match on, and the
+ * title/author to search by when the file is silent about both.
+ *
+ * Two callers now ask the metadata engine to look something up for the same book
+ * — a hydration, and the cover picker's live gather — and the picker's whole
+ * premise is that it offers the jackets a fetch of *this row* would have
+ * weighed. That is only true while both search on the same inputs, and the case
+ * that makes it matter is the common one: a book whose ISBN arrived from a fetch
+ * has a file that says nothing about its own identity, so a path that forgot the
+ * row's identifiers would search by title and author alone and produce a
+ * different candidate set for the same book — seen as a jacket the app "never
+ * considered", with nothing red anywhere.
+ */
+export interface KnownRecord {
+  title: string
+  author: string | null
+  identifiers: {
+    isbn_10?: string
+    isbn_13?: string
+    goodreads?: string
+    openlibrary?: string
+  }
+}
+
+export function knownFrom(book: Book): KnownRecord {
+  return {
+    title: book.title,
+    author: book.author,
+    identifiers: {
+      isbn_10: book.isbn10 ?? undefined,
+      isbn_13: book.isbn13 ?? undefined,
+      goodreads: book.goodreadsId ?? undefined,
+      openlibrary: book.openlibraryId ?? undefined
+    }
+  }
+}
+
+/**
  * Async hydration: online metadata fetch, conflict queueing, cover selection.
  *
  * Returns what it did rather than only logging it. Callers that treat
@@ -300,16 +338,7 @@ export async function hydrate(
         book_id: bookId,
         file_path: filePath,
         book_dir: bookDir,
-        known: {
-          title: book.title,
-          author: book.author,
-          identifiers: {
-            isbn_10: book.isbn10 ?? undefined,
-            isbn_13: book.isbn13 ?? undefined,
-            goodreads: book.goodreadsId ?? undefined,
-            openlibrary: book.openlibraryId ?? undefined
-          }
-        },
+        known: knownFrom(book),
         source_preferences: db.getSourcePreferences(),
         // The user's own decisions: a field here is not even proposed by the
         // fetch, so it queues no conflict and reads as unchanged (design D3)

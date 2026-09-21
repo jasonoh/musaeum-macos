@@ -1,8 +1,16 @@
-"""Cover candidate scoring, selection, and writing.
+"""Cover candidate gathering, scoring, summarising, and writing.
 
 score = resolution*0.4 + aspect_ratio*0.3 + source_priority*0.2 + file_size*0.1
 Top two within 15% → also emit a 'cover' review conflict (top one is still
 applied so the book is never coverless while waiting on review).
+
+Two callers, one set of rules. `hydrate_metadata` gathers candidates, scores
+them and writes the winner; `cover_candidates` (the picker's gather) scores the
+same list and summarises it without writing anything — so the jackets a person
+is offered are exactly the jackets the fetch decides between, ranked by the same
+formula and previewed by the same `preview_data_url` the conflict queue's tiles
+use. A second copy of the gather, the ranking or the preview rule is the defect
+this module exists to keep singular.
 """
 
 import base64
@@ -12,6 +20,9 @@ from typing import Optional
 
 import requests
 from PIL import Image
+
+from extractors.epub_metadata import extract_embedded_cover
+from extractors.pdf_metadata import render_pdf_cover
 
 FULL_MAX = 600
 PREVIEW_MAX = 240
@@ -43,10 +54,57 @@ def _download(url: str) -> Optional[bytes]:
         return None
 
 
-def select_cover(candidates: list, book_dir: str) -> dict:
-    """candidates: [{source, url?, data?}]. Writes the winner to book_dir.
+def gather_candidates(file_path: str, google: Optional[dict], openlib: Optional[dict]) -> list:
+    """Every cover a fetch would consider for this book, in source order.
 
-    Returns {cover: {...} | None, review: bool, candidates: [scored]}.
+    The one home for the candidate set. `hydrate_metadata` scores exactly this
+    list, and the picker's gather summarises exactly this list, so the jackets a
+    person is offered cannot be a different set from the jackets the fetch
+    silently decides between — that agreement is the whole point of gathering
+    the candidates live (D1 of the cover-choice design).
+
+    The file's own cover is included here and is the one candidate a review
+    conflict can never carry: `select_cover` reports its list as URLs, and an
+    embedded image has none, so "put the file's own jacket back" is expressible
+    only as a candidate.
+    """
+    candidates = []
+    if google and google.get("cover_url"):
+        candidates.append(
+            {
+                "source": "google_books",
+                "url": google["cover_url"],
+                # The fetcher already holds these bytes — it downloaded them
+                # to check they are not Google's placeholder tile — so
+                # passing them on saves the scoring step a second download
+                # of up to ~500 KB. A source that supplies none is
+                # downloaded from its url, exactly as before.
+                "data": google.get("cover_data"),
+            }
+        )
+    if openlib and openlib.get("cover_url"):
+        candidates.append({"source": "openlibrary", "url": openlib["cover_url"]})
+
+    lower = file_path.lower()
+    if lower.endswith(".epub"):
+        embedded = extract_embedded_cover(file_path)
+    elif lower.endswith(".pdf"):
+        embedded = render_pdf_cover(file_path)
+    else:
+        embedded = None
+    if embedded:
+        candidates.append({"source": "embedded", "data": embedded})
+
+    return candidates
+
+
+def score_candidates(candidates: list) -> list:
+    """The candidates that are real images, with their scores, best first.
+
+    Downloads a candidate that did not bring its own bytes, drops anything PIL
+    cannot read and anything under the 120 px floor, and sorts. The sort lives
+    here rather than at each caller because both take the head as *the* winner —
+    the writer, and the summariser that tells the picker which one would win.
     """
     scored = []
     for cand in candidates:
@@ -71,10 +129,19 @@ def select_cover(candidates: list, book_dir: str) -> dict:
             }
         )
 
+    scored.sort(key=lambda c: c["score"], reverse=True)
+    return scored
+
+
+def select_cover(candidates: list, book_dir: str) -> dict:
+    """candidates: [{source, url?, data?}]. Writes the winner to book_dir.
+
+    Returns {cover: {...} | None, review: bool, candidates: [scored]}.
+    """
+    scored = score_candidates(candidates)
     if not scored:
         return {"cover": None, "review": False, "candidates": []}
 
-    scored.sort(key=lambda c: c["score"], reverse=True)
     winner = scored[0]
     review = len(scored) > 1 and (winner["score"] - scored[1]["score"]) < 0.15 * winner["score"]
 
@@ -86,6 +153,10 @@ def select_cover(candidates: list, book_dir: str) -> dict:
     return {
         "cover": cover,
         "review": review,
+        # URLs only, on purpose: a queued cover conflict carries a *value* a
+        # resolver can send back to `fetch_cover`, and an embedded candidate has
+        # no URL to send. The picker is where the file's own jacket is visible —
+        # see `summarise_candidates`.
         "candidates": [
             {"source": c["source"], "url": c["url"], "width": c["width"], "height": c["height"]}
             for c in scored
@@ -94,14 +165,81 @@ def select_cover(candidates: list, book_dir: str) -> dict:
     }
 
 
-def _write_cover(data: bytes, book_dir: str) -> dict:
-    img = Image.open(io.BytesIO(data))
-    if img.mode not in ("RGB", "L"):
-        img = img.convert("RGB")
+def summarise_candidates(scored: list, book_dir: str) -> list:
+    """The picker's payload: one entry per scored candidate, best first.
 
-    full = _encode(img, (FULL_MAX, FULL_MAX * 2), 88)
-    thumb = _encode(img, (THUMB_MAX, THUMB_MAX * 2), 85)
-    full_path = os.path.join(book_dir, "cover_full.jpg")
+    `scored` must be `score_candidates`' own list, because `winner` is its head
+    and a second sort here would be a second answer to "which jacket wins".
+
+    Three things this decides, each with a rule it reuses rather than restates:
+
+    - `thumb` is `preview_data_url` of the candidate's own bytes. That is the
+      function the conflict queue's tiles already go through, and the renderer's
+      CSP (`img-src 'self' musaeum: data: blob:`) means a remote image cannot be
+      shown at all — so a picker thumb and a queue thumb cannot diverge, and
+      neither is ever a URL the renderer would have to fetch.
+    - `applied` is **byte identity with `cover_full.jpg`**, not provenance. The
+      cover's source is recorded nowhere, so comparing the bytes this candidate
+      *would* become against what is on disk is the only way to say "this is the
+      one your book has now" — and it is the same derivation `_write_cover`
+      writes, so "what the book has" and "what a pick would write" cannot
+      disagree.
+    - `url` is *absent* for `embedded` rather than null. That absence is what
+      `set_cover` refuses on: the file's own jacket is re-extracted, never
+      fetched, and a candidate carrying a url it may not be fetched from would
+      turn "put the file's own jacket back" into a network request.
+
+    Bounded by construction: the pool is what `score_candidates` kept (three or
+    four in practice), so this is not a list to cap. A candidate whose image
+    cannot be shown is dropped rather than offered as a blank tile; if that one
+    was also the best-scoring, no entry claims `winner` — the jacket that would
+    win is not on offer, and marking the runner-up would misreport which one a
+    fetch would write.
+    """
+    stored = _full_cover_path(book_dir)
+    out = []
+    for index, cand in enumerate(scored):
+        # Constructed together, because the two are two views of one rendering:
+        # `_renditions` proves the image can become the cover, `preview_data_url`
+        # proves it can be shown. (`score_candidates` admits a candidate whose
+        # *header* parsed, so an image whose pixels do not load can reach this
+        # far; it is dropped rather than offered as a blank tile, which is what
+        # the queue does with an unfetchable url — "a dead URL simply absent". A
+        # picker candidate nobody can see is not one anybody can choose.)
+        thumb = preview_data_url(cand["data"])
+        if not thumb:
+            continue
+        entry = {"source": cand["source"]}
+        if cand.get("url"):
+            entry["url"] = cand["url"]
+        entry.update(
+            {
+                "width": cand["width"],
+                "height": cand["height"],
+                "score": cand["score"],
+                "winner": index == 0,
+                "applied": _renders_to_stored(cand["data"], stored),
+                "thumb": thumb,
+            }
+        )
+        out.append(entry)
+    return out
+
+
+def _full_cover_path(book_dir: str) -> str:
+    """Where the full cover lives.
+
+    One home for the fixed filename, because two questions read it now: what a
+    write puts on disk, and what the book is *already* wearing. The second is
+    `applied`, and a second copy of the name is how those two would come to
+    disagree about which file "on disk" means.
+    """
+    return os.path.join(book_dir, "cover_full.jpg")
+
+
+def _write_cover(data: bytes, book_dir: str) -> dict:
+    full, thumb = _renditions(data)
+    full_path = _full_cover_path(book_dir)
     thumb_path = os.path.join(book_dir, "cover_thumb.jpg")
 
     # Compared *before* writing: "did this run change the cover?" is what the
@@ -116,6 +254,38 @@ def _write_cover(data: bytes, book_dir: str) -> dict:
             fh.write(blob)
 
     return {"full": "cover_full.jpg", "thumb": "cover_thumb.jpg", "changed": changed}
+
+
+def _renditions(data: bytes) -> tuple:
+    """The two JPEGs an image becomes on disk, in the order they are written.
+
+    One home for the rendition sizes and qualities, because two questions are
+    answered from them: `_write_cover` writes exactly these bytes, and
+    `summarise_candidates` compares a candidate against the full one to decide
+    `applied`. Deriving them twice would let "this is the cover on disk" and
+    "this is what a pick would write" come out disagreeing on the same image.
+    """
+    img = Image.open(io.BytesIO(data))
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    return (
+        _encode(img, (FULL_MAX, FULL_MAX * 2), 88),
+        _encode(img, (THUMB_MAX, THUMB_MAX * 2), 85),
+    )
+
+
+def _renders_to_stored(data: bytes, stored_path: str) -> bool:
+    """True when writing this candidate would leave `stored_path` byte-identical.
+
+    Byte identity is the whole rule: a source is recorded nowhere, so the bytes
+    on disk are the only thing that can say which candidate a book is wearing.
+    An image that cannot be rendered is not the one on disk.
+    """
+    try:
+        full, _ = _renditions(data)
+    except Exception:
+        return False
+    return not _differs(stored_path, full)
 
 
 def _encode(img: Image.Image, max_size: tuple, quality: int) -> bytes:
@@ -137,6 +307,14 @@ def _differs(path: str, data: bytes) -> bool:
         return True
 
 
+def _write_chosen(data: bytes, book_dir: str, source: str) -> dict:
+    """Write these bytes as the book's cover — the tail both writers share."""
+    img = Image.open(io.BytesIO(data))
+    cover = _write_cover(data, book_dir)
+    cover.update({"source": source, "width": img.size[0], "height": img.size[1]})
+    return cover
+
+
 def fetch_cover(book_dir: str, url: Optional[str] = None, source: str = "google_books") -> dict:
     """Download a specific cover URL (conflict resolution path)."""
     if not url:
@@ -144,10 +322,33 @@ def fetch_cover(book_dir: str, url: Optional[str] = None, source: str = "google_
     data = _download(url)
     if not data:
         raise ValueError(f"Could not download cover from {url}")
-    img = Image.open(io.BytesIO(data))
-    cover = _write_cover(data, book_dir)
-    cover.update({"source": source, "width": img.size[0], "height": img.size[1]})
-    return cover
+    return _write_chosen(data, book_dir, source)
+
+
+def write_choice(file_path: str, book_dir: str, source: str, url: Optional[str] = None) -> dict:
+    """Write the cover a person chose in the picker; same shape as `fetch_cover`.
+
+    `source='embedded'` re-extracts the file's own jacket and writes that — the
+    one candidate with no URL, and therefore the one thing neither
+    `fetch_cover` nor a resolved conflict could ever put back. Every other
+    source is the `url` the gather returned, and goes through `fetch_cover`:
+    the picker and the conflict queue converge on one writer rather than two.
+
+    Only the *mechanics* live here. The policy half of D6 — a source outside
+    `SOURCE_PRIORITY`, an online source with no url, an embedded one with a url
+    — is refused in the main process, on the boundary the renderer can actually
+    reach, where the refusal is a value the user reads ("never an empty grid")
+    rather than an exception. What is left is what cannot be done at all: a
+    source with no url has nothing to write, and a file with no embedded jacket
+    has nothing to put back.
+    """
+    if source != "embedded":
+        return fetch_cover(book_dir, url, source)
+
+    data = extract_embedded_cover(file_path)
+    if not data:
+        raise ValueError("This file carries no cover to put back")
+    return _write_chosen(data, book_dir, source)
 
 
 def preview_data_url(data: Optional[bytes], quality: int = 80) -> Optional[str]:

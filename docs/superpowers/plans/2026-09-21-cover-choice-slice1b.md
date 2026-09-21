@@ -1,7 +1,7 @@
 # Cover choice, slice 1b — the candidates, and setting one
 
 **Date:** 2026-09-21
-**Slice:** 1b of three (1a, 1b, 2) — **not started**
+**Slice:** 1b of three (1a, 1b, 2) — **built 2026-09-21 at 10 files**, against this row's 9. Read it for the readings it settled, not as work outstanding: the spec's *Built — slice 1b* section carries the result, the criteria table, every deviation and what the build found on real data.
 **Annex to:** `docs/superpowers/specs/2026-09-21-cover-choice-design.md` (the spec; D1–D7 and the acceptance criteria live there)
 **Read first:** that spec's *Why now* and D1/D2/D3/D4/D6, its *Built — slice 1a* and *Built — the conflict queue's cover previews* sections, and this document's *Readings* below — they change three of the spec's assumptions.
 
@@ -22,7 +22,7 @@
 - **`applied` must be byte identity, not provenance.** The cover's *source* is not recorded anywhere (`tasks.md:58`), so the picker can only say "this one is what your book has now" by comparing bytes with the stored `cover_full.jpg`. Do not phrase it as "the one you chose" (spec risk 4).
 - **A `cover` lock is honoured by the *fetch*, not by the picker.** `hydration.py:99-103` gathers no candidate when `cover` is locked; `cover_candidates` must **not** honour it, or a user could never change their mind after locking once.
 - **Marking the override is a deliberate choice, not a diff.** `fieldOverrides.markFromPatch(bookId, {coverFullPath, coverThumbPath}, null)` — `before = null` on purpose, so that choosing the jacket that is already applied still records the decision (AC9). The guard exists to stop a *form* locking every field; this gesture *is* the decision.
-- **Open, and it needs a decision before the picker is written:** a conflict's candidates come only from the sources — `select_cover` returns url-bearing candidates (`cover.py:88-92`), so the book's **own embedded jacket is never among them**. The picker must include it (that is D1's "put the file's own jacket back"), and the same gap is what makes "keep what I have" inexpressible in the *queue*. Recommendation when you build: `cover_candidates` returns the embedded candidate, and the queue is left alone until slice 2 shows what the picker's copy looks like.
+- **Open, and it needs a decision before the picker is written:** a conflict's candidates come only from the sources — `select_cover` returns url-bearing candidates (`cover.py:88-92`), so the book's **own embedded jacket is never among them**. The picker must include it (that is D1's "put the file's own jacket back"), and the same gap is what makes "keep what I have" inexpressible in the *queue*. Recommendation when you build: `cover_candidates` returns the embedded candidate, and the queue is left alone until slice 2 shows what the picker's copy looks like. **Settled that way (2026-09-21):** the embedded candidate is in the picker's payload with no `url`, `select_cover`'s own returned list is still URLs-only, and a real case of what the gap costs was measured on *Star Maker* — the file's jacket lost a 0.3 % margin, inside the 15 % band, and queued nothing (the band's guard counts URL-bearing candidates only). See the spec's *Built — slice 1b*, reading 2 and the finding after it.
 
 ## Files (9, at the house bound — the spec's row, plus what the build will find)
 
