@@ -2,6 +2,11 @@
 
 All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https://keepachangelog.com); versions follow semver once the app is packaged.
 
+## [Unreleased] — 2026-09-21
+
+### Changed
+- **Google Books' jacket is now fetched at full size, and its "image not available" tile can no longer become a cover.** The fetcher took the largest rendition the API *advertised* and rewrote `zoom` **down** to `1`, and the API advertises nothing bigger than a 128 px thumbnail — measured, 11 of 12 sampled volumes offered only `thumbnail`/`smallThumbnail` while the same volumes answer a `zoom=0` request with 575×750 … 2164×3398. Since the cover score is dominated by resolution, a fetched jacket could essentially never beat a decent embedded one, which is why a book whose file carries an understated jacket (the reported case: Melanie Mitchell's *Artificial Intelligence*, whose EPUB cover is a plain cream typographic panel) kept it through every re-fetch. The fetcher now asks for the biggest rendition, keeps the advertised one as the fallback, and travels its bytes to the scoring step so the image is downloaded once rather than twice. The reason this needed a guard rather than a one-word change: when Google holds no full-size artwork it answers `zoom=0` with a **single shared tile** — byte-identical (md5 `a64fa89d…`, 575×750) for three unrelated volumes — which scores **0.782** and would therefore have *beaten* the real covers of some books. Measured on 15 randomly sampled books: **5 of 14 winners flip** from the file's own jacket to Google's, and without the guard **3 of 14 would have been made worse** — two would have traded a real jacket for the tile and one, having no embedded cover at all, would have been given it as its only cover. This is slice 1a of the cover-choice design (`docs/superpowers/specs/2026-09-21-cover-choice-design.md`); the picker that lets a person overrule the score is 1b and 2 and is **not built yet**, so for now the effect is visible only on the next metadata fetch of a book. Known residue: the tile is recognised by its recorded md5, so if Google ever changes that image the guard stops matching and a later census is what would show it (the spec's AC3 prints every winner's hash for exactly this reason).
+
 ## [Unreleased] — 2026-09-20
 
 ### Added

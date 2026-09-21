@@ -103,7 +103,18 @@ def hydrate_metadata(
     else:
         candidates = []
         if google and google.get("cover_url"):
-            candidates.append({"source": "google_books", "url": google["cover_url"]})
+            candidates.append(
+                {
+                    "source": "google_books",
+                    "url": google["cover_url"],
+                    # The fetcher already holds these bytes — it downloaded them
+                    # to check they are not Google's placeholder tile — so
+                    # passing them on saves the scoring step a second download
+                    # of up to ~500 KB. A source that supplies none is
+                    # downloaded from its url, exactly as before.
+                    "data": google.get("cover_data"),
+                }
+            )
         if openlib and openlib.get("cover_url"):
             candidates.append({"source": "openlibrary", "url": openlib["cover_url"]})
         if lower.endswith(".epub"):
