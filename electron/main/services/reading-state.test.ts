@@ -6,13 +6,14 @@ import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
-import { closeDb, getBook, insertBook } from './db'
+import { closeDb, getBook, insertBook, updateBook } from './db'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import {
   flushPending,
   flushPendingBeforeQuit,
   nextReadStatus,
+  noteStatusChange,
   resetForTests,
   saveProgress
 } from './reading-state'
@@ -219,6 +220,32 @@ describe('flushPending', () => {
     await expect(flushPending()).resolves.toBeUndefined()
   })
 
+  /**
+   * The flush's job is to land a *position*. Re-deriving the status from a
+   * report parked before the user's decision is what came back as "the three
+   * reading books returned after a restart": the parked report said
+   * `percent: 0.06` of a book that was Reading when it was parked, and the row
+   * said Unread because the user had said so since.
+   */
+  it('does not re-derive the status from a report it replays', async () => {
+    const dir = await seed('b-manual')
+    // A page turn parks a report, and advances the status as it does so
+    await saveProgress({ bookId: 'b-manual', position: 'p1', percent: 0.06, final: false }, 1_000)
+    expect(getBook('b-manual')?.readStatus).toBe('reading')
+
+    // …then the user decides otherwise, from the detail panel
+    updateBook('b-manual', { readStatus: 'unread' })
+
+    await flushPending()
+
+    expect(getBook('b-manual')?.readStatus).toBe('unread')
+    // And the flush still does its own job: the position reaches the file, and
+    // the status it publishes is the row's, not the report's
+    const written = await readJson(dir)
+    expect(written.reading_state.position).toBe('p1')
+    expect(written.read_status).toBe('unread')
+  })
+
   it('waits for the catalog write, not just metadata.json', async () => {
     const dir = await seed('b12')
     await saveProgress({ bookId: 'b12', position: 'p1', percent: 0.1, final: false }, 1_000)
@@ -233,6 +260,28 @@ describe('flushPending', () => {
     const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b12')
     expect(catalogued?.readingState?.position).toBe('p2')
     expect((await readJson(dir)).reading_state.position).toBe('p2')
+  })
+})
+
+describe('noteStatusChange', () => {
+  /**
+   * `reading_updated_at` is what adoption orders the two copies by, so a
+   * decision that does not move it is a decision adoption cannot see.
+   */
+  it('moves the reading-state clock, so adoption can order the decision', () => {
+    insertBook(makeBook('nsc'))
+    noteStatusChange('nsc', { readStatus: 'reading' }, makeBook('nsc'))
+
+    const stamped = getBook('nsc')?.readingState?.updatedAt
+    expect(stamped).toBeTruthy()
+    expect(Number.isNaN(Date.parse(stamped!))).toBe(false)
+  })
+
+  it('leaves the clock alone when the patch restates the row', () => {
+    insertBook(makeBook('nsc-same')) // readStatus is 'unread'
+    noteStatusChange('nsc-same', { readStatus: 'unread' }, makeBook('nsc-same'))
+
+    expect(getBook('nsc-same')?.readingState).toBeNull()
   })
 })
 

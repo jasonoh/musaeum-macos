@@ -114,6 +114,16 @@ function parseUpdatedAt(updatedAt: string | undefined): number | null {
  * authoritative. Books whose local state won are pushed back to catalog.json
  * in one batched write so the NAS catches up rather than staying stale.
  *
+ * **Both halves of reading state travel together**, because a local win is a
+ * win for the record: `read_status` is the other field `reading-state.ts`
+ * calls reading state, and a reconcile that carried the newer *position* while
+ * taking the catalog's older *status* is how a decision came back undone —
+ * measured on the real library, two books un-marked from Reading held Unread
+ * in `metadata.json` and Reading in `catalog.json`, and the next launch's
+ * adoption put Reading back. A manual change moves the same clock the
+ * automatic writers move (`reading-state.noteStatusChange`), so a decision the
+ * user made after the catalog's last reading event outranks it.
+ *
  * Reads the local cache once — this runs on every connect/refresh over the
  * whole library (~6,900 books), not per book.
  */
@@ -127,14 +137,18 @@ function preserveLocalReadingState(incoming: Book[]): Book[] {
     if (localTime === null || !localState) return book
     const incomingTime = parseUpdatedAt(book.readingState?.updatedAt)
     if (incomingTime !== null && incomingTime >= localTime) return book
-    const withLocalState: Book = { ...book, readingState: localState }
+    const withLocalState: Book = {
+      ...book,
+      readingState: localState,
+      readStatus: local.readStatus
+    }
     changed.push(withLocalState)
     return withLocalState
   })
   // Field-merge, not upsert: the rest of each record is the catalog's own
   // (just-read) copy, and the enqueued write re-reads — so replacing the
   // whole entry could undo an edit that landed in between.
-  if (changed.length > 0) updateCatalogFields(changed, ['readingState'])
+  if (changed.length > 0) updateCatalogFields(changed, ['readingState', 'readStatus'])
   return merged
 }
 

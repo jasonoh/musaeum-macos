@@ -48,7 +48,38 @@ export function nextReadStatus(current: ReadStatus, percent: number): ReadStatus
   return percent >= 0.98 ? 'read' : 'reading'
 }
 
-export async function saveProgress(report: ProgressReport, now = Date.now()): Promise<void> {
+/**
+ * Record that the *user* decided this book's read status — the one signal that
+ * outranks an automatic one.
+ *
+ * `read_status` is one of the two fields this module treats as reading state
+ * (`READING_FIELDS`), and `reading_updated_at` is that state's clock; every
+ * automatic writer moves it in the same call that records the position. A
+ * manual change did not, so it was invisible to `library-sync.ts`'s adoption
+ * comparison — the incoming catalog record is ordered by that clock and wins
+ * outright on a tie — and the decision came back reverted on the next launch
+ * even with the canonical `metadata.json` holding it.
+ *
+ * Pass the patch **and the row as it was before the write**: what makes this a
+ * decision is the difference, and after the write every patch restates the row
+ * (same guard, same reason as `field-overrides.markFromPatch`).
+ */
+export function noteStatusChange(bookId: string, patch: Partial<Book>, before: Book | null): void {
+  if (!('readStatus' in patch)) return
+  if (before && before.readStatus === patch.readStatus) return
+  db.touchReadingState(bookId, new Date().toISOString())
+}
+
+/**
+ * `advanceStatus: false` is the replay case — see `flushPending`. A report
+ * arriving from a reader is news about the status and advances it; the same
+ * report replayed at quit is not.
+ */
+export async function saveProgress(
+  report: ProgressReport,
+  now = Date.now(),
+  advanceStatus = true
+): Promise<void> {
   const book = db.getBook(report.bookId)
   if (!book) return
 
@@ -59,7 +90,7 @@ export async function saveProgress(report: ProgressReport, now = Date.now()): Pr
   }
   db.setReadingState(book.id, state)
 
-  const status = nextReadStatus(book.readStatus, state.percent)
+  const status = advanceStatus ? nextReadStatus(book.readStatus, state.percent) : book.readStatus
   if (status !== book.readStatus) db.updateBook(book.id, { readStatus: status })
 
   const root = nas.getLibraryRoot()
@@ -114,7 +145,15 @@ export async function flushPending(): Promise<void> {
   const reports = [...pending.values()]
   pending.clear()
   for (const report of reports) {
-    await saveProgress({ ...report, final: true })
+    // `advanceStatus: false` — a replayed report is not news about the status.
+    // Its status implication was already applied when it first arrived (every
+    // report runs `nextReadStatus`, whatever the write tier: the branch above
+    // is not the only place it runs), and the user may have decided the status
+    // since. Re-deriving it here is how quit undid a manual Unread: the row
+    // said Unread, the parked report said `percent: 0.06` of a book that was
+    // Reading when it was parked, and the flush put Reading back into all three
+    // stores. The position, which is what this function is for, still lands.
+    await saveProgress({ ...report, final: true }, Date.now(), false)
   }
   await librarySync.flushPendingWrites()
 }

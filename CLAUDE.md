@@ -89,7 +89,7 @@ Each one is load-bearing and has a doc carrying the full reasoning. If a change 
 2. **Every file lookup resolves by extension**, never by canonical filename — a book renamed after import must still open, hydrate, delete and transfer. (`invariants/files-and-deletion.md`)
 3. **Nothing may read `formats[0]`.** Use `primaryFormat()` / `orderedFormats()` — the array holds whatever order the writing source left. (`invariants/library-views.md`)
 4. **Sort keys are derived at every write path** via `sortableTitle()` / `sortableAuthor()`: import, `applyHydration`, `metadataJsonToBook`, and catalog reads. A path that forgets strands books under the wrong letter. (`invariants/library-views.md`)
-5. **Reading state must survive the round trip.** `metadataJsonToBook` and `replaceAllBooks` carry it, and adoption *reconciles* — strictly newer local progress wins — rather than overwriting. (`invariants/reader.md`)
+5. **Reading state — position *and* read status — must survive the round trip.** `metadataJsonToBook` and `replaceAllBooks` carry it, and adoption *reconciles* — strictly newer local progress wins, a `read_status` the user set included — rather than overwriting. (`invariants/reader.md`)
 6. **A settled title renames its files**, on all three paths: `importer.hydrate`, `library:updateBook`, `metadata:resolveConflict`. (`invariants/files-and-deletion.md`)
 7. **Row height is computed, not measured.** `ROW_HEIGHT` / `CARD_META_HEIGHT` / `CARD_META_MARGIN` must match real DOM geometry, and every list cell needs a **block-level** child. Drift shows up as scroll jank, not a build error. (`invariants/library-views.md`)
 8. **Business logic lives in `electron/main/services/`.** IPC handlers are thin wrappers through `handle()`. (`data-contracts.md`)

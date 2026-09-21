@@ -377,6 +377,30 @@ export function setReadingState(id: string, state: ReadingState): void {
 }
 
 /**
+ * Move a book's reading-state clock without touching where it is.
+ *
+ * `read_status` is one of the two fields `services/reading-state.ts` treats as
+ * reading state, and this column is that state's clock — the thing
+ * `library-sync.ts` compares to decide whether this machine's copy is newer
+ * than the catalog's. Every *automatic* writer already moves it (a progress
+ * save records the position and the status together), but a change the user
+ * made in the detail panel did not, so it was a decision adoption could not
+ * see: measured on the real library, a book un-marked from Reading held Unread
+ * in `metadata.json` and Reading in `catalog.json`, and the next launch's
+ * adoption took the catalog's.
+ *
+ * A status-only change therefore yields a state with a null position.
+ * `rowToBook` reads a non-null `reading_updated_at` as "this machine has
+ * reading state for this book", and every consumer of the position treats
+ * "no position" as "open at the beginning" — the reader's `initial.position`
+ * guard skips `goTo` and paints the first page, which is exactly what the
+ * null state it replaces did.
+ */
+export function touchReadingState(id: string, updatedAt: string): void {
+  getDb().prepare('UPDATE books SET reading_updated_at = ? WHERE id = ?').run(updatedAt, id)
+}
+
+/**
  * Remove a book's cache row. Dependent rows go with it — a conflict or a
  * collection membership is about the book and means nothing without it — with
  * one deliberate exception: `device_history` outlives the book, because it is

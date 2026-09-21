@@ -4,12 +4,14 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Book } from '@shared/book.types'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
-import { closeDb, getBook, getBooks, insertBook } from './db'
+import { closeDb, getBook, getBooks, insertBook, updateBook } from './db'
 import { subscribe } from './events'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
+import { noteStatusChange } from './reading-state'
 
 let root: string
 
@@ -88,6 +90,87 @@ describe('syncOnConnect', () => {
     await librarySync.flushForTests()
 
     expect(getBook('rs-sync-newer')?.readingState).toEqual(local.readingState)
+  })
+
+  /**
+   * The reported bug: three books marked Reading, two un-marked to Unread from
+   * the detail panel, and all three Reading again after a restart. Two of the
+   * three stores had the user's value — SQLite and the canonical
+   * `metadata.json` — and the derived `catalog.json` still had the old one, so
+   * adoption took the catalog's `read_status` (which this reconcile never
+   * carried) and reverted the decision.
+   */
+  describe('a read status the user set', () => {
+    /** A book the app had marked Reading, as the user's three were. */
+    function readingBook(id: string): Book {
+      const book = makeBook(id)
+      book.readStatus = 'reading'
+      book.readingState = {
+        position: 'cfi-local',
+        percent: 0.06,
+        updatedAt: '2026-08-13T10:00:00Z'
+      }
+      insertBook(book)
+      return book
+    }
+
+    /** The user's own decision: the write, then the clock that orders it. */
+    function decideUnread(id: string, bookmark: Book): void {
+      updateBook(id, { readStatus: 'unread' })
+      noteStatusChange(id, { readStatus: 'unread' }, bookmark)
+    }
+
+    it('survives adoption of a catalog whose reading event is older', async () => {
+      const local = readingBook('rs-manual')
+      decideUnread('rs-manual', local)
+
+      const incoming = makeBook('rs-manual')
+      incoming.readStatus = 'reading'
+      incoming.readingState = { ...local.readingState! }
+      await writeCatalog(root, [incoming])
+
+      await librarySync.syncOnConnect()
+
+      expect(getBook('rs-manual')?.readStatus).toBe('unread')
+      // …and the position the catalog was right about is still the catalog's
+      expect(getBook('rs-manual')?.readingState?.position).toBe('cfi-local')
+    })
+
+    it('is pushed back to the catalog, so the next launch agrees', async () => {
+      const local = readingBook('rs-manual-push')
+      decideUnread('rs-manual-push', local)
+
+      const incoming = makeBook('rs-manual-push')
+      incoming.readStatus = 'reading'
+      incoming.readingState = { ...local.readingState! }
+      await writeCatalog(root, [incoming])
+
+      await librarySync.syncOnConnect()
+      await librarySync.flushForTests()
+
+      const entry = (await readCatalog(root))?.books.find((b) => b.id === 'rs-manual-push')
+      expect(entry?.readStatus).toBe('unread')
+    })
+
+    it('still loses to a reading event the catalog recorded later', async () => {
+      const local = readingBook('rs-manual-later')
+      decideUnread('rs-manual-later', local)
+
+      // Another machine read further in it after the decision
+      const incoming = makeBook('rs-manual-later')
+      incoming.readStatus = 'reading'
+      incoming.readingState = {
+        position: 'cfi-elsewhere',
+        percent: 0.4,
+        updatedAt: '2099-01-01T00:00:00Z'
+      }
+      await writeCatalog(root, [incoming])
+
+      await librarySync.syncOnConnect()
+
+      expect(getBook('rs-manual-later')?.readStatus).toBe('reading')
+      expect(getBook('rs-manual-later')?.readingState?.position).toBe('cfi-elsewhere')
+    })
   })
 })
 

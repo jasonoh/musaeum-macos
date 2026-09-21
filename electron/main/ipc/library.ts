@@ -11,6 +11,7 @@ import * as fieldOverrides from '../services/field-overrides'
 import * as importer from '../services/importer'
 import * as librarySync from '../services/library-sync'
 import * as nas from '../services/nas-manager'
+import * as readingState from '../services/reading-state'
 import { handle } from './handle'
 
 export function registerLibraryHandlers(): void {
@@ -47,6 +48,11 @@ export function registerLibraryHandlers(): void {
     // captured first (design D5)
     const before = db.getBook(id)
     db.updateBook(id, updates)
+    // A read-status change is a decision about reading state, so it moves that
+    // state's clock — before the `getBook` below, so the metadata.json written
+    // after it carries the same clock. Without it the decision is one adoption
+    // cannot order, and the next launch's catalog wins (`CLAUDE.md` #5).
+    readingState.noteStatusChange(id, updates, before)
     // Every field this patch actually changed is now the user's decision, and a
     // fetch must not move it. A patch that only restates the row locks nothing.
     fieldOverrides.markFromPatch(id, updates, before)
