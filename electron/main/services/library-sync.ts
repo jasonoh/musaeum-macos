@@ -156,10 +156,30 @@ function preserveLocalReadingState(incoming: Book[]): Book[] {
 export async function applyCatalog(root: string): Promise<number> {
   const cat = await catalog.readCatalog(root)
   if (!cat) throw new Error('No readable catalog.json at the library root')
-  db.replaceAllBooks(preserveLocalReadingState(cat.books))
+  adopt(cat.books)
   handledRoots.add(root)
-  broadcast('libraryChanged')
   return cat.books.length
+}
+
+/**
+ * Land a catalog view as the local cache, and tell the renderer the two things
+ * that changed.
+ *
+ * One function because there are four ways in — the on-connect sync, the manual
+ * Reload, the rebuild walk and a direct `applyCatalog` — and the second event is
+ * the one that gets forgotten. `replaceAllBooks` prunes the conflicts of any
+ * book the incoming catalog no longer has (it runs with the foreign keys off and
+ * deletes them in the same transaction), so an adoption can shrink the review
+ * queue with nobody resolving anything; the badge in the sidebar is a number the
+ * renderer was *told* rather than something it reads (`src/hooks/useLibrary.ts`),
+ * so a prune that says nothing leaves it counting a book that is gone. Same
+ * symptom as deleting one, through the other door — reported 2026-09-20 for the
+ * delete path, and this is its sibling.
+ */
+function adopt(books: Book[]): void {
+  db.replaceAllBooks(preserveLocalReadingState(books))
+  broadcast('libraryChanged')
+  broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
 }
 
 /**
@@ -174,8 +194,7 @@ export async function syncOnConnect(): Promise<void> {
   try {
     const result = await catalog.readCatalogDetailed(root)
     if (result.state === 'ok') {
-      db.replaceAllBooks(preserveLocalReadingState(result.file.books))
-      broadcast('libraryChanged')
+      adopt(result.file.books)
     } else if (result.state === 'missing' && db.getBooks().length > 0) {
       // Pre-catalog library on this machine: bootstrap the catalog from cache
       await catalog.replaceCatalog(root, db.getBooks())
@@ -207,9 +226,8 @@ export async function refreshLibrary(): Promise<CatalogSyncOutcome> {
   const root = nas.getLibraryRoot()!
   const result = await catalog.readCatalogDetailed(root)
   if (result.state !== 'ok') return rebuildCatalog()
-  db.replaceAllBooks(preserveLocalReadingState(result.file.books))
+  adopt(result.file.books)
   handledRoots.add(root)
-  broadcast('libraryChanged')
   return { books: result.file.books.length, cancelled: false }
 }
 
@@ -244,9 +262,8 @@ export async function rebuildCatalog(): Promise<CatalogSyncOutcome> {
   // no books — the flag is the only thing that tells them apart, and the walk
   // wrote nothing in the cancelled case (catalog.ts)
   if (rebuildCancelled) return { books: 0, cancelled: true }
-  db.replaceAllBooks(preserveLocalReadingState(walked))
+  adopt(walked)
   handledRoots.add(root)
-  broadcast('libraryChanged')
   // Bare `false`: the early return above holds whenever the flag is set, so
   // reading it here would be the same value by a longer route
   return { books: walked.length, cancelled: false }

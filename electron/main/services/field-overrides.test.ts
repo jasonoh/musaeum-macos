@@ -4,7 +4,7 @@ import { app } from 'electron'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { closeDb, getBook, insertBook, setConfig, updateBook } from './db'
-import { list, markFromPatch, release } from './field-overrides'
+import { forget, list, markFromPatch, release } from './field-overrides'
 
 /**
  * The store behind "a field the user set, which a fetch must not touch".
@@ -114,5 +114,50 @@ describe('an unreadable map', () => {
 
     expect(list('a')).toEqual(['title'])
     expect(list('b')).toEqual([])
+  })
+})
+
+/**
+ * A book that no longer exists cannot be fetched again, so its entry is garbage
+ * — and the delete path is where it used to be left behind. Measured on the
+ * real library: `app_config.field_overrides` held an id that was not in `books`
+ * (six fields, from a book that had been deleted from the detail panel), which
+ * is what this pins.
+ */
+describe('forget', () => {
+  it('drops one book’s entry and leaves every other book alone', () => {
+    insertBook(makeBook('gone', 'Gone'))
+    insertBook(makeBook('kept', 'Kept'))
+    markFromPatch('gone', { title: 'Gone Away' }, makeBook('gone', 'Gone'))
+    markFromPatch('kept', { title: 'Kept Indeed' }, makeBook('kept', 'Kept'))
+
+    forget('gone')
+
+    expect(list('gone')).toEqual([])
+    expect(list('kept')).toEqual(['title'])
+  })
+
+  it('is a no-op for a book that never had one', () => {
+    expect(() => forget('never-existed')).not.toThrow()
+    expect(list('never-existed')).toEqual([])
+  })
+
+  /**
+   * The two-machine case, which is why the sweep exists at all: a book deleted on
+   * the *other* machine comes back to this one as a catalog without it, so the
+   * cache loses the row and nobody here deleted anything — no caller forgets it.
+   * Confirmed real 2026-09-20 ("I use Musaeum on both machines already"), and
+   * exactly the condition D1 of the field-overrides design wrote down as the
+   * trigger for making overrides portable.
+   */
+  it('drops an entry whose book is gone, on the next write', () => {
+    insertBook(makeBook('live', 'Live'))
+    setConfig('field_overrides', JSON.stringify({ 'dropped-elsewhere': ['title'] }))
+    expect(list('dropped-elsewhere')).toEqual(['title'])
+
+    markFromPatch('live', { title: 'Live Indeed' }, makeBook('live', 'Live'))
+
+    expect(list('dropped-elsewhere')).toEqual([])
+    expect(list('live')).toEqual(['title'])
   })
 })

@@ -277,6 +277,17 @@ export function getBook(id: string): Book | null {
 }
 
 /**
+ * Whether the cache holds this book, without building the row.
+ *
+ * For the callers that are asking about *existence* rather than about a book:
+ * `field-overrides.ts` sweeps its map of books that are gone, where reading
+ * every column of every entry would be work thrown away.
+ */
+export function bookExists(id: string): boolean {
+  return getDb().prepare('SELECT 1 FROM books WHERE id = ?').get(id) !== undefined
+}
+
+/**
  * FTS search. Results are ordered by the given sort so the list-view headers
  * and the toolbar dropdown stay live during a search; with no sort they fall
  * back to FTS relevance rank.

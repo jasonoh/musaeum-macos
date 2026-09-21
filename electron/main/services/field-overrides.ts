@@ -54,7 +54,33 @@ function read(): Record<string, HydratedField[]> {
 }
 
 function write(map: Record<string, HydratedField[]>): void {
-  db.setConfig(CONFIG_KEY, JSON.stringify(map))
+  db.setConfig(CONFIG_KEY, JSON.stringify(pruneDead(map)))
+}
+
+/**
+ * Drop the entries whose book is not in the cache any more.
+ *
+ * This map is the one dependent of a book that no cascade reaches — it lives in
+ * `app_config`, not in a `books` table — so every other way a book can leave the
+ * cache has to be covered here rather than at each of them: a delete forgets its
+ * own book explicitly (immediately, and that is what the delete path's test
+ * pins), while an **adoption** drops a book nobody deleted on this machine (the
+ * catalog came back without it, which is the everyday case once a second machine
+ * edits the same library) and lands here. Pruning on write is what makes the
+ * invariant structural — the map only ever holds live books — instead of a rule
+ * each new path has to remember, which is the shape of the two bugs this
+ * repository has already paid for.
+ *
+ * Checked per entry rather than by diffing the whole library: the map holds a
+ * handful of books, and one indexed lookup each is cheaper than reading 7,000
+ * ids to compare.
+ */
+function pruneDead(map: Record<string, HydratedField[]>): Record<string, HydratedField[]> {
+  const live: Record<string, HydratedField[]> = {}
+  for (const [bookId, fields] of Object.entries(map)) {
+    if (db.bookExists(bookId)) live[bookId] = fields
+  }
+  return live
 }
 
 /** The fields this book's fetches must not touch, in no particular order. */
@@ -106,4 +132,24 @@ export function release(bookId: string, field: HydratedField): HydratedField[] {
   else delete rest[bookId]
   write(rest)
   return next
+}
+
+/**
+ * Drop a book's entry entirely, because the book is gone.
+ *
+ * Nothing else owns this: the delete path removes the row, the folder and the
+ * catalog entry, and this map lives in `app_config` rather than in the `books`
+ * tables — so it is the one dependent a delete has to be *told* about, and it
+ * was not. Measured on the real library: an id in `field_overrides` that no
+ * `books` row matched, carrying six fields, left behind by deleting the book
+ * from the detail panel. Harmless while the book stays gone (nothing will ever
+ * ask a fetch about that id again) and unbounded growth otherwise, which is why
+ * it goes with the row rather than being pruned by a later sweep.
+ */
+export function forget(bookId: string): void {
+  const map = read()
+  if (!(bookId in map)) return
+  const rest = { ...map }
+  delete rest[bookId]
+  write(rest)
 }

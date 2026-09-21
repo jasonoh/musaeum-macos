@@ -7,7 +7,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Book } from '@shared/book.types'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
-import { closeDb, getBook, getBooks, insertBook, updateBook } from './db'
+import {
+  closeDb,
+  getBook,
+  getBooks,
+  getConflictQueue,
+  insertBook,
+  insertConflict,
+  updateBook
+} from './db'
 import { subscribe } from './events'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
@@ -171,6 +179,37 @@ describe('syncOnConnect', () => {
       expect(getBook('rs-manual-later')?.readStatus).toBe('reading')
       expect(getBook('rs-manual-later')?.readingState?.position).toBe('cfi-elsewhere')
     })
+  })
+
+  /**
+   * Adoption is the other path that changes the review queue without anyone
+   * resolving anything: `replaceAllBooks` deletes the conflicts of a book the
+   * incoming catalog no longer has — it runs with the foreign keys off and
+   * prunes them in the same transaction. The badge is a *number the renderer was
+   * told*, so a prune that says nothing leaves it counting a book that is gone:
+   * the same symptom as deleting one, through the other door.
+   */
+  it('announces the review count when an adoption drops a book that had conflicts', async () => {
+    insertBook(makeBook('kept'))
+    insertBook(makeBook('dropped'))
+    insertConflict('dropped', 'author', [
+      { source: 'embedded', value: 'Someone Else' },
+      { source: 'google_books', value: 'Another Entirely' }
+    ])
+    await writeCatalog(root, [makeBook('kept')])
+
+    const counts: number[] = []
+    const unsubscribe = subscribe((event, payload) => {
+      if (event === 'conflictQueueUpdated') counts.push(payload as number)
+    })
+    try {
+      await librarySync.syncOnConnect()
+    } finally {
+      unsubscribe()
+    }
+
+    expect(counts).toEqual([0])
+    expect(getConflictQueue()).toHaveLength(0)
   })
 })
 

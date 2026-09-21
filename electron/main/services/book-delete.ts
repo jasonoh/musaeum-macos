@@ -5,9 +5,39 @@ import type { BookFormat } from '@shared/book.types'
 import { computeFileSizeBytes } from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
+import * as fieldOverrides from './field-overrides'
 import { writeMetadataJson } from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
+
+/**
+ * The row and everything that hangs off it. The conflicts go inside
+ * `db.deleteBook` (they are `books` tables, and the FK would otherwise block the
+ * delete); the field overrides are the one dependent that lives elsewhere —
+ * `app_config` — so the delete has to be told about them explicitly.
+ */
+function removeBook(id: string): void {
+  db.deleteBook(id)
+  fieldOverrides.forget(id)
+}
+
+/**
+ * Tell the renderer what the review queue now holds.
+ *
+ * The badge is a number the renderer was **told**, not something it reads: only
+ * `conflictQueueUpdated` moves it (`src/hooks/useLibrary.ts`), and only a
+ * restart re-reads the queue at mount. Deleting a book removed its conflicts
+ * from the database and said nothing, so the sidebar kept insisting on 4 while
+ * the queue modal — which reads fresh and found the rows gone — answered "All
+ * metadata reviewed". Reported 2026-09-20, and measured against the real
+ * database afterwards: 42 conflict rows, all resolved, zero unresolved and zero
+ * orphans, so the number on screen was never the database's. Unconditional
+ * rather than "only when this book had conflicts": one rule with no branch is
+ * one a future delete path cannot half-follow.
+ */
+function announceReviewCount(): void {
+  broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
+}
 
 /**
  * A folder that will not go away is logged, never fatal: by the time this runs
@@ -32,11 +62,14 @@ export async function deleteBook(id: string): Promise<void> {
   // whose files were already gone: unopenable, and undeletable for the same
   // reason. The reverse costs a stray folder on the share, which is visible in
   // Finder and recoverable; an entry pointing at nothing is neither.
-  db.deleteBook(id)
+  removeBook(id)
   if (book?.nasPath) {
     await removeFolder(join(nas.getLibraryRoot()!, book.nasPath), id)
   }
   librarySync.removeBookFromCatalog(id)
+  // The queue shrank with the book, and the badge has to hear about it — see
+  // `announceReviewCount`
+  announceReviewCount()
   broadcast('libraryChanged')
 }
 
@@ -119,7 +152,7 @@ export async function deleteBooks(ids: string[]): Promise<BulkDeleteResult> {
     }
     try {
       // Same order as the single-book path, and for the same reason
-      db.deleteBook(id)
+      removeBook(id)
       if (book.nasPath) {
         await removeFolder(join(root, book.nasPath), id)
       }
@@ -135,6 +168,9 @@ export async function deleteBooks(ids: string[]): Promise<BulkDeleteResult> {
 
   if (deleted > 0) {
     librarySync.writeFullCatalog()
+    // Once for the batch, not once per book: the count is one number, and a
+    // dozen books would be a dozen identical reloads
+    announceReviewCount()
     broadcast('libraryChanged')
   }
   return { deleted, failed }

@@ -7,7 +7,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { deleteBook, deleteBooks, deleteFormats } from './book-delete'
 import { readCatalog, writeCatalog } from './catalog'
-import { closeDb, getBook, getBooks, insertBook, updateBook } from './db'
+import {
+  closeDb,
+  getBook,
+  getBooks,
+  getConflictQueue,
+  insertBook,
+  insertConflict,
+  updateBook
+} from './db'
+import { subscribe } from './events'
+import { list as listOverrides, markFromPatch } from './field-overrides'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 
@@ -212,5 +222,85 @@ describe('deleteBooks', () => {
     expect(result.deleted).toBe(0)
     expect(full).not.toHaveBeenCalled()
     full.mockRestore()
+  })
+})
+
+/**
+ * The review badge is a *number the renderer was told*, not something it reads:
+ * only `conflictQueueUpdated` moves it, and only a restart re-reads the queue.
+ * Deleting a book used to remove its conflicts from the database without
+ * announcing the new count — the queue modal, which reads fresh, then said
+ * "nothing needs attention" while the sidebar kept insisting on **4** until the
+ * app was restarted. Reported 2026-09-20, and measured against the real
+ * database afterwards: 42 conflict rows, all resolved, **zero** unresolved and
+ * **zero** orphans, so the number on screen was never the database's.
+ */
+describe('the review count after a delete', () => {
+  /** Every count the process announced while `run` was in flight. */
+  async function announced(run: () => Promise<unknown>): Promise<number[]> {
+    const counts: number[] = []
+    const unsubscribe = subscribe((event, payload) => {
+      if (event === 'conflictQueueUpdated') counts.push(payload as number)
+    })
+    try {
+      await run()
+    } finally {
+      unsubscribe()
+    }
+    return counts
+  }
+
+  function conflictOn(id: string): void {
+    insertConflict(id, 'author', [
+      { source: 'embedded', value: 'Someone Else' },
+      { source: 'google_books', value: 'Another Entirely' }
+    ])
+  }
+
+  it('announces the count the queue will report, with a book deleted', async () => {
+    await seed('c-del', ['epub'])
+    conflictOn('c-del')
+    expect(getConflictQueue()).toHaveLength(1)
+
+    const counts = await announced(() => deleteBook('c-del'))
+
+    // The number announced is the queue's own length, which is the whole point:
+    // the badge and the modal cannot disagree
+    expect(counts).toEqual([getConflictQueue().length])
+    expect(counts).toEqual([0])
+  })
+
+  it('announces it once for a batch, not once per book', async () => {
+    await seed('c-b1', ['epub'])
+    await seed('c-b2', ['epub'])
+    conflictOn('c-b1')
+    conflictOn('c-b2')
+
+    const counts = await announced(() => deleteBooks(['c-b1', 'c-b2']))
+
+    expect(counts).toEqual([0])
+  })
+
+  it('announces zero when the deleted book had no conflicts', async () => {
+    await seed('c-quiet', ['epub'])
+
+    // Unconditional rather than conditional on the book having had conflicts:
+    // one rule with no branch is one a future delete path cannot half-follow
+    expect(await announced(() => deleteBook('c-quiet'))).toEqual([0])
+  })
+
+  it('takes the book’s field overrides with it', async () => {
+    await seed('c-ov', ['epub'])
+    seed('shared', ['epub'])
+    markFromPatch('c-ov', { author: 'Melanie Mitchell' }, makeBook('c-ov'))
+    markFromPatch('shared', { author: 'Someone Else' }, makeBook('shared'))
+    expect(listOverrides('c-ov')).toEqual(['author'])
+
+    await deleteBook('c-ov')
+
+    // A dead id in the map is a field no fetch can ever be told about again —
+    // the entry for the deleted book is the one that goes
+    expect(listOverrides('c-ov')).toEqual([])
+    expect(listOverrides('shared')).toEqual(['author'])
   })
 })
