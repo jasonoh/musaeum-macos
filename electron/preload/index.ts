@@ -43,7 +43,8 @@ const api: MusaeumAPI = {
       invoke('metadata:resolveConflict', conflictId, choices),
     rehydrateBook: (bookId) => invoke('metadata:rehydrateBook', bookId),
     rehydrateBooks: (bookIds) => invoke('metadata:rehydrateBooks', bookIds),
-    cancelRehydrate: () => invoke('metadata:cancelRehydrate')
+    cancelRehydrate: () => invoke('metadata:cancelRehydrate'),
+    coverPreviews: (urls) => invoke('metadata:coverPreviews', urls)
   },
   devices: {
     getConnectedDevices: () => invoke('devices:getConnectedDevices'),

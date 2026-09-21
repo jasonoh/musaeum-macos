@@ -138,6 +138,13 @@ export interface MusaeumAPI {
     rehydrateBooks(bookIds: string[]): Promise<void>
     /** Stop a running bulk re-hydrate after the book in flight. */
     cancelRehydrate(): Promise<void>
+    /**
+     * Inlined `data:` previews for cover-candidate URLs, keyed by URL. The only
+     * way an image from a remote origin can reach the renderer (the CSP names no
+     * `https:` origin), so a cover conflict's candidates are visible rather than
+     * two empty tiles. A URL the sidecar could not fetch is absent from the map.
+     */
+    coverPreviews(urls: string[]): Promise<Record<string, string>>
   }
 
   devices: {

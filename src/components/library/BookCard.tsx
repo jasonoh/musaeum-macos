@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import type { Book } from '@shared/book.types'
 import { orderedFormats, primaryFormat, seriesDisplay } from '@shared/book.types'
 import { modifiersFrom } from '@/lib/selection'
+import { coverUrl } from '@/lib/cover-url'
 import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
@@ -17,11 +18,6 @@ import { DeviceIcon, SpinnerIcon, TrashIcon } from '@/components/shared/icons'
 export const CARD_META_HEIGHT = 68
 export const CARD_META_MARGIN = 8
 
-export function coverUrl(book: Book, size: 'thumb' | 'full'): string | null {
-  const path = size === 'thumb' ? book.coverThumbPath : book.coverFullPath
-  return path ? `musaeum://cover/${book.id}/${size}` : null
-}
-
 /**
  * A cover, or the placeholder when there is nothing to show *or* nothing to
  * serve it from.
@@ -31,8 +27,12 @@ export function coverUrl(book: Book, size: 'thumb' | 'full'): string | null {
  * produces a URL, and Chromium paints its broken-image glyph where the cover
  * belongs. That reads as a rendering bug rather than as a book whose files
  * are missing, which is exactly how a half-finished delete presents itself.
- * The failed URL is remembered by value rather than as a boolean: a re-fetch
- * that supplies a new cover changes the URL, and the card retries by itself.
+ * The failed URL is remembered by value rather than as a boolean: the URL now
+ * carries the row's clock (see `src/lib/cover-url.ts`), so *any* write that
+ * replaces the bytes changes the URL and the card retries by itself — which is
+ * what this comment claimed before it was true. Measured 2026-09-21: a
+ * same-URL replacement served the old image from cache (600×942 against a
+ * 307×500 file) while `?v=` fetched the new one.
  */
 export function BookCover({
   book,

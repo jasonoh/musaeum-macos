@@ -5,6 +5,7 @@ Top two within 15% → also emit a 'cover' review conflict (top one is still
 applied so the book is never coverless while waiting on review).
 """
 
+import base64
 import io
 import os
 from typing import Optional
@@ -13,6 +14,8 @@ import requests
 from PIL import Image
 
 FULL_MAX = 600
+PREVIEW_MAX = 240
+MAX_PREVIEWS = 6
 THUMB_MAX = 200
 TIMEOUT = 20
 
@@ -145,3 +148,49 @@ def fetch_cover(book_dir: str, url: Optional[str] = None, source: str = "google_
     cover = _write_cover(data, book_dir)
     cover.update({"source": source, "width": img.size[0], "height": img.size[1]})
     return cover
+
+
+def preview_data_url(data: Optional[bytes], quality: int = 80) -> Optional[str]:
+    """A small inlined JPEG for `data`, or `None` if it is not an image.
+
+    The renderer's CSP is `img-src 'self' musaeum: data: blob:` and names no
+    remote origin, so a cover can only be *shown* to a person as a data URL (or
+    through the `musaeum://` route, which serves what is already on disk). This
+    is what a cover-conflict candidate needs to become visible at all — see
+    `docs/superpowers/specs/2026-09-21-cover-choice-design.md`, D3, whose
+    deferred condition (a cover conflict actually appearing) fired on
+    2026-09-21 the day slice 1a landed and made them more likely.
+    """
+    if not data:
+        return None
+    try:
+        img = Image.open(io.BytesIO(data))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        copy = img.copy()
+        copy.thumbnail((PREVIEW_MAX, PREVIEW_MAX * 2))
+        buf = io.BytesIO()
+        copy.save(buf, "JPEG", quality=quality)
+    except Exception:
+        # Not an image, or one PIL cannot read — no preview is a state the
+        # caller renders ("the image could not be shown"), never an exception
+        return None
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def previews_for(urls: list) -> dict:
+    """`{url: data_url}` for the URLs that answered with an image.
+
+    Bounded twice on purpose: `MAX_PREVIEWS` URLs considered per call, and each
+    preview capped at `PREVIEW_MAX` px — a conflict carries two or three
+    candidates, and the whole point of a preview is to travel cheaply through
+    the IPC boundary that a remote URL cannot cross.
+    """
+    out = {}
+    for url in list(dict.fromkeys(urls))[:MAX_PREVIEWS]:
+        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+            continue
+        preview = preview_data_url(_download(url))
+        if preview:
+            out[url] = preview
+    return out

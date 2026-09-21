@@ -5,12 +5,20 @@ import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
-import { resolveConflict } from './conflicts'
+import { coverPreviews, resolveConflict } from './conflicts'
 import { writeCatalog } from './catalog'
 import { closeDb, getBook, getConflictQueue, insertBook, insertConflict } from './db'
 import { list } from './field-overrides'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
+import * as sidecar from './sidecar'
+
+/**
+ * The sidecar is a Python process: an unmocked `call` would spawn one, and an
+ * unmocked `assertAvailable` *starts* it (the same reason bulk-hydrate.test.ts
+ * stubs it). Only `coverPreviews` reaches it today.
+ */
+vi.mock('./sidecar', () => ({ call: vi.fn(), assertAvailable: vi.fn() }))
 
 let root: string
 
@@ -132,5 +140,36 @@ describe('resolveConflict', () => {
     await resolveConflict(id, { publisher: 'google_books' })
 
     expect(upsert).toHaveBeenCalledWith([expect.objectContaining({ id: 'a', publisher: 'Orbit Books' })])
+  })
+})
+
+describe('coverPreviews', () => {
+  // A cover candidate is an image *URL* and the renderer's CSP names no remote
+  // origin, so the queue's tiles used to render as two empty boxes — reported
+  // from the app on 2026-09-21. The previews have to come from here, and the
+  // boundary is the sidecar's: this is the wiring that says so.
+
+  it('asks the sidecar for the candidates’ previews and hands its map back', async () => {
+    const map = { 'https://example.test/a.jpg': 'data:image/jpeg;base64,AAAA' }
+    vi.mocked(sidecar.call).mockResolvedValue(map)
+
+    await expect(coverPreviews(['https://example.test/a.jpg'])).resolves.toEqual(map)
+
+    expect(sidecar.call).toHaveBeenCalledWith(
+      'cover_previews',
+      { urls: ['https://example.test/a.jpg'] },
+      60_000
+    )
+  })
+
+  it('asks for nothing when there is nothing to show — no engine, no round trip', async () => {
+    // The other half of "the previews are fetched": a conflict with no cover
+    // candidates must not wake the sidecar at all, or the queue would need a
+    // running metadata engine to render a *text* conflict
+    vi.mocked(sidecar.call).mockClear()
+
+    await expect(coverPreviews([])).resolves.toEqual({})
+
+    expect(sidecar.call).not.toHaveBeenCalled()
   })
 })

@@ -92,6 +92,9 @@ So the defect is not the fetch: it is (a) a fetcher asking Google for its smalle
 **If the probe shows no repaint**, the mechanism is chosen in this order: (1) `coverUrl()` appends `?v=<row.lastModified>` — the row already carries the clock, the route parses the pathname only (`electron/main/index.ts:56-80`), and nothing about caching semantics changes for the other 7,106 books; (2) failing that, the cover route answers with a revalidation header, which costs a NAS read per cover and is therefore only acceptable if (1) does not work. **Not** a `no-store` header on the route: that is a per-repaint NAS read on the grid's hottest path.
 **Consequence:** if (1) is needed it also fixes any pre-existing staleness on the conflict-resolution path — one function, both views.
 
+**Measured 2026-09-21 — it was needed, and it is exactly what had just been reported.** The owner, having repacked: *"it displayed both cover photos, i selected the 2nd, and it set the 1st"*. The write had landed — the book's `cover_full.jpg` was the chosen jacket (307×500, md5 `895e8f6e…`), `metadata.json` and the conflict row both said `openlibrary` — while the window still painted hydration's earlier pick. On an isolated profile, against the same book: a **new `<img>` with the same `musaeum://cover/{id}/full` src, after the file on disk had been replaced with a different image, still reported the old file's dimensions and byte-identical pixels (600×942, against a 307×500 file)**, and the same URL with `?v=<now>` reported the new one. Mechanism (1) shipped as `src/lib/cover-url.ts`; the probe then ran the real path end to end — resolving that conflict in the app moved the row's clock (`?v=` 11:45:00Z → 11:45:43Z) and the detail panel's cover went 600×942 → **307×500**.
+**Residual, stated:** the version is the *row's* clock, so bytes replaced outside the app (a folder restored from a backup, a cover swapped by hand) stay stale until something else touches the row. The alternative — hashing the file on every render — is a NAS read per repaint.
+
 ---
 
 ## Store and component shape
@@ -138,7 +141,7 @@ So the defect is not the fetch: it is (a) a fetcher asking Google for its smalle
 
 - **Persisting candidates into `metadata.json` / `app_config`** — D1's alternative; deferred. Revived when the picker must work without the network, or when the bulk path wants the candidate list without a second fetch.
 - **A cover from a local file** — deferred; the widest gap of the three, and the honest reason is that it needs decisions this spec does not take (where the source image lives, whether it is copied into the book folder, what happens to a file the user later moves). Revived by a report of a jacket that exists nowhere online — a scanned or personal edition — which is a real case for a library this size.
-- **Repairing the conflict resolver's cover candidates with the same data-URL thumbs** — deferred. It is a pre-existing defect (`ConflictResolver.tsx:23-32` against `index.html:8`), it needs a second RPC (thumbs for URLs that are already in `metadata_conflicts`), and D5 *increases* the chance of seeing it, which is the condition that revives it: the first cover conflict that appears after slice 1a lands.
+- **Repairing the conflict resolver's cover candidates with the same data-URL thumbs** — deferred. It is a pre-existing defect (`ConflictResolver.tsx:23-32` against `index.html:8`), it needs a second RPC (thumbs for URLs that are already in `metadata_conflicts`), and D5 *increases* the chance of seeing it, which is the condition that revives it: the first cover conflict that appears after slice 1a lands. **That condition fired on 2026-09-21, within the hour** — see *Built — the conflict queue's cover previews* at the end of this document.
 - **Widening the CSP's `img-src` to `https:`** — rejected outright. It is a stated promise, not an accident, and it would put remote images in the renderer to save one RPC.
 - **Cropping or rotating the stored cover** — rejected: the cover is an artifact of an edition, not a composition surface, and a crop has no source to re-derive from. A "use this image file" gesture (above) is the version of that wish that does not need a derivative.
 - **A cover per *format*** (the epub's jacket and the mobi's jacket differ) — rejected this round: `metadata.json`'s `cover` is one pair of fixed filenames and every consumer assumes it. Revived only with a consumer that needs two.
@@ -194,3 +197,44 @@ The remaining 7 are unchanged in source: six keep their embedded jacket, and one
 2. **The guard lives in the fetcher, not in the scoring step** — a reading this spec left open (`_resolve_cover`, `fetchers/google_books.py:74-95`). The fetcher is the only place that knows *which* rendition it asked for, and therefore that a 575×750 answer is an answer to its own question rather than a cover; `select_cover` cannot tell the tile from a real jacket of the same size. The alternative — the guard in `cover.py` — would also have needed the fallback URL to travel through the candidate dict: two more files for a worse home.
 3. **AC3's sample is 15, not the ≥25 the criterion asked for.** Google throttles a burst of ISBN lookups — the first two census attempts died on `429` inside a minute, the second after 90 s of backoff. The harness now caches one API response per book, serves the fetcher from that cache, and paces itself; 25 would still have risked a half-finished run against a live quota. The harness is re-runnable (its method is spelled out in AC3) and printed the numbers above; it sits in the session's scratch directory, which is pruned after 72 h.
 4. **The first version of one case was wrong, and reddening is what proved the case real.** `test_a_small_thumbnail_is_upgraded_and_kept_as_the_fallback` asserted the fallback URL in the `http://` form the API ships, while `_cover_urls` normalises to https before deriving anything — so it failed against a correct implementation. The expectation was corrected, not the code: that normalisation is what carries the existing `http → https` behaviour into the fallback path.
+
+---
+
+## Built — the conflict queue's cover previews (2026-09-21, the defect 1a exposed)
+
+**Reported from the app within the hour, with a frame:** *"the cover picker doesn't display the actual covers!!!"* — the Metadata Review modal's two candidate tiles for the Melanie Mitchell book rendered as **empty boxes** labelled `GOOGLE BOOKS` and `OPENLIBRARY`, so the jacket would have had to be chosen blind.
+
+**This is the deferred item above, and its condition fired the day it was written.** 1a made Google's jacket competitive (0.944 against the embedded 0.832 — margin 0.111, inside the band), so the re-fetch at 07:31:11 queued cover conflict **id 51** where every previous re-fetch had silently decided — and the queue, the only place a cover choice exists, could not show the choice.
+
+**Cause, measured rather than inferred.** Both candidate URLs are live images (`curl -L`: Google `200 image/png`, 289,284 B; OpenLibrary `302 → 200 image/jpeg`, 49,750 B), and the DOM held **two `<img>` elements whose `src` were those remote URLs, `complete: true`, `naturalWidth: 0`** — the element rendered and the image never loaded. That is the CSP (`img-src 'self' musaeum: data: blob:`, `index.html:8`) refusing a remote origin, which D3 had already decided the answer to: the image crosses that boundary as a data URL, and the policy is never widened.
+
+**What changed (9 files).** `pipeline/cover.py` gains `preview_data_url` (≤240 px JPEG q80, inlined) and `previews_for` (deduped, capped at `MAX_PREVIEWS`, absolute `http(s)` only, a URL that cannot be fetched simply absent); `main.py` registers `cover_previews`; `services/conflicts.ts` gains `coverPreviews`, with the empty-list short-circuit because a *text* conflict must not need a running metadata engine; one thin handler, the preload surface and its type; and `ConflictResolver.tsx` fetches once per candidate set — keyed on the serialized URLs, the result stored **with the key it answers**, so a stale map is never read — and renders each tile as its preview, a spinner, or a sentence. Never a blank box.
+
+**Evidence, on an isolated profile (`MUSAEUM_USER_DATA`), so the real library was never opened.** The live conflict row was inserted into the probe profile with **the same two URLs** and driven over CDP twice: against the pre-fix build already on disk (`out/`, built 07:30:43) and again after `npm run build`.
+
+| | before | after |
+| --- | --- | --- |
+| candidate `<img>` elements | 2, `src` = the remote URLs | 2, `src` = `data:image/jpeg;base64,…` |
+| `naturalWidth` | **0** (never loaded) | **240** (rendered, 377 px and 391 px tall) |
+| remote `src` anywhere in the DOM | 2 | **0** |
+| what the frame shows | two empty tiles | the Picador jacket and the Pelican jacket |
+
+**Gates.** `typecheck` 0, `lint` 0, `npm test` **1012 passed / 46 files** (+2), pytest **99 passed** (+5), and a mutation campaign **6 of 6 killed** — the width cap removed, the `http(s)` guard relaxed, the dedupe dropped, a failed download reported as a preview, the empty-list short-circuit removed, and the RPC method name drifted; each reddened its own suite and each file was restored byte-exact. AC15's shape criterion now has two deciders: the sidecar case asserting every value is a `data:image/jpeg;base64,` URL, and the app probe asserting zero remote `src` in the rendered DOM.
+
+**One file is prettier-dirty at HEAD and it is not this change's fault:** `electron/main/services/conflicts.test.ts` fails `prettier --check` on `:115` and `:141` — two lines nobody here wrote (proved by running the formatter against the HEAD copy). The new block is clean; the file was left as it was rather than reformatted around someone else's churn.
+
+**Still open, and only visible now that these tiles work:** a cover conflict's candidates come from the *sources* — the book's own embedded jacket is never among them (`select_cover` returns url-bearing candidates only, `cover.py:86-90`), so "keep what the file has" is expressible only by dismissing the conflict. Recorded in the build report as a decision, not fixed here.
+
+---
+
+## Built — D7's mechanism: a replaced cover repaints (2026-09-21)
+
+The cover previews above fixed seeing the candidates. This fixes the other half of the same report — *"i selected the 2nd, and it set the 1st"* — which was never the write.
+
+**What changed (5 files):** `src/lib/cover-url.ts` (new — the URL builder, now the one home for it, carrying the measurement in its comment) and `src/lib/cover-url.test.ts` (new, 3 cases); `BookCard.tsx` drops its local copy and imports the lib, its `BookCover` comment corrected to say what is now actually true; `CHANGELOG.md` and `tasks.md`.
+
+**Why the function moved:** the renderer has no DOM harness, so a pure rule about URLs is only decidable in `src/lib/` — and this rule is the whole fix. The file that owned it was a component, so the criterion would have had no instrument at all.
+
+**Evidence.** The isolated-profile probe measured the mechanism both ways (same URL → the old 600×942 image and byte-identical pixels; `?v=` → the new file), and then the real path: a cover conflict resolved through the modal to `openlibrary`, after which the row's clock moved the URL and the panel's cover went **600×942 → 307×500**, on disk and on screen (`docs/superpowers/specs/2026-09-21-cover-choice-design.md`, D7, has the table). Gates: `typecheck` 0, `lint` 0, `npm test` **1015 passed / 47 files** (+3), pytest **99 passed**, mutation campaign **3 of 3 killed** — the version removed, the version made constant, and a clockless row losing its cover entirely.
+
+**Two files are prettier-dirty at HEAD and neither is this change's:** `electron/main/services/conflicts.test.ts` (`:115`, `:141`) and `src/components/library/BookCard.tsx` (the format badge's ternary at `:155`). Both were dirty in the committed revision too — proved by running the formatter against the `HEAD` copy — and the new code is clean, so they were left as they are rather than reformatted around someone else's churn.

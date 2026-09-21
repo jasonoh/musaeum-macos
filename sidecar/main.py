@@ -19,7 +19,7 @@ from conversion.converter import convert_format
 from extractors.calibre_db import read_calibre_db
 from extractors.epub_metadata import extract_epub_metadata
 from extractors.pdf_metadata import extract_pdf_metadata
-from pipeline.cover import fetch_cover
+from pipeline.cover import fetch_cover, previews_for
 from pipeline.hydration import hydrate_metadata
 from pipeline.migrate import migrate_library
 from pipeline.topup import topup_pdfs
@@ -52,6 +52,7 @@ METHODS = {
     "fetch_cover": lambda p: fetch_cover(
         book_dir=p["book_dir"], url=p.get("url"), source=p.get("source", "google_books")
     ),
+    "cover_previews": lambda p: previews_for(p.get("urls") or []),
     "convert_format": lambda p: convert_format(
         input_path=p["input_path"],
         output_path=p["output_path"],

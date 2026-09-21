@@ -36,6 +36,8 @@ export function registerMetadataHandlers(): void {
     bulkHydrate.startBulkHydrate(bookIds)
   })
 
+  handle('metadata:coverPreviews', (urls: string[]) => conflicts.coverPreviews(urls))
+
   handle('metadata:cancelRehydrate', () => {
     bulkHydrate.cancelBulkHydrate()
   })

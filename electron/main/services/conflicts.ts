@@ -83,3 +83,24 @@ export async function resolveConflict(conflictId: number, choices: ConflictChoic
   broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
   broadcast('libraryChanged')
 }
+
+/**
+ * Small inlined previews for a cover conflict's candidates, keyed by URL.
+ *
+ * A cover candidate is an image **URL**, and the renderer's CSP names no remote
+ * origin (`img-src 'self' musaeum: data: blob:` — `index.html`), so the review
+ * queue's tiles for a cover rendered as **empty boxes**: reported from the app
+ * on 2026-09-21 as "the cover picker doesn't display the actual covers", with
+ * two blank tiles labelled Google Books and OpenLibrary and no way to tell which
+ * jacket was which before choosing it. The sidecar downloads each candidate and
+ * hands back a ≤240 px JPEG as a data URL — an image crossing the boundary the
+ * renderer cannot fetch across itself. Nothing is written, nothing is cached and
+ * nothing is widened: the CSP is a stated promise, not an obstacle.
+ *
+ * Best-effort by construction: a candidate whose image cannot be fetched is
+ * simply absent from the map, and the tile says so rather than showing a blank.
+ */
+export async function coverPreviews(urls: string[]): Promise<Record<string, string>> {
+  if (!urls.length) return {}
+  return sidecar.call<Record<string, string>>('cover_previews', { urls }, 60_000)
+}
