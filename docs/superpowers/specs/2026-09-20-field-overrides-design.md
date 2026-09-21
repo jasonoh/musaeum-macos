@@ -40,6 +40,8 @@ Thesis: "the user decided this" is the strongest source of truth the app has, an
 
 ## D1 — The decision is recorded in `app_config`, as this machine's opinion
 
+> **Superseded 2026-09-20, by the condition below.** Jason confirmed the same day that he already uses Musaeum on two machines, so the machine-local map is now a known-broken posture rather than a deliberate trade: `docs/superpowers/specs/2026-09-20-portable-decisions-design.md` (D1–D2) moves the map into `metadata.json` + a `books` column, timestamped per field. The prose below is kept as the decision's provenance, not as a description of the app.
+
 **Decision:** one JSON value under the key `field_overrides`, shaped `{ [bookId]: MetadataField[] }`. Chosen by Jason over a `metadata.json` + column pair (which would travel with the book) and over raising the learned bias (which covers no manual edit).
 **Why:** it needs no schema change, no `metadata.json` contract change and no catalog change; `theme_tokens` already stores a JSON blob the same way; and the fact is about *this machine's* user, not about the book.
 **Consequence, stated plainly:** the file on the NAS does not carry it. A re-fetch run from a second machine — or from the iOS companion's server once that exists — can still move an overridden field, and a book deleted and re-imported under a new id starts unlocked. **Reversal condition:** if a second machine ever edits the same library, this becomes `metadata.json` + a `books` column, exactly as `reading_state` (migration 003) already works; the map's *shape* is what would move, so the enforcement sites do not change.
