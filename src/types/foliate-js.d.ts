@@ -19,11 +19,19 @@ declare module '@vendor/foliate-js/view.js' {
    * `View.#onRelocate` emits `{ ...progress, tocItem, pageItem, cfi, range }`,
    * and `progress` is `{}` for books with no section-size index — so every
    * field here is genuinely optional.
+   *
+   * `range` is the rendered page's own live `Range` inside the section's
+   * document (the paginator's `#afterScroll` builds it from `#getVisibleRange`
+   * and passes it through unchanged). Declared 2026-09-21 for the ask panel's
+   * passage window, which needs to know where in the section the page starts.
+   * It is a mutable DOM object rather than a value — read it at the top of the
+   * handler, never hold on to it.
    */
   export interface FoliateRelocateDetail {
     fraction?: number
     cfi?: string
     tocItem?: { label: string } | null
+    range?: Range | null
   }
 
   /** Emitted once per section as it is rendered into the engine's iframe. */

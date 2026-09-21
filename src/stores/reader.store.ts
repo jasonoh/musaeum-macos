@@ -151,6 +151,18 @@ interface ReaderState {
   sectionLabel: string | null
   /** The section currently rendered, text and all. The passage rung's only source. */
   section: ReaderSection | null
+  /**
+   * Where the rendered page starts *within* `section.text`, as a character
+   * offset, or null while the engine cannot say. The ask panel's passage window
+   * is anchored on it: a section longer than the cap has to send the part of
+   * itself the reader is on, not its head (see `passageWindow`).
+   *
+   * Separate from `section` rather than a field on it, because the two arrive on
+   * different events: the text on `load`, the offset on every `relocate` — and
+   * `setSection` clears this, so a stale offset can never window a section it
+   * was not measured against.
+   */
+  sectionOffset: number | null
   /** The reader's live selection — the one thing sent verbatim (D5). */
   selection: string | null
   /** The probe's verdict for this book this session. Null means "not probed yet". */
@@ -193,6 +205,8 @@ interface ReaderState {
   closeAsk(): void
   setSection(section: ReaderSection): void
   setSectionLabel(label: string | null): void
+  /** Where the rendered page starts within the current section's text. */
+  setSectionOffset(offset: number | null): void
   setSelection(selection: string | null): void
   setVerdict(verdict: RecallVerdict): void
   setOverride(sendPassage: boolean): void
@@ -235,6 +249,7 @@ const ASK_IDLE = {
   askProbe: null,
   section: null,
   sectionLabel: null,
+  sectionOffset: null,
   selection: null
 } satisfies Partial<ReaderState>
 
@@ -360,13 +375,21 @@ export const useReaderStore = create<ReaderState>()(
        * change, and zustand skips notification when the updater hands back the
        * state it was given. Same rule for the label and the selection — a
        * `selectionchange` fires for every caret move.
+       *
+       * The offset is the one field a new section *clears*: it is a measurement
+       * of the previous section's text, and a window built on it would slice the
+       * new one at a position that means nothing in it.
        */
       setSection: (section) =>
         set((s) =>
-          s.section?.index === section.index && s.section.text === section.text ? s : { section }
+          s.section?.index === section.index && s.section.text === section.text
+            ? s
+            : { section, sectionOffset: null }
         ),
       setSectionLabel: (label) =>
         set((s) => (s.sectionLabel === label ? s : { sectionLabel: label })),
+      setSectionOffset: (offset) =>
+        set((s) => (s.sectionOffset === offset ? s : { sectionOffset: offset })),
       setSelection: (selection) => set((s) => (s.selection === selection ? s : { selection })),
 
       /**

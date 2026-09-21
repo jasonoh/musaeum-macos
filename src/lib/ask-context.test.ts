@@ -3,6 +3,7 @@ import {
   buildAskMessages,
   describeEgress,
   PASSAGE_CHAR_CAP,
+  PASSAGE_LEAD_CHARS,
   type AskContext,
   type PayloadMember
 } from './ask-context'
@@ -156,12 +157,148 @@ describe('the probe (D6)', () => {
   })
 })
 
+describe('the passage window (2026-09-21 defect)', () => {
+  /**
+   * The section from the report, to scale: 18,405 characters, with the reader's
+   * page starting at 7,805 and the highlighted passage at 8,302.
+   *
+   * Those are measurements, not invented thresholds — taken off `How to Stop
+   * Losing Your Sh*t with Your Kids` (`Carla Naumburg`, Introduction) while
+   * diagnosing the session in which the panel told its reader that the passage
+   * they had highlighted *on their own screen* had not come up yet. The panel's
+   * pointer said "where they are: section “Introduction”, about 5% through",
+   * which was true; the block it called the section's text was the section's
+   * first 6,000 characters, which stopped 2,302 characters before they were.
+   */
+  const PAGE_AT = 7805
+  const HIGHLIGHT_AT = 8302
+  const SECTION_LENGTH = 18405
+  const PAGE_TAIL = 'The point here is that if you haven’t yet been able to stop losing it,'
+  const LONG_HIGHLIGHT =
+    'Why There’s No Such Thing as a Bad Parent. Some of you may be thinking that there are actually bad parents out there.'
+  const LONG_SECTION = [
+    'H'.repeat(PAGE_AT),
+    PAGE_TAIL,
+    'x'.repeat(HIGHLIGHT_AT - PAGE_AT - PAGE_TAIL.length),
+    LONG_HIGHLIGHT,
+    'y'.repeat(SECTION_LENGTH - HIGHLIGHT_AT - LONG_HIGHLIGHT.length)
+  ].join('')
+
+  it('carries the reader’s page, not the section’s first characters (the defect)', () => {
+    const assembled = ask({
+      rung: 'passage',
+      sectionText: LONG_SECTION,
+      sectionOffset: PAGE_AT,
+      selection: LONG_HIGHLIGHT,
+      question: 'Is this saying what I think it is?'
+    })
+
+    const passage = assembled.payload.passage ?? ''
+    expect(passage).toContain(PAGE_TAIL)
+    expect(passage).toContain(LONG_HIGHLIGHT)
+    // The clearest statement of the defect, and the one that was false before:
+    // what travelled is not a prefix of the section.
+    expect(LONG_SECTION.startsWith(passage)).toBe(false)
+    expect(assembled.payload.windowed).toBe(true)
+    expect(passage.length).toBeLessThanOrEqual(PASSAGE_CHAR_CAP)
+  })
+
+  it('keeps the lead-in in front of the position and the cap behind it', () => {
+    const assembled = ask({ rung: 'passage', sectionText: LONG_SECTION, sectionOffset: PAGE_AT })
+    const passage = assembled.payload.passage ?? ''
+
+    expect(passage).toBe(
+      LONG_SECTION.slice(
+        PAGE_AT - PASSAGE_LEAD_CHARS,
+        PAGE_AT - PASSAGE_LEAD_CHARS + PASSAGE_CHAR_CAP
+      ).trim()
+    )
+    // The anchor is what the window may never miss.
+    expect(passage).toContain(PAGE_TAIL)
+  })
+
+  it('anchors on the highlight when the engine reported no offset', () => {
+    const assembled = ask({
+      rung: 'passage',
+      sectionText: LONG_SECTION,
+      selection: LONG_HIGHLIGHT
+    })
+
+    expect(assembled.payload.windowed).toBe(true)
+    expect(assembled.payload.passage).toContain(LONG_HIGHLIGHT)
+  })
+
+  it('reaches back from a position near the section’s end rather than windowing past it', () => {
+    const assembled = ask({
+      rung: 'passage',
+      sectionText: LONG_SECTION,
+      sectionOffset: SECTION_LENGTH - 10
+    })
+    const passage = assembled.payload.passage ?? ''
+
+    // A longer run-up, not a short window: the reader is inside everything the
+    // cap can hold, so none of it is spent on text that does not exist.
+    expect(passage).toBe(LONG_SECTION.slice(SECTION_LENGTH - PASSAGE_CHAR_CAP).trim())
+    expect(passage.length).toBe(PASSAGE_CHAR_CAP)
+  })
+
+  it('sends a short section whole, and does not call it a window', () => {
+    const assembled = ask({ rung: 'passage', sectionText: SECTION, sectionOffset: 12 })
+
+    expect(assembled.payload.passage).toBe(SECTION)
+    expect(assembled.payload.windowed).toBe(false)
+    expect(assembled.payload.truncated).toEqual<PayloadMember[]>([])
+  })
+
+  it('names the window in the disclosure line, and still names the cut', () => {
+    const assembled = ask({ rung: 'passage', sectionText: LONG_SECTION, sectionOffset: PAGE_AT })
+    const line = describeEgress({
+      endpoint: 'https://api.deepseek.com',
+      model: 'deepseek-flash',
+      payload: assembled.payload
+    })
+
+    expect(line).toContain('this section’s text around where you are')
+    expect(line).toContain('truncated at 6000 characters')
+  })
+})
+
 describe('the system prompt', () => {
   it('names the book and where the reader is, in the book’s own words', () => {
     const { system } = ask()
 
     expect(system).toContain('The book: "Middlemarch" — George Eliot.')
     expect(system).toContain('Where they are: section “Chapter 4”, about 62% through.')
+  })
+
+  /**
+   * The other half of the 2026-09-21 defect. The model was handed a section
+   * label taken from a table of contents that calls 18,405 characters
+   * "Introduction", and used it to reason about what its reader had read —
+   * telling them the passage in front of them was "from later in the book than
+   * where you are". Nothing may invite that inference again.
+   */
+  it('says the section label is the table of contents’ own, and coarser than the page', () => {
+    const { system } = ask()
+
+    expect(system).toContain('a table of contents can be far coarser than the page')
+    expect(system).toContain('a rough location and nothing more')
+  })
+
+  it('forbids claims about what the reader has read', () => {
+    expect(ask().system).toContain('never tell them something has not come up yet')
+  })
+
+  it('describes the passage as a window only when it is one', () => {
+    const windowed = ask({
+      rung: 'passage',
+      sectionText: 'H'.repeat(PASSAGE_CHAR_CAP + 500),
+      sectionOffset: PASSAGE_CHAR_CAP
+    })
+    expect(windowed.system).toContain('a window around where they are')
+
+    const whole = ask({ rung: 'passage', sectionText: SECTION })
+    expect(whole.system).not.toContain('a window around where they are')
   })
 
   it('makes refusal a legal, complete answer', () => {

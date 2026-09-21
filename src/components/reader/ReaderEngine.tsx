@@ -18,7 +18,17 @@ interface Props {
   initial: ReadingState | null
   prefs: ReaderPrefs
   onReady(toc: ReaderTocItem[]): void
-  onRelocate(detail: { position: string | null; percent: number; label: string | null }): void
+  onRelocate(detail: {
+    position: string | null
+    percent: number
+    label: string | null
+    /**
+     * Where the rendered page starts inside the current section's own text, as
+     * a character offset — the ask panel's passage window is built around it,
+     * and null whenever the engine cannot say (see `sectionOffset`).
+     */
+    sectionOffset: number | null
+  }): void
   /**
    * The section that has just been rendered, with its own text. Fired from the
    * `load` listener the engine already keeps — the ask panel's passage rung and
@@ -76,6 +86,18 @@ export function ReaderEngine({
   const hostRef = useRef<HTMLDivElement>(null)
 
   /**
+   * The document of the section that was last rendered, and its spine index.
+   *
+   * Held because the two listeners that need it are separate ones: `load`
+   * receives the document, and `relocate` — which fires on every page turn,
+   * most of them with no `load` at all — receives the range. Measuring the
+   * page's offset needs both. The `load` rule the panel already relies on
+   * applies here too: the paginator renders one section at a time, so the last
+   * `load` is the current one.
+   */
+  const loaded = useRef<{ index: number; doc: Document } | null>(null)
+
+  /**
    * The active theme's tokens, or null before `src/main.tsx` has seeded the
    * store — in which case `:root`'s authored palette is what is on screen and
    * the resolver falls back to the ink row, which is the same row.
@@ -125,7 +147,8 @@ export function ReaderEngine({
         percent: detail.fraction ?? 0,
         // The book's own name for the section — never a chapter number, which
         // drifts across editions (D5)
-        label: detail.tocItem?.label?.trim() || null
+        label: detail.tocItem?.label?.trim() || null,
+        sectionOffset: sectionOffset(loaded.current?.doc ?? null, detail.range)
       })
     })
     view.addEventListener('load', (event) => {
@@ -141,6 +164,7 @@ export function ReaderEngine({
       doc.addEventListener('keyup', capture)
 
       if (disposed) return
+      loaded.current = { index, doc }
       cb.current.onSection({ index, text: sectionText(doc) })
       // A new section starts with nothing selected in it
       cb.current.onSelection(null)
@@ -193,6 +217,9 @@ export function ReaderEngine({
     return () => {
       disposed = true
       viewRef.current = null
+      // A torn-down view must not leave a document behind for the next book's
+      // relocate to measure against.
+      loaded.current = null
       // `close()` throws when `open()` resolved but nothing was ever
       // displayed — tearing down a book that failed mid-load is normal here
       try {
@@ -244,6 +271,43 @@ async function goToFraction(view: FoliateView, fraction: number): Promise<void> 
  */
 function sectionText(doc: Document): string {
   return doc.body?.textContent?.trim() ?? ''
+}
+
+/**
+ * Where the rendered page starts, as a character offset into `sectionText(doc)`
+ * — the anchor the ask panel windowed its passage around (measured
+ * 2026-09-21: without it, a question about the second half of a long section
+ * travelled with a passage that stopped thousands of characters before it).
+ *
+ * The whole computation is a range's own text: `Range.toString()` concatenates
+ * the text nodes a range covers, which is the same model `sectionText()` uses,
+ * so the two are directly comparable. Building the prefix by measurement rather
+ * than by walking nodes also handles both shapes a page's start takes — a text
+ * node, where `startOffset` is a character index, and an element, where the
+ * same number is a child index — without special-casing either.
+ *
+ * It returns null rather than guessing: no range, no loaded document, or a
+ * range that does not belong to the document we were handed. The last case is
+ * the real one — a relocate still queued from the previous section arrives
+ * with its own document's range — and it is why no caller has to sequence this
+ * against `load`. Null is a safe answer: the window then falls back to the
+ * highlight, and then to the section's head.
+ */
+function sectionOffset(doc: Document | null, range: Range | null | undefined): number | null {
+  const body = doc?.body
+  if (!body || !range) return null
+  const start = range.startContainer
+  if (start !== body && !body.contains(start)) return null
+  try {
+    const before = doc.createRange()
+    before.selectNodeContents(body)
+    before.setEnd(start, range.startOffset)
+    return before.toString().length
+  } catch {
+    // A `setEnd` the range itself considers out of bounds: the page's start is
+    // unknown, not zero.
+    return null
+  }
 }
 
 /** The selected text in a section, trimmed — null for a bare caret. */
