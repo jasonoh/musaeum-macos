@@ -1,7 +1,7 @@
 # Design: choosing a cover (metadata, v1)
 
 **Date:** 2026-09-21
-**Status:** Proposed — signed off by Jason 2026-09-21 ("recommendation 1 with 2 folded in"), slices 1a → 1b → 2
+**Status:** Proposed — signed off by Jason 2026-09-21 ("recommendation 1 with 2 folded in"). **Slice 1a built** the same day, plus two defects the app itself reported (the blank cover-conflict tiles and the un-repainting cover — both *Built* sections below). **Slices 1b and 2 are not built; 1b's annex is `docs/superpowers/plans/2026-09-21-cover-choice-slice1b.md`** — read it before starting 1b.
 **Scope:** Let a person choose which jacket a book wears, from the candidates the fetch already gathers — plus the fetcher fix that stops handicapping Google's jacket before the contest starts. Deliberately not: a cover from a local file, crop/rotate, persisted candidate lists, or the device-side cover work (`tasks.md` Kindle presence).
 **Depends on:** field overrides (`docs/superpowers/specs/2026-09-20-field-overrides-design.md`), the refresh feedback surface (`docs/invariants/refresh-feedback.md`), the cover scoring pipeline (`docs/invariants/metadata-hydration.md`)
 **Interacts with:** the conflict queue's cover leg (`services/conflicts.ts`), the metadata editor's `OverrideChip` (`BookEditor.tsx`), the `musaeum://cover` route and `index.html`'s CSP (see D3), the detail panel's cover block
