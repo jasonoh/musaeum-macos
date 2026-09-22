@@ -21,6 +21,7 @@
 3. **The library's largest books are not small, so downloads are resumable (D15).** 80 books hold an EPUB over 100 MB and the largest EPUBs are 528 MB, 285 MB, 175 MB, 157 MB (*Kurashi at Home*, *Light From the Void*, *Cosmic Queries*, *Your Ticket to the Universe*) — the files themselves, checked on disk after the folder totals turned out to be ambiguous. The full EPUB census: 1,505 under 1 MB, 2,175 at 1–5 MB, 995 at 5–20 MB, 569 at 20–100 MB, 80 over 100 MB. The spec's deferred range-request item had a revival condition naming "a 6 MB mobi" — a guess, and it fired against itself. **AC15a's decider hashes the tail** (`readFileSync(path).subarray(N)`), because a server that ignores `Range` and re-sends the head still answers 206-shaped bytes.
 4. **The health route's book count is the one thing 1a left for this slice.** `healthPayload()` counts with `getBooks().length`, which loads and maps all 7,100 rows on the route the phone uses as a connect check — ~115ms by the repo's own measurement of that call. Replace it with this slice's paginated total; **do not replace it with a second `COUNT(*)` carrying its own filter rules**, which is the drift invariant 4 exists to prevent.
 5. **1a's shape, so nothing is rebuilt:** the status record is read with `getRestApiStatus()` (a copy) and the lifecycle is now symmetric — `stopRestApi()` closes the listener, is idempotent, and records `failed` rather than `disabled` if the close fails, because a status claiming a dead socket over a live one is the lie it exists to prevent. Tests reach the real handler over `listen(0, '127.0.0.1')` and read the assigned port back; **no case may bind this machine's real tailnet address** — the address resolver is fed fixture maps.
+6. **The cover route's 400/404 split, and the spec text that had it wrong — read this before writing `resolveCoverFile`.** The handler 1b is extracting from answers **400** for a traversing `coverThumbPath`/`coverFullPath` (`electron/main/index.ts:72`) and **404** for a missing root, book or cover (`:69`), and **any size that is not `thumb` serves the full cover** (`:68`) — there is no such refusal as "a size it does not know". AC13 as first written asked for one `null` covering all three, which cannot carry that split and asserted a refusal that does not exist; it was corrected in place on 2026-09-22 **before this slice was dispatched**, and AC14's traversing-path status was corrected from 404 to 400 with it. The resolver must let the caller tell the cases apart; the route may be stricter than the handler on `size` (400 for anything but `thumb`/`full`), and the resolver keeps the handler's lenient branch for the renderer's fixed sizes.
 
 ## Files
 
@@ -53,10 +54,10 @@ Nine files, as the row says; the tenth thing to change is the health count insid
 ## Start here
 
 ```bash
-git log --oneline -3        # cbf1e5c is HEAD; 1a is in the working tree, uncommitted, as of this writing
+git log --oneline -3        # 2477944 — 1a landed there; this spec, the roadmap entry and this annex are in d9330d2
 npm run typecheck && npm run lint      # both 0
-npm test                    # 51 files / 1099 tests (1a added 3 files and 73 cases to the 1,026 baseline)
+npm test                    # 51 files / 1101 tests (1a added 3 files and 75 cases to the 1,026 baseline)
 sidecar/.venv/bin/python -m pytest -q sidecar/tests   # 113 passed
 ```
 
-**Then read, in this order:** the spec's route table, then D15, then the four readings above, then `rest.ts`'s `handleRequest` — and start with `git log` rather than this conversation, because everything 1a did is in the tree and not in the chat.
+**Then read, in this order:** the spec's route table, then D15, then the readings above, then `rest.ts`'s `handleRequest` — and start with `git log` rather than this conversation, because everything 1a did is in the tree and not in the chat.
