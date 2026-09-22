@@ -13,7 +13,8 @@ import {
   errorPayload,
   facetsPayload,
   healthPayload,
-  libraryPayload
+  libraryPayload,
+  readingPayload
 } from './shape'
 
 /**
@@ -89,6 +90,9 @@ const PAYLOADS: Record<string, unknown> = {
     formats: [{ value: 'epub', count: 5324 }],
     readStatus: [{ value: 'reading', count: 1 }]
   }),
+  // Slice 1c's answer: the one write's payload. Its `book` member is the same
+  // `bookPayload`, so the goldens prove the two routes describe a book alike.
+  reading: readingPayload({ applied: true, book: GOLDEN }),
   error: errorPayload('notFound')
 }
 
@@ -140,7 +144,8 @@ describe('the contract document and the goldens (AC19)', () => {
       '/api/library/facets',
       '/api/books/{id}',
       '/api/books/{id}/cover',
-      '/api/books/{id}/file'
+      '/api/books/{id}/file',
+      '/api/books/{id}/reading'
     ]) {
       expect(DOC).toContain(path)
     }
@@ -179,6 +184,28 @@ describe('the health payload', () => {
   })
 })
 
+describe('the reading payload — the answer to the one write (AC19)', () => {
+  it('carries a boolean and the book itself, never a bare status', () => {
+    const applied = readingPayload({ applied: true, book: GOLDEN })
+    const refused = readingPayload({ applied: false, book: GOLDEN })
+
+    expect(applied.applied).toBe(true)
+    expect(refused.applied).toBe(false)
+    // The book is the same shaper the detail route answers with, so the write
+    // and the read that follows it cannot describe one book two ways
+    expect(applied.book).toEqual(bookPayload(GOLDEN))
+  })
+
+  it('keeps the same field list for a refusal, so decoding is unconditional', () => {
+    // D6: a refused report answers the *current* state with `applied: false` —
+    // the same members with different values, which is what lets a client read
+    // the answer before it knows whether the write happened
+    expect(keyPaths(readingPayload({ applied: false, book: GOLDEN })).sort()).toEqual(
+      keyPaths(readingPayload({ applied: true, book: GOLDEN })).sort()
+    )
+  })
+})
+
 describe('what the wire does not carry (D10)', () => {
   const FORBIDDEN = [
     'nasPath',
@@ -194,6 +221,9 @@ describe('what the wire does not carry (D10)', () => {
 
   it('omits the derived sort keys, the library path and the CFI', () => {
     expect(mentions(keyPaths(PAYLOADS.book))).toEqual([])
+    // …and the write's answer, whose `book` member is the same shaper: a CFI
+    // that reached the wire through this route would be just as unusable (D5)
+    expect(mentions(keyPaths(PAYLOADS.reading))).toEqual([])
     // The document is the other half of the same claim: a field it names that
     // the shaper does not build would pass the parity case above and still be a
     // field a client would look for and never find.

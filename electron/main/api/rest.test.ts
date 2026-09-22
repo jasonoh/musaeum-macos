@@ -1,7 +1,7 @@
 import { createHash } from 'crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { createServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { connect, type AddressInfo } from 'node:net'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { BookSort } from '@shared/book.types'
@@ -923,21 +923,13 @@ describe('the library route', () => {
     )
   })
 
-  it.each([
-    ['limit=abc'],
-    ['limit=-1'],
-    ['limit=1.5'],
-    ['offset=xyz'],
-    ['offset=-4'],
-    ['sort=athor'],
-    ['sort=title&dir=sideways'],
-    ['formats=sh'],
-    ['readStatus=nope'],
-    ['minRating=lots']
-  ])('answers 400 for a malformed parameter (%s)', async (query) => {
-    // Refused rather than defaulted: a client that asked for `sort=athor` and
-    // received title order could never learn it had a typo
-    const res = await get(`/api/library?${query}`)
+  it('answers 400 with the contract body for a malformed parameter', async () => {
+    // **The full table moved with the function.** `parseLibraryQuery` is a pure
+    // function of a `URL` now, and its ten malformed-parameter cases are decided
+    // in `services/api/query.test.ts` without a socket (the split the pre-merge
+    // review handed to this slice). What only a wire can decide is that the
+    // refusal reaches a client as a status with the contract's own body.
+    const res = await get('/api/library?sort=athor')
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'bad request' })
   })
@@ -1004,6 +996,268 @@ describe('the library route', () => {
     expect((await get('/api/library/facets')).status).toBe(200)
     expect((await get('/api/books/lib-1')).status).toBe(200)
     expect((await get('/api/health')).status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The one write: PUT /api/books/{id}/reading (AC20–AC24)
+// ---------------------------------------------------------------------------
+
+/**
+ * The route over a real socket, and the same shape of case the rest of this
+ * file uses. What is *not* here is the rules themselves: the fraction/position
+ * split, the stale-report comparison, the status parity and the offline park are
+ * `services/api/reading.test.ts`'s — this describe decides what only a wire can,
+ * which is what a client gets for each one of them (a status, a body, and a
+ * `new URL`'s worth of ordering).
+ */
+describe('the reading report', () => {
+  let server: Server
+  let base: string
+
+  /** The row as the database holds it, for the assertions that are about columns. */
+  function rawRow(id: string): Record<string, unknown> {
+    return db.getDb().prepare('SELECT * FROM books WHERE id = ?').get(id) as Record<string, unknown>
+  }
+
+  beforeEach(async () => {
+    db.insertBook(makeBook('w-one', 'One'))
+    db.insertBook({ ...makeBook('w-read', 'Read'), readStatus: 'read' })
+
+    server = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  })
+
+  const auth = { authorization: `Bearer ${TOKEN}` }
+
+  function put(path: string, body: unknown, headers: Record<string, string> = {}) {
+    return fetch(`${base}${path}`, {
+      method: 'PUT',
+      headers: { ...auth, 'content-type': 'application/json', ...headers },
+      body: typeof body === 'string' ? body : JSON.stringify(body)
+    })
+  }
+
+  function get(path: string) {
+    return fetch(`${base}${path}`, { headers: auth })
+  }
+
+  interface ReportAnswer {
+    applied: boolean
+    book: { id: string; reading: { status: string; percent: number | null } }
+  }
+
+  it('writes the fraction, blanks the position, and answers the book it wrote (AC20)', async () => {
+    const res = await put('/api/books/w-one/reading', { percent: 0.6 })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8')
+    expect(res.headers.get('cache-control')).toBe('no-store')
+
+    const answer = (await res.json()) as ReportAnswer
+    expect(answer.applied).toBe(true)
+    expect(answer.book).toMatchObject({
+      id: 'w-one',
+      reading: { status: 'reading', percent: 0.6 }
+    })
+    // The state a client resumes from is the state it just wrote: the payload
+    // is the same shaper the detail route answers with, so the two cannot
+    // describe the book differently
+    expect(answer.book).toEqual(await (await get('/api/books/w-one')).json())
+
+    // The columns, not the payload: the fraction landed and the CFI column is
+    // null — the phone writes the fraction, the position stays the Mac's (D5)
+    const row = rawRow('w-one')
+    expect(row.reading_percent).toBe(0.6)
+    expect(row.reading_position).toBeNull()
+  })
+
+  it('answers applied: false and writes nothing when the report is older than the row (AC21)', async () => {
+    db.setReadingState('w-one', {
+      position: 'epubcfi(/6/2!/4)',
+      percent: 0.5,
+      updatedAt: '2026-09-22T09:00:00.000Z'
+    })
+    const before = JSON.stringify(rawRow('w-one'))
+
+    const res = await put('/api/books/w-one/reading', {
+      percent: 0.05,
+      at: '2026-09-01T09:00:00.000Z'
+    })
+
+    expect(res.status).toBe(200)
+    const answer = (await res.json()) as ReportAnswer
+    expect(answer.applied).toBe(false)
+    // D6's "with the current state": the client can resume from the answer
+    // without a second request, and the row is untouched
+    expect(answer.book.reading.percent).toBe(0.5)
+    expect(JSON.stringify(rawRow('w-one'))).toBe(before)
+  })
+
+  it('advances read_status exactly as the Mac own writes do (AC22)', async () => {
+    const finished = await put('/api/books/w-one/reading', { percent: 0.99 })
+    expect(((await finished.json()) as ReportAnswer).book.reading.status).toBe('read')
+
+    // …and a book already marked read is not sent back to Reading by a phone
+    // that reopened it at the front
+    const reopened = await put('/api/books/w-read/reading', { percent: 0.05 })
+    expect(((await reopened.json()) as ReportAnswer).book.reading.status).toBe('read')
+    expect(db.getBook('w-read')?.readStatus).toBe('read')
+  })
+
+  it('answers 200 and lands in SQLite while the share is unmounted (AC23)', async () => {
+    // The fixture's `isOnline` is false and no library root is configured,
+    // which is the strongest form of "the NAS is unreachable" — and a report is
+    // not a byte request: it is a row write, and the parking/flush it buys is
+    // `services/api/reading.test.ts`'s case
+    expect(nas.isOnline()).toBe(false)
+    expect(nas.getLibraryRoot()).toBeNull()
+
+    const res = await put('/api/books/w-one/reading', { percent: 0.3 })
+
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as ReportAnswer).applied).toBe(true)
+    expect(db.getBook('w-one')?.readingState?.percent).toBe(0.3)
+  })
+
+  it('answers 404 for an unknown book and writes nothing (AC24)', async () => {
+    const res = await put('/api/books/not-a-book/reading', { percent: 0.5 })
+
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'not found' })
+    expect(db.getBook('not-a-book')).toBeNull()
+    // The refusal reached the same place the cover and file routes' unknown-id
+    // refusals do, and the book that exists is untouched
+    expect(db.getBook('w-one')?.readingState).toBeNull()
+  })
+
+  it.each([
+    ['a body that is not JSON', '{'],
+    ['an empty body', ''],
+    ['a bare null', 'null'],
+    ['an array', '[0.5]'],
+    ['a bare number', '0.5'],
+    ['no percent member', '{}'],
+    ['a string percent', '{"percent":"0.6"}'],
+    ['a percent above the range', '{"percent":1.5}'],
+    ['a percent below the range', '{"percent":-0.1}'],
+    ['a whole number of percent', '{"percent":60}'],
+    ['an `at` that is not a timestamp', '{"percent":0.5,"at":"yesterday"}'],
+    ['an explicit null `at`', '{"percent":0.5,"at":null}'],
+    ['a body larger than the route reads', `{"percent":0.5,"pad":"${'x'.repeat(5000)}"}`]
+  ])('answers 400 for %s, and nothing is written', async (_label, body) => {
+    // Refused rather than clamped or defaulted — the read routes' own discipline
+    // for a malformed parameter (`?sort=athor` is a 400 too), and never a 500
+    // for the client's own mistake
+    const res = await put('/api/books/w-one/reading', body)
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad request' })
+    expect(db.getBook('w-one')?.readingState).toBeNull()
+  })
+
+  it('refuses a malformed body 400 even for an id that does not exist, the order the contract states', async () => {
+    // The body is validated *before* the book is looked up, so a request this
+    // surface cannot parse is refused as such rather than as a missing book —
+    // the same order the cover route validates `size` in, and the reason the
+    // contract's sentence is a promise rather than a description. Decided: the
+    // two halves separately (a 400 for a known id, a 404 for a valid body)
+    // leave this combination unclaimed.
+    const res = await put('/api/books/not-a-book/reading', '{')
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad request' })
+  })
+
+  it('answers a body that never finishes, rather than waiting on a client that declared more than it sent', async () => {
+    // A raw socket, because `fetch` cannot lie about `Content-Length`. Measured
+    // before the fix (pre-merge review, finding 6): no response *and* no
+    // server-side close in 8 s — the request was never answered at all, which is
+    // the failure `BODY_TIMEOUT_MS` exists to bound. The seam is what lets this
+    // case decide it in 150ms instead of ten seconds.
+    const lying = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }), {
+      bodyTimeoutMs: 150
+    })
+    await new Promise<void>((resolve) => lying.listen(0, '127.0.0.1', resolve))
+    const { port } = lying.address() as AddressInfo
+
+    const socket = connect(port, '127.0.0.1')
+    await new Promise<void>((resolve) => socket.on('connect', () => resolve()))
+    socket.write(
+      `PUT /api/books/w-one/reading HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer ${TOKEN}\r\n` +
+        'Content-Type: application/json\r\nContent-Length: 100\r\n\r\n{"per'
+    )
+
+    const answer = await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('no answer within 2s of a 150ms body timeout')),
+        2_000
+      )
+      let text = ''
+      socket.on('data', (chunk: Buffer) => {
+        text += chunk.toString()
+        if (text.includes('\r\n\r\n')) {
+          clearTimeout(timer)
+          resolve(text)
+        }
+      })
+      socket.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+    })
+
+    expect(answer).toContain('400 Bad Request')
+    // Refused before anything was written, which is the whole point of bounding it
+    expect(db.getBook('w-one')?.readingState).toBeNull()
+
+    socket.destroy()
+    await new Promise<void>((resolve) => lying.close(() => resolve()))
+  })
+
+  it('is behind the same auth check as every other route (AC2)', async () => {
+    const bare = await fetch(`${base}/api/books/w-one/reading`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ percent: 0.5 })
+    })
+
+    expect(bare.status).toBe(401)
+    expect(bare.headers.get('www-authenticate')).toBe('Bearer')
+    expect(db.getBook('w-one')?.readingState).toBeNull()
+  })
+
+  it('answers 404 for a GET of the write route, and for every other method (D11)', async () => {
+    // A known path behind a method it does not answer is the same answer as no
+    // path at all — the client cannot map this surface's methods
+    for (const method of ['GET', 'HEAD', 'POST', 'DELETE', 'PATCH']) {
+      const res = await fetch(`${base}/api/books/w-one/reading`, { method, headers: auth })
+      expect(res.status).toBe(404)
+    }
+    expect(db.getBook('w-one')?.readingState).toBeNull()
+  })
+
+  it('does not require a content-type, and ignores members it does not know', async () => {
+    // Nothing in this surface reads a content-type (no route does), and D5's
+    // whole point is that a position sent anyway is ignored — not stored, not
+    // refused. The report is read by its own field list.
+    const res = await put(
+      '/api/books/w-one/reading',
+      { percent: 0.42, position: 'epubcfi(/6/14!/4/2/2[c01]/1:0)', bogus: true },
+      { 'content-type': 'text/plain' }
+    )
+
+    expect(res.status).toBe(200)
+    const answer = (await res.json()) as ReportAnswer
+    expect(answer.applied).toBe(true)
+    // The CFI the client sent is nowhere: not in the row, not in the payload
+    expect(rawRow('w-one').reading_position).toBeNull()
+    expect(JSON.stringify(answer)).not.toContain('epubcfi')
   })
 })
 

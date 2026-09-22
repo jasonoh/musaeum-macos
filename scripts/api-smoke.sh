@@ -5,15 +5,22 @@
 # Slice 1b's second decider for the contract (D12): the unit half is the suite,
 # and this is the half that talks to a running Mac. It reads the credential and
 # the port out of **the app's own database** rather than taking them on faith,
-# then asks every route the read surface has and prints one PASS/FAIL line per
-# check. It never writes anything and never changes state — the one write this
-# API grows (the reading-progress report) is slice 1c's, and a smoke run must
-# stay safe to repeat while the owner is reading.
+# then asks every route the surface has and prints one PASS/FAIL line per
+# check. Every line below is an observation of this run — a status, a header, a
+# byte count, a value read back off a payload — and never an inference.
 #
 #   MUSAEUM_USER_DATA=/tmp/scratch/profile bash scripts/api-smoke.sh
 #   bash scripts/api-smoke.sh --base http://100.125.135.108:8788 --token <token>
 #
 # Requires: curl, jq, sqlite3. Exit status is non-zero if any check failed.
+#
+# **One section writes — slice 1c's reading report — and it is the only one
+# that does.** It reports the fraction the book already holds (0.42 for a book
+# that has none), so re-running it reports the same thing again rather than
+# walking the book forward; it never sends a position. Because of it, point this
+# script at a **scratch profile** (or a server whose library you are willing to
+# nudge) rather than the profile you read on: the old contract held that a smoke
+# run changed nothing, and that stopped being true when the write shipped.
 #
 # What it cannot decide, and why the suite has to: **the bytes it receives are
 # not hashed against the file on the share.** The wire deliberately does not
@@ -21,7 +28,10 @@
 # counts. The *tail* of a resumed download is decided by the unit case in
 # `electron/main/api/rest.test.ts`, which does hash `readFileSync(path).subarray(N)`
 # — a server that ignored `Range` answers 206-shaped bytes and would pass every
-# check this script can make.
+# check this script can make. The reading report's rules are decided in
+# `electron/main/services/api/reading.test.ts` for the same reason: this script
+# can observe that the percent landed, not that the position was blanked by
+# `saveProgress` rather than by a second writer.
 
 set -uo pipefail
 
@@ -289,6 +299,68 @@ fi
 
 code=$(request /api/books/not-a-book)
 check 'an unknown book answers 404' 404 "$code"
+
+# ---------------------------------------------------------------------------
+# The one write: the phone's progress report (slice 1c)
+# ---------------------------------------------------------------------------
+
+printf '\n--- the reading report (the only write)\n'
+
+if [ -n "$FIRST_ID" ]; then
+  # The fraction this book already holds, or the contract's own example for a
+  # book nothing has reported yet. Reporting back what is already there is what
+  # makes this section safe to re-run: it frees the write path, not the book.
+  code=$(request "/api/books/$FIRST_ID")
+  PERCENT="$(jq -r '.reading.percent // empty' "$BODY")"
+  [ -n "$PERCENT" ] || PERCENT=0.42
+
+  code=$(request "/api/books/$FIRST_ID/reading" -X PUT -H 'Content-Type: application/json' \
+    --data "{\"percent\":$PERCENT}")
+  check 'PUT /api/books/{id}/reading answers 200' 200 "$code"
+  check 'the report was applied' 'true' "$(jq -r '.applied' "$BODY")"
+  check 'the answer carries the book it wrote' "$FIRST_ID" "$(jq -r '.book.id' "$BODY")"
+
+  # The read-back: a value observed on the *detail* route, not echoed back from
+  # the write's own answer
+  code=$(request "/api/books/$FIRST_ID")
+  check "the write landed: reading.percent reads back as $PERCENT" "$PERCENT" \
+    "$(jq -r '.reading.percent' "$BODY")"
+  check 'the book payload still carries no position' 'no-position' \
+    "$(jq -r 'if (.reading | has("position")) then "leaked-position" else "no-position" end' "$BODY")"
+
+  # D6: a queued report older than this machine's own copy is refused, and the
+  # row does not move. The first report above is what gives the row its clock.
+  code=$(request "/api/books/$FIRST_ID/reading" -X PUT -H 'Content-Type: application/json' \
+    --data '{"percent":0.01,"at":"2000-01-01T00:00:00.000Z"}')
+  check 'a report dated in the past answers 200' 200 "$code"
+  check 'a stale report comes back applied: false' 'false' "$(jq -r '.applied' "$BODY")"
+
+  code=$(request "/api/books/$FIRST_ID")
+  check 'the refusal wrote nothing — the percent is unchanged' "$PERCENT" \
+    "$(jq -r '.reading.percent' "$BODY")"
+
+  # The 400s and the 404, observed as statuses. The rules themselves are the
+  # suite's (`services/api/reading.test.ts`); what this proves is that a live
+  # server refuses them the same way.
+  code=$(request "/api/books/$FIRST_ID/reading" -X PUT -H 'Content-Type: application/json' \
+    --data '{"percent":1.5}')
+  check 'a percent outside 0-1 answers 400' 400 "$code"
+
+  code=$(request "/api/books/$FIRST_ID/reading" -X PUT -H 'Content-Type: application/json' \
+    --data 'not json at all')
+  check 'a body that is not JSON answers 400' 400 "$code"
+
+  code=$(request "/api/books/not-a-book/reading" -X PUT -H 'Content-Type: application/json' \
+    --data '{"percent":0.5}')
+  check 'a report for an unknown book answers 404' 404 "$code"
+
+  # The method policy: this path answers a PUT and nothing else, and the read
+  # routes are untouched by its arrival
+  code=$(request "/api/books/$FIRST_ID/reading")
+  check 'a GET of the write route answers 404' 404 "$code"
+else
+  fail 'PUT /api/books/{id}/reading answers 200' 'the cache holds no book to report against'
+fi
 
 printf '\n--- cover bytes\n'
 

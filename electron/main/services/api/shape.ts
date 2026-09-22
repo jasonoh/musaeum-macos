@@ -224,6 +224,40 @@ export function bookPayload(book: Book): WireBook {
 }
 
 // ---------------------------------------------------------------------------
+// The reading report's answer — the one write this API has (D4, D5, D6)
+// ---------------------------------------------------------------------------
+
+export interface ReadingPayload {
+  /**
+   * Whether the report was applied. `false` is a *refusal*, not a failure: the
+   * report's `at` was older than the row's own clock (D6), so the book did not
+   * move backwards and nothing was written (AC21).
+   */
+  applied: boolean
+  /** The book as it stands now — the same shape `GET /api/books/{id}` answers. */
+  book: WireBook
+}
+
+/**
+ * The answer to `PUT /api/books/{id}/reading`.
+ *
+ * It carries the **whole book** rather than a bare `{ applied }` because the
+ * write and the read that follows it are one round trip: a client that has just
+ * reported its position needs the state it should now resume from — including
+ * the `read_status` a report may have advanced, and the `updatedAt` the next
+ * report's `at` has to beat — and a second request to learn what it just wrote
+ * would be a second thing that can fail. It is the same `bookPayload`, so a
+ * detail response and a report response cannot describe one book two ways.
+ *
+ * A refusal answers the same payload with `applied: false` and the row
+ * untouched, so a client's decoding is unconditional either way (D6: "the
+ * current state").
+ */
+export function readingPayload(input: { applied: boolean; book: Book }): ReadingPayload {
+  return { applied: input.applied, book: bookPayload(input.book) }
+}
+
+// ---------------------------------------------------------------------------
 // The library, and its facets
 // ---------------------------------------------------------------------------
 

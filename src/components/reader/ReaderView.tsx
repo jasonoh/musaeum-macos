@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FoliateView } from '@vendor/foliate-js/view.js'
+import type { ReadingState } from '@shared/book.types'
 import { TITLEBAR_STRIP_HEIGHT, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 import { isTypingTarget } from '@/hooks/useBookNavigation'
 import { useLibraryStore } from '@/stores/library.store'
@@ -62,6 +63,52 @@ export function ReaderView() {
 
   const books = useLibraryStore((s) => s.books)
   const book = books.find((b) => b.id === bookId) ?? null
+
+  // **The loaded list is not the resume source (D17).** Its copy is as old as
+  // the last `load()`: nothing broadcasts for a progress write, so a book the
+  // phone moved — or one this Mac moved in another window — still reads here with
+  // the state the list was loaded with, and the engine would resume from *that*
+  // (a stale `percent: null` lands on page one, `ReaderEngine.tsx:179`).
+  //
+  // So the open path asks the database for the row it is about to resume from.
+  // It is an in-process SQLite read — never the share — and the wait is the
+  // reader's own "Opening…" state, which is strictly better than opening at the
+  // wrong place and jumping to the right one. The engine mounts only once the
+  // answer is in hand, because its restore runs **once per `(bookId, format)`**
+  // and would ignore a value that arrived later.
+  //
+  // The answer carries the id it is about, so opening a second book does not
+  // read the first one's row and no effect has to reset anything: a row read for
+  // another book is simply not an answer about this one.
+  //
+  // `failed` is separate from a successful `state: null` on purpose. "No reading
+  // state" is a fact the database is entitled to give, and it must beat a list
+  // row that still holds a position; "the read failed" is the case that falls
+  // back to the list, since a reader that refused to open would be a worse
+  // answer than a stale one (invariant 12 — this is not a fatal path).
+  const [resume, setResume] = useState<
+    { id: string; ok: true; state: ReadingState | null } | { id: string; ok: false } | null
+  >(null)
+
+  useEffect(() => {
+    if (!bookId) return
+    let live = true
+    void window.Musaeum.library
+      .getBook(bookId)
+      .then((fresh) => {
+        if (live) setResume({ id: bookId, ok: true, state: fresh.readingState })
+      })
+      .catch(() => {
+        if (live) setResume({ id: bookId, ok: false })
+      })
+    return () => {
+      live = false
+    }
+  }, [bookId])
+
+  /** `undefined` means "still asking" — the engine is not mounted, and says so. */
+  const resumeState: ReadingState | null | undefined =
+    resume?.id !== bookId ? undefined : resume.ok ? resume.state : (book?.readingState ?? null)
 
   // Modals and dialogs render *after* the reader in App.tsx at the same z-50,
   // so they sit on top of an open book and own the keyboard while they do.
@@ -347,22 +394,24 @@ export function ReaderView() {
                   Opening…
                 </p>
               )}
-              <ReaderEngine
-                bookId={book.id}
-                format={format}
-                initial={book.readingState}
-                prefs={prefs}
-                viewRef={viewRef}
-                onReady={(toc) => {
-                  setToc(toc)
-                  setStatus('ready')
-                }}
-                onRelocate={onRelocate}
-                onSection={setSection}
-                onSelection={setSelection}
-                onError={(message) => setStatus('error', message)}
-                onKeyDown={onKeyDown}
-              />
+              {resumeState === undefined ? null : (
+                <ReaderEngine
+                  bookId={book.id}
+                  format={format}
+                  initial={resumeState}
+                  prefs={prefs}
+                  viewRef={viewRef}
+                  onReady={(toc) => {
+                    setToc(toc)
+                    setStatus('ready')
+                  }}
+                  onRelocate={onRelocate}
+                  onSection={setSection}
+                  onSelection={setSelection}
+                  onError={(message) => setStatus('error', message)}
+                  onKeyDown={onKeyDown}
+                />
+              )}
             </>
           )}
         </main>

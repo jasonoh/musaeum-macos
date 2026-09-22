@@ -3,19 +3,18 @@ import { createReadStream, promises as fs } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { networkInterfaces } from 'node:os'
 import { pipeline } from 'node:stream/promises'
-import type { BookFilters, BookFormat, BookSort, ReadStatus } from '@shared/book.types'
-import { BOOK_FILE_EXTENSIONS, defaultSortDirection, isBookSort } from '@shared/book.types'
 import { checkBearer, logRejectedAttempt } from '../services/api/auth'
 import { resolveBindAddress, type InterfaceMap } from '../services/api/bind'
+import { parseLibraryQuery } from '../services/api/query'
+import { applyReadingReport, parseReadingReport } from '../services/api/reading'
+import { matchBookPath, refusalError } from '../services/api/routes'
 import {
-  DEFAULT_PAGE_LIMIT,
-  MAX_PAGE_LIMIT,
-  READ_STATUSES,
   bookPayload,
   errorPayload,
   facetsPayload,
   healthPayload,
-  libraryPayload
+  libraryPayload,
+  readingPayload
 } from '../services/api/shape'
 import {
   parseByteRange,
@@ -38,12 +37,25 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  * before write), whether a request is allowed is `services/api/auth.ts` (a
  * constant-time comparison), what a payload looks like is
  * `services/api/shape.ts` (the contract's field names, and the numbers a page
- * may be), the queries are `services/db.ts` (one WHERE body, one `ORDER BY`,
- * paging appended), the path and range rules are `services/book-bytes.ts`, and
- * the bytes come from the NAS. What is left here is wiring — one routing switch,
- * one auth check, one JSON writer, one byte writer — which is the OPDS spec's D7
+ * may be), the library route's parameters are `services/api/query.ts` and the
+ * book paths and refusal words are `services/api/routes.ts` (both pure over a
+ * `URL` or a path), the one write's rules are `services/api/reading.ts` (which
+ * is `services/reading-state.ts`'s `saveProgress` and nothing else), the
+ * queries are `services/db.ts` (one WHERE body, one `ORDER BY`, paging
+ * appended), the path and range rules are `services/book-bytes.ts`, and the
+ * bytes come from the NAS. What is left here is wiring — one routing switch, one
+ * auth check, one JSON writer, one byte writer — which is the OPDS spec's D7
  * shape reused rather than re-derived (`2026-09-19-opds-catalog-design.md`). No
  * new dependency: `node:http` is Node, and the main process is Node.
+ *
+ * **The parameter and path decisions used to live here**, reachable only
+ * through a live socket. D2's own test is "anything that can be a pure function
+ * of inputs becomes one so the suite can decide it without a socket", and the
+ * pre-merge review handed that split to slice 1c: `services/api/query.ts` and
+ * `services/api/routes.ts` hold the six moved functions and their socketless
+ * cases, while the byte gate, the transfer, the status record and the auth
+ * check stay — those write headers and own the transfer budget, which is HTTP's
+ * own business.
  *
  * **The status record below is a reporter, not business logic.** It is the one
  * thing only this module can know — what its own socket did — and it decides
@@ -55,9 +67,9 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  *
  * **Route by route (docs/rest-api.md is the contract; this is the wiring):**
  * `GET /api/health`, `GET /api/library`, `GET /api/library/facets`,
- * `GET /api/books/{id}`, `GET /api/books/{id}/cover`, and
- * `GET /api/books/{id}/file`. The write route (`PUT /api/books/{id}/reading`) is
- * slice 1c's, and lands in the same switch.
+ * `GET /api/books/{id}`, `GET /api/books/{id}/cover`,
+ * `GET /api/books/{id}/file`, and `PUT /api/books/{id}/reading` — the last one
+ * slice 1c's, the only route that writes, and the only one that reads a body.
  *
  * **Never fatal (invariant 12, D11).** A bind failure is logged, recorded and
  * the app starts normally; a thrown handler answers 500; a failed read is 404, a
@@ -69,15 +81,14 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
 /**
  * `/api/health` — the client's connect check (D12).
  *
- * The library routes are matched by these three constants and the `/api/books/`
- * prefix below: an unmatched path answers 404 uniformly and reason-free (D11),
- * and a known path behind the wrong method is not distinguished from no path at
- * all.
+ * The library routes are matched by these three constants and the book paths by
+ * `services/api/routes.ts`'s matcher: an unmatched path answers 404 uniformly
+ * and reason-free (D11), and a known path behind the wrong method is not
+ * distinguished from no path at all.
  */
 const HEALTH_ROUTE = '/api/health'
 const LIBRARY_ROUTE = '/api/library'
 const FACETS_ROUTE = '/api/library/facets'
-const BOOKS_PREFIX = '/api/books/'
 
 export type RestApiState = 'disabled' | 'starting' | 'listening' | 'failed'
 
@@ -256,6 +267,8 @@ function createByteGate(max: number = MAX_BYTE_TRANSFERS): ByteGate {
 interface RouteDeps {
   transfer: ByteTransfer
   gate: ByteGate
+  /** How long a request body has to arrive before it is refused. */
+  bodyTimeoutMs: number
 }
 
 /** A file to serve, and the type its bytes are labelled with. */
@@ -353,173 +366,144 @@ async function sendBytes(
 }
 
 // ---------------------------------------------------------------------------
-// The library routes' parameters
+// The write: the reading-progress report (D4, D5, D6)
 // ---------------------------------------------------------------------------
 
-/** What `GET /api/library` was asked for. */
-interface LibraryQuery {
-  /** The filters, including `sort` — the same object shape the app's own list takes. */
-  filters: BookFilters
-  /** The search term, or null for a plain list. */
-  query: string | null
-  limit: number
-  offset: number
-}
-
-/** A request this surface cannot make sense of: answered 400, never defaulted. */
-const INVALID_QUERY: { ok: false } = { ok: false }
+/**
+ * The largest body this route will read.
+ *
+ * A report is `{"percent":0.42,"at":"2026-09-22T09:12:00.000Z"}` — under 60
+ * bytes. The cap exists because the alternative is a network surface that
+ * buffers whatever it is handed: the router runs in the main process, the same
+ * one holding the library, and the byte routes' own budget (D9) is the same
+ * instinct one level up. 4 KB is two orders of magnitude of headroom, so the
+ * only request it refuses is one that was never a report.
+ */
+const MAX_BODY_BYTES = 4096
 
 /**
- * The library route's parameters, as the wire's shape.
+ * How long a request body has to arrive.
  *
- * **Every rule this applies is imported, not re-declared here:** which sort
- * fields and directions exist is `isBookSort` and `defaultSortDirection`
- * (`@shared/book.types`), which formats exist is `BOOK_FILE_EXTENSIONS`, which
- * read statuses exist is `READ_STATUSES` (the shaper's own values, so the
- * filter can only accept what the payload can report), and the page's bounds are
- * the shaper's `DEFAULT_PAGE_LIMIT`/`MAX_PAGE_LIMIT` — the same numbers the
- * response echoes back.
- *
- * What *is* decided here is what a malformed parameter means, and the answer is
- * a 400 rather than a silent default: a client that asked for `sort=athor` and
- * received title order would have no way to learn it had a typo. A `limit` above
- * the cap is the one value that is clamped rather than refused — asking for
- * everything is a request this surface can satisfy, at 500 rows.
+ * The answer's only bound that does not belong to the client. A client that
+ * declares a `Content-Length` larger than what it sends never emits `end`, and a
+ * reader that waits for one waits forever — measured 2026-09-22 (pre-merge
+ * review, finding 6): a declared `Content-Length: 100` with a 6-byte body got
+ * **no response and no server-side close in 8 s**, so the request was never
+ * answered at all, which is a worse failure than any refusal. Generous, because
+ * the honest case is a few hundred bytes over a tailnet; a seam, because a case
+ * should not have to wait ten seconds to decide it.
  */
-function parseLibraryQuery(url: URL): { ok: true; query: LibraryQuery } | { ok: false } {
-  const params = url.searchParams
+const BODY_TIMEOUT_MS = 10_000
 
-  const limit = intParam(params.get('limit'), DEFAULT_PAGE_LIMIT)
-  if (limit === null) return INVALID_QUERY
-  const offset = intParam(params.get('offset'), 0)
-  if (offset === null) return INVALID_QUERY
+/**
+ * One request body, as JSON. **Never throws** (invariant 12): a body that is
+ * not JSON, and a body larger than the cap, are both "a request this route
+ * cannot make sense of" — the 400 the read routes answer for a malformed
+ * parameter, and never a 500 for the client's own mistake.
+ *
+ * **The overflow case keeps reading and discards.** Breaking out of the stream
+ * early would destroy the socket and answer the client a reset instead of a
+ * 400, so the body is drained (chunks after the cap are dropped rather than
+ * kept) and the answer is decided at `end` — which also means a body larger
+ * than the cap costs memory bounded by the cap, not by the body. A client that
+ * never sends `end` is bounded by `BODY_TIMEOUT_MS` — the socket's own timeouts
+ * do **not** bound it, which was the claim here until it was measured: a client
+ * that lies about `Content-Length` left the request unanswered for as long as
+ * anyone watched (finding 6, 2026-09-22). The timer is the whole difference.
+ *
+ * `Content-Type` is deliberately **not** enforced: nothing in this surface
+ * reads one, the byte routes have no equivalent check, and a client that sent
+ * JSON without the header would get a refusal it could not act on.
+ */
+function readJsonBody(
+  req: IncomingMessage,
+  timeoutMs: number
+): Promise<{ ok: true; body: unknown } | { ok: false }> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    let tooLarge = false
+    let settled = false
 
-  const filters: BookFilters = {}
-
-  const authors = listParam(params, 'authors')
-  if (authors) filters.authors = authors
-  const series = listParam(params, 'series')
-  if (series) filters.series = series
-  const tags = listParam(params, 'tags')
-  if (tags) filters.tags = tags
-
-  const formats = listParam(params, 'formats')
-  if (formats) {
-    if (!formats.every((f) => f in BOOK_FILE_EXTENSIONS)) return INVALID_QUERY
-    filters.formats = formats as BookFormat[]
-  }
-
-  const readStatus = listParam(params, 'readStatus')
-  if (readStatus) {
-    if (!readStatus.every((s) => s in READ_STATUSES)) return INVALID_QUERY
-    filters.readStatus = readStatus as ReadStatus[]
-  }
-
-  const minRating = intParam(params.get('minRating'), null)
-  if (minRating === null && params.get('minRating') !== null) return INVALID_QUERY
-  if (minRating !== null) filters.minRating = minRating
-
-  const sort = parseSort(params)
-  if (!sort.ok) return INVALID_QUERY
-  if (sort.sort) filters.sort = sort.sort
-
-  const query = params.get('q')?.trim() ?? ''
-  return {
-    ok: true,
-    query: {
-      filters,
-      query: query || null,
-      limit: Math.min(limit, MAX_PAGE_LIMIT),
-      offset
+    /** One answer per request, whichever of the three arrives first. */
+    const finish = (result: { ok: true; body: unknown } | { ok: false }): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      req.removeListener('data', onData)
+      req.removeListener('end', onEnd)
+      resolve(result)
     }
-  }
+
+    const timer = setTimeout(() => finish({ ok: false }), timeoutMs)
+
+    const onData = (chunk: Buffer): void => {
+      if (tooLarge) return
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        tooLarge = true
+        chunks.length = 0
+        return
+      }
+      chunks.push(chunk)
+    }
+
+    const onEnd = (): void => {
+      if (tooLarge || !size) {
+        finish({ ok: false })
+        return
+      }
+      try {
+        finish({ ok: true, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) })
+      } catch {
+        finish({ ok: false })
+      }
+    }
+
+    req.on('data', onData)
+    req.on('end', onEnd)
+    req.on('error', () => finish({ ok: false }))
+  })
 }
 
 /**
- * A whole, non-negative number, or `null` when the parameter is present and is
- * not one. `fallback` may itself be `null`, which is how an optional parameter
- * (one that is only 400 when it is *there* and wrong) is read.
- */
-function intParam(raw: string | null, fallback: number | null): number | null {
-  if (raw === null || raw === '') return fallback
-  if (!/^\d+$/.test(raw)) return null
-  const value = Number(raw)
-  return Number.isSafeInteger(value) ? value : null
-}
-
-/**
- * A filter list: a repeated parameter and a comma-separated one are the same
- * thing, because a query string is written by hand in a smoke script and by a
- * URL builder in the client, and neither form should be the wrong one.
- */
-function listParam(params: URLSearchParams, name: string): string[] | null {
-  const values = params
-    .getAll(name)
-    .flatMap((value) => value.split(','))
-    .map((value) => value.trim())
-    .filter(Boolean)
-  return values.length ? values : null
-}
-
-/**
- * `sort` / `dir`, through the guard that exists for a sort from outside the type
- * system.
+ * `PUT /api/books/{id}/reading` — the one write, and the only place in this
+ * module that changes anything (D4).
  *
- * Three answers, and each means something different. `{ sort: null }` is "no sort
- * asked for" — which is *not* the same as `{ sort: { field: 'title', … } }`,
- * because a search without one keeps SQLite's FTS `rank`, an ordering no field
- * name can express. `{ ok: false }` is a 400. Anything else is the sort to run.
+ * **The order is the contract's.** The body is validated before the book is
+ * looked up, which is the same order the cover route validates `size` in and
+ * the reason a malformed report answers 400 rather than 404 even for an id
+ * that does not exist: a request this surface cannot parse is refused before
+ * it is anything else. Then the write — `applyReadingReport`, which is
+ * `services/reading-state.ts`'s `saveProgress` under a 400 table, an unknown
+ * book being the only thing it answers 404 for.
  *
- * `sort` alone defaults to `title`; `dir` alone is therefore a sort of titles,
- * and a direction that is neither `asc` nor `desc` is refused rather than
- * ignored. An absent `dir` takes the field's natural direction —
- * `defaultSortDirection`, the same rule the app's own sort control uses on a
- * first click — so a client asking for `sort=date_added` gets newest-first
- * rather than 1900-first.
+ * The three answers are D11's: **400** for a body this route cannot make sense
+ * of (not JSON, too large, a `percent` that is not a number in 0–1, an `at`
+ * that is not a timestamp), **404** for an unknown book, **200** with
+ * `{ applied, book }` otherwise — `applied: false` when the report was older
+ * than the row's own clock (D6), in which case nothing was written at all.
  */
-function parseSort(params: URLSearchParams): { ok: true; sort: BookSort | null } | { ok: false } {
-  const field = params.get('sort')
-  const direction = params.get('dir')
-  if (field === null && direction === null) return { ok: true, sort: null }
-
-  const candidate = { field: field ?? 'title', direction: direction ?? 'asc' }
-  if (!isBookSort(candidate)) return { ok: false }
-
-  return {
-    ok: true,
-    sort:
-      direction === null
-        ? { field: candidate.field, direction: defaultSortDirection(candidate.field) }
-        : { field: candidate.field, direction: candidate.direction }
+async function handleReadingReport(
+  req: IncomingMessage,
+  res: ServerResponse,
+  bookId: string,
+  timeoutMs: number
+): Promise<void> {
+  const raw = await readJsonBody(req, timeoutMs)
+  const parsed = raw.ok ? parseReadingReport(raw.body) : ({ ok: false } as const)
+  if (!parsed.ok) {
+    sendJson(res, 400, errorPayload('badRequest'))
+    return
   }
-}
 
-/**
- * `/api/books/{id}`, `/api/books/{id}/cover`, `/api/books/{id}/file`.
- *
- * A book id is opaque and never touches the filesystem — it is a cache key, and
- * a traversing one is simply not a book (404). **Only `/api/books/`-prefixed
- * paths reach here**, and a path with extra segments is not one of the three
- * shapes, so it is not this route's business (`null`, and the switch's 404).
- */
-function matchBookPath(pathname: string): { id: string; resource: '' | 'cover' | 'file' } | null {
-  if (!pathname.startsWith(BOOKS_PREFIX)) return null
-
-  const [segment, resource = '', ...rest] = pathname.slice(BOOKS_PREFIX.length).split('/')
-  if (!segment || rest.length) return null
-  if (resource !== '' && resource !== 'cover' && resource !== 'file') return null
-
-  const id = decodeSegment(segment)
-  return id ? { id, resource } : null
-}
-
-/** A percent-escaped path segment, or null when the escape is malformed. */
-function decodeSegment(segment: string): string | null {
-  try {
-    return decodeURIComponent(segment)
-  } catch {
-    return null
+  const outcome = await applyReadingReport(bookId, parsed.report)
+  if (!outcome.ok) {
+    sendJson(res, 404, errorPayload('notFound'))
+    return
   }
+
+  sendJson(res, 200, readingPayload({ applied: outcome.applied, book: outcome.book }))
 }
 
 // ---------------------------------------------------------------------------
@@ -534,13 +518,16 @@ function decodeSegment(segment: string): string | null {
  * that the route exists.
  *
  * **The method policy is stated rather than implied** (and written out in
- * `docs/rest-api.md`): every route is a `GET`, and the four JSON routes also
- * answer `HEAD`. `HEAD /api/health` answering 404 is what a `URLSession` probe
- * would meet where a connect check belongs, and `node:http` makes the fix free —
- * it suppresses the body of a `HEAD` response while keeping the headers, so no
- * route has to know the method. The two byte routes stay `GET`-only, which is
- * D15's own decision: `HEAD` probing buys nothing when the length arrives with
- * the first response.
+ * `docs/rest-api.md`): every route except the one write is a `GET`, and the
+ * four JSON routes also answer `HEAD`. `HEAD /api/health` answering 404 is what
+ * a `URLSession` probe would meet where a connect check belongs, and
+ * `node:http` makes the fix free — it suppresses the body of a `HEAD` response
+ * while keeping the headers, so no route has to know the method. The two byte
+ * routes stay `GET`-only, which is D15's own decision: `HEAD` probing buys
+ * nothing when the length arrives with the first response. `PUT
+ * /api/books/{id}/reading` is the exception that has to name its method, and a
+ * `GET` of that path is a known path behind a method it does not answer — 404
+ * like any other (D11).
  */
 async function handleRequest(
   req: IncomingMessage,
@@ -603,6 +590,14 @@ async function handleRequest(
 
     const book = matchBookPath(url.pathname)
     if (book) {
+      // **The one write** (D4), matched on its resource *and* its method: a
+      // `GET` of this path is a known path behind a method it does not answer,
+      // so it falls through to the 404 below like any other (D11).
+      if (req.method === 'PUT' && book.resource === 'reading') {
+        await handleReadingReport(req, res, book.id, deps.bodyTimeoutMs)
+        return
+      }
+
       if (json && book.resource === '') {
         const found = getBook(book.id)
         if (!found) {
@@ -630,12 +625,11 @@ async function handleRequest(
         const cover = await resolveCoverFile(book.id, size)
         if (!cover.ok) {
           // The resolver's own split, carried through unchanged: 400 for a row
-          // that escapes the library root, 404 for a missing root, book or cover
-          sendJson(
-            res,
-            cover.status,
-            errorPayload(cover.status === 400 ? 'badRequest' : 'notFound')
-          )
+          // that escapes the library root, 404 for a missing root, book or
+          // cover. The status→word table itself lives in `api/routes.ts` now —
+          // one home for `API_ERRORS`, and a table the suite can decide
+          // without a socket.
+          sendJson(res, cover.status, errorPayload(refusalError(cover.status)))
           return
         }
         await sendBytes(req, res, { path: cover.path, contentType: 'image/jpeg' }, deps)
@@ -666,8 +660,8 @@ async function handleRequest(
     }
 
     // An unmatched path, and a known path behind the wrong method, are the same
-    // answer: 404 uniformly (D11). `PUT /api/books/{id}/reading` is slice 1c's,
-    // and this switch is where it lands.
+    // answer: 404 uniformly (D11). That includes a `GET` of the write route's
+    // path, and any other method against a read route.
     sendJson(res, 404, errorPayload('notFound'))
   } catch (err) {
     // A handler must never throw out of a request (invariant 12): the failure
@@ -687,6 +681,13 @@ export interface ServerOptions {
    * reason `StartOptions.listen` exists below.
    */
   transfer?: ByteTransfer
+
+  /**
+   * How long a request body has to arrive; default `BODY_TIMEOUT_MS`. The seam
+   * exists for the same reason `transfer` does — so a case can decide a lying
+   * `Content-Length` in milliseconds rather than in ten seconds.
+   */
+  bodyTimeoutMs?: number
 }
 
 /**
@@ -705,7 +706,11 @@ export function createRestApiServer(
   // One gate per server, and one server per process (activation runs once), so
   // this is the process-wide cap D9 names. It has to outlive a request for the
   // number to mean anything, which is why it is created here and not per request.
-  const deps: RouteDeps = { transfer: options.transfer ?? streamRange, gate: createByteGate() }
+  const deps: RouteDeps = {
+    transfer: options.transfer ?? streamRange,
+    gate: createByteGate(),
+    bodyTimeoutMs: options.bodyTimeoutMs ?? BODY_TIMEOUT_MS
+  }
 
   const server = createServer((req, res) => {
     // A socket-level failure on one request must not surface as an unhandled
