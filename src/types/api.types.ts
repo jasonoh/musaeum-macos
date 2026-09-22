@@ -193,9 +193,16 @@ export interface MusaeumAPI {
     /**
      * Apply the given fields; absent fields are untouched, blank fields are
      * cleared back to auto-detection. Rejects without writing anything when a
-     * value doesn't validate. Restarts the sidecar when its inputs changed.
+     * value doesn't validate. Restarts the sidecar when its inputs changed, and
+     * restarts the phone API's listener when the flag, the port, the bind or
+     * the token changed — the values it captures when the socket is created.
+     *
+     * Answers with the freshly-composed view, so a caller that has to re-render
+     * (the API row's switch, which must show the state the socket is *in*)
+     * needs no second round trip — and cannot read a status that predates its
+     * own write.
      */
-    save(updates: Partial<EditableSettings>): Promise<void>
+    save(updates: Partial<EditableSettings>): Promise<SettingsView>
     /** Native file picker for a tool path; null when cancelled. */
     chooseExecutable(kind: ExecutableKind): Promise<string | null>
     /**

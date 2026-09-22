@@ -1,9 +1,29 @@
 import { spawnSync } from 'child_process'
 import { randomBytes } from 'node:crypto'
+import { networkInterfaces } from 'node:os'
 import { existsSync, statSync } from 'fs'
-import type { AppSettings, EditableSettings, SettingsView } from '@shared/settings.types'
+import type {
+  AppSettings,
+  EditableSettings,
+  RestApiListenState,
+  RestApiView,
+  SettingsView
+} from '@shared/settings.types'
 import * as ai from './ai'
-import { TAILNET_CIDR, isAllowedBindAddress } from './api/bind'
+// The listener's own report and its symmetric lifecycle. Imported here rather
+// than by the IPC handler, because the *decision* — "this save moved a key the
+// socket captured at creation, so it has to be restarted" — is business logic
+// and the handler is a thin wrapper (invariant 8). `api/rest.ts` imports
+// `resolveRestApiConfig` from this file, so the two modules form a cycle; it is
+// benign and worth stating: nothing at either module's top level reads the
+// other, so only the calls inside these functions ever touch it.
+import {
+  getRestApiStatus,
+  startRestApiIfEnabled,
+  stopRestApi,
+  type RestApiStatus
+} from '../api/rest'
+import { TAILNET_CIDR, isAllowedBindAddress, resolveBindAddress } from './api/bind'
 import { deleteConfig, getConfig, setConfig } from './db'
 import { getLibraryRoot } from './nas-manager'
 // The version rules live with the module that builds the venv, so validating
@@ -97,6 +117,11 @@ export function getSettings(): SettingsView {
 
   return {
     values,
+    // Where the phone's socket is, and where the phone should point — composed
+    // here, in the main process, because the address it names is resolved from
+    // this machine's own interfaces (D13's "the listen status is resolved into
+    // `SettingsView` in the main process rather than held in a store").
+    restApi: getRestApiView(),
     resolved: {
       smbUrl: values.smbUrl
         ? { value: values.smbUrl, source: 'configured' }
@@ -145,6 +170,11 @@ export function getSettings(): SettingsView {
  * Apply the fields present in `updates`. Absent fields are left alone; a field
  * present but blank is cleared back to auto-detection. Validates everything
  * before writing anything, so a rejected save changes nothing.
+ *
+ * Synchronous on purpose, and the Settings dialog's entry point is
+ * `saveSettingsAndApply` below — this is the write, that one is the write plus
+ * the listener it implies. A caller that only means to change a stored value
+ * (a case, a migration path) wants this one.
  */
 export function saveSettings(updates: Partial<EditableSettings>): void {
   const entries = Object.entries(updates) as [keyof EditableSettings, string | null][]
@@ -348,4 +378,117 @@ function resolveRestApiPort(stored: string | null): number {
   return Number.isInteger(port) && port >= MIN_REST_API_PORT && port <= MAX_REST_API_PORT
     ? port
     : DEFAULT_REST_API_PORT
+}
+
+// ---------------------------------------------------------------------------
+// The API surface, as the Settings row reads it (slice 2, AC27–28)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compile-time proof that the row's state union and the socket's own are still
+ * the same set of members.
+ *
+ * The renderer cannot import `api/rest.ts`, so the union is restated in
+ * `src/types/settings.types.ts` — and a restatement is a thing that drifts.
+ * This assigns in both directions, so a member added or removed on either side
+ * fails `npm run typecheck` rather than reaching a row that quietly renders
+ * `undefined` for a state nobody thought about.
+ */
+type SameMembers<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+export const REST_API_STATES_AGREE: SameMembers<RestApiListenState, RestApiStatus['state']> = true
+
+/**
+ * The row's live half: the socket's own report, and the URL to type into the
+ * phone.
+ *
+ * **Nothing here decides a state** — AC27 renders `api/rest.ts`'s record rather
+ * than a second opinion about it, which is why the report is copied across
+ * whole. What *is* decided here is the URL, and it is decided here because the
+ * address it names comes from this machine's interfaces: the resolver that the
+ * server itself binds by (`resolveBindAddress`) and the same `rest_api_port`
+ * the server would use, so the URL a row shows and the address a phone reaches
+ * cannot disagree. A refusal is carried, not swallowed: `addressReason` is the
+ * resolver's own sentence, and the row shows it where the URL would have been.
+ */
+export function getRestApiView(): RestApiView {
+  const config = resolveRestApiConfig()
+  const decision = resolveBindAddress(networkInterfaces(), config.bind)
+  return {
+    status: getRestApiStatus(),
+    address: decision.address,
+    addressSource: decision.source,
+    addressReason: decision.reason,
+    port: config.port,
+    // The bind was refused: there is no URL to type, and the reason says which
+    // rule refused it — never a loopback URL standing in for one.
+    url: decision.address ? restApiUrl(decision.address, config.port) : null
+  }
+}
+
+/** `http://host:port`. An IPv6 literal is bracketed — `http://[::1]:8788`. */
+function restApiUrl(address: string, port: number): string {
+  return `http://${address.includes(':') ? `[${address}]` : address}:${port}`
+}
+
+/**
+ * The save the Settings dialog performs: the fields, then the listener that has
+ * to agree with them, then the view to show.
+ *
+ * **Why the write and the listener are one call.** `api/rest.ts` captures the
+ * token, the port and the bind **by closure when the server is created**, so a
+ * save that *changes* one of them leaves a running socket comparing the old
+ * credential until the next start (the pre-merge review's finding, slice 2's
+ * own work). `saveSettings`'s own precedent is `sidecarAffected` →
+ * `sidecar.restart()`; this is that rule for the listen-time keys, and it has
+ * to be awaited rather than fired and forgotten — a switch that writes the flag
+ * and returns before the socket has moved would leave the row reporting a state
+ * that is already stale, which is the failure AC27 names.
+ *
+ * The write stays synchronous and inside `saveSettings`, so a validation
+ * failure still throws before anything is written, and so the app's existing
+ * settings cases (AC30) keep deciding the write path exactly as they did.
+ */
+export async function saveSettingsAndApply(
+  updates: Partial<EditableSettings>
+): Promise<SettingsView> {
+  const before = resolveRestApiConfig()
+  saveSettings(updates)
+  await syncRestApiListener(before)
+  return getSettings()
+}
+
+/**
+ * Make the listener agree with the config just written.
+ *
+ * Four outcomes, and only the third is subtle:
+ *
+ * 1. The flag is off → `stopRestApi()`, which is a settled no-op when nothing
+ *    was started (disabling twice is not an error).
+ * 2. It is on and the socket is missing or failed → stop, then start: a save is
+ *    the retry the owner has, and a `failed` row that never retries would make
+ *    the reason it shows unanswerable from the UI.
+ * 3. It is on, the socket is listening, and no listen-time key moved → *nothing*.
+ *    The `sidecarAffected` rule one layer over: a re-save of an unrelated field
+ *    (or a no-op Save) must not bounce the listener out from under a download
+ *    in flight.
+ * 4. It is on and port, bind or token moved → stop, then start, because the
+ *    running socket is serving the values it captured.
+ *
+ * Never fatal (invariant 12): neither `stopRestApi()` nor
+ * `startRestApiIfEnabled()` throws — a bind this machine refuses is recorded in
+ * the status the row renders, with the reason.
+ */
+async function syncRestApiListener(before: ResolvedRestApiConfig): Promise<void> {
+  const after = resolveRestApiConfig()
+  if (!after.enabled) {
+    await stopRestApi()
+    return
+  }
+
+  const moved =
+    before.port !== after.port || before.bind !== after.bind || before.token !== after.token
+  if (!moved && getRestApiStatus().state === 'listening') return
+
+  await stopRestApi()
+  await startRestApiIfEnabled()
 }

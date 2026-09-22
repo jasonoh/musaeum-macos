@@ -56,9 +56,68 @@ export interface ResolvedSetting {
   detail?: string
 }
 
+/**
+ * What the API's socket is doing, as the Settings row renders it.
+ *
+ * **Restated here rather than imported.** `api/rest.ts` owns this union, but it
+ * is a main-process module and the renderer cannot reach one across the bridge
+ * — so the row's copy lives with the view it travels in. Drift is a type error
+ * rather than a hope: `services/settings.ts` carries a compile-time assertion
+ * that the two unions are still the same set of members.
+ */
+export type RestApiListenState = 'disabled' | 'starting' | 'listening' | 'failed'
+
+/**
+ * The socket's own report, carried across the bridge unchanged.
+ *
+ * Every field is read *from* the listener rather than derived in the renderer:
+ * `reason` is documented as "why it is not listening, in words a Settings row
+ * can show", and inventing a wording here is exactly what AC27 forbids.
+ */
+export interface RestApiListenStatus {
+  state: RestApiListenState
+  /** The address bound, or the one the attempt named. Null when disabled. */
+  address: string | null
+  /** The port bound, or the one the attempt named. Null when disabled. */
+  port: number | null
+  /** Why it is not listening, in the socket's own words. Null when it is. */
+  reason: string | null
+  /** When the last attempt settled (ISO). Null before the first one. */
+  at: string | null
+}
+
+/**
+ * The row's live half, composed in the main process and read whole.
+ *
+ * The URL is *built here, in main*, because the address it names is resolved
+ * from this machine's interfaces — a fact the renderer has no way to hold, and
+ * the one thing a second implementation would get subtly wrong (a bracketed
+ * IPv6 literal, a port the resolver fell back on).
+ */
+export interface RestApiView {
+  /** The listener's own report (AC27). Never branched on. */
+  status: RestApiListenStatus
+  /** `http://<address>:<port>` — what to type into the phone, or null when no address resolves. */
+  url: string | null
+  /** The address the URL names: the stored `rest_api_bind`, or this machine's tailnet address. */
+  address: string | null
+  /** Which rule chose it: the setting, the tailnet scan, or nothing at all. */
+  addressSource: 'override' | 'tailnet' | 'none'
+  /** Why there is no address, in the resolver's words. Null when there is one. */
+  addressReason: string | null
+  /** The port in force — `rest_api_port`, or the compiled-in default. */
+  port: number
+}
+
 /** One read of everything the settings modal shows. */
 export interface SettingsView {
   values: AppSettings
+  /**
+   * The phone API's live half — the socket's state and the URL to type into the
+   * phone. Composed in the main process (D13): the renderer holds no store for
+   * any of this, and the row re-reads it rather than remembering it.
+   */
+  restApi: RestApiView
   resolved: {
     smbUrl: ResolvedSetting
     aiBaseUrl: ResolvedSetting

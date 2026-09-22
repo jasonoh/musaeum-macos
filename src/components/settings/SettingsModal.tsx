@@ -4,6 +4,7 @@ import type { EditableSettings, ExecutableKind, SettingsView } from '@shared/set
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { AppearanceSection } from './AppearanceSection'
+import { RestApiSection } from './RestApiSection'
 import { useLibraryStore } from '@/stores/library.store'
 import { CheckIcon, EyeIcon, SpinnerIcon } from '@/components/shared/icons'
 import { AI_PROVIDERS, endpointHint, hostOf, matchProvider, providerById } from '@/lib/ai-providers'
@@ -34,6 +35,8 @@ const VERDICT_TONE: Record<AiProbeResult['verdict'], string> = {
 
 interface FormState {
   smbUrl: string
+  restApiPort: string
+  restApiBind: string
   aiBaseUrl: string
   aiModel: string
   aiApiKey: string
@@ -44,6 +47,8 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   smbUrl: '',
+  restApiPort: '',
+  restApiBind: '',
   aiBaseUrl: '',
   aiModel: '',
   aiApiKey: '',
@@ -55,6 +60,11 @@ const EMPTY_FORM: FormState = {
 function toForm(view: SettingsView): FormState {
   return {
     smbUrl: view.values.smbUrl ?? '',
+    // The phone API's two fields. The flag and the token are deliberately *not*
+    // form fields: the switch applies on click (AC27), and the token is
+    // generated when the API is enabled and never typed by hand (D13).
+    restApiPort: view.values.restApiPort ?? '',
+    restApiBind: view.values.restApiBind ?? '',
     aiBaseUrl: view.values.aiBaseUrl ?? '',
     aiModel: view.values.aiModel ?? '',
     aiApiKey: view.values.aiApiKey ?? '',
@@ -87,6 +97,11 @@ export function SettingsModal() {
   const [view, setView] = useState<SettingsView | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [busy, setBusy] = useState(false)
+  // The phone API row's own in-flight flag. The switch starts and stops a
+  // socket, so it owns its own `await`: a click on it must neither grey the
+  // whole dialog (a Save elsewhere has nothing to do with it) nor be greyed by
+  // one.
+  const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [revealKey, setRevealKey] = useState(false)
@@ -125,16 +140,67 @@ export function SettingsModal() {
     setBusy(true)
     setError(null)
     try {
-      await window.Musaeum.settings.save(updates)
-      // Re-read rather than assume: a saved path changes what resolves, and
-      // a cleared one falls back to a value only the main process knows
-      await load()
+      // The reply *is* the re-read: the main process composes it after the
+      // write (and after the phone API's listener has moved), so nothing here
+      // has to assume what a cleared field fell back to — and a second round
+      // trip cannot race the write it is meant to report on.
+      const next = await window.Musaeum.settings.save(updates)
+      setView(next)
+      setForm(toForm(next))
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  /**
+   * The phone API's switch — the one control in this dialog that applies on
+   * click rather than on Save (AC27).
+   *
+   * *Why it cannot wait for Save.* What it changes is a socket. `settings:save`
+   * writes the flag and starts or stops the listener before it answers, so the
+   * status the row shows afterwards is the state the server is *in* — a switch
+   * that showed "On" beside a stale "Not listening" is the failure the
+   * criterion names. The reply is the freshly-composed view, which is why the
+   * row updates from one call and cannot read a status older than its own
+   * write.
+   *
+   * *Why it sends the row's other two fields only when they moved.* The switch
+   * applies what the row shows, so a port typed into the field above it is the
+   * port it starts on — but a value that has not moved is not sent at all, so
+   * the write stays exactly the row's own keys. `restApiToken` is never in this
+   * payload: it is generated on enable, and sending a blank one would clear the
+   * credential the phone is already configured with.
+   *
+   * *Why the form is left alone.* The form holds what the user has typed in
+   * every section; a click on one switch must not throw those edits away. The
+   * comparison in `changedFields` still sees them, because the values the
+   * switch wrote are the values it re-read.
+   */
+  const setEnabled = async (enabled: boolean) => {
+    if (!view) return
+    const updates: Partial<EditableSettings> = { restApiEnabled: enabled ? 'true' : 'false' }
+    if (form.restApiPort.trim() !== (view.values.restApiPort ?? '').trim()) {
+      updates.restApiPort = form.restApiPort.trim() || null
+    }
+    if (form.restApiBind.trim() !== (view.values.restApiBind ?? '').trim()) {
+      updates.restApiBind = form.restApiBind.trim() || null
+    }
+
+    setApplying(true)
+    setError(null)
+    try {
+      setView(await window.Musaeum.settings.save(updates))
+    } catch (err) {
+      // A refused port or bind leaves the switch where it was: the save wrote
+      // nothing, so the flag the row renders is still the truth. The refusal
+      // lands in the dialog's error line, where the other fields' refusals go.
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -498,10 +564,28 @@ export function SettingsModal() {
               />
             </Section>
 
+            {/* The phone API's row, last because it is the newest surface and the
+                only one that puts a socket on the network — and because its
+                switch applies on click, which reads better at the end of a
+                dialog whose other controls wait for Save. */}
+            <Section title="Phone access">
+              <RestApiSection
+                view={view}
+                applying={applying}
+                busy={busy}
+                onSetEnabled={(next) => void setEnabled(next)}
+                port={form.restApiPort}
+                bind={form.restApiBind}
+                onPort={set('restApiPort')}
+                onBind={set('restApiBind')}
+              />
+            </Section>
+
             <p className="text-[11px] leading-relaxed text-parchment-faint">
               Leave a field blank to go back to auto-detection. Changing the interpreter or the
               metadata API key restarts the metadata sidecar; the Ask settings are read per question
-              and restart nothing.
+              and restart nothing. The phone API’s switch applies the moment you click it, carrying
+              a port or bind you have changed with it.
             </p>
           </div>
         )}

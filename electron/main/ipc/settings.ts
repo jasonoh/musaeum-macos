@@ -15,7 +15,14 @@ const PICKERS: Record<ExecutableKind, { title: string; defaultPath: string }> = 
 
 export function registerSettingsHandlers(): void {
   handle('settings:get', () => settings.getSettings())
-  handle('settings:save', (updates: Partial<EditableSettings>) => settings.saveSettings(updates))
+  // `saveSettingsAndApply`, not `saveSettings`: the dialog's save also has to
+  // make the API's listener agree with what was written (the listen-time keys
+  // are captured when the socket is created), and it answers with the view the
+  // dialog should now show. Both live in `services/settings.ts` — this handler
+  // stays a one-line wrapper (invariant 8).
+  handle('settings:save', (updates: Partial<EditableSettings>) =>
+    settings.saveSettingsAndApply(updates)
+  )
   handle('settings:getPythonEnv', () => getPythonEnvState())
 
   handle('settings:chooseExecutable', async (kind: ExecutableKind) => {
