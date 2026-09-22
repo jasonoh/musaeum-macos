@@ -2,6 +2,18 @@
 
 All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https://keepachangelog.com); versions follow semver once the app is packaged.
 
+## [Unreleased] — 2026-09-22
+
+### Added
+- **Your library can now serve your phone — the catalogue, the covers, a book's bytes and the place you are in it — and none of it is reachable from outside your tailnet.** The iOS companion's server is real: six read routes and one write (`PUT /api/books/{id}/reading`) behind a bearer token the app generates for you, bound to this machine's tailnet address by default, answering 401 to anything without the token, and streaming a book with range requests — the largest book in the library is 528 MiB, and a phone that wants page 900 should not have to pull the first 900 first. **Settings → Phone access** is where you turn it on, read the URL to type into the phone, and copy the token; the switch applies the moment you click it, and the row tells you the truth about the socket, including *why* it is not listening when a bind fails. The companion app itself is the next phase — this is the half that lives on the Mac.
+
+### Fixed
+- **A book you had moved along on your phone opened at page one on the Mac.** The write landed in the database and nowhere else: nothing had ever announced a progress change to the library list, and the reader only re-read its own final flush. Now the write announces itself *and* the reader asks the database for the row it is about to resume from — each fix carries it alone, measured both ways, and the screen you were on follows you between machines.
+- **Revealing a book in Finder could open a different file than the one the app names — for one book in five.** Two places picked the file by its position in a book's `formats` array, which holds whatever order the writing source left behind: 1,372 of the library's 7,100 books disagree with the app's own preferred format, so the jacket said EPUB and Finder showed the PDF. Both now ask for the preferred format, and a test over the source fails the moment a third place reads by position.
+
+### Changed
+- **The server's four settings live in the database, and Settings is where they are set.** `rest_api_enabled`, `rest_api_port`, `rest_api_bind` and `rest_api_token`: blank means auto for the port and the bind — clearing the bind goes back to this machine's tailnet address rather than disabling anything — and the token is generated when you turn the server on, never typed, and kept when you turn it off so re-enabling hands the same URL and the same credential back. Change one the listener captured and it restarts itself rather than serving the old value.
+
 ## [Unreleased] — 2026-09-21
 
 ### Added
