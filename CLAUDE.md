@@ -14,6 +14,7 @@ This file loads at the start of every session and is the **index**, not the manu
 |---|---|
 | `docs/architecture.md` | process structure, directory layout, path aliases, perf targets |
 | `docs/data-contracts.md` | `metadata.json`, a SQLite migration, a sidecar method, the preload surface |
+| `docs/rest-api.md` | the HTTP surface (`electron/main/api/rest.ts`), the payload shaper, the cover/file byte routes — or anything an out-of-repo client is written against |
 | `docs/invariants/nas-and-catalog.md` | NAS detection, offline mode, `catalog.json`, the catalog ⇄ SQLite sync |
 | `docs/invariants/metadata-hydration.md` | the hydration pipeline, identifier precedence, the conflict policy, cover scoring |
 | `docs/invariants/conflicts-and-series.md` | the conflict queue, series display |
