@@ -1,7 +1,10 @@
-import { rmSync } from 'fs'
+import { createHash } from 'crypto'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { tmpdir } from 'os'
 import { join } from 'path'
+import type { BookSort } from '@shared/book.types'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
@@ -63,8 +66,16 @@ vi.mock('../services/nas-manager', async (importOriginal) => {
 vi.mock('../services/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/db')>()
   // A wrapper, not a stub: the real query still answers, and one case can make
-  // it throw to prove a failed handler answers 500 instead of dying
-  return { ...actual, getBooks: vi.fn(actual.getBooks) }
+  // it throw to prove a failed handler answers 500 instead of dying. All three
+  // are wrapped because 1b moved the health route's count onto `countBooks` (the
+  // paginated total) and the library route onto `getBooksPage`, so "the 401 path
+  // ran no query" is a claim about the callables the routes actually reach.
+  return {
+    ...actual,
+    getBooks: vi.fn(actual.getBooks),
+    getBooksPage: vi.fn(actual.getBooksPage),
+    countBooks: vi.fn(actual.countBooks)
+  }
 })
 
 const TOKEN = 'a1b2c3d4'.repeat(8)
@@ -101,6 +112,8 @@ async function freePort(): Promise<number> {
 beforeEach(() => {
   vi.mocked(nas.isOnline).mockReturnValue(false)
   vi.mocked(db.getBooks).mockClear()
+  vi.mocked(db.getBooksPage).mockClear()
+  vi.mocked(db.countBooks).mockClear()
   closeAndWipe()
 })
 
@@ -402,9 +415,10 @@ describe('the wire', () => {
     expect(res.status).toBe(401)
     expect(res.headers.get('www-authenticate')).toBe('Bearer')
     expect(await res.json()).toEqual({ error: 'unauthorized' })
-    // The 401 path reaches no route: the health route's query never ran, so an
+    // The 401 path reaches no route: the health route's queries never ran, so an
     // unauthenticated request cannot even learn that the route exists
-    expect(vi.mocked(db.getBooks)).not.toHaveBeenCalled()
+    expect(vi.mocked(db.countBooks)).not.toHaveBeenCalled()
+    expect(vi.mocked(db.getBooksPage)).not.toHaveBeenCalled()
   })
 
   it('answers 401 for a wrong token and for a malformed one (AC2)', async () => {
@@ -415,7 +429,8 @@ describe('the wire', () => {
 
     expect(wrong.status).toBe(401)
     expect(malformed.status).toBe(401)
-    expect(vi.mocked(db.getBooks)).not.toHaveBeenCalled()
+    expect(vi.mocked(db.countBooks)).not.toHaveBeenCalled()
+    expect(vi.mocked(db.getBooksPage)).not.toHaveBeenCalled()
   })
 
   it('logs the client address and never the attempted credential (AC3)', async () => {
@@ -446,6 +461,13 @@ describe('the wire', () => {
       books: 2,
       library: 'offline'
     })
+
+    // **1b's count, and the reason it is a count.** The route asks `countBooks`
+    // for the paginated total and never pages the library through `getBooksPage`,
+    // which is what retires the whole-library load 1a answered this route with
+    // (~115 ms at 7,100 books, synchronously, on the phone's connect check).
+    expect(vi.mocked(db.countBooks)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(db.getBooksPage)).not.toHaveBeenCalled()
   })
 
   it('reports the library online exactly when the share is mounted', async () => {
@@ -457,20 +479,20 @@ describe('the wire', () => {
   })
 
   it('answers 404 for an unmatched path, and 401 for one with no token', async () => {
-    const unknown = await fetch(`${base}/api/library`, {
+    const unknown = await fetch(`${base}/api/nothing-here`, {
       headers: { authorization: `Bearer ${TOKEN}` }
     })
     expect(unknown.status).toBe(404)
     expect(await unknown.json()).toEqual({ error: 'not found' })
 
     // Auth runs first, so an unknown path is not distinguished from a known one
-    expect((await fetch(`${base}/api/library`)).status).toBe(401)
+    expect((await fetch(`${base}/api/nothing-here`)).status).toBe(401)
   })
 
   it('answers 500 when a route throws, and keeps serving (invariant 12)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
-      vi.mocked(db.getBooks).mockImplementationOnce(() => {
+      vi.mocked(db.countBooks).mockImplementationOnce(() => {
         throw new Error('the cache is a brick')
       })
 
@@ -485,6 +507,33 @@ describe('the wire', () => {
         headers: { authorization: `Bearer ${TOKEN}` }
       })
       expect(after.status).toBe(200)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('answers 500 when the library route throws, rather than dropping the request', async () => {
+    // The other half of the same claim, on the read surface: a failing *query*
+    // is a status, not a dead socket (invariant 12)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      vi.mocked(db.getBooksPage).mockImplementationOnce(() => {
+        throw new Error('the cache is a brick')
+      })
+
+      const failed = await fetch(`${base}/api/library`, {
+        headers: { authorization: `Bearer ${TOKEN}` }
+      })
+      expect(failed.status).toBe(500)
+      expect(await failed.json()).toEqual({ error: 'internal' })
+
+      expect(
+        (
+          await fetch(`${base}/api/library`, {
+            headers: { authorization: `Bearer ${TOKEN}` }
+          })
+        ).status
+      ).toBe(200)
     } finally {
       warn.mockRestore()
     }
@@ -635,5 +684,679 @@ describe('activation never rejects', () => {
     // The cause is carried, because a status with no reason is a status slice 2
     // cannot show anybody
     expect(status.reason).toContain('the interface table is a brick')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The read surface: the library, a search, one book (AC9–AC12, AC16)
+// ---------------------------------------------------------------------------
+
+/**
+ * A fixture library with the ties a page walk has to survive.
+ *
+ * Three books share an author and one has none at all, so a sort by author
+ * leaves its key *equal* for three rows — which is exactly where a page walk
+ * without the `id` tiebreak can serve a book twice or skip one. A fixture of
+ * distinct keys cannot decide that either way.
+ */
+const FIXTURE: { id: string; title: string; author: string | null; rating: number | null }[] = [
+  { id: 'lib-1', title: 'Alpha', author: 'Ursula K. Le Guin', rating: 5 },
+  { id: 'lib-2', title: 'Bravo', author: 'Ursula K. Le Guin', rating: 3 },
+  { id: 'lib-3', title: 'Charlie', author: 'Ursula K. Le Guin', rating: null },
+  { id: 'lib-4', title: 'Delta', author: 'Seth Dickinson', rating: 5 },
+  { id: 'lib-5', title: 'Echo', author: 'Adrian Tchaikovsky', rating: null },
+  { id: 'lib-6', title: 'Foxtrot', author: 'Adrian Tchaikovsky', rating: 2 },
+  { id: 'lib-7', title: 'Golf', author: null, rating: null }
+]
+
+function seedLibrary(): void {
+  for (const book of FIXTURE) {
+    db.insertBook({
+      ...makeBook(book.id, book.title),
+      author: book.author,
+      rating: book.rating
+    })
+  }
+}
+
+describe('the library route', () => {
+  let server: Server
+  let base: string
+
+  beforeEach(async () => {
+    seedLibrary()
+    server = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  })
+
+  const auth = { authorization: `Bearer ${TOKEN}` }
+
+  function get(path: string, headers: Record<string, string> = {}) {
+    return fetch(`${base}${path}`, { headers: { ...auth, ...headers } })
+  }
+
+  interface Page {
+    books: { id: string; title: string }[]
+    total: number
+    limit: number
+    offset: number
+  }
+
+  async function page(path: string): Promise<Page> {
+    const res = await get(path)
+    expect(res.status).toBe(200)
+    return (await res.json()) as Page
+  }
+
+  it('returns exactly `limit` rows, in the order the app itself lists them (AC9)', async () => {
+    const sort: BookSort = { field: 'author', direction: 'asc' }
+    // The app's own list, read through the same call its IPC handler makes
+    const appOrder = db.getBooks({ sort }).map((b) => b.id)
+
+    const first = await page('/api/library?sort=author&dir=asc&limit=3')
+
+    expect(first.books.map((b) => b.id)).toEqual(appOrder.slice(0, 3))
+    expect(first.books).toHaveLength(3)
+    expect(first.total).toBe(appOrder.length)
+    expect(first.limit).toBe(3)
+    expect(first.offset).toBe(0)
+
+    const second = await page('/api/library?sort=author&dir=asc&limit=3&offset=3')
+    expect(second.books.map((b) => b.id)).toEqual(appOrder.slice(3, 6))
+    // The total is the match count, not the page: it does not move with offset
+    expect(second.total).toBe(appOrder.length)
+    expect(second.offset).toBe(3)
+  })
+
+  it('walks every page to exhaustion with each id appearing exactly once (AC10)', async () => {
+    // The fixture's ties are what this rests on; asserted so a later change to
+    // the fixture cannot quietly turn this into a case about distinct keys
+    const tied = db.getBooks({ sort: { field: 'author', direction: 'asc' } })
+    expect(new Set(tied.map((b) => b.author)).size).toBeLessThan(tied.length)
+
+    const walked: string[] = []
+    for (let offset = 0; offset < tied.length; offset += 2) {
+      const slice = await page(`/api/library?sort=author&dir=asc&limit=2&offset=${offset}`)
+      walked.push(...slice.books.map((b) => b.id))
+    }
+
+    expect(walked).toEqual(tied.map((b) => b.id))
+    expect(new Set(walked).size).toBe(walked.length)
+
+    // And the page past the end is empty rather than a wrap-around: a client
+    // walking with `offset < total` must stop on its own terms
+    const past = await page(`/api/library?sort=author&limit=2&offset=${tied.length}`)
+    expect(past.books).toEqual([])
+    expect(past.total).toBe(tied.length)
+  })
+
+  it('answers a search with the app own ids, and the same count (AC11)', async () => {
+    const expected = db.searchBooks('Ursula')
+
+    const found = await page('/api/library?q=Ursula&limit=100')
+
+    expect(expected.length).toBe(3)
+    expect(found.books.map((b) => b.id)).toEqual(expected.map((b) => b.id))
+    expect(found.total).toBe(expected.length)
+
+    // A search the library does not hold is an empty page, not a 404
+    const none = await page('/api/library?q=zzzznotabook')
+    expect(none.books).toEqual([])
+    expect(none.total).toBe(0)
+  })
+
+  it('orders a search by relevance, not by title, when no `sort` is asked for (AC11)', async () => {
+    // The document states this default, so this case is what decides it. The two ids are
+    // chosen so that the two candidate orders disagree *and* a rank tie would not pass:
+    // id order and title order both put `rel-a` first, so only genuine relevance puts
+    // `rel-z` there. The term is in `rel-z`'s title and once in `rel-a`'s long
+    // description, which is what bm25 scores lower.
+    db.insertBook({
+      ...makeBook('rel-a', 'Aardvark'),
+      description: `A deliberately long description that mentions an aardwolf exactly once, padded out with plenty of other words so that the column is long enough for a single occurrence to score below the same word in a two-word title`
+    })
+    db.insertBook({ ...makeBook('rel-z', 'Zulu Aardwolf'), description: 'unrelated text' })
+    try {
+      const found = await page('/api/library?q=aardwolf&limit=10')
+      expect(found.total).toBe(2)
+      expect(found.books.map((b) => b.id)).toEqual(['rel-z', 'rel-a'])
+    } finally {
+      db.deleteBook('rel-a')
+      db.deleteBook('rel-z')
+    }
+  })
+
+  it('breaks a tie on the sort key by ascending id, which is what a walk over ties needs (AC10)', async () => {
+    // The fixture's tied rows were inserted in id order, so their rowid order and their id
+    // order agree — which means a missing tiebreak is invisible to the walk above. These
+    // three share an author and go in *descending* id order, so the two orders disagree:
+    // without `id ASC` this page comes back tie-c, tie-b, tie-a, and a walk over equal
+    // keys is free to repeat a book or skip one.
+    const tied = ['tie-c', 'tie-b', 'tie-a']
+    for (const id of tied) db.insertBook({ ...makeBook(id, `Tied ${id}`), author: 'Tied Author' })
+    try {
+      const slice = await page('/api/library?authors=Tied%20Author&sort=author&limit=3')
+      expect(slice.total).toBe(3)
+      expect(slice.books.map((b) => b.id)).toEqual(['tie-a', 'tie-b', 'tie-c'])
+    } finally {
+      for (const id of tied) db.deleteBook(id)
+    }
+  })
+
+  it('does not page `getBooks()` behind the wire default (AC12)', async () => {
+    // Every other case here runs on a seven-book fixture, so a default `LIMIT 100` added
+    // to the shared statement would be invisible. 101 rows make `DEFAULT_PAGE_LIMIT` the
+    // number that would show up — in the app's own library view, not just on the wire.
+    const bulk = Array.from({ length: 101 }, (_, i) => `bulk-${String(i).padStart(3, '0')}`)
+    for (const id of bulk) db.insertBook(makeBook(id, `Bulk ${id}`))
+    try {
+      expect(db.getBooks()).toHaveLength(FIXTURE.length + bulk.length)
+
+      // And a page asked for more than the library holds still serves all of it
+      const all = await page('/api/library?limit=500')
+      expect(all.total).toBe(FIXTURE.length + bulk.length)
+      expect(all.books).toHaveLength(FIXTURE.length + bulk.length)
+    } finally {
+      for (const id of bulk) db.deleteBook(id)
+    }
+  })
+
+  it('leaves the unpaginated path exactly as it was (AC12)', async () => {
+    // `getBooks()` with no page argument is the statement the app's own call
+    // sites run — no LIMIT, no OFFSET — and it is the decider for this slice
+    // not having changed the library view. The pages are slices of that same
+    // order, which is the other half of the claim.
+    const unpaged = db.getBooks()
+    expect(unpaged).toHaveLength(FIXTURE.length)
+
+    const ids = unpaged.map((b) => b.id)
+    expect(new Set(ids).size).toBe(ids.length)
+
+    expect(db.countBooks()).toBe(unpaged.length)
+
+    // The route's own default: no `limit` parameter means the contract's 100,
+    // and it still serves the whole fixture
+    const defaulted = await page('/api/library')
+    expect(defaulted.limit).toBe(100)
+    expect(defaulted.books.map((b) => b.id)).toEqual(ids)
+  })
+
+  it('caps limit at the contract maximum rather than refusing it (D7)', async () => {
+    const capped = await page('/api/library?limit=900')
+    expect(capped.limit).toBe(500)
+    expect(capped.books).toHaveLength(FIXTURE.length)
+  })
+
+  it('narrows the list with the same filters the app has, and counts what it narrowed to', async () => {
+    const byAuthor = await page('/api/library?authors=Ursula K. Le Guin')
+    expect(byAuthor.total).toBe(3)
+    // Repeated and comma-separated values are the same request
+    const byTwoAuthors = await page('/api/library?authors=Ursula K. Le Guin,Seth Dickinson')
+    expect(byTwoAuthors.total).toBe(4)
+
+    const rated = await page('/api/library?minRating=5')
+    expect(rated.total).toBe(2)
+    expect(rated.books.map((b) => b.title).sort()).toEqual(['Alpha', 'Delta'])
+
+    const filtered = await page('/api/library?authors=Ursula K. Le Guin&minRating=5')
+    expect(filtered.books.map((b) => b.title)).toEqual(['Alpha'])
+
+    const searched = await page('/api/library?q=Ursula&minRating=3')
+    expect(searched.total).toBe(2)
+  })
+
+  it('sorts date_added newest-first unless told otherwise (the field direction rule)', async () => {
+    // The rule is `defaultSortDirection`, the same one the app's own sort
+    // control uses on a first click — asserted here so the two cannot drift
+    const newest = await page('/api/library?sort=date_added')
+    expect(newest.books.map((b) => b.id)).toEqual(
+      db.getBooks({ sort: { field: 'date_added', direction: 'desc' } }).map((b) => b.id)
+    )
+    const ascent = await page('/api/library?sort=date_added&dir=asc')
+    expect(ascent.books.map((b) => b.id)).toEqual(
+      db.getBooks({ sort: { field: 'date_added', direction: 'asc' } }).map((b) => b.id)
+    )
+  })
+
+  it.each([
+    ['limit=abc'],
+    ['limit=-1'],
+    ['limit=1.5'],
+    ['offset=xyz'],
+    ['offset=-4'],
+    ['sort=athor'],
+    ['sort=title&dir=sideways'],
+    ['formats=sh'],
+    ['readStatus=nope'],
+    ['minRating=lots']
+  ])('answers 400 for a malformed parameter (%s)', async (query) => {
+    // Refused rather than defaulted: a client that asked for `sort=athor` and
+    // received title order could never learn it had a typo
+    const res = await get(`/api/library?${query}`)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad request' })
+  })
+
+  it('answers 404 for an unknown book and 200 for a known one', async () => {
+    const missing = await get('/api/books/not-a-book')
+    expect(missing.status).toBe(404)
+    expect(await missing.json()).toEqual({ error: 'not found' })
+
+    const found = await get('/api/books/lib-1')
+    expect(found.status).toBe(200)
+    const book = (await found.json()) as { id: string; title: string; cover: unknown }
+    expect(book).toMatchObject({ id: 'lib-1', title: 'Alpha' })
+    // The detail payload is the list's payload: one shaper, so the two cannot
+    // describe a book differently
+    expect(await (await get('/api/library?q=Alpha')).json()).toMatchObject({
+      books: [book]
+    })
+  })
+
+  it('answers the filter counts the app itself computes', async () => {
+    const res = await get('/api/library/facets')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(db.getFacets())
+  })
+
+  it('answers HEAD on the JSON routes with the headers and no body (the method policy)', async () => {
+    // `URLSession` probes with HEAD, and 1a's GET-only switch answered 404 where
+    // a connect check belongs. `node:http` suppresses the body and keeps the
+    // headers, so the probe sees exactly what the GET would have said.
+    const body = await (await get('/api/health')).text()
+
+    const probe = await fetch(`${base}/api/health`, { method: 'HEAD', headers: auth })
+    expect(probe.status).toBe(200)
+    expect(probe.headers.get('content-type')).toBe('application/json; charset=utf-8')
+    expect(probe.headers.get('content-length')).toBe(String(Buffer.byteLength(body)))
+    expect(await probe.text()).toBe('')
+
+    // The other three JSON routes answer it too, and auth still runs first
+    for (const path of ['/api/library', '/api/library/facets', '/api/books/lib-1']) {
+      expect((await fetch(`${base}${path}`, { method: 'HEAD', headers: auth })).status).toBe(200)
+    }
+    expect((await fetch(`${base}/api/health`, { method: 'HEAD' })).status).toBe(401)
+  })
+
+  it('answers 404 for a known path behind a method it does not answer', async () => {
+    // Uniform and reason-free: a client cannot tell "no such route" from "wrong
+    // method", which is the same rule the `musaeum://` routes follow
+    expect((await fetch(`${base}/api/library`, { method: 'POST', headers: auth })).status).toBe(404)
+    expect((await fetch(`${base}/api/library`, { method: 'DELETE', headers: auth })).status).toBe(
+      404
+    )
+  })
+
+  it('answers from the cache while the share is unmounted, and never touches it (AC16)', async () => {
+    // The fixture's `isOnline` is false and no library root is configured, which
+    // is the strongest form of "the NAS is unreachable": the read path still
+    // answers, because it is a query and not a file read. The byte routes'
+    // answer to the same state is 503 (asserted in the next describe).
+    expect(nas.isOnline()).toBe(false)
+    expect(nas.getLibraryRoot()).toBeNull()
+
+    expect(await page('/api/library?limit=2')).toMatchObject({ total: FIXTURE.length })
+    expect((await get('/api/library/facets')).status).toBe(200)
+    expect((await get('/api/books/lib-1')).status).toBe(200)
+    expect((await get('/api/health')).status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Bytes: covers, files, ranges and the transfer budget (AC14, AC15, AC15a, AC17)
+// ---------------------------------------------------------------------------
+
+describe('the byte routes', () => {
+  let server: Server
+  let base: string
+  let root: string
+  let epub: string
+  let thumb: string
+  let full: string
+
+  /** Deterministic, non-repeating bytes: a head served for a tail cannot match. */
+  const BOOK_BYTES = Buffer.alloc(4096)
+  for (let i = 0; i < BOOK_BYTES.length; i++) BOOK_BYTES[i] = (i * 7 + 13) % 251
+  const THUMB_BYTES = Buffer.from('cover_thumb.jpg bytes — deliberately short')
+  const FULL_BYTES = Buffer.from('a different image for cover_full.jpg, and longer than the thumb')
+
+  const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'musaeum-rest-bytes-'))
+    await nas.setLibraryRoot(root)
+    // `setLibraryRoot` runs the real health check and the share *is* there, but
+    // the module's `isOnline` is the mock the suite installed
+    vi.mocked(nas.isOnline).mockReturnValue(true)
+
+    const dir = join(root, 'books', 'epub-1')
+    mkdirSync(dir, { recursive: true })
+    epub = join(dir, 'Leviathan Wakes.epub')
+    thumb = join(dir, 'cover_thumb.jpg')
+    full = join(dir, 'cover_full.jpg')
+    writeFileSync(epub, BOOK_BYTES)
+    writeFileSync(thumb, THUMB_BYTES)
+    writeFileSync(full, FULL_BYTES)
+
+    // The row's title and the file's name disagree on purpose: nothing resolves
+    // by canonical filename, and a book renamed after import still serves
+    db.insertBook({
+      ...makeBook('epub-1', 'Some Older Title'),
+      formats: ['epub'],
+      coverThumbPath: 'cover_thumb.jpg',
+      coverFullPath: 'cover_full.jpg'
+    })
+    db.insertBook({ ...makeBook('no-cover'), formats: ['epub'] })
+    db.insertBook({ ...makeBook('traversing'), nasPath: '../outside', formats: ['epub'] })
+    db.insertBook({ ...makeBook('bad-cover'), formats: ['mobi'], coverThumbPath: '../secret.jpg' })
+
+    server = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  const auth = { authorization: `Bearer ${TOKEN}` }
+
+  function get(path: string, headers: Record<string, string> = {}) {
+    return fetch(`${base}${path}`, { headers: { ...auth, ...headers } })
+  }
+
+  it('serves a cover byte-identical to the file on disk (AC13/AC14)', async () => {
+    const res = await get('/api/books/epub-1/cover?size=thumb')
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/jpeg')
+    expect(res.headers.get('content-length')).toBe(String(THUMB_BYTES.length))
+    expect(sha256(Buffer.from(await res.arrayBuffer()))).toBe(sha256(readFileSync(thumb)))
+  })
+
+  it('serves the size asked for, and the full cover by default', async () => {
+    const asked = await get('/api/books/epub-1/cover?size=full')
+    expect(sha256(Buffer.from(await asked.arrayBuffer()))).toBe(sha256(readFileSync(full)))
+
+    const defaulted = await get('/api/books/epub-1/cover')
+    expect(sha256(Buffer.from(await defaulted.arrayBuffer()))).toBe(sha256(readFileSync(full)))
+  })
+
+  it('answers 400 for a size that is neither thumb nor full — stricter than the handler (AC14)', async () => {
+    const res = await get('/api/books/epub-1/cover?size=banana')
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad request' })
+  })
+
+  it('answers 404 for a book with no cover of that size, and for an unknown book', async () => {
+    expect((await get('/api/books/no-cover/cover?size=thumb')).status).toBe(404)
+    expect((await get('/api/books/not-a-book/cover?size=thumb')).status).toBe(404)
+  })
+
+  it('answers 400 for a traversing cover path — the handler split, carried through (AC14)', async () => {
+    const res = await get('/api/books/bad-cover/cover?size=thumb')
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad request' })
+  })
+
+  it('serves a book file byte-identical to the disk, with its length and type (AC15)', async () => {
+    const res = await get('/api/books/epub-1/file?format=epub')
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/epub+zip')
+    expect(res.headers.get('content-length')).toBe(String(BOOK_BYTES.length))
+    expect(res.headers.get('accept-ranges')).toBe('bytes')
+    const served = Buffer.from(await res.arrayBuffer())
+    expect(served).toHaveLength(BOOK_BYTES.length)
+    expect(sha256(served)).toBe(sha256(readFileSync(epub)))
+  })
+
+  it.each([
+    ['a missing format \u2192 400', '/api/books/epub-1/file', 400],
+    ['an unknown format \u2192 404', '/api/books/epub-1/file?format=sh', 404],
+    ['a format it does not have \u2192 404', '/api/books/epub-1/file?format=mobi', 404],
+    ['an unknown book \u2192 404', '/api/books/not-a-book/file?format=epub', 404],
+    ['a traversing nasPath \u2192 404', '/api/books/traversing/file?format=epub', 404]
+  ])('answers %s (AC15)', async (_label, path, status) => {
+    const res = await get(path)
+    expect(res.status).toBe(status)
+    expect(await res.json()).toEqual({ error: status === 400 ? 'bad request' : 'not found' })
+  })
+
+  it('serves the media type that matches the format it resolved', async () => {
+    // The book has one file: epub. Its type is asserted above; this is the same
+    // route answering a *different* declared format, so the mapping is decided
+    // by the format asked for and not by the file's extension on disk
+    db.insertBook({ ...makeBook('pdf-1'), formats: ['pdf'] })
+    const dir = join(root, 'books', 'pdf-1')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'Book.pdf'), 'not really a pdf')
+
+    const res = await get('/api/books/pdf-1/file?format=pdf')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/pdf')
+  })
+
+  it('answers 503 with Retry-After while the share is unmounted (D11)', async () => {
+    vi.mocked(nas.isOnline).mockReturnValue(false)
+
+    for (const path of [
+      '/api/books/epub-1/cover?size=thumb',
+      '/api/books/epub-1/file?format=epub'
+    ]) {
+      const res = await get(path)
+      expect(res.status).toBe(503)
+      expect(res.headers.get('retry-after')).toBe('5')
+      expect(await res.json()).toEqual({ error: 'library offline' })
+    }
+  })
+
+  it('answers 404 to a HEAD on a byte route: they are GET-only (D15)', async () => {
+    expect(
+      (await fetch(`${base}/api/books/epub-1/file?format=epub`, { method: 'HEAD', headers: auth }))
+        .status
+    ).toBe(404)
+  })
+
+  it('serves the tail from N, hashed against the file itself (AC15a)', async () => {
+    const N = 1000
+    const onDisk = readFileSync(epub)
+
+    const res = await get('/api/books/epub-1/file?format=epub', { range: `bytes=${N}-` })
+    const tail = Buffer.from(await res.arrayBuffer())
+
+    expect(res.status).toBe(206)
+    expect(res.headers.get('content-range')).toBe(
+      `bytes ${N}-${onDisk.length - 1}/${onDisk.length}`
+    )
+    expect(res.headers.get('accept-ranges')).toBe('bytes')
+    expect(res.headers.get('content-length')).toBe(String(onDisk.length - N))
+
+    // The criterion, and why it is a *tail* hash: a server that ignored the
+    // Range and re-sent the head answers 206-shaped bytes of exactly the same
+    // length, so the hash is taken against `subarray(N)` — and the second line
+    // is what makes this case able to tell the two apart.
+    expect(sha256(tail)).toBe(sha256(onDisk.subarray(N)))
+    expect(sha256(tail)).not.toBe(sha256(onDisk.subarray(0, onDisk.length - N)))
+  })
+
+  it('serves a closed range, clamped to the last byte (D15)', async () => {
+    const onDisk = readFileSync(epub)
+
+    const closed = await get('/api/books/epub-1/file?format=epub', { range: 'bytes=10-19' })
+    expect(closed.status).toBe(206)
+    expect(closed.headers.get('content-range')).toBe(`bytes 10-19/${onDisk.length}`)
+    expect(sha256(Buffer.from(await closed.arrayBuffer()))).toBe(sha256(onDisk.subarray(10, 20)))
+
+    const past = await get('/api/books/epub-1/file?format=epub', {
+      range: `bytes=${onDisk.length - 5}-${onDisk.length + 500}`
+    })
+    expect(past.headers.get('content-range')).toBe(
+      `bytes ${onDisk.length - 5}-${onDisk.length - 1}/${onDisk.length}`
+    )
+    expect(sha256(Buffer.from(await past.arrayBuffer()))).toBe(
+      sha256(onDisk.subarray(onDisk.length - 5))
+    )
+  })
+
+  it('answers 416 with the length for a range the file cannot satisfy (D15)', async () => {
+    const onDisk = readFileSync(epub)
+    const res = await get('/api/books/epub-1/file?format=epub', {
+      range: `bytes=${onDisk.length}-`
+    })
+
+    expect(res.status).toBe(416)
+    expect(res.headers.get('content-range')).toBe(`bytes */${onDisk.length}`)
+    expect(await res.json()).toEqual({ error: 'range not satisfiable' })
+  })
+
+  it.each([['bytes=-500'], ['bytes=0-1,5-6'], ['bytes=abc']])(
+    'answers 416 for a malformed range rather than re-sending the head (%s)',
+    async (range) => {
+      // Deliberately stricter than HTTP's latitude: an ignored Range here means
+      // half a gigabyte re-sent to a client that asked for a tail
+      const res = await get('/api/books/epub-1/file?format=epub', { range })
+      expect(res.status).toBe(416)
+    }
+  )
+
+  it('answers a Range against a 0-byte file 416, and 200 without one (D15)', async () => {
+    // A half-failed write leaves a 0-byte file, which is exactly the shape a resuming
+    // client can meet. `bytes=<total>-` is unsatisfiable at every offset, so an empty 200
+    // would read as a finished download — the file had to stop answering before the range
+    // was consulted.
+    const dir = join(root, 'books', 'empty-1')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'Empty.epub'), Buffer.alloc(0))
+    db.insertBook({ ...makeBook('empty-1', 'Empty'), formats: ['epub'] })
+
+    const whole = await get('/api/books/empty-1/file?format=epub')
+    expect(whole.status).toBe(200)
+    expect(whole.headers.get('content-length')).toBe('0')
+    expect((await whole.arrayBuffer()).byteLength).toBe(0)
+
+    for (const range of ['bytes=0-', 'bytes=5-']) {
+      const ranged = await get('/api/books/empty-1/file?format=epub', { range })
+      expect(ranged.status).toBe(416)
+      expect(ranged.headers.get('content-range')).toBe('bytes */0')
+      expect(await ranged.json()).toEqual({ error: 'range not satisfiable' })
+    }
+  })
+
+  it('holds at most two transfers, answers the third 503, and leaves the app alone (AC17)', async () => {
+    const releases: (() => void)[] = []
+    /** Flipped false once the case has decided the cap: later transfers run free. */
+    let hold = true
+    let started = 0
+    let twoInFlight: () => void = () => undefined
+    const both = new Promise<void>((resolve) => {
+      twoInFlight = resolve
+    })
+
+    // A transfer the case holds open: the same signature the real one has, so
+    // what is under test is the budget rather than a stub of the route
+    const held = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }), {
+      transfer: async (path, start, end, res) => {
+        started += 1
+        if (started === 2) twoInFlight()
+        if (hold) await new Promise<void>((resolve) => releases.push(resolve))
+        res.end(readFileSync(path).subarray(start, end + 1))
+      }
+    })
+    await new Promise<void>((resolve) => held.listen(0, '127.0.0.1', resolve))
+    const heldBase = `http://127.0.0.1:${(held.address() as AddressInfo).port}`
+    const file = `${heldBase}/api/books/epub-1/file?format=epub`
+
+    try {
+      const first = fetch(file, { headers: auth })
+      const second = fetch(file, { headers: auth })
+      await both
+
+      // **The app's own work is not behind this budget.** While two transfers
+      // are stalled, the library route answers from the cache and the library
+      // query itself runs — which is what the cap exists to guarantee (D9).
+      expect((await fetch(`${heldBase}/api/library`, { headers: auth })).status).toBe(200)
+      expect(db.getBooks().map((b) => b.id)).toContain('epub-1')
+
+      const third = await fetch(file, { headers: auth })
+      expect(third.status).toBe(503)
+      expect(third.headers.get('retry-after')).toBe('1')
+      expect(await third.json()).toEqual({ error: 'busy' })
+      // The overflow was refused *before* a read: no threadpool slot, no `stat`
+      expect(started).toBe(2)
+
+      // Release the two the case is holding, and stop holding: what is being
+      // decided is the budget, not this fake's willingness to ever finish
+      hold = false
+      releases.forEach((release) => release())
+
+      for (const settled of [await first, await second]) {
+        expect(settled.status).toBe(200)
+        expect(sha256(Buffer.from(await settled.arrayBuffer()))).toBe(sha256(BOOK_BYTES))
+      }
+
+      // And the slot came back: a transfer that ends frees the budget
+      const after = await fetch(file, { headers: auth })
+      expect(after.status).toBe(200)
+      expect(sha256(Buffer.from(await after.arrayBuffer()))).toBe(sha256(BOOK_BYTES))
+    } finally {
+      releases.forEach((release) => release())
+      await new Promise<void>((resolve) => held.close(() => resolve()))
+    }
+  })
+
+  it('gives the slot back when a transfer fails, so a broken read cannot spend the cap (AC17)', async () => {
+    // The failure half of the budget. The `finally` in `sendBytes` is what returns the
+    // slot when a read throws — a share that went away mid-transfer. Without it the cap is
+    // spent for the process's life and every later byte request is a 503, with the suite
+    // green, because the only other case observes `release` on a *successful* transfer.
+    let calls = 0
+    const releases: (() => void)[] = []
+    let holding: () => void = () => undefined
+    const started = new Promise<void>((resolve) => (holding = resolve))
+
+    const broken = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }), {
+      transfer: async (path, start, end, res) => {
+        calls += 1
+        if (calls === 1) throw new Error('the share went away')
+        if (calls === 2) {
+          holding()
+          await new Promise<void>((resolve) => releases.push(resolve))
+        }
+        res.end(readFileSync(path).subarray(start, end + 1))
+      }
+    })
+    await new Promise<void>((resolve) => broken.listen(0, '127.0.0.1', resolve))
+    const brokenBase = `http://127.0.0.1:${(broken.address() as AddressInfo).port}`
+    const file = `${brokenBase}/api/books/epub-1/file?format=epub`
+
+    try {
+      // Headers were decided before the read threw, so the client sees either the 200 with
+      // a body that dies or a reset — the documented "connection closed after the status
+      // has been sent" (invariant 12). Either way the request must not hang.
+      const failed = await fetch(file, { headers: auth }).catch(() => null)
+      if (failed) await expect(failed.arrayBuffer()).rejects.toThrow()
+
+      // The second holds the *other* slot, so the budget is now fully spent. A third
+      // request only gets a slot if the failed transfer returned its own.
+      const held = fetch(file, { headers: auth })
+      await started
+
+      const third = await fetch(file, { headers: auth })
+      expect(third.status).toBe(200)
+      expect(sha256(Buffer.from(await third.arrayBuffer()))).toBe(sha256(BOOK_BYTES))
+
+      releases.forEach((release) => release())
+      expect((await held).status).toBe(200)
+    } finally {
+      releases.forEach((release) => release())
+      await new Promise<void>((resolve) => broken.close(() => resolve()))
+    }
   })
 })

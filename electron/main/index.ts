@@ -15,8 +15,8 @@ import { registerNASHandlers } from './ipc/nas'
 import { registerReaderHandlers } from './ipc/reader'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerThemeHandlers } from './ipc/theme'
-import { resolveBookFile } from './services/book-bytes'
-import { closeDb, getBook } from './services/db'
+import { resolveBookFile, resolveCoverFile } from './services/book-bytes'
+import { closeDb } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
 import { broadcast, setMainWindow, subscribe } from './services/events'
 import { bindToNAS, startWatcher, stopWatcher } from './services/file-watcher'
@@ -63,22 +63,24 @@ function registerMusaeumProtocol(): void {
 
     if (url.host !== 'cover') return new Response(null, { status: 400 })
 
-    const root = nas.getLibraryRoot()
-    const book = getBook(bookId)
-    const file = rest === 'thumb' ? book?.coverThumbPath : book?.coverFullPath
-    if (!root || !book?.nasPath || !file) return new Response(null, { status: 404 })
+    // The cover rules live in the service — traversal, containment under the
+    // library root, 404-on-missing — so this handler and `GET /api/books/{id}/cover`
+    // cannot disagree about the security boundary, and so the boundary is
+    // decidable without a running Electron app (D8). The refusal carries its own
+    // status because the split *is* the behaviour being preserved: 400 for a row
+    // that escapes the library root, 404 for a missing root, book or cover.
+    const cover = await resolveCoverFile(bookId, rest)
+    if (!cover.ok) return new Response(null, { status: cover.status })
 
-    // Cover paths are stored relative to the book dir; reject traversal
-    if (file.includes('..') || file.includes('/')) return new Response(null, { status: 400 })
-    const full = join(root, book.nasPath, file)
     try {
-      return await net.fetch(pathToFileURL(full).toString())
+      return await net.fetch(pathToFileURL(cover.path).toString())
     } catch {
-      // A cover whose file is gone — a folder deleted outside the app, or half
-      // of a failed delete — answers 404 rather than throwing out of the
-      // handler. The row keeps fixed cover names, so such a book still asks;
-      // the renderer's placeholder needs a *response* it can fail on, and a
-      // thrown handler says the same thing noisily.
+      // A cover whose file is gone *between* the resolver's realpath and this
+      // read — a folder deleted outside the app, or half of a failed delete —
+      // answers 404 rather than throwing out of the handler. The row keeps fixed
+      // cover names, so such a book still asks; the renderer's placeholder needs
+      // a *response* it can fail on, and a thrown handler says the same thing
+      // noisily.
       return new Response(null, { status: 404 })
     }
   })

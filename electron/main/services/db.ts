@@ -67,8 +67,7 @@ function runMigrations(d: Database.Database): void {
 
 export function getConfig(key: string): string | null {
   const row = getDb().prepare('SELECT value FROM app_config WHERE key = ?').get(key) as
-    | { value: string }
-    | undefined
+    { value: string } | undefined
   return row?.value ?? null
 }
 
@@ -148,7 +147,7 @@ function rowToBook(r: BookRow): Book {
     dateAdded: r.date_added,
     lastModified: r.last_modified,
     fileSizeBytes: r.file_size_bytes,
-    readStatus: (r.read_status ?? 'unread') as ReadStatus,
+    readStatus: (r.read_status ?? READ_STATUS_FALLBACK) as ReadStatus,
     nasPath: r.nas_path,
     // `updated_at` is the presence marker: a row with no timestamp has never
     // been opened, and reporting `percent: 0` would render as 0% progress
@@ -203,42 +202,151 @@ const SORT_SQL: Record<string, (t: string) => string[]> = {
   read_status: (t) => [`${t}read_status`]
 }
 
-export function getBooks(filters?: BookFilters): Book[] {
-  const where: string[] = []
+/**
+ * What a row with no `read_status` counts as.
+ *
+ * The column is `DEFAULT 'unread'` but **not** `NOT NULL`
+ * (`electron/main/schema/migrations/001_initial.sql:26`), so the fallback has to be
+ * stated wherever the column is read raw, and three places do: `rowToBook`, the
+ * facets query and the filter below. It lives here once because a fourth spelling of
+ * `'unread'` is how the sidebar's count and its own filter drift apart — a book
+ * counted as unread but not returned by `readStatus=unread` is a phone showing a
+ * number that leads nowhere. No row carries a NULL status today (measured
+ * 2026-09-22); this is what keeps that harmless if one ever does.
+ */
+const READ_STATUS_FALLBACK = 'unread'
+
+/** What a set of filters becomes: one condition per filter, and the bound parameters. */
+interface BookWhere {
+  conditions: string[]
+  params: unknown[]
+}
+
+/**
+ * **The one place a `BookFilters` becomes SQL.**
+ *
+ * Extracted from `getBooks`'s own body rather than written beside it, because
+ * the paginated read (D7) has to slice *this* query: a second WHERE builder for
+ * the wire would be a second home for the filter rules, which is the drift the
+ * sort-key invariant (4) exists to prevent, one level down. Every caller —
+ * `getBooks`, the count, the paged reads, the FTS join — goes through here.
+ *
+ * Conditions are unqualified by default, because the plain query has one table
+ * and that is the SQL `getBooks` has always issued. A caller that joins
+ * `books_fts` passes `books.` because the FTS table carries `title`/`author`
+ * columns of its own and SQLite rejects those references as ambiguous.
+ */
+function bookWhere(filters?: BookFilters, tablePrefix = ''): BookWhere {
+  const conditions: string[] = []
   const params: unknown[] = []
+  const col = (name: string): string => `${tablePrefix}${name}`
 
   if (filters?.authors?.length) {
-    where.push(`author IN (${filters.authors.map(() => '?').join(',')})`)
+    conditions.push(`${col('author')} IN (${filters.authors.map(() => '?').join(',')})`)
     params.push(...filters.authors)
   }
   if (filters?.series?.length) {
-    where.push(`series_name IN (${filters.series.map(() => '?').join(',')})`)
+    conditions.push(`${col('series_name')} IN (${filters.series.map(() => '?').join(',')})`)
     params.push(...filters.series)
   }
   if (filters?.readStatus?.length) {
-    where.push(`read_status IN (${filters.readStatus.map(() => '?').join(',')})`)
+    // Through READ_STATUS_FALLBACK — the same fallback `rowToBook` applies — so the
+    // facets' count and this filter cannot disagree about the same book
+    const values = filters.readStatus.map(() => '?').join(',')
+    conditions.push(`COALESCE(${col('read_status')}, '${READ_STATUS_FALLBACK}') IN (${values})`)
     params.push(...filters.readStatus)
   }
   if (filters?.minRating != null) {
-    where.push('rating >= ?')
+    conditions.push(`${col('rating')} >= ?`)
     params.push(filters.minRating)
   }
   if (filters?.tags?.length) {
     // Book matches if it has ANY of the selected tags
-    where.push(
+    conditions.push(
       `EXISTS (SELECT 1 FROM json_each(books.tags) WHERE json_each.value IN (${filters.tags.map(() => '?').join(',')}))`
     )
     params.push(...filters.tags)
   }
   if (filters?.formats?.length) {
-    where.push(
+    conditions.push(
       `EXISTS (SELECT 1 FROM json_each(books.formats) WHERE json_each.value IN (${filters.formats.map(() => '?').join(',')}))`
     )
     params.push(...filters.formats)
   }
 
-  const sql = `SELECT * FROM books ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${orderClause(filters?.sort)}`
-  return (getDb().prepare(sql).all(...params) as BookRow[]).map(rowToBook)
+  return { conditions, params }
+}
+
+/** `WHERE a AND b`, or '' when nothing is filtered. */
+function whereClause(where: BookWhere): string {
+  return where.conditions.length ? `WHERE ${where.conditions.join(' AND ')}` : ''
+}
+
+export function getBooks(filters?: BookFilters): Book[] {
+  return selectBooks(filters, null).map(rowToBook)
+}
+
+export interface BookPage {
+  books: Book[]
+  /** Every row the same filters match, independent of the page taken. */
+  total: number
+}
+
+/** One page's worth of `SELECT`s: a limit and a skip, both required. */
+export interface BookPageRequest {
+  limit: number
+  offset: number
+}
+
+/**
+ * The `SELECT` both list paths share — with the paging appended, or without it.
+ *
+ * `page` omitted is *exactly* the statement `getBooks` has always run: no LIMIT,
+ * no OFFSET, no extra bind. That is AC12's whole content, and it is why paging
+ * is opt-in by argument rather than by a default — a default that reached the
+ * app's own call sites would change the library view, not the wire.
+ */
+function selectBooks(filters: BookFilters | undefined, page: BookPageRequest | null): BookRow[] {
+  const where = bookWhere(filters)
+  const paging = page ? ' LIMIT ? OFFSET ?' : ''
+  const params = page ? [...where.params, page.limit, page.offset] : where.params
+  return getDb()
+    .prepare(
+      `SELECT * FROM books ${whereClause(where)} ORDER BY ${orderClause(filters?.sort)}${paging}`
+    )
+    .all(...params) as BookRow[]
+}
+
+/**
+ * One page of `getBooks`'s query, and the total it was sliced from (D7).
+ *
+ * The order is `getBooks`'s own — the same `orderClause`, so the `id` tiebreak
+ * that keeps a tied sort stable is the same one a page walk relies on. A second
+ * `ORDER BY` here is what would let a book appear on two pages or on none.
+ */
+export function getBooksPage(filters: BookFilters | undefined, page: BookPageRequest): BookPage {
+  return {
+    books: selectBooks(filters, page).map(rowToBook),
+    total: countBooks(filters)
+  }
+}
+
+/**
+ * How many rows these filters match, from the same WHERE body `getBooks` runs.
+ *
+ * Deliberately not a hand-written `COUNT(*)`: a count that carried its own
+ * filter rules would answer a different question from the list it is reported
+ * beside, and that divergence is invisible until a client pages off the end.
+ * `healthPayload`'s book count is this call with no filters, which is what
+ * retires the whole-library load 1a answered that route with (~115 ms at 7,100
+ * books, on the phone's connect check).
+ */
+export function countBooks(filters?: BookFilters): number {
+  const where = bookWhere(filters)
+  const row = getDb()
+    .prepare(`SELECT COUNT(*) AS n FROM books ${whereClause(where)}`)
+    .get(...where.params) as { n: number }
+  return row.n
 }
 
 /**
@@ -293,22 +401,91 @@ export function bookExists(id: string): boolean {
  * back to FTS relevance rank.
  */
 export function searchBooks(query: string, sort?: BookSort): Book[] {
-  const terms = query
+  return searchRows(query, sort, undefined, null).map(rowToBook)
+}
+
+/**
+ * One page of `searchBooks`'s results, and the total it was sliced from.
+ *
+ * **The same FTS path, not a second one.** The match expression, the join and
+ * the terms' quoting all come from the one statement below, so the ids a phone
+ * sees for `q=` are the ids the app's own search returns (AC11); the filters are
+ * the same WHERE body `getBooks` uses, qualified for the join, so a search may
+ * also be narrowed by the library's own filters.
+ *
+ * With no `sort` the order stays FTS `rank` — relevance is what a search is for
+ * — with the book's `id` appended as a tiebreak. `searchBooks` and this
+ * function share the one statement below, so the app's own unpaged search gets
+ * that tiebreak too: a refinement of ties only (SQLite previously left them to
+ * happenstance), and the thing that makes a *page* walk over equal ranks unable
+ * to serve a book twice or not at all — the failure `orderClause` documents for
+ * the list.
+ */
+export function searchBooksPage(
+  query: string,
+  page: BookPageRequest,
+  filters?: BookFilters
+): BookPage {
+  return {
+    books: searchRows(query, filters?.sort, filters, page).map(rowToBook),
+    total: countSearchRows(query, filters)
+  }
+}
+
+/** The terms of a query, quoted and prefix-matched — the one parser both paths use. */
+function searchMatch(query: string): string {
+  return query
     .split(/\s+/)
     .map((t) => t.replace(/["*]/g, ''))
     .filter(Boolean)
-  if (!terms.length) return getBooks(sort ? { sort } : undefined)
-  // Quote each term and add prefix matching; AND semantics across terms
-  const match = terms.map((t) => `"${t}"*`).join(' ')
-  const rows = getDb()
+    .map((t) => `"${t}"*`)
+    .join(' ')
+}
+
+function searchRows(
+  query: string,
+  sort: BookSort | undefined,
+  filters: BookFilters | undefined,
+  page: BookPageRequest | null
+): BookRow[] {
+  const match = searchMatch(query)
+  // No terms is not an empty search — it is the library, exactly as the app's
+  // own `searchBooks` answers it (a query of only quotes or spaces).
+  if (!match) return selectBooks(filters ? { ...filters, sort } : sort ? { sort } : undefined, page)
+
+  const where = bookWhere(filters, 'books.')
+  const paging = page ? ' LIMIT ? OFFSET ?' : ''
+  // `rank` carries no uniqueness key of its own, so a paged rank walk needs the
+  // same `id` tiebreak a sorted one has — appended only when there is no sort,
+  // because reverse-engineering `orderClause` would be the second ordering rule
+  // this file refuses to grow (invariant 4).
+  const order = sort ? orderClause(sort, 'books.') : 'rank, books.id ASC'
+  const params = page ? [match, ...where.params, page.limit, page.offset] : [match, ...where.params]
+
+  return getDb()
     .prepare(
       `SELECT books.* FROM books_fts
        JOIN books ON books.rowid = books_fts.rowid
-       WHERE books_fts MATCH ?
-       ORDER BY ${sort ? orderClause(sort, 'books.') : 'rank'}`
+       WHERE books_fts MATCH ?${where.conditions.length ? ` AND ${where.conditions.join(' AND ')}` : ''}
+       ORDER BY ${order}${paging}`
     )
-    .all(match) as BookRow[]
-  return rows.map(rowToBook)
+    .all(...params) as BookRow[]
+}
+
+/** How many rows the same search matches, over the same join and WHERE body. */
+function countSearchRows(query: string, filters?: BookFilters): number {
+  const match = searchMatch(query)
+  if (!match) return countBooks(filters)
+
+  const where = bookWhere(filters, 'books.')
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS n FROM books_fts
+       JOIN books ON books.rowid = books_fts.rowid
+       WHERE books_fts MATCH ?${where.conditions.length ? ` AND ${where.conditions.join(' AND ')}` : ''}`
+    )
+    .get(match, ...where.params) as { n: number }
+  return row.n
 }
 
 export function insertBook(book: Book): void {
@@ -429,8 +606,7 @@ export function deleteBook(id: string): void {
 
 export function findByIsbn13(isbn13: string): Book | null {
   const row = getDb().prepare('SELECT * FROM books WHERE isbn_13 = ?').get(isbn13) as
-    | BookRow
-    | undefined
+    BookRow | undefined
   return row ? rowToBook(row) : null
 }
 
@@ -455,9 +631,7 @@ export function findByTitleAuthor(title: string, author: string | null): Book | 
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .trim()
-  const rows = getDb()
-    .prepare('SELECT * FROM books WHERE title <> \'\' ')
-    .all() as BookRow[]
+  const rows = getDb().prepare("SELECT * FROM books WHERE title <> '' ").all() as BookRow[]
   const nt = norm(title)
   const na = author ? norm(author) : null
   for (const r of rows) {
@@ -481,12 +655,8 @@ export function replaceAllBooks(books: Book[]): void {
     d.transaction(() => {
       d.prepare('DELETE FROM books').run()
       for (const b of books) insertBook(b)
-      d.prepare(
-        'DELETE FROM metadata_conflicts WHERE book_id NOT IN (SELECT id FROM books)'
-      ).run()
-      d.prepare(
-        'DELETE FROM book_collections WHERE book_id NOT IN (SELECT id FROM books)'
-      ).run()
+      d.prepare('DELETE FROM metadata_conflicts WHERE book_id NOT IN (SELECT id FROM books)').run()
+      d.prepare('DELETE FROM book_collections WHERE book_id NOT IN (SELECT id FROM books)').run()
     })()
   } finally {
     d.pragma('foreign_keys = ON')
@@ -514,11 +684,18 @@ export function getFacets(): LibraryFacets {
   const formats = d
     .prepare(
       `SELECT json_each.value AS value, COUNT(*) AS count FROM books, json_each(books.formats)
-       WHERE books.formats IS NOT NULL GROUP BY json_each.value ORDER BY count DESC`
+       WHERE books.formats IS NOT NULL GROUP BY json_each.value ORDER BY count DESC, value`
     )
     .all() as { value: BookFormat; count: number }[]
   const readStatus = d
-    .prepare(`SELECT read_status AS value, COUNT(*) AS count FROM books GROUP BY read_status`)
+    .prepare(
+      // The fallback is READ_STATUS_FALLBACK, `rowToBook`'s own rule in SQL, so a row
+      // the app shows as unread is counted in that bucket; the tiebreak is what makes
+      // "ordered by count descending" true of this list too, as the document says of
+      // all five
+      `SELECT COALESCE(read_status, '${READ_STATUS_FALLBACK}') AS value, COUNT(*) AS count FROM books
+       GROUP BY COALESCE(read_status, '${READ_STATUS_FALLBACK}') ORDER BY count DESC, value`
+    )
     .all() as { value: ReadStatus; count: number }[]
   return { authors, series, tags, formats, readStatus }
 }
@@ -559,13 +736,19 @@ export function getUnresolvedConflictCount(): number {
   return row.n
 }
 
-export function insertConflict(bookId: string, field: string, candidates: ConflictCandidate[]): void {
+export function insertConflict(
+  bookId: string,
+  field: string,
+  candidates: ConflictCandidate[]
+): void {
   getDb()
     .prepare('INSERT INTO metadata_conflicts (book_id, field, candidates) VALUES (?, ?, ?)')
     .run(bookId, field, JSON.stringify(candidates))
 }
 
-export function getConflict(id: number): { bookId: string; field: string; candidates: ConflictCandidate[] } | null {
+export function getConflict(
+  id: number
+): { bookId: string; field: string; candidates: ConflictCandidate[] } | null {
   const row = getDb()
     .prepare('SELECT book_id, field, candidates FROM metadata_conflicts WHERE id = ?')
     .get(id) as { book_id: string; field: string; candidates: string } | undefined

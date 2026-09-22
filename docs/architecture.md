@@ -11,17 +11,17 @@
 
 ## Stack
 
-| Layer            | Technology                        |
-|------------------|-----------------------------------|
-| Shell            | Electron (latest LTS)             |
-| UI               | React + TypeScript                |
-| Styling          | Tailwind CSS                      |
-| State            | Zustand                           |
-| Main Process     | Node.js (Electron)                |
-| Local Database   | SQLite via better-sqlite3         |
-| Metadata/Convert | Python 3.11+ sidecar              |
-| Format Conversion| Calibre CLI (ebook-convert)       |
-| IPC              | Electron contextBridge + ipcMain  |
+| Layer             | Technology                       |
+| ----------------- | -------------------------------- |
+| Shell             | Electron (latest LTS)            |
+| UI                | React + TypeScript               |
+| Styling           | Tailwind CSS                     |
+| State             | Zustand                          |
+| Main Process      | Node.js (Electron)               |
+| Local Database    | SQLite via better-sqlite3        |
+| Metadata/Convert  | Python 3.11+ sidecar             |
+| Format Conversion | Calibre CLI (ebook-convert)      |
+| IPC               | Electron contextBridge + ipcMain |
 
 ---
 
@@ -64,6 +64,7 @@ Musaeum/
 ├── docs/
 │   ├── architecture.md           # process model, layout, perf targets
 │   ├── data-contracts.md         # metadata.json, SQLite, sidecar RPC, preload API
+│   ├── rest-api.md               # THE REST contract: routes, payloads, statuses, methods
 │   ├── invariants/               # one file per subsystem — rules + reasoning
 │   └── superpowers/              # specs/ and plans/, one per feature
 ├── package.json / tsconfig*.json / electron.vite.config.ts
@@ -79,6 +80,7 @@ Musaeum/
 │                                 # its VENDORED.md (the npm package is a
 │                                 # stale third-party republish)
 ├── scripts/
+│   ├── api-smoke.sh              # every REST route against a live app: PASS/FAIL per check
 │   ├── dev-app-branding.mjs      # postinstall: name + icon the dev Electron bundle
 │   └── make-icons.mjs            # build/icon.png → build/icon.icns (npm run icons)
 │
@@ -115,7 +117,11 @@ Musaeum/
 │   │   │   ├── library-sync.ts   # catalog ⇄ SQLite cache (adopt, refresh, rebuild)
 │   │   │   ├── settings.ts       # app_config reads/writes + validation
 │   │   │   ├── menu.ts           # native application menu (⌘, ⌘1 ⌘2)
-│   │   │   ├── book-bytes.ts     # musaeum://book path resolution + containment
+│   │   │   ├── api/              # the REST surface's logic, none of it in the socket
+│   │   │   │   ├── auth.ts       #   bearer check + the rejection record
+│   │   │   │   ├── bind.ts       #   where the API may listen (tailnet, or named exactly)
+│   │   │   │   └── shape.ts      #   THE wire's payloads — pure, one place (D10)
+│   │   │   ├── book-bytes.ts     # book + cover path resolution, containment, byte ranges
 │   │   │   ├── reading-state.ts  # tiered position writes + quit flush
 │   │   │   ├── quit.ts           # before-quit handshake (flush, then teardown)
 │   │   │   ├── apple-books.ts    # open -a Books
@@ -185,15 +191,15 @@ Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*` (all t
 
 ## Performance Targets
 
-| Metric                              | Target       |
-|-------------------------------------|--------------|
-| Library load (7000 books)           | < 2 seconds  |
-| Search response time                | < 100ms      |
-| App cold start                      | < 3 seconds  |
-| Metadata hydration per book         | < 5 seconds  |
-| NAS reconnection detection          | < 5 seconds  |
-| Format conversion (epub → mobi)     | < 30 seconds |
-| Memory footprint (typical use)      | < 500MB      |
+| Metric                          | Target       |
+| ------------------------------- | ------------ |
+| Library load (7000 books)       | < 2 seconds  |
+| Search response time            | < 100ms      |
+| App cold start                  | < 3 seconds  |
+| Metadata hydration per book     | < 5 seconds  |
+| NAS reconnection detection      | < 5 seconds  |
+| Format conversion (epub → mobi) | < 30 seconds |
+| Memory footprint (typical use)  | < 500MB      |
 
 Both library views are virtualized (see `docs/invariants/library-views.md`); measured against a synthetic 7000-book library at ~1000 DOM nodes, 32MB heap, 115ms `getBooks`, 18ms search.
 
@@ -214,7 +220,7 @@ In place as of Phase 1:
 
 1. SQLite schema contains no UI-coupled fields
 2. `metadata.json` is the canonical data contract (documented above)
-3. REST API module stubbed at `electron/main/api/rest.ts` — disabled via `app_config` flag `rest_api_enabled = false`
+3. REST API is real at `electron/main/api/rest.ts` — six read routes behind a generated bearer token, bound to the tailnet address, still disabled by default via the `app_config` flag `rest_api_enabled = false`; the client contract is `docs/rest-api.md`
 4. All book file paths stored as relative paths from library root
 5. Covers at two resolutions: `cover_thumb.jpg` (200px), `cover_full.jpg` (600px)
 6. All data access goes through the service layer (IPC handlers contain no business logic) so extraction to a standalone API server stays cheap
