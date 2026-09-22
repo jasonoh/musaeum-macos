@@ -230,7 +230,11 @@ app.whenReady().then(() => {
   bindToNAS()
   if (nas.isOnline()) startWatcher()
   startDeviceDetection()
-  startRestApiIfEnabled()
+  // The JSON API's socket (slice 1a of the iOS companion). Non-fatal by
+  // construction: a taken port, an address that may not be bound or a missing
+  // token is recorded on `getRestApiStatus()` and logged, never thrown, so a
+  // failure here can never keep the window from opening (invariant 12).
+  void startRestApiIfEnabled()
 
   app.on('activate', () => {
     // **The count is not the question.** A resolver window is created lazily on

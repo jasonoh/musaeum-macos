@@ -87,7 +87,7 @@ Musaeum/
 │   │   ├── index.ts              # app lifecycle, window, musaeum:// protocol
 │   │   ├── env.d.ts              # *.sql?raw / *.yaml?raw module declarations
 │   │   ├── api/
-│   │   │   └── rest.ts           # REST stub — disabled via rest_api_enabled
+│   │   │   └── rest.ts           # the JSON API's node:http socket (thin) — off unless rest_api_enabled
 │   │   ├── ipc/
 │   │   │   ├── handle.ts         # IPCResult wrapper — all handlers use this
 │   │   │   ├── library.ts        # book CRUD + import handlers

@@ -9,6 +9,20 @@
  */
 export interface AppSettings {
   libraryRoot: string | null
+  /**
+   * The API surface (slice 1a of the iOS companion,
+   * `docs/superpowers/specs/2026-09-22-ios-companion-design.md` D13). All four
+   * are `app_config` strings because the table has one column type: the flag is
+   * `'true'`/`'false'` rather than a boolean, the port is validated as an
+   * integer on write, the token is *generated* on first enable (never typed by
+   * hand) and the bind is blank when the address should be resolved from this
+   * machine's interfaces. A blank is "not set", which for the flag, the port and
+   * the bind all mean the compiled-in behaviour.
+   */
+  restApiEnabled: string | null
+  restApiPort: string | null
+  restApiToken: string | null
+  restApiBind: string | null
   smbUrl: string | null
   aiBaseUrl: string | null
   aiModel: string | null
