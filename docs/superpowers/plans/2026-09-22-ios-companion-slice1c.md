@@ -8,20 +8,20 @@
 
 `PUT /api/books/{id}/reading` — body `{ percent, at? }` — answered `{ applied: true|false }`.
 
-| Criterion | The rule, and the decider that carries it |
-|---|---|
-| **20** | `percent: 0.6` writes `reading_percent = 0.6`, moves `reading_updated_at`, and leaves `reading_position` **null** (D5). The phone writes the *fraction*; the CFI stays the Mac's. Unit case reading the row back. |
-| **21** | A report whose `at` is **older** than the row's clock is refused: `applied: false`, **and the row is byte-identical afterwards**. The second half is the guard — "nothing was written when nothing should have been". |
-| **22** | `read_status` advances exactly as the Mac's own writes do — `unread → reading`, `≥98% → read`, **never a demotion** — asserted for parity against `nextReadStatus` itself, including a `read` book reported at 5%. |
-| **23** | With the NAS offline a report still lands in SQLite and is parked for the next flush (`nas.isOnline()` false; assert the row **and** the pending set). Invariant 12's non-fatal discipline, unchanged. |
-| **24** | An unknown book id answers 404 and writes nothing. |
-| **25** | **On the real engine:** a row with `position: null, percent: 0.42`, opened on the Mac, lands at ~42% of the book, not at page one. **Only a CDP probe in the running app can decide this** — it is the spec's first "Not verified" reading, it is D5's whole premise, and no unit test can carry it. |
-| **26** | Round trip: after the phone's write, a **page turn on the Mac writes a fresh CFI** into `reading_position` while `reading_percent` moves with it. Same probe, plus the database read. |
+| Criterion | The rule, and the decider that carries it                                                                                                                                                                                                                                                            |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **20**    | `percent: 0.6` writes `reading_percent = 0.6`, moves `reading_updated_at`, and leaves `reading_position` **null** (D5). The phone writes the _fraction_; the CFI stays the Mac's. Unit case reading the row back.                                                                                    |
+| **21**    | A report whose `at` is **older** than the row's clock is refused: `applied: false`, **and the row is byte-identical afterwards**. The second half is the guard — "nothing was written when nothing should have been".                                                                                |
+| **22**    | `read_status` advances exactly as the Mac's own writes do — `unread → reading`, `≥98% → read`, **never a demotion** — asserted for parity against `nextReadStatus` itself, including a `read` book reported at 5%.                                                                                   |
+| **23**    | With the NAS offline a report still lands in SQLite and is parked for the next flush (`nas.isOnline()` false; assert the row **and** the pending set). Invariant 12's non-fatal discipline, unchanged.                                                                                               |
+| **24**    | An unknown book id answers 404 and writes nothing.                                                                                                                                                                                                                                                   |
+| **25**    | **On the real engine:** a row with `position: null, percent: 0.42`, opened on the Mac, lands at ~42% of the book, not at page one. **Only a CDP probe in the running app can decide this** — it is the spec's first "Not verified" reading, it is D5's whole premise, and no unit test can carry it. |
+| **26**    | Round trip: after the phone's write, a **page turn on the Mac writes a fresh CFI** into `reading_position` while `reading_percent` moves with it. Same probe, plus the database read.                                                                                                                |
 
 ## Readings already settled — do not re-derive these
 
 1. **The CFI never leaves the Mac and the phone never needs it.** `docs/invariants/reader.md:72` declares `position` opaque; `src/types/book.types.ts:55-61` calls `percent` "the portable fallback"; `services/reading-state.ts:87-88` already writes **both** on every Mac-side write.
-2. **The Mac already resumes from a fraction, unmodified.** `src/components/reader/ReaderEngine.tsx:176-184` falls through `goTo` → `goToFraction` when a position is null or unresolvable, with the `try/catch` at `:223-230` for books with no section-size index. So the phone writes a fraction, the row's CFI is blanked so the newer coordinate wins, and the Mac resumes there **with no renderer change and no locator⇄CFI translation layer.** AC25/26 are what turn that reading into evidence — the fall-through is a `catch`-guarded path, so the *frequency* of the throw is exactly what the probe measures.
+2. **The Mac already resumes from a fraction, unmodified.** `src/components/reader/ReaderEngine.tsx:176-184` falls through `goTo` → `goToFraction` when a position is null or unresolvable, with the `try/catch` at `:223-230` for books with no section-size index. So the phone writes a fraction, the row's CFI is blanked so the newer coordinate wins, and the Mac resumes there **with no renderer change and no locator⇄CFI translation layer.** AC25/26 are what turn that reading into evidence — the fall-through is a `catch`-guarded path, so the _frequency_ of the throw is exactly what the probe measures.
 3. **The write goes through `services/reading-state.ts`'s `saveProgress` verbatim.** Not a second writer: a route that set the columns itself would be the second home for the percent/status rules, which is what invariant 5 and AC22 exist to prevent.
 4. **`nextReadStatus` is the status rule**, the same function the Mac's own writes call — hence AC22's parity assertion rather than a re-typed threshold table.
 5. **`at` is the client's clock, and it must lose to a newer local write** (AC21). A phone whose clock is behind must not rewind progress the Mac has already advanced.
@@ -47,15 +47,47 @@ Why here: 1c's `PUT` needs the same 400 discipline (a malformed `percent`, a bad
 
 ## Not 1c's — slice 2's, by design
 
-`docs/data-contracts.md:152` ("All but `rest_api_enabled` are editable in Settings") and `docs/invariants/settings-and-editing.md:22` both change meaning now that four `rest_api_*` keys exist; the `SettingsModal` row is AC27–30; and the server captures its token, port and bind **by closure at creation**, so a save that *changes* them needs a listener restart — unreachable while the flag is off, and first reachable exactly when the toggle is used to change rather than enable.
+`docs/data-contracts.md:152` ("All but `rest_api_enabled` are editable in Settings") and `docs/invariants/settings-and-editing.md:22` both change meaning now that four `rest_api_*` keys exist; the `SettingsModal` row is AC27–30; and the server captures its token, port and bind **by closure at creation**, so a save that _changes_ them needs a listener restart — unreachable while the flag is off, and first reachable exactly when the toggle is used to change rather than enable.
 
 ## Start here
 
 ```bash
-git log --oneline -3        # 1b is the commit on top of 9c1db15; this spec/annex line lands with it
+git log --oneline -3        # 1b is 707313b (the read surface), 1a is 2477944; this annex landed in 8f86c52
 npm run typecheck && npm run lint       # both 0
 npm test                    # 52 files / 1198 tests
 sidecar/.venv/bin/python -m pytest -q sidecar/tests   # 113 passed
 ```
 
 **Then read, in this order:** AC20–26 above, then `services/reading-state.ts` (the writer this route must reuse), then `ReaderEngine.tsx:160-240` (the resume path AC25/26 measure), then `rest.ts`'s switch — and start from `git log` rather than from any conversation, because everything 1a and 1b did is in the tree and not in the chat.
+
+---
+
+## Results — what the build, the probe and the review settled (2026-09-22)
+
+**AC25/AC26, measured on the real engine** (isolated profile, a 1.6 MB EPUB copied read-only out of the share, a row forced to never-read, CDP):
+
+| Reading                                                                | Value                                                                                                                            |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Where the Mac landed (AC25)                                            | **0.4226639399398549**, section 15/35, `epubcfi(/6/32!/4,/174,/208/1:1037)` — against a phone report of `0.42`                   |
+| The **pre-fix** build, same harness, same book                         | **0.0009134** — page one. This is the defect **D17** fixes                                                                       |
+| After a page turn (AC26)                                               | `reading_position` = a **fresh** CFI (`epubcfi(/6/32!/4,/210,/226/1:789)`) with `reading_percent` = 0.42890… moving alongside it |
+| **No broadcast** in the build: the reader's own read alone             | 0.4226639399398549 — sufficient by itself                                                                                        |
+| The reader mutated back to trusting the list: the **broadcast alone**  | 0.4226639399398549, ~300 ms later — also sufficient                                                                              |
+| A stale `at` over the wire                                             | `{"applied":false}` with the row's sha256 identical either side                                                                  |
+| `percent: 1.5` / `at: "yesterday"` / a non-JSON body / an unknown book | 400 / 400 / 400 / 404, and nothing written                                                                                       |
+
+**What the review found, and what each finding became.** Verdict: no blocking _code_ finding; its blocking item was the record — AC25/26 had no decider in the tree, and this section is the answer to that. Its five code findings, all fixed in this slice:
+
+1. **The queued-report ordering → D16.** A real bug: the route compares the client's `at` against a row stamped by the server's clock, so a FIFO flush applied only its first report and left the **oldest** position on disk. Fixed in the service (stamp with `report.at`), with a two-report case that fails without it.
+2. **No frequency obligation in the contract.** Every report takes the tier that writes `metadata.json` and rewrites `catalog.json`; the document now says report a session, not a page turn.
+3. **`metadata.json`'s half of "a foreign title survives".** The claim is now narrowed to `catalog.json` (which is merged and decided) with the `metadata.json` gap named and recorded in `tasks.md` — pre-existing on the Mac's own close.
+4. **The contract's 400-before-404 ordering had no decider.** A case now sends a malformed body to an unknown id.
+5. **A `Content-Length` lie was never answered** — the review measured 8 s with no response and no close. `readJsonBody` now carries `BODY_TIMEOUT_MS` (with a `ServerOptions` seam so a case decides it in 150 ms), and the docblock that claimed the socket's own timeouts bounded it is corrected in place rather than deleted.
+
+**Residuals, named rather than fixed.** The body timeout answers the request, and the leftover bytes are the socket's business; two pure-over-a-`URL` decisions remain in the socket (`size` must be `thumb`/`full`; `format` present); the next two seams are named for a later slice (`readJsonBody` + `MAX_BODY_BYTES` → `services/api/body.ts`, which would make finding 5 socketless, and `describeBindError`'s status→word table); the wedged-mount slot and the smoke script's inability to hash a tail are unchanged from 1b.
+
+**Three lessons the probe taught by getting them wrong first**, worth carrying into every later run:
+
+- **Kill the app before resetting its fixture.** A SIGTERM'd instance's final flush wrote the row back twice, and both runs silently proved nothing. The reset belongs _inside_ the launch command, after the old process is gone.
+- **Reset the fixture everywhere the state is written — `catalog.json` included.** `metadata.json` → `catalog.json` → SQLite at load is three writers; clearing the file and the row still left the catalog re-seeding 0.4289 at startup.
+- **A mutation test needs a fixture whose stale value differs from the fresh one.** The first mutant run proved nothing because the stale 0.4226 and the fresh 0.42 → 0.4226 are the same number.
