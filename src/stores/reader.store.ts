@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { AiChunkEvent, AiDoneEvent, AiErrorEvent } from '@shared/ai.types'
 import type { Book, BookFormat } from '@shared/book.types'
-import { readableFormat } from '@shared/book.types'
+import { primaryFormat, readableFormat } from '@shared/book.types'
 import type { AskRung } from '@/lib/ask-context'
 import {
   appendProbeDelta,
@@ -300,7 +300,9 @@ export const useReaderStore = create<ReaderState>()(
       openBook: (book) => {
         const format = readableFormat(book)
         if (!format) {
-          const fallback = book.formats[0]
+          // By preference, not by array position (invariant 3): the array holds
+          // whatever order the writer left, so `formats[0]` is not a preference
+          const fallback = primaryFormat(book)
           if (fallback) void window.Musaeum.files.openBookFile(book.id, fallback).catch(() => {})
           return
         }

@@ -2,6 +2,7 @@ import { shell } from 'electron'
 import { promises as fs } from 'fs'
 import { extname, join } from 'path'
 import type { BookFormat } from '@shared/book.types'
+import { primaryFormat } from '@shared/book.types'
 import * as db from './db'
 import * as nas from './nas-manager'
 
@@ -39,7 +40,7 @@ async function formatFile(dir: string, format: BookFormat): Promise<string | nul
 export async function revealBook(bookId: string, format?: BookFormat): Promise<void> {
   const dir = await bookDir(bookId)
   const book = db.getBook(bookId)!
-  const preferred = format ?? book.formats[0]
+  const preferred = format ?? primaryFormat(book)
   const file = preferred ? await formatFile(dir, preferred) : null
 
   if (file) {
