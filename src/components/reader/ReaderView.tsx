@@ -52,6 +52,7 @@ export function ReaderView() {
   const setPercent = useReaderStore((s) => s.setPercent)
   const setSection = useReaderStore((s) => s.setSection)
   const setSectionLabel = useReaderStore((s) => s.setSectionLabel)
+  const setSectionOffset = useReaderStore((s) => s.setSectionOffset)
   const setSelection = useReaderStore((s) => s.setSelection)
   const toggleToc = useReaderStore((s) => s.toggleToc)
   const toggleAsk = useReaderStore((s) => s.toggleAsk)
@@ -147,16 +148,23 @@ export function ReaderView() {
   )
 
   const onRelocate = useCallback(
-    (detail: { position: string | null; percent: number; label: string | null }) => {
+    (detail: {
+      position: string | null
+      percent: number
+      label: string | null
+      sectionOffset: number | null
+    }) => {
       // Only the two fields the report carries: `latest` is spread straight
-      // into `saveProgress`, so anything else here would ride along.
+      // into `saveProgress`, so anything else here would ride along — the
+      // offset is a reader-session fact and has no business in `metadata.json`.
       latest.current = { position: detail.position, percent: detail.percent }
       setPercent(detail.percent)
       setSectionLabel(detail.label)
+      setSectionOffset(detail.sectionOffset)
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => flush(false), REPORT_DEBOUNCE_MS)
     },
-    [flush, setPercent, setSectionLabel]
+    [flush, setPercent, setSectionLabel, setSectionOffset]
   )
 
   const closeReader = useCallback(() => {

@@ -244,6 +244,51 @@ describe('the ask stream', () => {
   })
 })
 
+describe('the passage offset', () => {
+  const get = () => useReaderStore.getState()
+
+  beforeEach(() => {
+    get().close()
+  })
+
+  /**
+   * The window is anchored on this, so it is the one field of the pointer that
+   * must never survive the section it was measured against: 7,805 means "the
+   * reader's page" in the Introduction and something else entirely in Chapter 4.
+   */
+  it('keeps the offset while the section stands, and drops it when one replaces it', () => {
+    get().setSection({ index: 6, text: 'Introduction' })
+    get().setSectionOffset(7805)
+    expect(get().sectionOffset).toBe(7805)
+
+    // A re-report of the same section (the `load` listener fires per render) is
+    // not a new section.
+    get().setSection({ index: 6, text: 'Introduction' })
+    expect(get().sectionOffset).toBe(7805)
+
+    get().setSection({ index: 9, text: 'Chapter 1' })
+    expect(get().sectionOffset).toBeNull()
+  })
+
+  it('goes with the book, and comes back null for the next one', () => {
+    get().openBook(makeBook('b1'))
+    get().setSection({ index: 6, text: 'Introduction' })
+    get().setSectionOffset(7805)
+
+    get().openBook(makeBook('b2'))
+    expect(get().sectionOffset).toBeNull()
+  })
+
+  it('does not notify for the same offset re-reported', () => {
+    const listener = vi.fn()
+    get().setSectionOffset(120)
+    const unsubscribe = useReaderStore.subscribe(listener)
+    get().setSectionOffset(120)
+    expect(listener).not.toHaveBeenCalled()
+    unsubscribe()
+  })
+})
+
 describe('the reader’s one side slot (D4)', () => {
   const get = () => useReaderStore.getState()
   const occupants = () => [get().tocOpen, get().searchOpen, get().askOpen]

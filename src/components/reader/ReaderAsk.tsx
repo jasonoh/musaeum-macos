@@ -62,6 +62,7 @@ export function ReaderAsk({ onNavigate }: { onNavigate: (href: string) => void }
   const percent = useReaderStore((s) => s.percent)
   const sectionLabel = useReaderStore((s) => s.sectionLabel)
   const section = useReaderStore((s) => s.section)
+  const sectionOffset = useReaderStore((s) => s.sectionOffset)
   const selection = useReaderStore((s) => s.selection)
   const verdict = useReaderStore((s) => s.askVerdict)
   const rung = useReaderStore((s) => s.askRung)
@@ -148,6 +149,7 @@ export function ReaderAsk({ onNavigate }: { onNavigate: (href: string) => void }
       fraction: percent,
       question: text,
       sectionText: section?.text ?? null,
+      sectionOffset,
       selection
     })
     inFlight.current.add(requestId)
@@ -165,6 +167,7 @@ export function ReaderAsk({ onNavigate }: { onNavigate: (href: string) => void }
     sectionLabel,
     percent,
     section,
+    sectionOffset,
     selection,
     beginAsk,
     aiError
@@ -185,6 +188,7 @@ export function ReaderAsk({ onNavigate }: { onNavigate: (href: string) => void }
       fraction: percent,
       question: question.trim() || QUESTION_PLACEHOLDER,
       sectionText: section?.text ?? null,
+      sectionOffset,
       selection
     })
     return describeEgress({
@@ -192,7 +196,7 @@ export function ReaderAsk({ onNavigate }: { onNavigate: (href: string) => void }
       model: endpoint.status.model.value,
       payload
     })
-  }, [book, endpoint, rung, sectionLabel, percent, question, section, selection])
+  }, [book, endpoint, rung, sectionLabel, percent, question, section, sectionOffset, selection])
 
   /**
    * The probe is a send too, so it gets a line of its own while it is out. The
