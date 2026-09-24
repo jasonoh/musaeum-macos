@@ -184,7 +184,16 @@ export interface MusaeumAPI {
     getStatus(): Promise<NASStatus>
     reconnect(): Promise<boolean>
     setLibraryRoot(path: string): Promise<void>
-    chooseLibraryRoot(): Promise<string | null>
+    /**
+     * Choose a library folder, and adopt what is in it; null when cancelled.
+     *
+     * `locateAt` is the *Locate* path (D6): a library whose folder went missing
+     * recovers through this same picker, opened where the folder used to be. The
+     * hint is resolved in the main process to its nearest **surviving ancestor**
+     * — `showOpenDialog` ignores a `defaultPath` that does not exist, so a hint
+     * that has vanished is worse than none.
+     */
+    chooseLibraryRoot(locateAt?: string): Promise<string | null>
   }
 
   settings: {

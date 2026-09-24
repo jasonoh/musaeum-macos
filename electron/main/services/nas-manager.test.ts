@@ -149,6 +149,10 @@ describe('checkHealth', () => {
   it('still reports a missing share as a retryable failure, and still mounts it (AC3)', async () => {
     setConfig('library_root', away)
     setConfig(LIBRARY_KIND_KEY, 'network')
+    // **The share the user named.** Slice 2 removed the hostname this used to
+    // fall back on (reading 13: `smb://ohnas`, the owner's own server, compiled
+    // into a shipped default), so the case configures one.
+    setConfig('smb_url', 'smb://server/books')
     shim.root = away
 
     vi.useFakeTimers()
@@ -165,8 +169,66 @@ describe('checkHealth', () => {
     await vi.waitFor(() => expect(nas.getStatus().state).toBe('connected'), { timeout: 5_000 })
 
     expect(shim.opened.length).toBeGreaterThan(0)
-    // The compiled-in default, because this case leaves `smb_url` unset — reading 13
-    expect(shim.opened[0]).toMatch(/^open -g 'smb:\/\/\S+'$/)
+    expect(shim.opened[0]).toBe("open -g 'smb://server/books'")
+  })
+
+  it('mounts nothing at all for a share nobody named (D5)', async () => {
+    // Through the picker first: the ladder is module state and this case needs
+    // the first rung, which is what `setLibraryRoot` resets it to
+    await nas.setLibraryRoot(away)
+    setConfig(LIBRARY_KIND_KEY, 'network')
+    shim.root = away
+    shim.appears = true // a mount that *would* appear must still not be asked for
+
+    const seen: string[] = []
+    nas.onStatusChange((status) => seen.push(status.state))
+    const attempts = (): number => seen.filter((s) => s === 'reconnecting').length
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    expect((await nas.checkHealth()).state).toBe('disconnected')
+
+    // The ladder still runs — a share does come back, and the poll is what sees
+    // it — so the criterion is that the attempts happen and shell *nothing*.
+    const deadline = Date.now() + 10_000
+    while (attempts() < 2 && Date.now() < deadline) {
+      await vi.advanceTimersByTimeAsync(5_000)
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+
+    expect(attempts()).toBeGreaterThanOrEqual(2)
+    expect(shim.opened).toEqual([])
+
+    // Let the attempt that is in flight land, so what is asserted is where an
+    // attempt *ends*. That landing is the reading-11 claim: an attempt that
+    // mounts nothing slips back out of `reconnecting` instead of pinning there,
+    // which is where the old ladder parked itself forever.
+    for (let i = 0; i < 50 && nas.getStatus().state === 'reconnecting'; i++) {
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    expect(nas.getStatus().state).toBe('disconnected')
+
+    nas.stopHealthChecks()
+  })
+
+  it('announces the kind when it moves, though the state does not (AC10)', async () => {
+    // The state is not the only fact a surface renders, and the kind moves on its
+    // own: a re-pick that swaps a folder for a share keeps the state at
+    // `connected`, so a broadcast keyed on the state alone left Settings rendering
+    // the old kind — and hiding the SMB row — after the stored kind had already
+    // moved. Found on the probe 2026-09-24 by the criterion that reads Settings
+    // with `library_kind: 'network'`.
+    setConfig('library_root', local)
+    setConfig(LIBRARY_KIND_KEY, 'local')
+    const seen: string[] = []
+    nas.onStatusChange((status) => seen.push(`${status.state}/${status.kind}`))
+
+    expect((await nas.checkHealth()).kind).toBe('local')
+
+    // Out of band, so the state is untouched and only the kind moves
+    setConfig(LIBRARY_KIND_KEY, 'network')
+    expect((await nas.checkHealth()).kind).toBe('network')
+
+    expect(seen).toEqual(['connected/local', 'connected/network'])
   })
 
   it('keeps reporting the stored kind on a later launch, even where derivation disagrees (AC6)', async () => {
@@ -241,6 +303,52 @@ describe('reconnect', () => {
 
     // Disarmed here as well as in `afterEach`: the ladder is module state, and a
     // case that leaves it armed hands a live chain to the next one
+    nas.stopHealthChecks()
+  })
+})
+
+/**
+ * D4: the words and the one control a state offers ride on the status the
+ * renderer already receives.
+ *
+ * The sentences themselves are decided in `storage-copy.test.ts`, one per
+ * state and kind; what is decided *here* is the wiring the renderer depends on
+ * — that `getStatus()` composes from the facts it just reported, so the copy
+ * cannot describe a state the status does not have.
+ */
+describe('the composed copy', () => {
+  it('describes a missing folder, and offers the picker rather than a retry', async () => {
+    setConfig('library_root', local)
+    setConfig(LIBRARY_KIND_KEY, 'local')
+    rmSync(local, { recursive: true, force: true })
+
+    const status = await nas.checkHealth()
+
+    expect(status.copy).toEqual({
+      message: 'Library folder missing — browsing from cache, editing disabled.',
+      label: 'Folder missing',
+      recovery: 'locate'
+    })
+    // Reading 12, inverted: no sentence reaches a user carrying a server's name
+    expect(status.copy.message).not.toMatch(/NAS|smb/i)
+  })
+
+  it('carries the retry clause a dropped share is owed, and a retry to match', async () => {
+    // Through the picker first, so the ladder starts at its first rung and the
+    // sentence below is a fixture rather than a leftover
+    await nas.setLibraryRoot(away)
+    setConfig(LIBRARY_KIND_KEY, 'network')
+    shim.root = away
+
+    vi.useFakeTimers()
+    const status = await nas.checkHealth()
+
+    expect(status.copy).toEqual({
+      message: 'Library offline — browsing from cache, editing disabled. Retrying in 5s.',
+      label: 'Offline',
+      recovery: 'retry'
+    })
+
     nas.stopHealthChecks()
   })
 })

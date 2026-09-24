@@ -1,5 +1,5 @@
-import { existsSync, mkdtempSync, rmSync } from 'fs'
-import { tmpdir } from 'os'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'fs'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -13,6 +13,7 @@ import {
   resolveStorageKind,
   statfsTypeOf,
   survivingAncestor,
+  syncClientFor,
   writeLibraryKind
 } from './storage-kind'
 
@@ -37,6 +38,9 @@ const CAPTURED_TABLE = [
 
 /** The mounted share on this machine, where one is mounted. */
 const SHARE = '/Volumes/books'
+
+/** macOS's own File Provider directory, where a machine has one. */
+const CLOUD_STORAGE = join(homedir(), 'Library', 'CloudStorage')
 
 let scratch: string
 
@@ -189,4 +193,102 @@ describe('survivingAncestor', () => {
   it('skips a file, because the picker wants a directory', async () => {
     expect(await survivingAncestor('/etc/hosts')).toBe('/etc')
   })
+})
+
+/**
+ * D7: **a cloud-synced root is named, not refused.** Which clients are
+ * recognised, and what an unrecognised one is called.
+ *
+ * The home directory is a **parameter** rather than `homedir()` inside the
+ * function, so the table is decided without the machine's own layout — and the
+ * two `runIf` cases at the end are what prove the fixture still describes a
+ * real machine.
+ */
+describe('syncClientFor', () => {
+  const home = '/Users/example'
+
+  it('names iCloud Drive for anything under Mobile Documents', () => {
+    expect(syncClientFor(join(home, 'Library/Mobile Documents/com~apple~CloudDocs'), home)).toBe(
+      'iCloud Drive'
+    )
+    expect(syncClientFor(join(home, 'Library/Mobile Documents'), home)).toBe('iCloud Drive')
+  })
+
+  it('names the conventional folders in the home directory', () => {
+    expect(syncClientFor(join(home, 'Dropbox/Books'), home)).toBe('Dropbox')
+    expect(syncClientFor(join(home, 'Google Drive/Musaeum'), home)).toBe('Google Drive')
+    expect(syncClientFor(join(home, 'OneDrive'), home)).toBe('OneDrive')
+  })
+
+  it('maps File Provider folder names, account suffix and all', () => {
+    // The spellings below are the ones measured in ~/Library/CloudStorage on
+    // this machine 2026-09-24 — a prefix test is the only one that survives an
+    // account appearing in the folder name
+    const providers = join(home, 'Library/CloudStorage')
+    expect(syncClientFor(join(providers, 'Dropbox'), home)).toBe('Dropbox')
+    expect(syncClientFor(join(providers, 'GoogleDrive-a@b.com (5-29-24 9:52 AM)'), home)).toBe(
+      'Google Drive'
+    )
+    expect(syncClientFor(join(providers, 'iCloudDrive-iCloudDrive (9-29-25 9:55 AM)'), home)).toBe(
+      'iCloud Drive'
+    )
+    expect(syncClientFor(join(providers, 'Box-Box'), home)).toBe('Box')
+  })
+
+  it('prints the published name where the table knows one', () => {
+    // The real folder names carry the account and a date, so the *prefix* is what
+    // identifies a client — measured in ~/Library/CloudStorage on this machine
+    // 2026-09-24
+    const providers = join(home, 'Library/CloudStorage')
+    expect(syncClientFor(join(providers, 'ProtonDrive-jason.oh@proton.me-folder'), home)).toBe(
+      'Proton Drive'
+    )
+  })
+
+  it('reports a client it does not know by the name the path spells', () => {
+    // The File Provider directory is open-ended, so a whitelist of the clients the
+    // design happens to list would answer "not synced" for a folder that is — the
+    // shape of claim this copy exists to avoid
+    const providers = join(home, 'Library/CloudStorage')
+    expect(syncClientFor(join(providers, 'AcmeSync-Acme'), home)).toBe('AcmeSync-Acme')
+    expect(syncClientFor(join(providers, 'SyncThing'), home)).toBe('SyncThing')
+  })
+
+  it('is segment-aware, so a similarly named sibling is not inside a client', () => {
+    expect(syncClientFor(join(home, 'DropboxArchive'), home)).toBeNull()
+    expect(syncClientFor(join(home, 'Google Drive Backup'), home)).toBeNull()
+    // The provider directory itself is not any client's folder
+    expect(syncClientFor(join(home, 'Library/CloudStorage'), home)).toBeNull()
+  })
+
+  it('answers null for an ordinary folder, wherever it is', () => {
+    expect(syncClientFor(join(home, 'Documents/Books'), home)).toBeNull()
+    expect(syncClientFor(join(scratch, 'library'), home)).toBeNull()
+    expect(syncClientFor('/Volumes/books/musaeum', home)).toBeNull()
+    expect(syncClientFor('/', home)).toBeNull()
+  })
+
+  it('does not care about a trailing slash', () => {
+    expect(syncClientFor(`${join(home, 'Dropbox')}/`, home)).toBe('Dropbox')
+    expect(syncClientFor(`${join(home, 'Library/Mobile Documents')}/`, home)).toBe('iCloud Drive')
+  })
+
+  it.runIf(existsSync(join(homedir(), 'Dropbox')))('names the real folder on this machine', () => {
+    expect(syncClientFor(join(homedir(), 'Dropbox'), homedir())).toBe('Dropbox')
+  })
+
+  it.runIf(existsSync(CLOUD_STORAGE))(
+    'names every File Provider folder this machine actually holds',
+    () => {
+      // The paired half of the cases above: without it, a table that answers
+      // only for the fixture's spellings passes on a machine whose real folder
+      // names it has never seen. Every one of them must resolve to *something* —
+      // the unknown-name fallback is what makes that true.
+      const entries = readdirSync(CLOUD_STORAGE)
+      expect(entries.length).toBeGreaterThan(0)
+      for (const entry of entries) {
+        expect(syncClientFor(join(CLOUD_STORAGE, entry), homedir())).not.toBeNull()
+      }
+    }
+  )
 })

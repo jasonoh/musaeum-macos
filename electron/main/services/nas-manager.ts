@@ -5,10 +5,10 @@ import type { NASStatus, NASState, StorageKind } from '@shared/metadata.types'
 import { getConfig, setConfig } from './db'
 import { broadcast } from './events'
 import { readLibraryKind, resolveStorageKind, writeLibraryKind } from './storage-kind'
+import { storageStatusCopy } from './storage-copy'
 
 const HEALTH_CHECK_INTERVAL_MS = 30_000
 const RECONNECT_BACKOFF_MS = [5_000, 15_000, 60_000]
-const DEFAULT_SMB_URL = 'smb://ohnas'
 
 let state: NASState = 'unconfigured'
 
@@ -24,6 +24,21 @@ let healthTimer: NodeJS.Timeout | null = null
 let retryTimer: NodeJS.Timeout | null = null
 let retryAttempt = 0
 let nextRetryAt: number | null = null
+
+/**
+ * The parts of the last status sent to surfaces, so the next one goes out only
+ * when something a surface renders has moved.
+ *
+ * **Not keyed on the state alone.** The state is one of three facts the rows and
+ * the copy are built from, and the kind moves on its own: a re-pick that swaps a
+ * folder for a share keeps the state at `connected`, so a broadcast keyed on the
+ * state left the renderer holding the old kind. Measured on the probe
+ * 2026-09-24, on the criterion that reads Settings with `library_kind` set to
+ * `network`: Settings went on rendering *"Local folder"* with the SMB URL row
+ * hidden after the stored kind had already moved — this feature's
+ * two-surfaces-disagreeing defect, one layer up from where it was fixed.
+ */
+let sent: string | null = null
 
 /**
  * Whether a `reconnect()` attempt is in flight **right now**.
@@ -70,12 +85,16 @@ export async function setLibraryRoot(path: string): Promise<void> {
 }
 
 export function getStatus(): NASStatus {
+  const nextRetryMs = nextRetryAt ? Math.max(0, nextRetryAt - Date.now()) : null
   return {
     state,
     kind,
     libraryRoot: getLibraryRoot(),
-    nextRetryMs: nextRetryAt ? Math.max(0, nextRetryAt - Date.now()) : null,
-    lastCheckedAt
+    nextRetryMs,
+    lastCheckedAt,
+    // Composed here rather than in the renderer (D4) — and from the three facts
+    // above it, so the sentence cannot disagree with the state it describes.
+    copy: storageStatusCopy(state, kind, nextRetryMs)
   }
 }
 
@@ -105,12 +124,35 @@ export function assertOnline(): void {
   }
 }
 
-function setState(next: NASState): void {
-  if (next === state) return
-  state = next
+/**
+ * Send the status when a fact a surface renders has moved — the state, the kind,
+ * or the root. `sent` carries the argument for why the state is not the test on
+ * its own.
+ *
+ * `nextRetryMs` is deliberately outside the comparison: it is a countdown, so
+ * including it would make every poll a broadcast. The one moment a status has to
+ * travel while nothing but the countdown changed says so itself —
+ * `scheduleReconnect` broadcasts for exactly that reason.
+ */
+function announce(): void {
   const status = getStatus()
+  const shape = JSON.stringify([status.state, status.kind, status.libraryRoot])
+  if (shape === sent) return
+  sent = shape
   broadcast('nasStatusChanged', status)
   for (const fn of listeners) fn(status)
+}
+
+/**
+ * Set the state and let `announce` decide whether that is news.
+ *
+ * No early return here on purpose: an unchanged state is not the only way a
+ * status goes stale (see `sent`), so the comparison lives in one place rather
+ * than two.
+ */
+function setState(next: NASState): void {
+  state = next
+  announce()
 }
 
 async function isMounted(root: string): Promise<boolean> {
@@ -240,15 +282,24 @@ export async function reconnect(): Promise<boolean> {
   setState('reconnecting')
   try {
     if (!(await isMounted(root))) {
-      const smbUrl = getConfig('smb_url') ?? DEFAULT_SMB_URL
-      // `open -g` asks macOS to mount the share without stealing focus
-      await new Promise<void>((resolve) => {
-        exec(`open -g '${smbUrl.replace(/'/g, "'\\''")}'`, () => resolve())
-      })
-      // Give the mount a few seconds to appear
-      for (let i = 0; i < 10; i++) {
-        if (await isMounted(root)) break
-        await new Promise((r) => setTimeout(r, 500))
+      // **The share is one the user named.** Nothing is compiled in any more —
+      // the fallback this used to carry was the owner's own server, which made
+      // this the second place a personal hostname shipped in the product and the
+      // worse of the two, because it silently *acted*. With nothing configured
+      // there is nothing to mount, so the attempt falls through to the re-check
+      // and lands in `disconnected`, where the Settings row's own note says the
+      // app will not mount one for you.
+      const smbUrl = getConfig('smb_url')?.trim()
+      if (smbUrl) {
+        // `open -g` asks macOS to mount the share without stealing focus
+        await new Promise<void>((resolve) => {
+          exec(`open -g '${smbUrl.replace(/'/g, "'\\''")}'`, () => resolve())
+        })
+        // Give the mount a few seconds to appear
+        for (let i = 0; i < 10; i++) {
+          if (await isMounted(root)) break
+          await new Promise((r) => setTimeout(r, 500))
+        }
       }
     }
   } finally {

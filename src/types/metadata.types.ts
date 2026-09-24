@@ -207,6 +207,43 @@ export interface BulkHydrateProgress {
   running: boolean
 }
 
+/**
+ * Which recovery a state offers. **Decided in the main process** and carried to
+ * the surfaces as a fact, because the two halves of this feature are not the
+ * same decision: a share comes back (so a mount is worth trying) and a folder
+ * does not (so the person who moved it is the only one who can say where).
+ *
+ * A surface renders the control this names; it never re-derives it from
+ * `state`, which is what kept the SMB mount attached to *Retry Now* for a
+ * library that was a folder.
+ */
+export type NASRecovery =
+  /** No root chosen yet — the ordinary picker, opened where macOS likes. */
+  | 'choose'
+  /** A **local** root is gone — the picker, opened where the folder used to be. */
+  | 'locate'
+  /** A **share** is away — mount it again, and let the backoff keep trying. */
+  | 'retry'
+
+/**
+ * Everything a surface needs to *say* about the library's reachability, with
+ * every word composed here in the main process (D4).
+ *
+ * The renderer renders these verbatim: two components used to each carry their
+ * own nested ternary over `NASState`, so a new state was a new branch in both
+ * and the two could disagree — and a user whose library is a folder was read
+ * the sentence a dropped share gets. The words being values rather than
+ * branches is also what lets a unit test assert the copy instead of an eye.
+ */
+export interface NASStatusCopy {
+  /** The banner's sentence, or null when there is nothing to report. */
+  message: string | null
+  /** The one-line status the sidebar row and the Settings row both render. */
+  label: string
+  /** The single control this state offers, or null when it offers none. */
+  recovery: NASRecovery | null
+}
+
 export interface NASStatus {
   state: NASState
   /**
@@ -225,6 +262,12 @@ export interface NASStatus {
    */
   nextRetryMs: number | null
   lastCheckedAt: string | null
+  /**
+   * The words for this state, and the one control it offers — composed here so
+   * a surface renders a value rather than branching on `state` itself (D4).
+   * Last in the shape because it is a *composition* of the four above it.
+   */
+  copy: NASStatusCopy
 }
 
 // --- Migration ---

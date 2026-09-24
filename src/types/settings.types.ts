@@ -131,6 +131,17 @@ export interface SettingsView {
    * any of this, and the row re-reads it rather than remembering it.
    */
   restApi: RestApiView
+  /**
+   * One line naming the cloud client that syncs the library folder, or null
+   * (D7 of `docs/superpowers/specs/2026-09-24-local-library-design.md`).
+   *
+   * Composed in main like every other sentence a row renders, and for the same
+   * reason: whether a path is inside a sync root is a fact about `$HOME`, which
+   * the renderer cannot read and has no business holding. It *names* the client
+   * and claims only what is known — a refusal is deferred behind a measurement,
+   * not a taste.
+   */
+  syncRootNote: string | null
   resolved: {
     smbUrl: ResolvedSetting
     /**

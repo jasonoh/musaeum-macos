@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, rmSync } from 'fs'
-import { tmpdir } from 'os'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,7 +7,6 @@ import { AI_CONFIG_KEYS, AI_ENV_KEYS, DEFAULT_AI_BASE_URL } from './ai'
 import { closeDb, getConfig, getDb, setConfig } from './db'
 import {
   DEFAULT_REST_API_PORT,
-  DEFAULT_SMB_URL,
   REST_API_CONFIG_KEYS,
   REST_API_STATES_AGREE,
   getRestApiView,
@@ -16,6 +15,7 @@ import {
   saveSettingsAndApply
 } from './settings'
 import * as sidecar from './sidecar'
+import { LIBRARY_KIND_KEY } from './storage-kind'
 
 // The real detection logic is kept (it's what these tests are about); only the
 // relaunch is stubbed, so a save never spawns a Python process here
@@ -83,10 +83,12 @@ beforeEach(() => {
 })
 
 describe('getSettings', () => {
-  it('reports the compiled-in SMB default when nothing is configured', () => {
+  it('reports an unset SMB URL as unset, with nothing compiled in (D5)', () => {
     const { values, resolved } = getSettings()
     expect(values.smbUrl).toBeNull()
-    expect(resolved.smbUrl).toMatchObject({ value: DEFAULT_SMB_URL, source: 'default' })
+    // Until slice 2 this resolved to the owner's own server as `source: 'default'`,
+    // which put a stranger's hostname in the row of every user who never set one
+    expect(resolved.smbUrl).toMatchObject({ value: null, source: 'none' })
   })
 
   it('reports a configured value as configured', () => {
@@ -113,6 +115,47 @@ describe('getSettings', () => {
     expect(resolved.googleBooksApiKey.detail).toBe('AIza••••3456')
     expect(resolved.googleBooksApiKey.detail).not.toContain('EXAMPLEKEY')
   })
+
+  it('says the app will not mount a share on its own, and names no hostname (D5)', () => {
+    // The note an unset field gets, now that nothing is in force behind it. What
+    // it replaces described a machine the user does not own.
+    const note = getSettings().resolved.smbUrl.detail
+    expect(note).toMatch(/will not mount one for you/)
+    expect(note).not.toMatch(/ohnas|smb:/i)
+  })
+
+  it('names the cloud client a synced library folder sits inside (D7)', () => {
+    setConfig(
+      'library_root',
+      join(homedir(), 'Library/Mobile Documents/com~apple~CloudDocs/Musaeum')
+    )
+    const note = getSettings().syncRootNote
+    expect(note).toContain('iCloud Drive')
+    expect(note).toMatch(/remove a file’s contents/)
+  })
+
+  it('names the client for a conventional Dropbox path too', () => {
+    setConfig('library_root', join(homedir(), 'Dropbox/Books'))
+    expect(getSettings().syncRootNote).toContain('Dropbox')
+  })
+
+  it('says nothing about syncing for a library on the boot disk', () => {
+    setConfig('library_root', join(homedir(), 'Documents/Musaeum'))
+    expect(getSettings().syncRootNote).toBeNull()
+  })
+
+  it('says nothing about syncing when no folder is chosen at all', () => {
+    expect(getSettings().syncRootNote).toBeNull()
+  })
+
+  it('reports the kind in the words the row shows, not the union member', () => {
+    setConfig('library_root', join(homedir(), 'Documents/Musaeum'))
+    setConfig(LIBRARY_KIND_KEY, 'local')
+    const { value, source, detail } = getSettings().resolved.libraryKind
+    expect(value).toBe('Local folder')
+    expect(source).toBe('auto')
+    expect(detail).toBe('Resolved from the folder when it was chosen')
+  })
 })
 
 describe('saveSettings', () => {
@@ -124,9 +167,9 @@ describe('saveSettings', () => {
   it('clears a key when the field is blank, restoring auto-detection', () => {
     setConfig('smb_url', 'smb://ohnas.local')
     saveSettings({ smbUrl: '' })
-    // Deleted, not stored as '' — every reader treats missing as "use default"
+    // Deleted, not stored as '' — every reader treats missing as "nothing named"
     expect(getConfig('smb_url')).toBeNull()
-    expect(getSettings().resolved.smbUrl.source).toBe('default')
+    expect(getSettings().resolved.smbUrl.source).toBe('none')
   })
 
   it('leaves fields that were not submitted alone', () => {

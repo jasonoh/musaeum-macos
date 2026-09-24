@@ -132,8 +132,8 @@ export function DeleteBookDialog() {
           ) : (
             <>
               This permanently deletes the selected file
-              {selected.length > 1 ? 's' : ''} from the NAS. The book and its remaining formats stay
-              in the library.
+              {selected.length > 1 ? 's' : ''} from the library folder. The book and its remaining
+              formats stay in the library.
             </>
           )}
         </p>

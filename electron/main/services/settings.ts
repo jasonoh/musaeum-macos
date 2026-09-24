@@ -1,6 +1,6 @@
 import { spawnSync } from 'child_process'
 import { randomBytes } from 'node:crypto'
-import { networkInterfaces } from 'node:os'
+import { homedir, networkInterfaces } from 'node:os'
 import { existsSync, statSync } from 'fs'
 import type {
   AppSettings,
@@ -26,7 +26,8 @@ import {
 import { TAILNET_CIDR, isAllowedBindAddress, resolveBindAddress } from './api/bind'
 import { deleteConfig, getConfig, setConfig } from './db'
 import { getLibraryRoot } from './nas-manager'
-import { readLibraryKind } from './storage-kind'
+import { readLibraryKind, syncClientFor } from './storage-kind'
+import { libraryKindDetail, smbUrlDetail, storageKindLabel, syncRootNote } from './storage-copy'
 // The version rules live with the module that builds the venv, so validating
 // a hand-picked interpreter and choosing one automatically can't disagree
 import { MIN_PYTHON, meetsMinimum, parseVersion } from './python-env'
@@ -45,7 +46,17 @@ import * as sidecar from './sidecar'
  *    always allowed: it means "go back to auto-detection".
  */
 
-export const DEFAULT_SMB_URL = 'smb://ohnas'
+/**
+ * What an SMB URL looks like, for the refusal's own sentence.
+ *
+ * **Nothing is compiled in.** Until slice 2 this file resolved an unset
+ * `smb_url` to the owner's own server as `source: 'default'`, so every user who
+ * had never set one — including one whose library is a folder — was shown a row
+ * about a machine they do not own. `nas-manager`'s mount fallback carried the
+ * same hostname and, worse, *acted* on it. Both are gone: an unset `smb_url`
+ * now means no share is mounted, and the row says so (D5).
+ */
+const SMB_URL_EXAMPLE = 'smb://server/share'
 
 /**
  * `app_config` keys for the API surface, defined here so the raw strings have
@@ -127,20 +138,31 @@ export function getSettings(): SettingsView {
     // this machine's own interfaces (D13's "the listen status is resolved into
     // `SettingsView` in the main process rather than held in a store").
     restApi: getRestApiView(),
+    // D7: the one line naming the cloud client that holds this folder, or null.
+    // Composed here because the folder is a path only the main process holds —
+    // the renderer has no `homedir` and no business having one.
+    syncRootNote: syncRootDetail(),
     resolved: {
-      smbUrl: values.smbUrl
-        ? { value: values.smbUrl, source: 'configured' }
-        : { value: DEFAULT_SMB_URL, source: 'default' },
+      // **No compiled-in default any more** (D5). `none` is the honest source
+      // for an unset field now that nothing is in force, and the detail is the
+      // sentence that tells a network user what will *not* happen — the
+      // placeholder it replaces named someone else's server.
+      smbUrl: {
+        value: values.smbUrl,
+        source: values.smbUrl ? 'configured' : 'none',
+        detail: smbUrlDetail(Boolean(values.smbUrl))
+      },
       // `auto`, not `configured`: the app resolved it from the folder rather
       // than the user typing it, and `none` until a health check has resolved
       // one — the stale case (a library that predates the key) the row exists
       // to make visible.
       libraryKind: {
-        value: values.libraryKind,
+        // The *name*, not the union member: the renderer may not import the
+        // composer across the bridge, and a row rendering `local` verbatim would
+        // be a second place this vocabulary lives.
+        value: storageKindLabel(values.libraryKind),
         source: values.libraryKind ? 'auto' : 'none',
-        detail: values.libraryKind
-          ? 'Resolved from the folder when it was chosen'
-          : 'Not resolved yet — the next time the library is reachable it will be'
+        detail: libraryKindDetail(values.libraryKind)
       },
       // The endpoint and the model already carry their own detail lines from the
       // one place that computes them, so Settings and the panel cannot disagree
@@ -180,6 +202,14 @@ export function getSettings(): SettingsView {
       }
     }
   }
+}
+
+/** The sync-root line for the root in force, or null (D7). */
+function syncRootDetail(): string | null {
+  const root = getLibraryRoot()
+  if (!root) return null
+  const client = syncClientFor(root, homedir())
+  return client ? syncRootNote(client) : null
 }
 
 /**
@@ -246,7 +276,7 @@ function validate(field: keyof EditableSettings, value: string): void {
   switch (field) {
     case 'smbUrl':
       if (!/^smb:\/\/\S+$/.test(value)) {
-        throw new Error(`Not an SMB URL: ${value} — expected something like ${DEFAULT_SMB_URL}`)
+        throw new Error(`Not an SMB URL: ${value} — expected something like ${SMB_URL_EXAMPLE}`)
       }
       return
     case 'aiBaseUrl':

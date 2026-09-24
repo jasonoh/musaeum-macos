@@ -60,7 +60,11 @@ const api: MusaeumAPI = {
     getStatus: () => invoke('nas:getStatus'),
     reconnect: () => invoke('nas:reconnect'),
     setLibraryRoot: (path) => invoke('nas:setLibraryRoot', path),
-    chooseLibraryRoot: () => invoke('nas:chooseLibraryRoot')
+    // `locateAt` is the hint the *Locate Library Folder…* path passes (D6): the
+    // root that went missing, which the handler resolves to its nearest
+    // surviving ancestor. Slice 1 wired the handler and left this line to the
+    // slice that adds the button — this one.
+    chooseLibraryRoot: (locateAt) => invoke('nas:chooseLibraryRoot', locateAt)
   },
   settings: {
     get: () => invoke('settings:get'),

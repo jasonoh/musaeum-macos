@@ -282,7 +282,12 @@ export function SettingsModal() {
     setBusy(true)
     setError(null)
     try {
-      const root = await window.Musaeum.nas.chooseLibraryRoot()
+      // *Locate*, when that is the recovery this state offers (D6): the picker
+      // opens where the folder used to be. The composer decides which recovery a
+      // state has, so this asks it rather than reading the state again.
+      const hint =
+        nasStatus?.copy.recovery === 'locate' ? (nasStatus?.libraryRoot ?? undefined) : undefined
+      const root = await window.Musaeum.nas.chooseLibraryRoot(hint)
       if (root) await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -340,14 +345,10 @@ export function SettingsModal() {
                     <p className="truncate font-mono text-[12px] text-parchment">
                       {view.values.libraryRoot ?? 'No library folder chosen'}
                     </p>
+                    {/* The words are the main process's (D4), and they are
+                        the same ones the sidebar row renders */}
                     <p className="mt-0.5 text-[11px] text-parchment-faint">
-                      {nasStatus?.state === 'connected'
-                        ? 'Connected'
-                        : nasStatus?.state === 'reconnecting'
-                          ? 'Reconnecting…'
-                          : nasStatus?.state === 'unconfigured'
-                            ? 'Not configured'
-                            : 'Offline'}
+                      {nasStatus?.copy.label}
                     </p>
                   </div>
                   <button
@@ -362,20 +363,34 @@ export function SettingsModal() {
                   Changing the folder applies immediately — if it already holds a Musaeum library
                   you’ll be asked whether to load it.
                 </p>
+                {/* Which of the two the app settled on (D1), and the one line
+                    that names a cloud client when the folder is inside one
+                    (D7). Both sentences are composed in main. */}
+                <p className="mt-2 text-[11px] leading-relaxed text-parchment-faint">
+                  Storage:{' '}
+                  <span className="text-parchment-dim">{view.resolved.libraryKind.value}</span>
+                  {view.resolved.libraryKind.detail && ` — ${view.resolved.libraryKind.detail}`}
+                </p>
+                {view.syncRootNote && (
+                  <p className="mt-2 text-[11px] leading-relaxed text-gold-400/80">
+                    {view.syncRootNote}
+                  </p>
+                )}
               </div>
 
-              <Field
-                label="SMB URL"
-                value={form.smbUrl}
-                onChange={set('smbUrl')}
-                placeholder={view.resolved.smbUrl.value ?? ''}
-                mono
-                hint={
-                  view.resolved.smbUrl.source === 'default'
-                    ? 'Default — the share Musaeum mounts when the library folder goes missing'
-                    : 'Mounted automatically when the library folder goes missing'
-                }
-              />
+              {/* **Gated on the kind in force** (D5): a share is the only thing an
+                  SMB URL can name, and a folder library used to be shown this field
+                  with someone else's server in its placeholder. No placeholder now
+                  either — nothing is compiled in, and the note says so. */}
+              {nasStatus?.kind === 'network' && (
+                <Field
+                  label="SMB URL"
+                  value={form.smbUrl}
+                  onChange={set('smbUrl')}
+                  mono
+                  hint={view.resolved.smbUrl.detail}
+                />
+              )}
             </Section>
 
             <Section title="Maintenance">

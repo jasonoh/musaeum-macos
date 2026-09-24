@@ -12,6 +12,9 @@ export function Sidebar() {
   const nasStatus = useNASStore((s) => s.status)
   const bookCount = useLibraryStore((s) => s.books.length)
 
+  // State → token, not state → word: D4 owns the copy, and a colour is a
+  // presentation choice this component keeps. It cannot disagree with the label
+  // beside it, because both are exhaustive over the same five states.
   const nasDot =
     nasStatus?.state === 'connected'
       ? 'bg-ok-500'
@@ -85,15 +88,10 @@ export function Sidebar() {
         className="flex items-center gap-2 border-t border-ink-800 px-4 py-2.5 text-left text-[12px] text-parchment-faint hover:bg-ink-800 hover:text-parchment-dim"
       >
         <span className={`h-2 w-2 shrink-0 rounded-full ${nasDot}`} />
-        <span className="truncate">
-          {nasStatus?.state === 'connected'
-            ? 'Library connected'
-            : nasStatus?.state === 'reconnecting'
-              ? 'Reconnecting…'
-              : nasStatus?.state === 'unconfigured'
-                ? 'Not configured'
-                : 'Offline'}
-        </span>
+        {/* The words come from the main process (D4), and they are the *same*
+            words the Settings row renders — one label, so the two rows cannot
+            disagree. Blank only until the first status read lands. */}
+        <span className="truncate">{nasStatus?.copy.label}</span>
         <GearIcon className="ml-auto h-3.5 w-3.5 shrink-0" />
       </button>
     </aside>

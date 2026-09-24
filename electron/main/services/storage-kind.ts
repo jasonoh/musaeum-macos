@@ -1,6 +1,6 @@
 import { exec } from 'child_process'
 import { promises as fs } from 'fs'
-import { dirname, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 import type { StorageKind } from '@shared/metadata.types'
 import { getConfig, setConfig } from './db'
 
@@ -33,7 +33,20 @@ import { getConfig, setConfig } from './db'
  * against the mount table.
  */
 
-/** The `app_config` key holding the resolved kind. */
+/**
+ * The `app_config` key holding the resolved kind.
+ *
+ * **A stored fact, so it can be wrong.** A library moved from a share to a disk
+ * keeps `network` until the folder is picked again — and the symptom is the one
+ * this whole design removes (an SMB mount attempted for a path on the boot
+ * disk). Two things bound the damage: the picker re-derives the kind on every
+ * pick, and Settings renders it, so a wrong guess costs one click rather than a
+ * silently wrong recovery. **The residual is a user who moves the library in
+ * Finder and never opens Settings** — and that is exactly what the SMB row's own
+ * gate makes visible, because the field is drawn only for `network`: it is the
+ * *presence* of a row about a server that says the stored kind is stale
+ * (slice 2's criterion 9, spec's risk 1).
+ */
 export const LIBRARY_KIND_KEY = 'library_kind'
 
 /**
@@ -182,6 +195,84 @@ export async function survivingAncestor(path: string): Promise<string | null> {
     if (parent === candidate) return null
     candidate = parent
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-synced roots (D7)
+// ---------------------------------------------------------------------------
+
+export const ICLOUD_DRIVE = 'iCloud Drive'
+
+/** Where the clients that put a folder in the home directory live. */
+const CONVENTIONAL_SYNC_FOLDERS = ['Dropbox', 'Google Drive', 'OneDrive']
+
+/**
+ * The folder names macOS's own File Provider directory reports, mapped to the
+ * client's published name. `~` is not the test — the *prefix* is, because the
+ * real folder names carry the account: measured on this machine 2026-09-24,
+ * `~/Library/CloudStorage/` holds `GoogleDrive-jason@repeatmd.com (5-29-24
+ * 9:52 AM)` and `iCloudDrive-iCloudDrive (9-29-25 9:55 AM)` beside a plain
+ * `Dropbox`.
+ */
+const CLOUD_STORAGE_CLIENTS: [RegExp, string][] = [
+  [/^iCloudDrive/i, ICLOUD_DRIVE],
+  [/^GoogleDrive/i, 'Google Drive'],
+  [/^OneDrive/i, 'OneDrive'],
+  [/^Dropbox/i, 'Dropbox'],
+  [/^Box/i, 'Box'],
+  [/^ProtonDrive/i, 'Proton Drive']
+]
+
+/**
+ * The name of the client that syncs the folder `root` sits in, or null.
+ *
+ * **Why this is a name and not a verdict.** Two hazards are real for a synced
+ * root — a second machine writing the same catalog, and iCloud evicting a
+ * file's contents — and neither is cheaply verifiable from here, so the app
+ * names the client and stops: it does not refuse the folder, and the sentence
+ * built from this answer claims only what is known (D7, fork F2; the refusal's
+ * revival condition is a measurement, not a taste).
+ *
+ * **Anything the table does not name is reported as the path spells it.** The
+ * File Provider directory is open-ended — `Box-Box` and
+ * `ProtonDrive-…-folder` sit in it on this machine — so a whitelist of the
+ * three clients the design names would answer "not synced" for folders that
+ * are. The table exists to print the *published* name where one is known
+ * (`GoogleDrive-jason@repeatmd.com (5-29-24 9:52 AM)` is `Google Drive`), not
+ * to decide whether a folder is synced at all.
+ */
+export function syncClientFor(root: string, home: string): string | null {
+  const path = stripTrailingSlash(resolve(root))
+
+  // The File Provider directory is asked about first and wins where both match,
+  // the way the mount table's longest-prefix rule works: it is more specific
+  // than the home-directory spellings below, and a client can appear in both
+  // forms.
+  const providers = join(home, 'Library', 'CloudStorage')
+  if (isWithin(path, providers)) {
+    return providerFolderClient(path.slice(providers.length + 1).split('/')[0] ?? '')
+  }
+
+  if (isWithin(path, join(home, 'Library', 'Mobile Documents'))) return ICLOUD_DRIVE
+
+  for (const name of CONVENTIONAL_SYNC_FOLDERS) {
+    if (isWithin(path, join(home, name))) return name
+  }
+  return null
+}
+
+/** The client a `~/Library/CloudStorage/<folder>` name belongs to. */
+function providerFolderClient(folder: string): string | null {
+  if (!folder) return null
+  for (const [pattern, client] of CLOUD_STORAGE_CLIENTS) {
+    if (pattern.test(folder)) return client
+  }
+  return folder
+}
+
+/** `/a/b/` and `/a/b` are the same folder to every reader here. */
+function stripTrailingSlash(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, '') : path
 }
 
 /** The mount table, as text. A failure is not fatal: an empty table means "no

@@ -195,6 +195,47 @@ Slice 1 is the whole decision surface; if the copy module pushes slice 2 past th
 
 ---
 
+## Slice 2 — landed 2026-09-24, with the pre-fix value beside each
+
+Annex: `docs/superpowers/plans/2026-09-24-local-library-slice2.md`. Every value is measured on the working tree; the "before" column is this spec's own reading or the falsified run, so the claim has something to be wrong against.
+
+| What | Before | After (slice 2) | Instrument |
+| --- | --- | --- | --- |
+| A `missing` local root's banner sentence | *"Library offline — browsing from cache, editing disabled."* (reading 11's fall-through) | *"Library folder missing — browsing from cache, editing disabled."* | CDP probe, reading-11 fixture (`frames/06-…`) |
+| That state's one button | *Retry Now* — a no-op since slice 1 | *Locate Library Folder…*, hinting `libraryRoot` (D6) | same probe, plus its accessibility tree |
+| The sidebar row's word | *Offline* | *Folder missing* | same probe |
+| Settings → Library, local library | an `SMB URL` row placeholder-ing `smb://ohnas` | no SMB row at all, beside *Storage: Local folder* | CDP probe (`frames/08-…`) |
+| Settings → Library, `library_kind: network` | (unreachable — the row was drawn for everyone) | the field, empty, noting *"No share set — the app will not mount one for you…"*, with **no placeholder** | CDP probe (`frames/09-…`) |
+| A refused write, as shown to the user | *"The library is offline. Reconnect to the NAS to make changes."* (reading 12) | *"The library folder is missing — choose where it went to make changes."*, in a toast | probe driving `import.addFiles` (`frames/07-…`) |
+| Strings matching `NAS` in the accessibility tree | (not measured before) | **0** of 133 nodes | `Accessibility.getFullAXTree` over CDP |
+| The delete dialogs' copy | *"…from the NAS."* | *"…from the library folder."* | source walk, now in the gate |
+| Mount attempts across the whole probe | 3 lines in the shim log, and forever (reading 9) | **0 new** — the log still holds its same three pre-fix lines | the `open` shim's log |
+| Typecheck / lint / build | — | **0 / 0 / 0** | the gates |
+| Suite | 1445 tests, 62 files (slice 1) | **1500 tests, 64 files** | `npm test` |
+| Sidecar suite | 113 | **113 passed** | `pytest` |
+
+**The file table in this spec's own slice row was wrong, and the correction is the one the annex predicted.** The row said "7–8 files + 1 test", renderer only. What landed is **17 files: 12 code + 5 test** — because D4's answer puts the copy in the main process, `NASStatus` gains a composed field, and D6's hint is unreachable from the renderer without a contracts change. The two rows it did not carry: `src/types/metadata.types.ts` + `electron/main/services/nas-manager.ts` (D4's field and its call site) and `src/types/api.types.ts` + `electron/preload/index.ts` (D6's pass-through). The copy module is `electron/main/services/storage-copy.ts`, not `src/lib/` — F1's answer settled it as main-composed.
+
+**The five decisions this spec left open, as taken** (each with the alternative it beat, per the annex):
+
+1. **The composer is its own pure module** — `(state, kind, nextRetryMs) → { message, label, recovery }`, needing no database, so all 31 assertions about the words live in one place, which is D4's whole point.
+2. **`DEFAULT_SMB_URL` is gone** — blanked, with the row's empty state carrying *"the app will not mount one for you"*. `smb://ohnas` no longer exists in the product; the one `smb://` literal left in main is `SMB_URL_EXAMPLE = 'smb://server/share'`, which is what the validation refusal quotes.
+3. **The sync-root table is measured and open-ended** — iCloud Drive (both spellings), Dropbox, Google Drive, OneDrive, Box and Proton Drive are mapped from the real folder shapes in `~/Library/CloudStorage`; anything else there is reported *by the name it spells*, because that directory is open-ended and a whitelist would answer "not synced" for a folder that is. The eviction clause is claimed for iCloud alone.
+4. ***Locate* replaces *Retry Now*** for `missing` — a button whose only effect is a no-op is worse than an absent one, which is D5's own argument.
+5. **The empty view was not reached into** — `EmptyLibrary` is not storage-aware, and the banner's affordance is app-level, so it is already on screen above that pane. Recorded as residue rather than expanded (below).
+
+**Falsified, not merely green:** 13 mutations, each breaking one claim, each turning its own gate red — the missing folder's sentence; the recovery `missing` offers; the retry clause with nothing armed; the `missing` + `network` guard; `copy` dropped from the status (a *compile-time* red, since the field is required); the SMB default; the unset-share note; a hostname compiled back into the mount; the unknown-client fallback; the iCloud clause inverted; a surface restating a composed sentence; a surface restating a message; and the dialogs saying "NAS" again. **The announce fix was falsified by construction:** its case was written first and failed on the unfixed tree (one entry where two are required), then passed after the fix.
+
+**One defect the probe found that this slice had to fix, and did.** The status was announced only when the *state* changed — `setState` returned early — so the *kind* moving on its own never reached a surface. A re-pick that swaps a folder for a share keeps the state at `connected`, which left Settings rendering the old kind and the SMB row wrongly shown or wrongly hidden. Found by AC10 itself (the criterion that reads Settings with `library_kind: 'network'` failed on the probe's first run), fixed by announcing on any change to `(state, kind, libraryRoot)` — with `nextRetryMs` deliberately outside the comparison, because it is a countdown.
+
+**Residue, recorded rather than reached into** (the annex's item-5 rule, applied twice more):
+
+- **`EmptyLibrary` is not storage-aware.** With a `missing` root and zero books the pane still says *"Drag EPUB, MOBI, AZW3 or PDF files anywhere in this window"* while the banner above says the folder is gone — an invitation to drop books into a folder that does not exist. The honest fix is one conditional (suppress the first-run copy while `copy.recovery === 'locate'`), and it belongs with the empty view's own design, `2026-09-20-library-onramps-and-maintenance-design.md`.
+- **The delete dialogs' offline notice is one sentence for four states.** *"The library is offline — reconnect before deleting"* renders for `unconfigured`, `disconnected`, `reconnecting` **and** `missing`, and "reconnect" is a remedy only one of them has. It names no server, so AC12 holds; a per-cause rewrite wants the composer's sentence handed to the dialog, which is a store read those dialogs do not do today.
+- **AC12's decider is a source walk, and its limit is stated** — reaching the dialog needs a device round trip. The walk is now *in the gate* (`src/lib/storage-copy-scan.test.ts`), so it fails on the next hand-typed sentence rather than only on a re-read.
+
+**The probe's own state, for the next session.** Profile `~/.hermes/profiles/dev/cache/scratch/musaeum-localprobe`, restored to what it was: `library_kind` **absent** again (so it is still the derive-and-persist fixture), `library` in place, no `library-moved`, the `open` shim's log still at its **three** pre-fix `-g smb://ohnas` lines, and four new frames — `06-local-root-missing-slice2`, `07-refused-write-missing-root`, `08-settings-local-root`, `09-settings-network-share` — beside the five pre-fix ones. The owner's app was never opened: the launch carried `MUSAEUM_USER_DATA`, and the owner's library is `/Volumes/books/musaeum`.
+
 ## Rejected and deferred, with the condition that would revive them
 
 - **Inferring the kind from the path prefix (`/Volumes/…` ⇒ network)** — rejected on evidence: `/Volumes/data` is a local HFS+ volume on this machine (reading 14). Revived never as a prefix test; a *mount*-based resolver is the accepted mechanism (D1).
