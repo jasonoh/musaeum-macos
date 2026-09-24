@@ -69,7 +69,7 @@ Calibre is the incumbent for good reasons: nothing else converts between as many
 
 ### Living on a NAS
 
-- Mount detection, 30-second health checks, reconnect with 5/15/60-second backoff, a non-blocking banner, and a **read-only cache mode** while the share is away so the library stays browsable and searchable.
+- Mount detection, 30-second health checks, reconnect with 5/15/60-second backoff, a non-blocking banner, and a **read-only cache mode** while the share is away so the library stays browsable and searchable. **The exception is a local library**: a folder that goes missing is never retried and never mounted, because a retry is a claim that waiting helps — the banner says the folder is missing and offers the picker instead.
 - Everything NAS-dependent degrades instead of throwing: hydration failures keep the file's embedded metadata and never propagate, and the _reason_ reaches the UI.
 - The library's own layout is the design bet, and it's worth stating plainly:
 
@@ -162,10 +162,11 @@ The honest one-liner: **Musaeum is what Calibre's own documentation tells you no
 | **Theming**              | Palette engine with contrast floors, three import providers, the reader and window chrome included                                                                                                                    |
 | **Metadata control**     | Field overrides with padlock chips, post-hydration duplicate reports, cover candidates and conflict previews                                                                                                          |
 | **iOS companion**        | The library served over the tailnet (off by default, bearer token, no LAN or public surface), plus an iPhone app that browses, searches, filters, downloads and reads it — and carries the reading position both ways |
+| **Storage**              | A library that is a folder on this Mac, an external drive, or a mounted share — the kind is recorded when you pick it, and the recovery follows it                                                                    |
 
 The daily-driver loop — **import → hydrate → curate → read → send** — is complete and verified against a real 7,000-book NAS library and a real Kindle.
 
-**Verification is layered:** at the time of writing, **1,379 tests across 58 files** in the main process and renderer (vitest, run through Electron-as-Node so the native SQLite ABI matches) and **113 Python tests** in the sidecar, all green; TypeScript strict with no `any`, and typecheck and lint treated as gates rather than suggestions. Cases are chosen to kill specific mutations, and the harness records which mutations it reproduced. Performance targets are set against measured numbers rather than hopes. 30,258 lines of application code, plus ~7,600 lines of vendored reading engine.
+**Verification is layered:** at the time of writing, **1,500 tests across 64 files** in the main process and renderer (vitest, run through Electron-as-Node so the native SQLite ABI matches) and **113 Python tests** in the sidecar, all green; TypeScript strict with no `any`, and typecheck and lint treated as gates rather than suggestions. Cases are chosen to kill specific mutations, and the harness records which mutations it reproduced. Performance targets are set against measured numbers rather than hopes. 30,258 lines of application code, plus ~7,600 lines of vendored reading engine.
 
 ### Not built
 
@@ -212,7 +213,7 @@ npm test                                     # vitest — main process AND rende
 
 The sidecar's own suite lives in `sidecar/tests/` and runs with `sidecar/.venv/bin/python -m pytest sidecar/tests` (after `pip install -r sidecar/requirements-dev.txt`).
 
-First launch shows a banner to choose the library folder — point it at the mounted share, or any local folder. Books dropped onto the window, or into `{library_root}/imports/`, are imported and hydrated automatically.
+First launch shows a banner to choose the library folder — **a folder on this Mac, an external drive, or a mounted share**. The app records which _kind_ it is when you pick it (Settings → Library shows it, and re-picking re-derives it), because the two fail differently. An unreachable share is retried on a 5/15/60-second backoff and re-mounted, and could genuinely come back on its own; an unreachable folder is **never retried and never mounted**, because nothing is coming back — the banner says the folder is missing and offers _Locate Library Folder…_, which opens the picker at the folder that went missing (or at its nearest surviving parent). Either way the library stays browsable from the local cache and editing stays disabled until it is back. Books dropped onto the window, or into `{library_root}/imports/`, are imported and hydrated automatically, and **＋ Add Books** in the toolbar or `File ▸ Add Books…` (⌘O) opens a file picker.
 
 ### The Google Books key
 
