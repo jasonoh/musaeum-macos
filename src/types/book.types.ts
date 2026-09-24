@@ -297,6 +297,19 @@ export interface ImportResult {
   error?: string
   skipped?: boolean
   action?: DuplicateAction
+  /**
+   * The collision the pre-copy gate found, when the import was told to answer
+   * it by policy rather than by asking (`duplicate: 'add-new'`, D3 of the
+   * phone-upload design).
+   *
+   * It travels on the *result* and not on a progress event, deliberately: from
+   * the copy onward `ImportProgress.duplicate` means one thing — a collision
+   * *hydration* found — and a second meaning on that channel would make the
+   * finished card present the gate's answer as a post-hydration finding. The
+   * caller that answered the gate by policy is the one that needs to hear what
+   * it answered, and it is holding this value.
+   */
+  duplicate?: DuplicateContext
 }
 
 /** Format "The Expanse #1" — drops trailing .0 on whole-number indices. */

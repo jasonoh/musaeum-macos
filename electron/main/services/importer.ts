@@ -115,15 +115,38 @@ function titleFromFilename(filePath: string): string {
   return basename(filePath, extname(filePath)).replace(/[_.]+/g, ' ').trim()
 }
 
-export async function addFiles(filePaths: string[]): Promise<ImportResult[]> {
+/**
+ * What an import may be told to do about a duplicate the pre-copy gate finds.
+ *
+ * `'ask'` — the default, and the behaviour every caller had before this
+ * existed — suspends the import on a `DuplicateDecision` until something calls
+ * `resolveDuplicate`. `'add-new'` detects the same collision, builds the same
+ * `DuplicateContext`, and then simply does not suspend: the file is imported as
+ * a second book and the context comes back on the result (design D3).
+ *
+ * **Why a parameter and not a bypass.** `abortPendingDecisions()` is the only
+ * other escape, and it resolves every open gate as `{ action: 'skip' }` — which
+ * a caller cannot tell from the user's own Skip, and which would also unwind a
+ * gate some *other* import is legitimately waiting on (the watcher fans imports
+ * out concurrently). Answering the gate without asking anybody is a distinct
+ * outcome, so it is a distinct policy.
+ */
+export interface ImportOptions {
+  duplicate?: 'ask' | 'add-new'
+}
+
+export async function addFiles(
+  filePaths: string[],
+  options: ImportOptions = {}
+): Promise<ImportResult[]> {
   const results: ImportResult[] = []
   for (const filePath of filePaths) {
-    results.push(await importOne(filePath))
+    results.push(await importOne(filePath, options))
   }
   return results
 }
 
-async function importOne(filePath: string): Promise<ImportResult> {
+async function importOne(filePath: string, options: ImportOptions = {}): Promise<ImportResult> {
   const jobId = randomUUID()
   const fileName = basename(filePath)
   const job: ImportProgress = { jobId, fileName, bookId: null, step: 'received' }
@@ -177,6 +200,12 @@ async function importOne(filePath: string): Promise<ImportResult> {
       }
     }
 
+    // Carried out on the result when the gate is answered by policy rather
+    // than by a person (see `ImportOptions`). Never emitted: the progress
+    // channel's `duplicate` means one thing only — a collision hydration
+    // found — from the copy onward (see the comment at step 3).
+    let gateDuplicate: DuplicateContext | undefined
+
     if (existing && matchType) {
       const duplicateContext: DuplicateContext = {
         existingBookId: existing.id,
@@ -184,18 +213,26 @@ async function importOne(filePath: string): Promise<ImportResult> {
         existingAuthor: existing.author,
         matchType
       }
-      emit(job, 'awaiting_dedup_decision', { duplicate: duplicateContext })
-      const decision = await new Promise<DuplicateDecision>((resolve) =>
-        pendingDecisions.set(jobId, resolve)
-      )
-      if (decision.action === 'skip') {
-        emit(job, 'skipped')
-        return { jobId, fileName, success: false, skipped: true, action: 'skip' }
+      if ((options.duplicate ?? 'ask') === 'add-new') {
+        // D3: detection and context unchanged, suspension skipped. The context
+        // is deliberately *not* emitted — a caller that answered the gate by
+        // policy is the one that needs to hear what it answered, and the card
+        // must not present it as a post-hydration finding.
+        gateDuplicate = duplicateContext
+      } else {
+        emit(job, 'awaiting_dedup_decision', { duplicate: duplicateContext })
+        const decision = await new Promise<DuplicateDecision>((resolve) =>
+          pendingDecisions.set(jobId, resolve)
+        )
+        if (decision.action === 'skip') {
+          emit(job, 'skipped')
+          return { jobId, fileName, success: false, skipped: true, action: 'skip' }
+        }
+        if (decision.action === 'add_format') {
+          return await addFormatToExisting(existing, filePath, ext, format, job, fileName)
+        }
+        // 'add_new' → fall through to the unchanged copy/insert/hydrate pipeline
       }
-      if (decision.action === 'add_format') {
-        return await addFormatToExisting(existing, filePath, ext, format, job, fileName)
-      }
-      // 'add_new' → fall through to the unchanged copy/insert/hydrate pipeline
     }
 
     // 3. Copy into books/{uuid}/ on the NAS
@@ -249,7 +286,7 @@ async function importOne(filePath: string): Promise<ImportResult> {
     emit(job, 'hydrating', { bookId })
     void hydrate(bookId, targetFile, bookDir, job, { gateReported: Boolean(matchType) })
 
-    return { jobId, fileName, success: true, bookId }
+    return { jobId, fileName, success: true, bookId, duplicate: gateDuplicate }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     emit(job, 'error', { error: message })

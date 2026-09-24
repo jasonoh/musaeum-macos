@@ -609,6 +609,97 @@ describe('the import duplicate gate', () => {
     })
   })
 
+  /**
+   * The gate answered *by policy* rather than by a person (`ImportOptions`,
+   * D3 of the phone-upload design). Nothing suspends: the detection and the
+   * context are the same, and the match comes back on the result so the caller
+   * that answered it can say what it answered.
+   */
+  describe('answered by policy (duplicate: add-new)', () => {
+    it('imports the duplicate as a new book instead of suspending', async () => {
+      await seed({
+        ...makeBook('existing', 'Dune'),
+        author: 'Frank Herbert',
+        isbn13: '9780441013593'
+      })
+      scriptSidecar({
+        title: 'Melange: A Scan',
+        authors: [{ name: 'Unknown Scanner' }],
+        identifiers: { isbn_13: '9780441013593' }
+      })
+
+      const src = join(inbox, 'some-scan.epub')
+      await fs.writeFile(src, 'ebook bytes')
+      const [result] = await addFiles([src], { duplicate: 'add-new' })
+      await settleHydration()
+
+      expect(result).toMatchObject({ fileName: 'some-scan.epub', success: true })
+      expect(result.bookId).toBeDefined()
+      expect(result.bookId).not.toBe('existing')
+      expect(getBooks()).toHaveLength(2)
+      // No gate was raised for anybody: the import never blocked, so the card
+      // never offers a decision that no one on the phone could make.
+      expect(progress.map((p) => p.step)).not.toContain('awaiting_dedup_decision')
+    })
+
+    it('carries the match out on the result rather than discarding it', async () => {
+      await seed({
+        ...makeBook('existing', 'Dune'),
+        author: 'Frank Herbert',
+        isbn13: '9780441013593'
+      })
+      scriptSidecar({
+        title: 'Melange: A Scan',
+        authors: [{ name: 'Unknown Scanner' }],
+        identifiers: { isbn_13: '9780441013593' }
+      })
+
+      const src = join(inbox, 'some-scan.epub')
+      await fs.writeFile(src, 'ebook bytes')
+      const [result] = await addFiles([src], { duplicate: 'add-new' })
+      await settleHydration()
+
+      // Decided over the return value, not over the emit — this is the value
+      // the `import` payload carries to the phone.
+      expect(result.duplicate).toEqual({
+        existingBookId: 'existing',
+        existingTitle: 'Dune',
+        existingAuthor: 'Frank Herbert',
+        matchType: 'isbn'
+      })
+    })
+
+    it('finds a title+author match under the same policy', async () => {
+      await seed(makeBook('existing', 'The Dispossessed'))
+      const src = join(inbox, 'the_dispossessed.epub')
+      await fs.writeFile(src, 'ebook bytes')
+
+      const [result] = await addFiles([src], { duplicate: 'add-new' })
+      await settleHydration()
+
+      expect(result).toMatchObject({ success: true })
+      expect(result.duplicate).toMatchObject({
+        existingBookId: 'existing',
+        matchType: 'title_author'
+      })
+      expect(getBooks()).toHaveLength(2)
+    })
+
+    it('reports no match at all when there is none', async () => {
+      // The policy answers a gate; it does not invent one.
+      await seed(makeBook('existing', 'A Different Book'))
+      const src = join(inbox, 'Dune.epub')
+      await fs.writeFile(src, 'ebook bytes')
+
+      const [result] = await addFiles([src], { duplicate: 'add-new' })
+      await settleHydration()
+
+      expect(result).toMatchObject({ success: true })
+      expect(result.duplicate).toBeUndefined()
+      expect(getBooks()).toHaveLength(2)
+    })
+  })
+
   describe('skip', () => {
     it('aborts the import: no book, no folder, and a result that says it was skipped', async () => {
       await seed(makeBook('existing', 'Dune'))
