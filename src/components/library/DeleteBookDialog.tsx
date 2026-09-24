@@ -16,7 +16,13 @@ export function DeleteBookDialog() {
   const selectBook = useUIStore((s) => s.selectBook)
   const currentSelection = useUIStore(selectedBookId)
   const books = useLibraryStore((s) => s.books)
-  const online = useNASStore((s) => s.status?.state === 'connected')
+  const status = useNASStore((s) => s.status)
+  // The write gate's own question, unchanged (six surfaces ask it, and slice 2's
+  // annex keeps them asking it) — the notice *beside* the disabled button is the
+  // main process's sentence for this state (D4), not a second ternary over
+  // `NASState` written here.
+  const online = status?.state === 'connected'
+  const blocked = status?.copy.deleteBlocked ?? null
 
   const book = useMemo(() => books.find((b) => b.id === bookId) ?? null, [books, bookId])
   // Mounted under a per-book key, so this initializer re-runs for each book:
@@ -138,11 +144,7 @@ export function DeleteBookDialog() {
           )}
         </p>
 
-        {!online && (
-          <p className="mt-3 text-[12px] text-danger-400">
-            The library is offline — reconnect before deleting.
-          </p>
-        )}
+        {blocked && <p className="mt-3 text-[12px] text-danger-400">{blocked}</p>}
         {error && <p className="mt-3 text-[12px] text-danger-400">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">

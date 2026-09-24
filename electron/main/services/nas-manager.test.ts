@@ -327,7 +327,10 @@ describe('the composed copy', () => {
     expect(status.copy).toEqual({
       message: 'Library folder missing — browsing from cache, editing disabled.',
       label: 'Folder missing',
-      recovery: 'locate'
+      recovery: 'locate',
+      // Rides the same status the renderer already receives, so the dialogs can
+      // render a per-state verb without reading `state` themselves (2026-09-24)
+      deleteBlocked: 'The library folder is missing — choose where it went before deleting.'
     })
     // Reading 12, inverted: no sentence reaches a user carrying a server's name
     expect(status.copy.message).not.toMatch(/NAS|smb/i)
@@ -346,7 +349,8 @@ describe('the composed copy', () => {
     expect(status.copy).toEqual({
       message: 'Library offline — browsing from cache, editing disabled. Retrying in 5s.',
       label: 'Offline',
-      recovery: 'retry'
+      recovery: 'retry',
+      deleteBlocked: 'The library is offline — reconnect before deleting. Retrying in 5s.'
     })
 
     nas.stopHealthChecks()

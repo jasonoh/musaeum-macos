@@ -37,6 +37,44 @@ const MESSAGES: Record<NASState, string | null> = {
 }
 
 /**
+ * What a delete is told when the library cannot take one, per state — the
+ * second residue slice 2 recorded, closed here.
+ *
+ * **The verb is the whole point.** One sentence stood for all four unreachable
+ * states in both delete dialogs — *"The library is offline — reconnect before
+ * deleting."* — and "reconnect" is a remedy exactly one of them has: a folder
+ * that has moved wants the picker, a library with no folder at all wants one
+ * chosen, and an attempt in flight wants waiting out. The banner above the list
+ * has carried the right verb per state since slice 2 (`MESSAGES`); the dialogs
+ * read that state as a boolean, so they could not.
+ *
+ * **Why these are not `MESSAGES`.** The banner's sentence states the
+ * *situation* and leaves the verb to the button beside it — a dialog has no
+ * such button, so its sentence has to name the verb itself, and the two must
+ * not be the same value (`storageStatusCopy` cases both halves of that).
+ *
+ * **And why they are not `assertOnline`'s refusal either.** That one is thrown
+ * *after* a write was attempted and says so ("to make changes"); for `missing`
+ * and `disconnected` the two homes share a stem and part in the closing clause
+ * ("to make changes" against "before deleting"), and `unconfigured` is worded
+ * outright differently. Three sentences for three moments — recorded rather
+ * than merged, with `SelectionPanel`'s and `BookEditor`'s hand-typed notices,
+ * in `docs/invariants/nas-and-catalog.md` and `tasks.md`.
+ *
+ * The tail is the action on purpose: a surface that is not deleting something
+ * is not meant to read these (that is the fork the owner settled 2026-09-24,
+ * against this slice's proposal of one action-neutral sentence per state).
+ */
+const DELETE_BLOCKED: Record<NASState, string | null> = {
+  connected: null,
+  unconfigured:
+    'No library folder configured — choose where Musaeum should keep your books before deleting.',
+  reconnecting: 'Reconnecting to the library — wait a moment before deleting.',
+  disconnected: 'The library is offline — reconnect before deleting.',
+  missing: 'The library folder is missing — choose where it went before deleting.'
+}
+
+/**
  * The one-line status the sidebar row and the Settings row **both** render.
  *
  * One string for both rows, deliberately: they are the same fact, and the two
@@ -69,7 +107,7 @@ const RECOVERIES: Record<NASState, NASRecovery | null> = {
 }
 
 /**
- * The words for a state, and the one control it offers.
+ * The words for a state, the one control it offers, and what a delete is told.
  *
  * `kind` is not decoration: a `missing` root is a **local** one by
  * construction, because the state machine only sets `missing` where a mount
@@ -84,15 +122,28 @@ export function storageStatusCopy(
   nextRetryMs: number | null
 ): NASStatusCopy {
   const effective: NASState = state === 'missing' && kind === 'network' ? 'disconnected' : state
-  const message = MESSAGES[effective]
   return {
-    message:
-      message === null || effective !== 'disconnected'
-        ? message
-        : `${message}${retryClause(nextRetryMs)}`,
+    message: retried(MESSAGES[effective], effective, nextRetryMs),
     label: LABELS[effective],
-    recovery: RECOVERIES[effective]
+    recovery: RECOVERIES[effective],
+    deleteBlocked: retried(DELETE_BLOCKED[effective], effective, nextRetryMs)
   }
+}
+
+/**
+ * The retry clause, for the one state that has a retry.
+ *
+ * Shared by both sentences rather than written twice, because "Retrying in Ns"
+ * is a claim about a timer and the two must not disagree about whether one is
+ * armed — the wording itself is still `retryClause`'s to decide.
+ */
+function retried(
+  sentence: string | null,
+  state: NASState,
+  nextRetryMs: number | null
+): string | null {
+  if (sentence === null || state !== 'disconnected') return sentence
+  return `${sentence}${retryClause(nextRetryMs)}`
 }
 
 /**

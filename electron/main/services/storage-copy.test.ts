@@ -115,10 +115,14 @@ describe('which recovery a state offers', () => {
 describe('a missing root described as a share', () => {
   it('falls back to the retryable copy rather than offering a picker for a share', () => {
     const copy = storageStatusCopy('missing', 'network', 5_000)
+    // The whole record, deliberately: the guard has to move *every* sentence the
+    // state carries, and the delete notice is one of them now (2026-09-24) — a
+    // `toMatchObject` here would leave the fourth field able to disagree.
     expect(copy).toEqual({
       message: 'Library offline — browsing from cache, editing disabled. Retrying in 5s.',
       label: 'Offline',
-      recovery: 'retry'
+      recovery: 'retry',
+      deleteBlocked: 'The library is offline — reconnect before deleting. Retrying in 5s.'
     })
   })
 })
@@ -170,12 +174,90 @@ describe('the cloud-synced root line (D7)', () => {
 })
 
 /**
+ * Slice 2's second residue, closed: **the delete dialogs' one sentence for four
+ * states.**
+ *
+ * Both dialogs rendered *"The library is offline — reconnect before deleting."*
+ * for `unconfigured`, `disconnected`, `reconnecting` **and** `missing`, because
+ * they read the state as a boolean (`state === 'connected'`) and could not have
+ * said anything else. "Reconnect" is a remedy exactly one of the four has: a
+ * folder that has moved wants the picker, a library with no folder wants one
+ * chosen, and an attempt in flight wants waiting out. The verb is therefore the
+ * load-bearing half of every case below, and each names the one it must *not*
+ * carry — a case that only asserted the sentence it expects would stay green
+ * while all four drifted back to the offline wording.
+ */
+describe('what a delete is told when it cannot run', () => {
+  it('says nothing when the library can take one', () => {
+    expect(storageStatusCopy('connected', 'local', null).deleteBlocked).toBeNull()
+  })
+
+  it('sends a folder that has moved to the picker, and never to a reconnect', () => {
+    const blocked = storageStatusCopy('missing', 'local', null).deleteBlocked
+    expect(blocked).toBe('The library folder is missing — choose where it went before deleting.')
+    expect(blocked).not.toMatch(/reconnect|offline/i)
+  })
+
+  it('keeps "reconnect" for the one state that has a mount to redo', () => {
+    expect(storageStatusCopy('disconnected', 'network', null).deleteBlocked).toBe(
+      'The library is offline — reconnect before deleting.'
+    )
+  })
+
+  it('carries the retry clause where a retry is armed, and only there', () => {
+    expect(storageStatusCopy('disconnected', 'network', 12_400).deleteBlocked).toBe(
+      'The library is offline — reconnect before deleting. Retrying in 13s.'
+    )
+    // A folder arms no timer, so the clause must never appear on its sentence
+    expect(storageStatusCopy('missing', 'local', 60_000).deleteBlocked).not.toMatch(/Retrying/)
+  })
+
+  it('tells a mid-attempt user to wait rather than claiming a state that is not true', () => {
+    const blocked = storageStatusCopy('reconnecting', 'network', 0).deleteBlocked
+    expect(blocked).toBe('Reconnecting to the library — wait a moment before deleting.')
+    // It must not claim the offline state, and it must not be the disconnected
+    // sentence — whose verb names the attempt this state is already making. The
+    // verb itself is "Reconnecting", so the assertion is on the sentence, not on
+    // a substring: `/reconnect/` matches the word that belongs here.
+    expect(blocked).not.toMatch(/offline/i)
+    expect(blocked).not.toBe(storageStatusCopy('disconnected', 'network', 0).deleteBlocked)
+  })
+
+  it('sends a library with no folder at all to choose one', () => {
+    const blocked = storageStatusCopy('unconfigured', null, null).deleteBlocked
+    expect(blocked).toMatch(/choose where Musaeum should keep your books/)
+    expect(blocked).not.toMatch(/reconnect|offline/i)
+  })
+
+  it('falls back to the retryable sentence for a `missing` root described as a share', () => {
+    expect(storageStatusCopy('missing', 'network', 5_000).deleteBlocked).toBe(
+      'The library is offline — reconnect before deleting. Retrying in 5s.'
+    )
+  })
+
+  it('is never the banner’s own sentence, which has a control beside it', () => {
+    // The reason the two fields exist: the banner can leave the verb to the
+    // button it draws, and a dialog draws none. A copy that collapsed them into
+    // one value — one sentence reused for both — is what this case refuses.
+    for (const state of STATES) {
+      const copy = storageStatusCopy(state, 'local', 5_000)
+      if (copy.deleteBlocked !== null && copy.message !== null) {
+        expect(copy.deleteBlocked, state).not.toBe(copy.message)
+      }
+    }
+  })
+})
+
+/**
  * The sweep: **no state's copy names a server, from any angle.**
  *
  * Run over the whole matrix rather than over the states this slice happened to
  * write copy for, because the sentence that leaks is the one nobody re-read —
  * and the two `kind`s are both walked, since a state machine hands out pairs and
  * copy is composed from the pair.
+ *
+ * The delete notice is swept here too: it is a second sentence per state, and a
+ * sentence nobody re-read is exactly what this walk is for.
  */
 describe('no state names a server', () => {
   it.each(
@@ -184,7 +266,12 @@ describe('no state names a server', () => {
     )
   )('%s + %s', (state, kind) => {
     const copy = storageStatusCopy(state, kind, 5_000)
-    const words = [copy.message ?? '', copy.label, copy.recovery ?? ''].join(' ')
+    const words = [
+      copy.message ?? '',
+      copy.label,
+      copy.recovery ?? '',
+      copy.deleteBlocked ?? ''
+    ].join(' ')
     expect(words).not.toMatch(/NAS|smb|nas\/|server|share/i)
   })
 })

@@ -242,6 +242,21 @@ export interface NASStatusCopy {
   label: string
   /** The single control this state offers, or null when it offers none. */
   recovery: NASRecovery | null
+  /**
+   * What a delete is told when the library cannot take one, or null when it
+   * can — the sentence the two delete dialogs render beside their disabled
+   * button, composed here for the same reason the message is.
+   *
+   * **Kept apart from `message`** because the dialogs carry no recovery
+   * control: the banner can leave the verb to its button, and a dialog cannot,
+   * so this sentence names the verb the state actually offers (reconnect /
+   * choose a folder / choose where it went / wait a moment).
+   *
+   * Named for the action rather than for "a blocked write": the tail is part of
+   * the sentence, so a surface editing metadata is not meant to read it. The
+   * siblings that still hand-type their own notice are a recorded follow-up.
+   */
+  deleteBlocked: string | null
 }
 
 export interface NASStatus {

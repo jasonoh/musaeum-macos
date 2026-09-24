@@ -17,7 +17,11 @@ export function DeleteSelectionDialog() {
   const clearSelection = useUIStore((s) => s.clearSelection)
   const selectBook = useUIStore((s) => s.selectBook)
   const books = useLibraryStore((s) => s.books)
-  const online = useNASStore((s) => s.status?.state === 'connected')
+  const status = useNASStore((s) => s.status)
+  // Same split as the per-book dialog: the write gate's own question decides
+  // whether the button works, and main decides what the notice beside it says.
+  const online = status?.state === 'connected'
+  const blocked = status?.copy.deleteBlocked ?? null
 
   const selected = useMemo(() => books.filter((b) => selectedIds.has(b.id)), [books, selectedIds])
   const [busy, setBusy] = useState(false)
@@ -88,11 +92,7 @@ export function DeleteSelectionDialog() {
           library. This can’t be undone.
         </p>
 
-        {!online && (
-          <p className="mt-3 text-[12px] text-danger-400">
-            The library is offline — reconnect before deleting.
-          </p>
-        )}
+        {blocked && <p className="mt-3 text-[12px] text-danger-400">{blocked}</p>}
         {error && <p className="mt-3 text-[12px] text-danger-400">{error}</p>}
         {result && (
           <div className="mt-3 rounded-md border border-danger-500/40 bg-danger-500/10 p-3">
