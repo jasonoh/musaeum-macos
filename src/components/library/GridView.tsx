@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
+import { useNASStore } from '@/stores/nas.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
 import {
   rowWindow,
@@ -34,7 +35,17 @@ export function GridView() {
   const query = useLibraryStore((s) => s.query)
   const loading = useLibraryStore((s) => s.loading)
   const filters = useLibraryStore((s) => s.filters)
-  const view = libraryViewState({ loading, query, filters, resultCount: books.length })
+  // The same fact the write-gating components read: this pane's first-run copy
+  // is a promise that a book dropped or picked here will land, and only
+  // 'connected' keeps it (see `library-emptiness.ts`)
+  const storageConnected = useNASStore((s) => s.status?.state === 'connected')
+  const view = libraryViewState({
+    loading,
+    query,
+    filters,
+    resultCount: books.length,
+    storageConnected
+  })
   const resultKey = useLibraryStore((s) =>
     resultSetKey({ query: s.query, filters: s.filters, sort: s.sort })
   )

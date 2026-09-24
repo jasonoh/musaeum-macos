@@ -11,8 +11,21 @@ import type { BookFilters } from '@shared/book.types'
  * hence a named state rather than a length check at each call site.
  *
  * No total is needed: with no query and no filters, `books` *is* the library.
+ *
+ * The fourth case, added 2026-09-24 (`2026-09-20-library-onramps-and-maintenance-design.md`,
+ * its *Open* section): an empty library whose storage cannot take a book. The
+ * first-run block is **a promise that this library can receive books** — drop
+ * them anywhere, or pick them — and with no root configured, or a folder that
+ * has gone missing, every one of those affordances is refused by the write gate
+ * (`nas-manager.ts`'s `assertOnline`). So the promise is not made: the pane
+ * renders nothing and the banner directly above it carries both the sentence and
+ * the recovery. That is also why the test is `storageConnected` — the same
+ * question the six write-gating components ask, `state === 'connected'` — rather
+ * than a comparison against copy: `src/lib/storage-copy-scan.test.ts` fails the
+ * build if a renderer restates any sentence the composer in main owns.
  */
-export type LibraryViewState = 'loading' | 'empty-library' | 'no-matches' | 'books'
+export type LibraryViewState =
+  'loading' | 'empty-library' | 'no-matches' | 'library-unavailable' | 'books'
 
 /**
  * Filters that are actually set. `sort` is not one — it orders the result rather
@@ -39,6 +52,13 @@ export function libraryViewState(input: {
   query: string
   filters: BookFilters
   resultCount: number
+  /**
+   * Whether the library can accept a write right now — `status.state === 'connected'`,
+   * the same fact the write-gating components read. Required rather than
+   * optional so a caller that adds a second view cannot forget it and inherit
+   * the old unconditional promise.
+   */
+  storageConnected: boolean
 }): LibraryViewState {
   // A reload keeps the previous result set on screen (`load` replaces `books`
   // only when the answer arrives), so a non-empty result always wins — the
@@ -48,6 +68,13 @@ export function libraryViewState(input: {
   // first-run state flashes on every cold start, for as long as the first load
   // takes — which on a cold NAS is seconds
   if (input.loading) return 'loading'
+  // A query or a filter that matched nothing is a miss whatever the storage is
+  // doing: the cache answers both, and "clear the search" is advice that needs
+  // no write. Checked before the storage branch on purpose
   if (input.query.trim() || filterCount(input.filters) > 0) return 'no-matches'
+  // Positive evidence only. An unreported status is not a working library, and
+  // this pane may not make its promise on a guess — the same reason the loading
+  // branch above renders nothing rather than the first-run copy
+  if (!input.storageConnected) return 'library-unavailable'
   return 'empty-library'
 }

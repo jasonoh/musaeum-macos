@@ -5,7 +5,16 @@ import { filterCount, libraryViewState } from './library-emptiness'
 const NONE: BookFilters = {}
 
 function view(over: Partial<Parameters<typeof libraryViewState>[0]> = {}) {
-  return libraryViewState({ loading: false, query: '', filters: NONE, resultCount: 0, ...over })
+  return libraryViewState({
+    loading: false,
+    query: '',
+    filters: NONE,
+    resultCount: 0,
+    // Connected unless a case says otherwise: every case below is about what the
+    // pane says about the *library*, and the storage half has its own cases
+    storageConnected: true,
+    ...over
+  })
 }
 
 /**
@@ -54,6 +63,38 @@ describe('libraryViewState', () => {
     // No results, still loading, and a query: the spinner is the honest answer,
     // not "nothing matches" — the search has not answered yet
     expect(view({ loading: true, query: 'dune' })).toBe('loading')
+  })
+})
+
+/**
+ * The storage half, added 2026-09-24. The pane's first-run block is a promise
+ * that a dropped or picked book will land, and only one storage state keeps it:
+ * the on-ramps are refused by the write gate for *every* other one. Each case
+ * below is paired with its opposite, because "renders nothing" is satisfied by
+ * deleting the pane.
+ */
+describe('libraryViewState — the storage half', () => {
+  it('offers the first-run pane only where the library can actually take a book', () => {
+    expect(view({ storageConnected: true })).toBe('empty-library')
+    expect(view({ storageConnected: false })).toBe('library-unavailable')
+  })
+
+  it('keeps a miss a miss whatever the storage is doing', () => {
+    // The cache answers a search and a filter with no root at all — and
+    // "clear the search" is advice that needs no write
+    expect(view({ storageConnected: false, query: 'dune' })).toBe('no-matches')
+    expect(view({ storageConnected: false, filters: { formats: ['pdf'] } })).toBe('no-matches')
+  })
+
+  it('keeps results on screen while the storage is away', () => {
+    // Browsing the cache is the one thing that still works offline, so this
+    // branch must not be reachable from a non-empty result set
+    expect(view({ storageConnected: false, resultCount: 12 })).toBe('books')
+  })
+
+  it('prefers loading over unavailable while the first load is in flight', () => {
+    // Both render nothing; the state is what the next reader reads
+    expect(view({ storageConnected: false, loading: true })).toBe('loading')
   })
 })
 

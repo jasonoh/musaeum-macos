@@ -15,11 +15,19 @@ import type { LibraryViewState } from '@/lib/library-emptiness'
  *
  * 'loading' renders nothing: a cold start reports zero books for as long as the
  * first load takes, and the first-run copy is a lie until it resolves.
+ *
+ * 'library-unavailable' renders nothing too, and that one is a real silence
+ * rather than a spinner's: the library is empty *and* nothing can be put into it
+ * right now, so the copy above would be an instruction the user can act on and
+ * lose — every affordance it names goes through a write gate that refuses. The
+ * sentence for that state belongs to the composer in the main process and the
+ * banner above this pane is already drawing it, recovery and all; restating it
+ * here is the mistake `src/lib/storage-copy-scan.test.ts` fails the build on.
  */
 export function EmptyLibrary({ state, query }: { state: LibraryViewState; query: string }) {
   const openModal = useUIStore((s) => s.openModal)
 
-  if (state === 'loading' || state === 'books') return null
+  if (state === 'loading' || state === 'books' || state === 'library-unavailable') return null
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-parchment-faint">
