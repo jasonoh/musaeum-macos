@@ -2,6 +2,12 @@
 
 All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https://keepachangelog.com); versions follow semver once the app is packaged.
 
+## [Unreleased] — 2026-09-24
+
+### Fixed
+- **A library in a folder on this Mac no longer triggers mount attempts against a server you do not have.** With the folder renamed, moved, or on a drive that is not plugged in, the app used to run `open -g smb://ohnas` every 5 s, then 15 s, then 60 s, forever — and the banner's only button, _Retry Now_, ran the same thing. It now knows whether your library is a **folder** or a **share** (the folder you chose decides it, and Settings reports which one it settled on), so a folder gets no retry loop at all: nothing is coming back on its own, and the fix is to tell the app where the books went. A share behaves exactly as before — the mount attempt, the backoff, the manual retry.
+- **The app stops claiming it is reconnecting when it is not.** A failed attempt used to pin the status at _"Reconnecting to the library…"_, so the half of the message that matters — _editing is disabled_ — was shown once and then replaced for good. It now returns to the offline state between attempts, and a write refused while your library is a folder says the folder is missing (and that you can choose where it went) instead of asking you to reconnect to a NAS. **Still to come:** the banner's own wording for a missing folder, which arrives with the next slice — this change is what the app _does_, not yet every word it shows.
+
 ## [Unreleased] — 2026-09-23
 
 ### Added
