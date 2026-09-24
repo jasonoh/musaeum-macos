@@ -3,7 +3,7 @@
 **Date:** 2026-09-23
 **Slice:** 2 of 3 — the route and the contract (AC8–AC15)
 **Annex to:** `docs/superpowers/specs/2026-09-23-phone-upload-design.md`
-**Read first:** the spec's *D1*, *D5*, *D6*, *D7* and the Slice 2 acceptance criteria; slice 1's annex (`docs/superpowers/plans/2026-09-23-phone-upload-slice1.md`) for the readings this one inherits — they are settled and are **not** re-opened here. Slice 1 landed 2026-09-23 and is **uncommitted at the time of writing**; its numbers are quoted against the `a2e9be9` tree.
+**Read first:** the spec's *D1*, *D5*, *D6*, *D7* and the Slice 2 acceptance criteria; slice 1's annex (`docs/superpowers/plans/2026-09-23-phone-upload-slice1.md`) for the readings this one inherits — they are settled and are **not** re-opened here. Slice 1 landed 2026-09-23 in **`ddae4c0`** (its record in `1e1d9bc`); the numbers below are that tree's, whose baseline was `a2e9be9`.
 
 ---
 
@@ -98,7 +98,7 @@ AC14 needs a real book to cross a real socket. **The alternatives:** a synthetic
 
 ## Verification plan
 
-Gates: `npm run typecheck`, `npm run lint`, `npx prettier --check` on the touched files, `npm test` (**1379 in 58 files** as slice 1 left it, plus this slice's cases), `bash -n scripts/api-smoke.sh`, and the smoke script itself against a live app on an **isolated profile**. Then the mutation campaign over this slice's deciders — one mutant per half of any paired assertion (the `401` and its `WWW-Authenticate` header are two claims; `503 busy` and its `Retry-After` are two), run with `scripts/mutation-campaign.py` from the `musaeum-slice-workflow` skill.
+Gates: `npm run typecheck`, `npm run lint`, `npx prettier --check` on the touched files, `npm test` (**1379 in 58 files** as `ddae4c0` left it, plus this slice's cases), `bash -n scripts/api-smoke.sh`, and the smoke script itself against a live app on an **isolated profile**. Then the mutation campaign over this slice's deciders — one mutant per half of any paired assertion (the `401` and its `WWW-Authenticate` header are two claims; `503 busy` and its `Retry-After` are two), run with `scripts/mutation-campaign.py` from the `musaeum-slice-workflow` skill.
 
 **The harness slice 1 did not need:** a live server needs a profile with `rest_api_enabled` on and a token, and the smoke script refuses to run without an isolated one. Slice 2's first act is to stand that profile up and name it in this annex's results table — value, instrument, and the pre-fix value beside it — so the next session re-runs rather than rebuilds.
 
