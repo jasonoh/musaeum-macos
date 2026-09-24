@@ -1,4 +1,4 @@
-import type { Book, LibraryFacets, ReadStatus } from '@shared/book.types'
+import type { Book, DuplicateContext, LibraryFacets, ReadStatus } from '@shared/book.types'
 import { orderedFormats } from '@shared/book.types'
 
 /**
@@ -50,6 +50,15 @@ export const API_ERRORS = {
   badRequest: 'bad request',
   /** 404 — unknown book, unknown format, a format the book does not hold. */
   notFound: 'not found',
+  /**
+   * 413 — a body past the size this route will accept (D4 of the phone-upload
+   * design). A *limit* rather than the malformed request `400` is defined as:
+   * the body made perfect sense, there was simply too much of it, which is a
+   * different sentence for a client and a different retry decision for a
+   * person. The word is RFC 9110's own name for the status, lowercased like
+   * every other value here.
+   */
+  tooLarge: 'content too large',
   /** 503 — too many byte transfers in flight; retry (D9). */
   busy: 'busy',
   /** 503 — the share is not mounted, so there are no bytes to serve. */
@@ -255,6 +264,41 @@ export interface ReadingPayload {
  */
 export function readingPayload(input: { applied: boolean; book: Book }): ReadingPayload {
   return { applied: input.applied, book: bookPayload(input.book) }
+}
+
+// ---------------------------------------------------------------------------
+// The upload's answer — the API's second write (D6)
+// ---------------------------------------------------------------------------
+
+/**
+ * `POST /api/books`'s answer: the book that arrived, and the collision the
+ * importer answered by policy rather than by asking.
+ *
+ * **`duplicate` is outside `book` deliberately.** It is a fact about the
+ * *import* — what the pre-copy gate found — and not a property of the row, so
+ * putting it inside `book` would give this one route a book shape no other
+ * route's book has. Here every payload's `book` member is the same
+ * `bookPayload`, which is what makes a client's decoding identical across them.
+ *
+ * **The book is pre-hydration, and that is the Mac's own contract rather than a
+ * degradation for the phone** (D6's Consequence): `importer.importOne` inserts
+ * the row and starts hydration without awaiting it, so the route reports the row
+ * as it stands the moment the import returns — embedded metadata, `seriesName:
+ * null`, and any title a fetch will settle arriving on the client's next list
+ * fetch. The alternative (await the hydration) would hold a transfer slot for up
+ * to five seconds so that a client's first look is the settled one.
+ */
+export interface ImportPayload {
+  book: WireBook
+  /** `null` when the import found no collision — the ordinary case. */
+  duplicate: DuplicateContext | null
+}
+
+export function importPayload(input: {
+  book: Book
+  duplicate: DuplicateContext | null
+}): ImportPayload {
+  return { book: bookPayload(input.book), duplicate: input.duplicate }
 }
 
 // ---------------------------------------------------------------------------

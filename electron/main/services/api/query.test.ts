@@ -3,7 +3,7 @@ import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { API_ERRORS, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from './shape'
 import { intParam, listParam, parseLibraryQuery, parseSort } from './query'
-import { matchBookPath, refusalError } from './routes'
+import { isBooksCollection, matchBookPath, refusalError } from './routes'
 
 /**
  * The moved functions' socketless cases (slice 1c's split, D2).
@@ -259,6 +259,35 @@ describe('matchBookPath — which book route a path is', () => {
     // segments, so it is not one of the four shapes and matches nothing at all.
     expect(matchBookPath('/api/books/..')?.id).toBe('..')
     expect(matchBookPath('/api/books/../../etc/passwd')).toBeNull()
+  })
+})
+
+describe('isBooksCollection — the collection itself, which the matcher cannot name', () => {
+  it('names the bare path, and the two are disjoint by construction', () => {
+    // `BOOKS_PREFIX`'s trailing slash is exactly what keeps the collection out
+    // of `matchBookPath` — which is why slice 2 needed a second function rather
+    // than a third `BookResource` (`BookPath` has no room for an id-less route)
+    expect(isBooksCollection('/api/books')).toBe(true)
+    expect(matchBookPath('/api/books')).toBeNull()
+  })
+
+  it('answers for the pathname alone — the query is the route’s parameters', () => {
+    // The router hands this function `url.pathname`, and what a client appends
+    // (`?format=epub&filename=…`) is that route's parameters rather than part of
+    // what it matches on
+    expect(isBooksCollection('/api/books?format=epub&filename=Dune.epub')).toBe(false)
+  })
+
+  it.each([
+    '/api/books/',
+    '/api/books/abc',
+    '/api/books/abc/reading',
+    '/api/book',
+    '/api/bookshelf',
+    '/api/booksa',
+    '/api/library'
+  ])('is false for a path that is not the collection (%s)', (pathname) => {
+    expect(isBooksCollection(pathname)).toBe(false)
   })
 })
 

@@ -12,15 +12,20 @@
 #   MUSAEUM_USER_DATA=/tmp/scratch/profile bash scripts/api-smoke.sh
 #   bash scripts/api-smoke.sh --base http://100.125.135.108:8788 --token <token>
 #
-# Requires: curl, jq, sqlite3. Exit status is non-zero if any check failed.
+# Requires: curl, jq, sqlite3 and zip (the upload's fixture is built here, and
+# `zip -0` is how it stores `mimetype` the way the EPUB spec requires). Exit
+# status is non-zero if any check failed.
 #
-# **One section writes — slice 1c's reading report — and it is the only one
-# that does.** It reports the fraction the book already holds (0.42 for a book
-# that has none), so re-running it reports the same thing again rather than
-# walking the book forward; it never sends a position. Because of it, point this
-# script at a **scratch profile** (or a server whose library you are willing to
-# nudge) rather than the profile you read on: the old contract held that a smoke
-# run changed nothing, and that stopped being true when the write shipped.
+# **Two sections write — slice 1c's reading report and slice 2's upload — and
+# they are the only ones that do.** The reading report sends the fraction the
+# book already holds (0.42 for a book that has none), so re-running it reports
+# the same thing again rather than walking the book forward, and it never sends a
+# position. The upload **adds a book**, and it adds one per run: the book it
+# creates is named from the run's own clock, so two runs never collide and a
+# second run cannot be mistaken for a re-run. Because of both, point this script
+# at a **scratch profile** — with a library root you are willing to grow — rather
+# than the profile you read on: the old contract held that a smoke run changed
+# nothing, and that stopped being true when the first write shipped.
 #
 # What it cannot decide, and why the suite has to: **the bytes it receives are
 # not hashed against the file on the share.** The wire deliberately does not
@@ -108,9 +113,9 @@ check() {
 
 note() { printf 'note  %s\n' "$1"; }
 
-for tool in curl jq sqlite3; do
+for tool in curl jq sqlite3 zip; do
   command -v "$tool" >/dev/null 2>&1 || {
-    echo "FAIL  $tool is not installed — this script needs curl, jq and sqlite3" >&2
+    echo "FAIL  $tool is not installed — this script needs curl, jq, sqlite3 and zip" >&2
     exit 2
   }
 done
@@ -301,10 +306,10 @@ code=$(request /api/books/not-a-book)
 check 'an unknown book answers 404' 404 "$code"
 
 # ---------------------------------------------------------------------------
-# The one write: the phone's progress report (slice 1c)
+# The first write: the phone's progress report (slice 1c)
 # ---------------------------------------------------------------------------
 
-printf '\n--- the reading report (the only write)\n'
+printf '\n--- the reading report (the first of two writes)\n'
 
 if [ -n "$FIRST_ID" ]; then
   # The fraction this book already holds, or the contract's own example for a
@@ -361,6 +366,96 @@ if [ -n "$FIRST_ID" ]; then
 else
   fail 'PUT /api/books/{id}/reading answers 200' 'the cache holds no book to report against'
 fi
+
+# ---------------------------------------------------------------------------
+# The second write: a book arriving as bytes (slice 2)
+# ---------------------------------------------------------------------------
+
+printf '\n--- upload (the second write, and the one that creates a book)\n'
+
+# **A fixture this script owns** (S9). The bytes are a real EPUB — a stored
+# `mimetype` first, a `container.xml`, an OPF with a title — and the title is
+# *this run's own name*, so hydration can only set the string the import already
+# used and two runs cannot collide with each other. `zip -0` stores rather than
+# deflates, which is what the EPUB spec requires of `mimetype`.
+UPLOAD_NAME="Smoke Upload $(date +%Y%m%d-%H%M%S)"
+FIXTURE="$WORK/fixture"
+mkdir -p "$FIXTURE/book/META-INF" "$FIXTURE/book/OEBPS"
+printf 'application/epub+zip' >"$FIXTURE/book/mimetype"
+printf '%s' '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>' \
+  >"$FIXTURE/book/META-INF/container.xml"
+printf '%s' "<?xml version=\"1.0\"?><package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"bookid\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>$UPLOAD_NAME</dc:title><dc:language>en</dc:language></metadata><manifest><item id=\"c1\" href=\"chapter1.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref idref=\"c1\"/></spine></package>" \
+  >"$FIXTURE/book/OEBPS/content.opf"
+# A chapter, so the file is a book rather than a container with a title in it —
+# and so its bytes are past the kilobyte the download section's range check asks
+# for. The upload puts this book *into* the library, which means the range check
+# can meet it on a re-run; it has to be a book either check can serve.
+printf '%s' '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body>' \
+  >"$FIXTURE/book/OEBPS/chapter1.xhtml"
+i=0
+while [ "$i" -lt 60 ]; do
+  printf '<p>Line %s of the smoke fixture, which exists to be bytes rather than to be read.</p>\n' "$i" \
+    >>"$FIXTURE/book/OEBPS/chapter1.xhtml"
+  i=$((i + 1))
+done
+printf '%s' '</body></html>' >>"$FIXTURE/book/OEBPS/chapter1.xhtml"
+(
+  cd "$FIXTURE/book" || exit 1
+  zip -X -0 -q "$FIXTURE/smoke.epub" mimetype
+  zip -X -q -r "$FIXTURE/smoke.epub" META-INF OEBPS
+)
+UPLOAD_BYTES="$(wc -c <"$FIXTURE/smoke.epub" | tr -d ' ')"
+UPLOAD_QUERY="format=epub&filename=$(printf '%s' "$UPLOAD_NAME.epub" | sed 's/ /%20/g')"
+
+code=$(request "/api/books?$UPLOAD_QUERY" -X POST -H 'Content-Type: application/epub+zip' \
+  --data-binary "@$FIXTURE/smoke.epub")
+check 'POST /api/books answers 201' 201 "$code"
+UPLOAD_ID="$(jq -r '.book.id // empty' "$BODY")"
+check 'the answer names the book it created' 'an id' \
+  "$([ -n "$UPLOAD_ID" ] && echo 'an id' || echo 'no id')"
+check 'the title is the filename it was given' "$UPLOAD_NAME" "$(jq -r '.book.title' "$BODY")"
+check 'the format is the parameter it was given' 'epub' "$(jq -r '.book.formats | join(",")' "$BODY")"
+check 'the size is the number of bytes it sent' "$UPLOAD_BYTES" \
+  "$(as_number "$(jq -r '.book.fileSizeBytes // 0' "$BODY")")"
+check 'nothing in the library collided with it' 'null' "$(jq -r '.duplicate' "$BODY")"
+
+# The read-back: the id the answer named, fetched on the route a client uses.
+# This is the half of AC14 that makes the check an import rather than a status
+# line, and it reads the *payload* rather than the write's own echo.
+if [ -n "$UPLOAD_ID" ]; then
+  code=$(request "/api/books/$UPLOAD_ID")
+  check 'the uploaded book reads back off the detail route' 200 "$code"
+  check 'the book that reads back is the one that was uploaded' "$UPLOAD_ID" "$(jq -r '.id' "$BODY")"
+  check 'the read-back carries the same title' "$UPLOAD_NAME" "$(jq -r '.title' "$BODY")"
+else
+  fail 'the uploaded book reads back off the detail route' 'the answer carried no id'
+fi
+
+# The refusals, observed as statuses. Their rules are the suite's
+# (`electron/main/api/upload.test.ts`, `services/api/upload.test.ts`); what this
+# proves is that a live server refuses them the same way.
+code=$(request '/api/books?filename=No-Format.epub' -X POST \
+  -H 'Content-Type: application/epub+zip' --data-binary "@$FIXTURE/smoke.epub")
+check 'an upload with no format answers 400' 400 "$code"
+check 'the refusal is the contract body' 'bad request' "$(jq -r '.error' "$BODY")"
+
+code=$(request '/api/books?format=epub&filename=Empty.epub' -X POST \
+  -H 'Content-Type: application/epub+zip' --data '')
+check 'an empty body answers 400' 400 "$code"
+
+# **The method policy** (S6): the collection answers POST and nothing else, and
+# HEAD is deliberately not an exception for it.
+code=$(request '/api/books?format=epub&filename=Method.epub')
+check 'a GET of the collection answers 404' 404 "$code"
+code=$(curl -sS --head --max-time "$TIMEOUT" -D "$HEADERS" -o /dev/null -w '%{http_code}' \
+  "${AUTH[@]}" "$BASE/api/books" 2>/dev/null)
+check 'a HEAD of the collection answers 404' 404 "$code"
+
+# **The 413 is not exercised here, deliberately.** It needs a body past 1 GiB,
+# and a gigabyte is not a smoke test. The breach and the refusal it produces are
+# decided on a socket with a small cap through the module's own seam in
+# `electron/main/api/upload.test.ts`; a smoke run can add nothing to that.
+note 'the 1 GiB cap is not exercised here — see the mid-flight 413 case in electron/main/api/upload.test.ts'
 
 printf '\n--- cover bytes\n'
 
@@ -450,10 +545,21 @@ if [ -n "$FILE_ID" ] && [ -n "$FILE_FORMAT" ]; then
   check 'the file route names the format own media type' 'ok' \
     "$(header content-type | grep -q '^application/' && echo ok || echo "$(header content-type)")"
 
-  code=$(request "/api/books/$FILE_ID/file?format=$FILE_FORMAT" -H 'Range: bytes=0-1023')
+  # Clamped to the file, so the check asks for what exists. A library whose
+  # smallest book is under a kilobyte — which this slice's own upload fixture can
+  # be once the upload has *put* a book in the library — answers a shorter
+  # Content-Range rather than a 416, and a check with 1023 hard-coded would fail
+  # a healthy server.
+  RANGE_END=$((LENGTH > 1024 ? 1023 : LENGTH - 1))
+  RANGE_BYTES=$((RANGE_END + 1))
+  if [ "$LENGTH" -le 1024 ]; then
+    note "the smallest book on this page is $LENGTH bytes — the range check was clamped to it"
+  fi
+
+  code=$(request "/api/books/$FILE_ID/file?format=$FILE_FORMAT" -H "Range: bytes=0-$RANGE_END")
   check 'a resumed range answers 206' 206 "$code"
-  check 'the 206 carries Content-Range' "bytes 0-1023/$LENGTH" "$(header content-range)"
-  check 'the 206 serves a thousand and twenty-four bytes' 1024 "$(body_size)"
+  check 'the 206 carries Content-Range' "bytes 0-$RANGE_END/$LENGTH" "$(header content-range)"
+  check "the 206 serves $RANGE_BYTES bytes" "$RANGE_BYTES" "$(body_size)"
 
   code=$(request "/api/books/$FILE_ID/file?format=$FILE_FORMAT" -H "Range: bytes=$LENGTH-")
   check 'a range past the end answers 416' 416 "$code"

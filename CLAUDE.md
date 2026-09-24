@@ -186,13 +186,15 @@ Both library views are virtualized (see `docs/invariants/library-views.md`); mea
 
 ---
 
-## iOS Companion — Architecture Staging
+## iOS Companion
 
-In place as of Phase 1:
+**The client is real, in its own repository: `jasonoh/musaeum-ios`** (locally `../musaeum-ios`) — SwiftUI over Readium, iOS 18, XcodeGen from `project.yml`. **The wire contract is this repo's:** `docs/rest-api.md` is the only description of it, the client derives its test fixtures from that document by script and never restates it, and `scripts/api-smoke.sh` is the contract's executable half — so a payload change touches the document, its goldens and the smoke script in one slice, here, first.
+
+The Phase 1 staging claims below are what made that client cheap; all six held.
 
 1. SQLite schema contains no UI-coupled fields
 2. `metadata.json` is the canonical data contract (documented in `docs/data-contracts.md`)
-3. REST API module stubbed at `electron/main/api/rest.ts` — disabled via `app_config` flag `rest_api_enabled = false`
+3. REST API is real at `electron/main/api/rest.ts` — six read routes and one write behind a generated bearer token, bound to the tailnet address, disabled by default via the `app_config` flag `rest_api_enabled = false` (`docs/invariants/settings-and-editing.md`)
 4. All book file paths stored as relative paths from library root
 5. Covers at two resolutions: `cover_thumb.jpg` (200px), `cover_full.jpg` (600px)
 6. All data access goes through the service layer (IPC handlers contain no business logic) so extraction to a standalone API server stays cheap

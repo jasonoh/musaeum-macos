@@ -13,6 +13,7 @@ import {
   errorPayload,
   facetsPayload,
   healthPayload,
+  importPayload,
   libraryPayload,
   readingPayload
 } from './shape'
@@ -78,6 +79,14 @@ const GOLDEN: Book = {
   }
 }
 
+/** The collision the upload's request answers by policy, for the wire's own case. */
+const DUPLICATE = {
+  existingBookId: 'a1b2c3d4-0000-4000-8000-000000000001',
+  existingTitle: 'Leviathan Wakes',
+  existingAuthor: 'James S. A. Corey',
+  matchType: 'isbn' as const
+}
+
 /** The payloads the document must describe. Built by the shaper, never by hand. */
 const PAYLOADS: Record<string, unknown> = {
   health: healthPayload({ version: '0.1.0', books: 7100, online: true }),
@@ -93,6 +102,12 @@ const PAYLOADS: Record<string, unknown> = {
   // Slice 1c's answer: the one write's payload. Its `book` member is the same
   // `bookPayload`, so the goldens prove the two routes describe a book alike.
   reading: readingPayload({ applied: true, book: GOLDEN }),
+  // Slice 2's answer: the second write, whose `book` member is that same shaper
+  // again — three routes, one book shape. The document's block carries a
+  // *non-null* `duplicate` so every member of the collision reaches the contract
+  // a client is written against; `null` is the ordinary case and the case below
+  // decides it.
+  import: importPayload({ book: GOLDEN, duplicate: DUPLICATE }),
   error: errorPayload('notFound')
 }
 
@@ -149,6 +164,11 @@ describe('the contract document and the goldens (AC19)', () => {
     ]) {
       expect(DOC).toContain(path)
     }
+    // Slice 2's route: the collection itself, which is a path a client POSTs to
+    // rather than one with an `{id}` in it. Asserted separately because it is a
+    // *prefix* of every other book path, so `toContain` would find it in them and
+    // the loop above would pass without the document naming it at all.
+    expect(DOC).toContain('POST /api/books?format=')
   })
 
   it('names every refusal word, every media type and the page bounds', () => {
@@ -203,6 +223,26 @@ describe('the reading payload — the answer to the one write (AC19)', () => {
     expect(keyPaths(readingPayload({ applied: false, book: GOLDEN })).sort()).toEqual(
       keyPaths(readingPayload({ applied: true, book: GOLDEN })).sort()
     )
+  })
+})
+
+describe('the import payload — the answer to the second write (D6)', () => {
+  it('carries the book and the collision, and nothing else', () => {
+    const payload = importPayload({ book: GOLDEN, duplicate: DUPLICATE })
+
+    // The container, whole: "a `book` and a `duplicate`" asserted member by
+    // member would pass while a third key was written beside them
+    expect(Object.keys(payload).sort()).toEqual(['book', 'duplicate'])
+    // The book is the same shaper the detail route answers with (three routes,
+    // one book shape), and the collision crosses field for field
+    expect(payload.book).toEqual(bookPayload(GOLDEN))
+    expect(payload.duplicate).toEqual(DUPLICATE)
+  })
+
+  it('carries a null collision when the import found none — the ordinary case', () => {
+    const payload = importPayload({ book: GOLDEN, duplicate: null })
+
+    expect(payload.duplicate).toBeNull()
   })
 })
 
@@ -272,7 +312,7 @@ describe('the read path does not touch the NAS (AC16)', () => {
     const imports = source.split('\n').filter((line) => line.startsWith('import '))
 
     expect(imports).toEqual([
-      "import type { Book, LibraryFacets, ReadStatus } from '@shared/book.types'",
+      "import type { Book, DuplicateContext, LibraryFacets, ReadStatus } from '@shared/book.types'",
       "import { orderedFormats } from '@shared/book.types'"
     ])
   })

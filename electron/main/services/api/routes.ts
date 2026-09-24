@@ -30,6 +30,26 @@ import type { ApiError } from './shape'
 export const BOOKS_PREFIX = '/api/books/'
 
 /**
+ * The collection itself — `POST /api/books` (design D1).
+ *
+ * **Exactly `BOOKS_PREFIX` without its trailing slash**, which is why the
+ * matcher below has never seen it: `'/api/books'.startsWith('/api/books/')` is
+ * false, so a bare collection path has always fallen through to the switch's
+ * uniform 404. That was right while the collection answered nothing (there was
+ * no way to *create* a book over the wire), and it is the reason this is a
+ * second function rather than a third `BookResource`: `BookPath` is
+ * `{ id, resource }` and a collection has no id to give it. Making `id` nullable
+ * for one caller would put a null in every reader of the shape to serve a case
+ * that has none of a book path's properties — no id, no resource, and a body.
+ *
+ * Matched on the **pathname only**, never on the query: `format` and `filename`
+ * are that route's parameters and not part of what it matches on.
+ */
+export function isBooksCollection(pathname: string): boolean {
+  return pathname === '/api/books'
+}
+
+/**
  * The resource a book path names. `''` is the book itself; `reading` is slice
  * 1c's write and is the only one a `PUT` may reach.
  */

@@ -7,15 +7,18 @@ import { checkBearer, logRejectedAttempt } from '../services/api/auth'
 import { resolveBindAddress, type InterfaceMap } from '../services/api/bind'
 import { parseLibraryQuery } from '../services/api/query'
 import { applyReadingReport, parseReadingReport } from '../services/api/reading'
-import { matchBookPath, refusalError } from '../services/api/routes'
+import { isBooksCollection, matchBookPath, refusalError } from '../services/api/routes'
 import {
   bookPayload,
   errorPayload,
   facetsPayload,
   healthPayload,
+  importPayload,
   libraryPayload,
-  readingPayload
+  readingPayload,
+  type ApiError
 } from '../services/api/shape'
+import { receiveUpload, type UploadOptions, type UploadRefusal } from '../services/api/upload'
 import {
   parseByteRange,
   resolveBookFile,
@@ -68,8 +71,9 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  * **Route by route (docs/rest-api.md is the contract; this is the wiring):**
  * `GET /api/health`, `GET /api/library`, `GET /api/library/facets`,
  * `GET /api/books/{id}`, `GET /api/books/{id}/cover`,
- * `GET /api/books/{id}/file`, and `PUT /api/books/{id}/reading` — the last one
- * slice 1c's, the only route that writes, and the only one that reads a body.
+ * `GET /api/books/{id}/file`, `PUT /api/books/{id}/reading` — slice 1c's, which
+ * reads a JSON body — and `POST /api/books`, which takes a book's bytes as its
+ * body and is the API's second write (the phone-upload design, D1).
  *
  * **Never fatal (invariant 12, D11).** A bind failure is logged, recorded and
  * the app starts normally; a thrown handler answers 500; a failed read is 404, a
@@ -269,6 +273,13 @@ interface RouteDeps {
   gate: ByteGate
   /** How long a request body has to arrive before it is refused. */
   bodyTimeoutMs: number
+  /**
+   * How the upload route's body is bounded, and where its scratch file lands.
+   * An `UploadOptions` rather than three fields: `services/api/upload.ts`
+   * already owns the cap, the stall clock and the scratch directory, and the
+   * route passes them through untouched (`ServerOptions.upload` is the seam).
+   */
+  upload: UploadOptions
 }
 
 /** A file to serve, and the type its bytes are labelled with. */
@@ -507,6 +518,137 @@ async function handleReadingReport(
 }
 
 // ---------------------------------------------------------------------------
+// The second write: a book arriving as bytes (D1, D5, D6)
+// ---------------------------------------------------------------------------
+
+/**
+ * The upload's refusal vocabulary, mapped once — a lookup, not a judgement.
+ *
+ * The reasons are `services/api/upload.ts`'s own union, and the `Record` is over
+ * it, so a sixth reason there is a `npm run typecheck` failure here until its
+ * status is named. That is the same discipline `services/api/routes.ts` keeps
+ * for the cover resolver's two refusals, and it exists because a reason with no
+ * status is a request nobody answers.
+ *
+ * `offline` is deliberately **not** in the table: it is the byte routes' own
+ * 503, with `Retry-After: 5` and a word that is not a JSON body's business
+ * (`sendUnavailable` writes it), so the writer below hands that one reason
+ * across rather than duplicating the shape here.
+ *
+ * `stalled` is a **400**, and it is the reading route's own precedent: a body
+ * that never finished arriving is a request this surface could not make sense
+ * of, which is the client's error and not this machine's. Slice 1's first
+ * revision of that rule answered `internal` for a silence the *handler* caused
+ * (a paused request, a target that stopped draining) and that one stays
+ * `internal` — the two are different sentences and the vocabulary keeps both.
+ */
+const UPLOAD_REFUSALS: Record<
+  Exclude<UploadRefusal, 'offline'>,
+  { status: number; error: ApiError }
+> = {
+  'bad-request': { status: 400, error: 'badRequest' },
+  'too-large': { status: 413, error: 'tooLarge' },
+  stalled: { status: 400, error: 'badRequest' },
+  internal: { status: 500, error: 'internal' }
+}
+
+/**
+ * Answer a refusal, and keep the message out of it.
+ *
+ * An `internal` refusal's `message` is the **filesystem's own** and carries this
+ * machine's absolute paths (slice 1's review: a full `userData` volume, an
+ * `ENAMETOOLONG`), so it goes to the log where a person can read it and never to
+ * the wire, where the client gets the fixed word.
+ */
+function sendUploadRefusal(
+  res: ServerResponse,
+  outcome: { reason: UploadRefusal; message?: string }
+): void {
+  if (outcome.message)
+    console.warn(`[rest] upload refused (${outcome.reason}) — ${outcome.message}`)
+
+  if (outcome.reason === 'offline') {
+    sendUnavailable(res, 'offline')
+    return
+  }
+  const answer = UPLOAD_REFUSALS[outcome.reason]
+  sendJson(res, answer.status, errorPayload(answer.error))
+}
+
+/**
+ * `POST /api/books?format=<f>&filename=<n>` — a book arriving as bytes (D1).
+ * The API's second write, and its first that *creates* a row rather than
+ * editing one.
+ *
+ * **Thin by construction (invariant 8).** Everything this route decides is the
+ * table above and the seam below: the parameters, the share check, the body's
+ * two bounds, the scratch-file lifecycle and the import itself are
+ * `services/api/upload.ts`'s — built socketless in the previous slice for
+ * exactly this call — and the import is `importer.addFiles`, the same entry
+ * point the Mac's own picker and the `imports/` watcher use. What is left here
+ * is HTTP's own business: a status line, a slot from the transfer gate, and a
+ * payload.
+ *
+ * **The transfer gate wraps the body** (D5). An upload is the same shape as a
+ * download — minutes, not a burst, in the four-slot libuv threadpool the app's
+ * own cover loads share — so it takes one of the two slots, and a request that
+ * arrives with both spent gets the byte routes' own `503 busy` +
+ * `Retry-After: 1`. Two consequences, both stated rather than discovered:
+ *
+ * - **The slot is taken before the parameters are validated**, so a request that
+ *   is both malformed *and* arriving at a busy server answers `busy` rather than
+ *   `400`. The alternative — validating here — puts a second copy of
+ *   `parseUploadQuery`'s decision in the socket module, which is precisely what
+ *   invariant 8 forbids.
+ * - **A silent client does not hold its slot forever, unlike a download**: the
+ *   handler's own 30 s stall clock ends the wait and the `finally` below hands
+ *   the slot back. A wedged *read* has no timer, which is why the byte routes
+ *   cannot promise the same thing (docs/rest-api.md, *Concurrent byte transfers*).
+ *
+ * **201, with the row as the import returned it** (D6, S7). The book is read
+ * back out of the cache rather than taken from the importer's in-memory value,
+ * and it is pre-hydration by design: the Mac's own contract is that a book is in
+ * the library the moment it is inserted, and blocking the answer on a network
+ * fetch would hold a transfer slot for up to five seconds to make the client's
+ * first look the settled one.
+ */
+async function handleUpload(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  deps: RouteDeps
+): Promise<void> {
+  if (!deps.gate.acquire()) {
+    sendUnavailable(res, 'busy')
+    return
+  }
+
+  try {
+    const outcome = await receiveUpload(req, url.searchParams, deps.upload)
+    if (!outcome.ok) {
+      sendUploadRefusal(res, outcome)
+      return
+    }
+
+    const book = outcome.result.bookId ? getBook(outcome.result.bookId) : null
+    if (!book) {
+      // The importer reported a success for a row the cache does not hold. It is
+      // unreachable by construction (an insert precedes the result), so it is
+      // answered as this module's own failure rather than asserted away with a
+      // non-null assertion — invariant 12, and a 500 is a status the contract
+      // already carries.
+      console.warn('[rest] upload imported a book the cache does not hold')
+      sendJson(res, 500, errorPayload('internal'))
+      return
+    }
+
+    sendJson(res, 201, importPayload({ book, duplicate: outcome.result.duplicate ?? null }))
+  } finally {
+    deps.gate.release()
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The router
 // ---------------------------------------------------------------------------
 
@@ -528,6 +670,14 @@ async function handleReadingReport(
  * /api/books/{id}/reading` is the exception that has to name its method, and a
  * `GET` of that path is a known path behind a method it does not answer — 404
  * like any other (D11).
+ *
+ * `POST /api/books` — slice 2's second write — is the second exception, and its
+ * policy is stated here for the same reason: it takes a **body of raw bytes**,
+ * so a `HEAD` on it has nothing to answer with beyond a status (`GET
+ * /api/books/{id}/file` is the same shape and the same answer), and it is
+ * therefore deliberately **left out of the `HEAD` allowlist**. One rule and no
+ * new status: `HEAD /api/books` is a known path behind a method it does not
+ * answer, which is the uniform 404 above.
  */
 async function handleRequest(
   req: IncomingMessage,
@@ -585,6 +735,17 @@ async function handleRequest(
       // list route's filters: a facet count that followed the current filter
       // would tell a client nothing about what it could filter *to*.
       sendJson(res, 200, facetsPayload(getFacets()))
+      return
+    }
+
+    // **The second write** (D1): the collection itself, matched on its method
+    // and its pathname, with the book's bytes as the raw body. It sits with the
+    // other early arms because the bare path never reaches `matchBookPath` — that
+    // matcher's prefix carries a trailing slash — so a `GET`, a `HEAD` or a `PUT`
+    // of this path falls through to the 404 below like any other known path
+    // behind a method the route does not answer.
+    if (req.method === 'POST' && isBooksCollection(url.pathname)) {
+      await handleUpload(req, res, url, deps)
       return
     }
 
@@ -688,6 +849,19 @@ export interface ServerOptions {
    * `Content-Length` in milliseconds rather than in ten seconds.
    */
   bodyTimeoutMs?: number
+
+  /**
+   * How the upload route's body is bounded and where its scratch file lands;
+   * default `{}` — `services/api/upload.ts`'s own 1 GiB cap, 30 s stall clock
+   * and `userData` scratch directory.
+   *
+   * The seam exists for the reason both above do, and it is the third of them
+   * rather than a set of fields on this interface because the cap and the clock
+   * are that module's decisions and not this one's: a case can decide an
+   * oversized body and a stalled one in milliseconds (and keep the suite's
+   * scratch directory its own) without a 1 GiB file or a thirty-second wait.
+   */
+  upload?: UploadOptions
 }
 
 /**
@@ -709,7 +883,9 @@ export function createRestApiServer(
   const deps: RouteDeps = {
     transfer: options.transfer ?? streamRange,
     gate: createByteGate(),
-    bodyTimeoutMs: options.bodyTimeoutMs ?? BODY_TIMEOUT_MS
+    bodyTimeoutMs: options.bodyTimeoutMs ?? BODY_TIMEOUT_MS,
+    // The upload's own bounds: the module's defaults unless a case replaced them
+    upload: options.upload ?? {}
   }
 
   const server = createServer((req, res) => {

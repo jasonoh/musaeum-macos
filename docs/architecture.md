@@ -214,13 +214,15 @@ Both library views are virtualized (see `docs/invariants/library-views.md`); mea
 
 ---
 
-## iOS Companion — Architecture Staging
+## iOS Companion
 
-In place as of Phase 1:
+**The client is real and lives in its own repository: `jasonoh/musaeum-ios`** (locally `../musaeum-ios`) — SwiftUI over Readium, deployment target iOS 18, built with XcodeGen from `project.yml`. It browses the library over the tailnet, downloads a book into its own storage, reads it, and reports the fraction back. Its decisions are its own (`docs/specs/2026-09-22-client-v1-design.md` there); **the wire contract is this repo's** — `docs/rest-api.md` is the single description of it, the client derives its test fixtures from that document by script rather than restating it, and `scripts/api-smoke.sh` is the contract's executable half. A change to a payload is a change here first, document and goldens together.
+
+The staging claims below are what Phase 1 put in place so that client would be cheap. All six held:
 
 1. SQLite schema contains no UI-coupled fields
 2. `metadata.json` is the canonical data contract (documented above)
-3. REST API is real at `electron/main/api/rest.ts` — six read routes behind a generated bearer token, bound to the tailnet address, still disabled by default via the `app_config` flag `rest_api_enabled = false`; the client contract is `docs/rest-api.md`
+3. REST API is real at `electron/main/api/rest.ts` — six read routes and one write behind a generated bearer token, bound to the tailnet address, still disabled by default via the `app_config` flag `rest_api_enabled = false`; the client contract is `docs/rest-api.md`
 4. All book file paths stored as relative paths from library root
 5. Covers at two resolutions: `cover_thumb.jpg` (200px), `cover_full.jpg` (600px)
 6. All data access goes through the service layer (IPC handlers contain no business logic) so extraction to a standalone API server stays cheap
