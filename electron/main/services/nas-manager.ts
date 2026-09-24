@@ -1,20 +1,44 @@
 import { exec } from 'child_process'
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import type { NASStatus, NASState } from '@shared/metadata.types'
+import type { NASStatus, NASState, StorageKind } from '@shared/metadata.types'
 import { getConfig, setConfig } from './db'
 import { broadcast } from './events'
+import { readLibraryKind, resolveStorageKind, writeLibraryKind } from './storage-kind'
 
 const HEALTH_CHECK_INTERVAL_MS = 30_000
 const RECONNECT_BACKOFF_MS = [5_000, 15_000, 60_000]
 const DEFAULT_SMB_URL = 'smb://ohnas'
 
 let state: NASState = 'unconfigured'
+
+/**
+ * The kind in force: the stored fact, or the one derived the first time this
+ * root was reachable. Null until a health check has resolved a root, and null
+ * again when no root is configured.
+ */
+let kind: StorageKind | null = null
+
 let lastCheckedAt: string | null = null
 let healthTimer: NodeJS.Timeout | null = null
 let retryTimer: NodeJS.Timeout | null = null
 let retryAttempt = 0
 let nextRetryAt: number | null = null
+
+/**
+ * Whether a `reconnect()` attempt is in flight **right now**.
+ *
+ * Deliberately not the same thing as the state, which is the whole of D3:
+ * `reconnecting` describes this moment, `disconnected` describes "the share is
+ * away and a timer is armed". Conflating the two pinned the state at
+ * `reconnecting` for good once the first automatic retry had run — every later
+ * health check declined to downgrade it — so the app stopped telling the user
+ * their library was away and editing was disabled, and implied it was
+ * mid-recovery indefinitely. Measured 2026-09-24: the informative copy was
+ * visible for four samples, then *"Reconnecting to the library…"* for the next
+ * 20+ across a minute.
+ */
+let attemptInFlight = false
 
 type Listener = (status: NASStatus) => void
 const listeners = new Set<Listener>()
@@ -27,8 +51,20 @@ export function getLibraryRoot(): string | null {
   return getConfig('library_root')
 }
 
+/**
+ * Wire a root in, and resolve its **kind** here — the one moment the path
+ * necessarily exists.
+ *
+ * `library_root` and `library_kind` are written by the same flow on purpose.
+ * The kind is a fact about where the user chose to put the library: it does not
+ * change when the path temporarily does, and re-picking is the one event that
+ * re-derives it (`services/storage-kind.ts` carries the argument for storing it
+ * at all).
+ */
 export async function setLibraryRoot(path: string): Promise<void> {
   setConfig('library_root', path)
+  kind = await resolveStorageKind(path)
+  writeLibraryKind(kind)
   retryAttempt = 0
   await checkHealth()
 }
@@ -36,6 +72,7 @@ export async function setLibraryRoot(path: string): Promise<void> {
 export function getStatus(): NASStatus {
   return {
     state,
+    kind,
     libraryRoot: getLibraryRoot(),
     nextRetryMs: nextRetryAt ? Math.max(0, nextRetryAt - Date.now()) : null,
     lastCheckedAt
@@ -46,13 +83,25 @@ export function isOnline(): boolean {
   return state === 'connected'
 }
 
-/** Throws a friendly error when the library is not writable. */
+/**
+ * Throws a friendly error when the library is not writable.
+ *
+ * **The sentence names no server.** It said "Reconnect to the NAS to make
+ * changes", which was measured being shown to a user whose library is a folder
+ * on the boot disk (reading 12, 2026-09-24) — an instruction to fix a machine
+ * they do not own. `missing` and `disconnected` are different problems with
+ * different fixes, so they say different things.
+ */
 export function assertOnline(): void {
   if (state === 'unconfigured') {
     throw new Error('No library folder is configured. Choose a library location in Settings.')
   }
   if (state !== 'connected') {
-    throw new Error('The library is offline. Reconnect to the NAS to make changes.')
+    throw new Error(
+      state === 'missing'
+        ? 'The library folder is missing — choose where it went to make changes.'
+        : 'The library is offline. Reconnect to make changes.'
+    )
   }
 }
 
@@ -79,31 +128,81 @@ async function ensureLibraryDirs(root: string): Promise<void> {
   }
 }
 
+/**
+ * The kind in force: the stored fact, or one derived the first time this root
+ * is reachable with nothing stored — an install that predates the key.
+ *
+ * Persisting the derived answer is what makes the fact survive the launch where
+ * it matters. Absent both, the answer is `local`, because network is claimed
+ * only on positive evidence: misreading a folder as a share is the defect this
+ * whole design removes. The residual is a library that predates the key whose
+ * share is *away* on the first launch after this ships — it reads `missing`
+ * until the root is seen once, or the folder is picked again. A bad day rather
+ * than a broken library, and the Settings row is where it becomes visible.
+ */
+async function kindInForce(root: string, reachable: boolean): Promise<StorageKind> {
+  const stored = readLibraryKind()
+  if (stored) return stored
+  if (!reachable) return 'local'
+  const derived = await resolveStorageKind(root)
+  writeLibraryKind(derived)
+  return derived
+}
+
 export async function checkHealth(): Promise<NASStatus> {
   lastCheckedAt = new Date().toISOString()
   const root = getLibraryRoot()
   if (!root) {
+    kind = null
+    clearRetry()
     setState('unconfigured')
     return getStatus()
   }
-  if (await isMounted(root)) {
+
+  const reachable = await isMounted(root)
+  kind = await kindInForce(root, reachable)
+
+  if (reachable) {
     retryAttempt = 0
-    nextRetryAt = null
-    if (retryTimer) {
-      clearTimeout(retryTimer)
-      retryTimer = null
-    }
+    clearRetry()
     try {
       await ensureLibraryDirs(root)
     } catch {
       // Mounted but not writable — still browsable, treat as connected
     }
     setState('connected')
-  } else {
-    if (state !== 'reconnecting') setState('disconnected')
-    scheduleReconnect()
+    return getStatus()
   }
+
+  if (kind === 'local') {
+    // A backoff is a claim that waiting is a strategy. For a folder it is not:
+    // nothing is coming back on its own, so the retry's only effects were three
+    // `open -g` calls a minute and a banner that lied. No timer is armed and
+    // `nextRetryMs` stays null, which is what stops the banner rendering
+    // "Retrying in Ns" for a state that is not retrying.
+    clearRetry()
+    setState('missing')
+    return getStatus()
+  }
+
+  // A share is away and will come back: describe *that*, and arm the backoff.
+  // Skipped while an attempt is in flight, so a 30 s poll landing mid-attempt
+  // cannot stomp the transient state that attempt is about to settle itself.
+  if (!attemptInFlight) setState('disconnected')
+  scheduleReconnect()
   return getStatus()
+}
+
+/**
+ * Disarm the backoff. `nextRetryMs` is null afterwards — "not retrying" is
+ * reported, not left to be inferred from the absence of a timer.
+ */
+function clearRetry(): void {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+  nextRetryAt = null
 }
 
 function scheduleReconnect(): void {
@@ -118,23 +217,46 @@ function scheduleReconnect(): void {
   }, delay)
 }
 
-/** Attempt to mount the SMB share, then re-check. Returns true when connected. */
+/**
+ * The recovery for a **share**: mount it again, then re-check. Returns true when
+ * connected.
+ *
+ * For a folder there is nothing to mount and nothing that could come back, so
+ * this shells nothing at all — it re-checks and reports. That matters beyond
+ * tidiness: this is what the banner's *Retry Now* calls, and reading 10
+ * measured that button running an SMB mount for a local library. A missing
+ * folder's recovery is the picker (`ipc/nas.ts`, D6) — a different verb, behind
+ * a different button.
+ */
 export async function reconnect(): Promise<boolean> {
   const root = getLibraryRoot()
   if (!root) return false
-  setState('reconnecting')
 
-  if (!(await isMounted(root))) {
-    const smbUrl = getConfig('smb_url') ?? DEFAULT_SMB_URL
-    // `open -g` asks macOS to mount the share without stealing focus
-    await new Promise<void>((resolve) => {
-      exec(`open -g '${smbUrl.replace(/'/g, "'\\''")}'`, () => resolve())
-    })
-    // Give the mount a few seconds to appear
-    for (let i = 0; i < 10; i++) {
-      if (await isMounted(root)) break
-      await new Promise((r) => setTimeout(r, 500))
+  const reachable = await isMounted(root)
+  kind = await kindInForce(root, reachable)
+  if (kind === 'local') return (await checkHealth()).state === 'connected'
+
+  attemptInFlight = true
+  setState('reconnecting')
+  try {
+    if (!(await isMounted(root))) {
+      const smbUrl = getConfig('smb_url') ?? DEFAULT_SMB_URL
+      // `open -g` asks macOS to mount the share without stealing focus
+      await new Promise<void>((resolve) => {
+        exec(`open -g '${smbUrl.replace(/'/g, "'\\''")}'`, () => resolve())
+      })
+      // Give the mount a few seconds to appear
+      for (let i = 0; i < 10; i++) {
+        if (await isMounted(root)) break
+        await new Promise((r) => setTimeout(r, 500))
+      }
     }
+  } finally {
+    // Cleared *before* the health check, deliberately: the attempt is over, so
+    // the state it lands in is the truth about the library rather than about
+    // the attempt. A failed mount therefore lands in `disconnected` — with the
+    // timer re-armed — instead of pinning `reconnecting` (D3).
+    attemptInFlight = false
   }
 
   const status = await checkHealth()
@@ -149,7 +271,6 @@ export function startHealthChecks(): void {
 
 export function stopHealthChecks(): void {
   if (healthTimer) clearInterval(healthTimer)
-  if (retryTimer) clearTimeout(retryTimer)
   healthTimer = null
-  retryTimer = null
+  clearRetry()
 }

@@ -12,15 +12,18 @@
 ## NAS / Storage
 
 - Library root is configurable; stored in `app_config` key `library_root`
-- SMB share for auto-reconnect: `app_config` key `smb_url` (default `smb://ohnas`)
-- On launch: check if NAS volume is mounted
-  - If mounted: proceed normally (also ensures `books/`, `imports/`, `exports/` exist)
-  - If not mounted: attempt auto-reconnect via `open -g smb://…`
-  - If reconnect fails: enter **offline/read-only mode**
-    - SQLite cache serves all browse and search operations
-    - Write operations throw via `nas.assertOnline()` with clear UI feedback
-    - Reconnection retried on exponential backoff: 5s → 15s → 60s
-    - Non-blocking status banner shown; user can manually retry
+- **Storage kind**: `app_config` key `library_kind` ∈ `local | network`, resolved **when the folder is chosen** and written beside `library_root` by that same flow (`services/storage-kind.ts` — a `mount`-table scan naming the filesystem, `statfs().type` as a cheap pre-check, and **network only on positive evidence, local otherwise**). It is a fact recorded while the path necessarily exists, not a guess made when it does not: for a root on a share, an unmount takes the mount point with it, so an ancestor walk lands on `/Volumes`, which is the boot disk. Misreading a share as local costs the auto-remount; misreading a folder as a share is the bug this exists to remove. Design: `docs/superpowers/specs/2026-09-24-local-library-design.md` — slice 1 landed 2026-09-24, and that spec's slice 3 writes the local case up in full.
+- SMB share for auto-reconnect: `app_config` key `smb_url` (default `smb://ohnas`) — **used only on the `network` path**
+- On launch: check whether the root is reachable (`fs.access`)
+  - If reachable: proceed normally (also ensures `books/`, `imports/`, `exports/` exist)
+  - If unreachable **and the kind is `network`**: attempt auto-reconnect via `open -g smb://…`
+    - If reconnect fails: enter **offline/read-only mode**
+      - SQLite cache serves all browse and search operations
+      - Write operations throw via `nas.assertOnline()` with clear UI feedback
+      - Reconnection retried on exponential backoff: 5s → 15s → 60s
+      - Non-blocking status banner shown; user can manually retry
+      - **A failed attempt always returns to `disconnected`** — `reconnecting` describes the attempt, not the situation, or the "editing is disabled" half of the message is shown once and never again (slice 1, 2026-09-24)
+  - If unreachable **and the kind is `local`**: the state is **`missing`**, not offline. A backoff is a claim that waiting is a strategy and for a folder it is false, so **no timer is armed** (`nextRetryMs` is null), **no mount is attempted** — not by the ladder and not by _Retry Now_ — and the recovery is the picker, because something moved the folder and only its owner can say where. The refusal names the folder, never a server (slice 1, 2026-09-24)
 - NAS health checked every 30 seconds while app is running
 - No hardcoded NAS paths stored in SQLite — all paths relative to library root
 - Cover images are served to the renderer via the custom **`musaeum://cover/{bookId}/{thumb|full}`** protocol — the renderer never gets raw `file://` access (CSP enforces this)

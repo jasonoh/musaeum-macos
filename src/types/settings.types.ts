@@ -7,8 +7,17 @@
  * auto-detection (a venv interpreter, the standard Calibre install) or, for
  * the API key, to the environment.
  */
+import type { StorageKind } from './metadata.types'
+
 export interface AppSettings {
   libraryRoot: string | null
+  /**
+   * What kind of storage the library root sits on (`library_kind`), stored when
+   * the folder is chosen. Like `libraryRoot` it is **not** in `EditableSettings`:
+   * it has its own flow (the picker resolves it, and the row beside the root
+   * reports it), so the batched save must not accept it.
+   */
+  libraryKind: StorageKind | null
   /**
    * The API surface (slice 1a of the iOS companion,
    * `docs/superpowers/specs/2026-09-22-ios-companion-design.md` D13). All four
@@ -32,8 +41,12 @@ export interface AppSettings {
   googleBooksApiKey: string | null
 }
 
-/** Which settings the save path accepts — `libraryRoot` has its own flow. */
-export type EditableSettings = Omit<AppSettings, 'libraryRoot'>
+/**
+ * Which settings the save path accepts — `libraryRoot` and `libraryKind` each
+ * have their own flow (the picker resolves the kind and writes it beside the
+ * root; the row reports both), so the batched save must not accept either.
+ */
+export type EditableSettings = Omit<AppSettings, 'libraryRoot' | 'libraryKind'>
 
 /** Where the value in force came from. */
 export type SettingSource =
@@ -120,6 +133,13 @@ export interface SettingsView {
   restApi: RestApiView
   resolved: {
     smbUrl: ResolvedSetting
+    /**
+     * The kind, with where it came from. `auto` because the app resolved it
+     * from the folder rather than the user typing it, and `none` until a health
+     * check has resolved one — which is the stale case the row exists to make
+     * visible (a library that predates the key, or a hand-edited row).
+     */
+    libraryKind: ResolvedSetting
     aiBaseUrl: ResolvedSetting
     aiModel: ResolvedSetting
     aiApiKey: ResolvedSetting

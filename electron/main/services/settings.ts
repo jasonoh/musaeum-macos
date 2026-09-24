@@ -26,6 +26,7 @@ import {
 import { TAILNET_CIDR, isAllowedBindAddress, resolveBindAddress } from './api/bind'
 import { deleteConfig, getConfig, setConfig } from './db'
 import { getLibraryRoot } from './nas-manager'
+import { readLibraryKind } from './storage-kind'
 // The version rules live with the module that builds the venv, so validating
 // a hand-picked interpreter and choosing one automatically can't disagree
 import { MIN_PYTHON, meetsMinimum, parseVersion } from './python-env'
@@ -92,6 +93,10 @@ const SIDECAR_KEYS: (keyof EditableSettings)[] = ['pythonPath', 'googleBooksApiK
 export function getSettings(): SettingsView {
   const values: AppSettings = {
     libraryRoot: getLibraryRoot(),
+    // The kind in force. Not in `EditableSettings` — like `libraryRoot` it is
+    // written by its own flow (the picker resolves it beside the root), so the
+    // batched save must not accept it; the row reports it.
+    libraryKind: readLibraryKind(),
     smbUrl: getConfig(CONFIG_KEYS.smbUrl),
     // The API surface's four. The token is the user's own generated credential,
     // so it rides in `values` exactly as the Google Books key does — what never
@@ -126,6 +131,17 @@ export function getSettings(): SettingsView {
       smbUrl: values.smbUrl
         ? { value: values.smbUrl, source: 'configured' }
         : { value: DEFAULT_SMB_URL, source: 'default' },
+      // `auto`, not `configured`: the app resolved it from the folder rather
+      // than the user typing it, and `none` until a health check has resolved
+      // one — the stale case (a library that predates the key) the row exists
+      // to make visible.
+      libraryKind: {
+        value: values.libraryKind,
+        source: values.libraryKind ? 'auto' : 'none',
+        detail: values.libraryKind
+          ? 'Resolved from the folder when it was chosen'
+          : 'Not resolved yet — the next time the library is reachable it will be'
+      },
       // The endpoint and the model already carry their own detail lines from the
       // one place that computes them, so Settings and the panel cannot disagree
       // about whether the payload stays on this machine.

@@ -6,10 +6,11 @@ import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TransferJob } from '@shared/device.types'
 import { makeBook } from '../../../test/helpers/book'
-import { closeDb, getBook, insertBook, updateBook } from './db'
+import { closeDb, getBook, insertBook, setConfig, updateBook } from './db'
 import * as deviceManager from './device-manager'
 import * as events from './events'
 import * as nas from './nas-manager'
+import { LIBRARY_KIND_KEY } from './storage-kind'
 import * as sidecar from './sidecar'
 import { getTransferProgress, sendToDevice } from './transfer-queue'
 
@@ -263,10 +264,29 @@ describe('the copy path', () => {
 })
 
 describe('the queue’s preconditions', () => {
-  it('refuses to queue a send while the library is offline', async () => {
+  it('refuses to queue a send while the library folder is gone', async () => {
+    // A folder, so the refusal names the folder. This case pinned the word
+    // "offline" until the local-library spec split the vocabulary: an
+    // unavailable *folder* is missing — something moved it and only the user can
+    // say where — while only a share that dropped is offline. The gate is
+    // unchanged; the sentence is not.
     await nas.setLibraryRoot(join(root, 'gone'))
 
+    expect(() => sendToDevice('a', DEVICE_ID)).toThrow(/library folder is missing/i)
+    expect(() => sendToDevice('a', DEVICE_ID)).not.toThrow(/NAS/)
+  })
+
+  it('refuses to queue a send while a share is away', async () => {
+    await nas.setLibraryRoot(join(root, 'gone'))
+    // The picker derives a kind from the folder it is handed, so the share is
+    // what a previous pick on a share would have recorded
+    setConfig(LIBRARY_KIND_KEY, 'network')
+    await nas.checkHealth()
+
     expect(() => sendToDevice('a', DEVICE_ID)).toThrow(/offline/)
+    // A real retry would shell `open -g smb://…` on the machine running this
+    // suite, so the ladder is disarmed before the case ends
+    nas.stopHealthChecks()
   })
 
   it('refuses to queue a send to a device that is not connected', () => {

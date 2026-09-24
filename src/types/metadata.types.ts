@@ -156,7 +156,35 @@ export type HydrateOutcome =
     }
   | { ok: false; error: string }
 
-export type NASState = 'connected' | 'disconnected' | 'reconnecting' | 'unconfigured'
+/**
+ * What kind of storage a library root sits on.
+ *
+ * The question is not "is it reachable" — `fs.access` answers that — but "if it
+ * goes away, does waiting help?". A `network` share comes back on its own, so
+ * the app remounts it on a backoff; a `local` disk or folder does not come back
+ * at all, and only the person who moved it can say where it went. Every write
+ * gate and both failure modes are identical without this value — only the
+ * *recovery* differs, and it differs completely.
+ *
+ * A stored fact, resolved when the folder is chosen (`services/storage-kind.ts`),
+ * because that is the one moment the path necessarily exists: an unmount takes
+ * the share *and its mount point* away, so the question is unanswerable later.
+ */
+export type StorageKind = 'local' | 'network'
+
+/**
+ * The library's reachability, as the sidebar, banner and Settings row render it.
+ *
+ * - `connected` — the root is there; writes are allowed.
+ * - `unconfigured` — no root chosen yet.
+ * - `disconnected` — a **share** is away. A retry is armed, because waiting is
+ *   a strategy: shares come back.
+ * - `reconnecting` — an attempt is in flight *right now*. Transient, and never
+ *   the resting place of a failed attempt.
+ * - `missing` — a **local** root is gone. Nothing is retrying — a folder does
+ *   not come back on its own — and the recovery is to say where it went.
+ */
+export type NASState = 'connected' | 'disconnected' | 'reconnecting' | 'missing' | 'unconfigured'
 
 /** Progress of a bulk re-hydration job. `running` false means it is over. */
 export interface BulkHydrateProgress {
@@ -181,8 +209,20 @@ export interface BulkHydrateProgress {
 
 export interface NASStatus {
   state: NASState
+  /**
+   * The kind in force: the stored fact, or the one derived the first time this
+   * root was reachable. Null before any health check has resolved a root.
+   *
+   * Carried as a fact for the surfaces to name, never as a branch for them to
+   * take — which recovery a state offers is decided in the main process.
+   */
+  kind: StorageKind | null
   libraryRoot: string | null
-  /** Milliseconds until next automatic reconnect attempt, if disconnected. */
+  /**
+   * Milliseconds until the next automatic reconnect attempt, if one is armed.
+   * **Null for a `missing` root**: nothing is retrying there, and the banner's
+   * "Retrying in Ns" must not render for a state that is not.
+   */
   nextRetryMs: number | null
   lastCheckedAt: string | null
 }
