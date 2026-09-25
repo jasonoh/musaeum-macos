@@ -31,6 +31,7 @@ import { isPackaged } from './services/runtime'
 import * as sidecar from './services/sidecar'
 import { isResolverWindow } from './services/theme/resolve-css'
 import { activeTheme, nativeScheme, windowBackgroundColor } from './services/theme/store'
+import { isExternalUrlAllowed, isInAppNavigation } from './services/window-guards'
 
 // Isolated profile for verification/e2e runs — macOS Electron resolves the
 // default userData via the account's home, so a $HOME override is ignored
@@ -148,8 +149,11 @@ function createWindow(): BrowserWindow {
   win.on('ready-to-show', () => win.show())
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    if (isExternalUrlAllowed(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isInAppNavigation(url, win.webContents.getURL())) event.preventDefault()
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {
