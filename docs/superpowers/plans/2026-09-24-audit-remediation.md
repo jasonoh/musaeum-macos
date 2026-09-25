@@ -36,7 +36,12 @@
 | T13 | Pin sidecar Python dependencies | done |
 | U1 | **USER** — main window `sandbox: true` (needs in-app check) | todo |
 | U2 | **USER** — Electron 37 → supported major + `@electron/rebuild` 4 | todo |
-| U3 | **USER** — decide the deferred list at the end of this file | todo |
+| U3 | **USER** — decide the deferred list at the end of this file | decided 2026-09-24 — see U3 below |
+| N1 | `noUncheckedIndexedAccess` — theme subsystem (main) | todo |
+| N2 | `noUncheckedIndexedAccess` — rest of main source | todo |
+| N3 | `noUncheckedIndexedAccess` — main tests; flip `tsconfig.node.json` | todo |
+| N4 | `noUncheckedIndexedAccess` — renderer source + `src/types` | todo |
+| N5 | `noUncheckedIndexedAccess` — renderer tests; flip `tsconfig.web.json` | todo |
 
 ## Global Constraints
 
@@ -586,11 +591,33 @@ with `import { execSync } from 'child_process'`. **Before committing, verify** `
 
 ### U3 (USER): deferred — decide or drop
 
-- `migration.ts` / `pipeline/migrate.py` have no direct tests (one-time path; worth it only if another migration run is planned).
-- EPUB XML via stdlib `ElementTree` + no zip-member size cap (`sidecar/extractors/epub_metadata.py:23,44,113`) — `defusedxml` + a size guard.
-- `db.findByTitleAuthor` (`db.ts:628`) full scan per import — index on normalised title/author needs a migration (contracts-engineer).
-- Sidecar `ThreadPoolExecutor(max_workers=4)` shared between hour-long migration and interactive calls.
-- `tsconfig` `noUncheckedIndexedAccess` — likely a large diff; measure first.
-- `ListView.tsx:99-110` cells vs `docs/invariants/library-views.md`'s "block-level child" wording — measure in-app, then align code or doc.
-- The `electron/main/services/theme/` subsystem (~3k lines) was not audited.
-- No tests for `sidecar.ts`, `library.store.ts`, `ui.store.ts`.
+Decided with the user 2026-09-24.
+
+- **Dropped** — `migration.ts` / `pipeline/migrate.py` have no direct tests. No second migration run is planned. Measured: of 7,671 importable Calibre books (`/Volumes/books/library/metadata.db`, untouched since 2026-07-06), ~420 match nothing in the DB by ISBN, Goodreads ID or exact title, plus 208 more that are likely title variants. That fits the 637 on-disk-but-unlisted folders `tasks.md` already records, so the gap is adoption, not a migration defect.
+- **Do** — EPUB XML via stdlib `ElementTree` + no zip-member size cap (`sidecar/extractors/epub_metadata.py:23,44,113`) — `defusedxml` + a size guard. Landed as `audit(U3)`.
+- **Open** — `db.findByTitleAuthor` (`db.ts:628`) full scan per import — index on normalised title/author needs a migration (contracts-engineer).
+- **Open** — Sidecar `ThreadPoolExecutor(max_workers=4)` shared between hour-long migration and interactive calls.
+- **Measured → sliced as N1–N5 below** — `tsconfig` `noUncheckedIndexedAccess`.
+- **Open** — `ListView.tsx:99-110` cells vs `docs/invariants/library-views.md`'s "block-level child" wording — measure in-app, then align code or doc.
+- **Open** — The `electron/main/services/theme/` subsystem (~3k lines) was not audited.
+- **Open** — No tests for `sidecar.ts`, `library.store.ts`, `ui.store.ts`.
+
+### N1–N5: `noUncheckedIndexedAccess`
+
+**Measured 2026-09-24 at `f81d0c8`** with `npx tsc --noEmit -p tsconfig.{node,web}.json --noUncheckedIndexedAccess`: **208 errors in 43 files** — 79 in 20 source files, 129 in 23 test files (`src/types/book.types.ts` is in both projects and counts twice). Codes in source: TS2322 ×27, TS2345 ×23, TS2532 ×16, TS18048 ×12, TS2722 ×1. Over the ~10-file bound, so it is sliced by layer; each slice is one commit `audit(N<n>): …` and ends with the full gate green.
+
+**Rules for every slice:**
+
+- No behaviour change. Narrow with a real check (`if (x === undefined) …`, `?? fallback`, destructuring with a guard) where the missing case can actually happen, and say in the commit which reads are genuinely bounded (loop over `.length`, a regex group that must match) — those may use `!`, sparingly. Tests may use `!` or a small `at(i)` helper freely.
+- Per-slice check: the slice's files drop to zero under the flag via the CLI command above; the flag itself goes into the tsconfig only in N3 (node) and N5 (web), once that project is at zero.
+- Re-measure before starting — the counts below drift as code lands.
+
+| Slice | Owner | Files (errors) |
+|---|---|---|
+| **N1** theme (main) | main-engineer | `services/theme/derive.ts` (13), `theme/parse/obsidian.ts` (12), `theme/parse/base16.ts` (10), `theme/parse/itermcolors.ts` (6), `theme/store.test.ts` (15), `theme/importer.test.ts` (10), `theme/derive.test.ts` (8) — 7 files, 74 |
+| **N2** main source | main-engineer | `ipc/nas.ts` (5), `services/api/bind.ts` (4), `services/db.ts` (3 — `:60`, `:377` invokes a possibly-undefined function, `:793`), `services/importer.ts` (3), `services/storage-kind.ts` (3), `services/file-watcher.ts` (2), `services/api/auth.ts` (1), `services/nas-manager.ts` (1) — 8 files, 22 |
+| **N3** main tests + flip | test-author | `services/catalog.test.ts` (12), `services/api/upload.test.ts` (10), `services/importer.test.ts` (9), `services/ai.test.ts` (9), `ipc/nas.test.ts` (5), `services/device-manager.test.ts` (4), `services/bulk-hydrate.test.ts` (3), `api/upload.test.ts` (2), `services/api/shape.test.ts` (2), `api/rest.test.ts` (1), `services/conflicts.test.ts` (1) — 11 files, 58; then add `"noUncheckedIndexedAccess": true` to `tsconfig.node.json`. Needs N1, N2 and `book.types.ts` from N4 first. |
+| **N4** renderer source + types | renderer-engineer (+ contracts-engineer for `src/types/book.types.ts:374,380`) | `src/lib/recall.ts` (4), `src/types/book.types.ts` (2), `src/hooks/useBookNavigation.ts` (2), `src/hooks/useDialogFocus.ts` (2), `src/lib/ai-providers.ts` (1), `src/lib/metadata-feedback.ts` (1), `src/lib/reader-search.ts` (1), `src/components/library/DeleteSelectionDialog.tsx` (1) — 8 files, 14 |
+| **N5** renderer tests + flip | test-author | `src/lib/theme/css.test.ts` (15), `src/lib/theme/reader-palette.test.ts` (13), `ask-context.test.ts` (2), `ask-session.test.ts` (2), `theme/palette-scan.test.ts` (2), `add-books.test.ts` (1), `ai-providers.test.ts` (1), `reader-search.test.ts` (1), `stores/reader.store.test.ts` (1) — 9 files, 38; then add the flag to `tsconfig.web.json`. Needs N4. |
+
+Order: N1 ∥ N2 ∥ N4 → N3 → N5. `book.types.ts` is in both projects, so N3's flip waits on N4 too.
