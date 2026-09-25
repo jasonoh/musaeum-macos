@@ -1,7 +1,7 @@
-isbnlib>=3.10
-requests>=2.31
-beautifulsoup4>=4.12
-lxml>=4.9
-Pillow>=10.0
-pypdf>=4.0
-pypdfium2>=4.30
+isbnlib==3.10.14
+requests==2.34.2
+beautifulsoup4==4.15.0
+lxml==6.1.1
+Pillow==12.3.0
+pypdf==6.16.1
+pypdfium2==5.13.0
