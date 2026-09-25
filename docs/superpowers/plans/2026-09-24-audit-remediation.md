@@ -24,7 +24,7 @@
 | T1 | Sort keys derived in `db.updateBook` (invariant 4) | done |
 | T2 | Window navigation guards + `openExternal` allowlist | done |
 | T3 | CI workflow + lint fails on warnings | done (CI unproven until first push) |
-| T4 | Sidecar dispatch never drops a reply | todo |
+| T4 | Sidecar dispatch never drops a reply | done |
 | T5 | Doc drift + untrack `.obsidian/workspace.json` | todo |
 | T6 | `library:updateBook` orchestration moves to `services/` | todo |
 | T7 | `file-access.ts` tests | todo |

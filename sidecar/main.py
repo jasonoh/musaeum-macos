@@ -91,7 +91,13 @@ METHODS = {
 }
 
 
-def handle_request(request: dict) -> None:
+def handle_request(request: object) -> None:
+    if not isinstance(request, dict):
+        # No id to answer to, and an exception here would vanish inside the
+        # pool's unread future: the caller's timeout is its only reply, so say
+        # so where a human will look.
+        print(f"dropped request, not a JSON-RPC object: {str(request)[:200]}", file=sys.stderr)
+        return
     req_id = request.get("id")
     method = request.get("method")
     try:
