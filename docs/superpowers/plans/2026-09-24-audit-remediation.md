@@ -26,7 +26,7 @@
 | T3 | CI workflow + lint fails on warnings | done (CI unproven until first push) |
 | T4 | Sidecar dispatch never drops a reply | done |
 | T5 | Doc drift + untrack `.obsidian/workspace.json` | done |
-| T6 | `library:updateBook` orchestration moves to `services/` | todo |
+| T6 | `library:updateBook` orchestration moves to `services/` | done |
 | T7 | `file-access.ts` tests | todo |
 | T8 | Sidecar tests: identifier precedence, cover-conflict positive case | todo |
 | T9 | Calibre-migration insert in one transaction | todo |
