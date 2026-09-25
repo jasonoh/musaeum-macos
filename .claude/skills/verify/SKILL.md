@@ -29,7 +29,7 @@ Gotchas learned the hard way:
 - **Import pipeline:** copy a book file into `$SCRATCH/library/imports/` — chokidar picks it up in ~2-5s; poll the scratch DB (`sqlite3 "file:$PROFILE/musaeum.db?mode=ro" 'SELECT ... FROM books'`).
 - **IPC surface (what UI buttons call):** CDP on port 9222. `curl http://127.0.0.1:9222/json` → page target ws URL; connect with python `websocket-client` using **`suppress_origin=True`** (Chromium 403s the default Origin header), then `Runtime.evaluate` with `awaitPromise: true` on `window.Musaeum.<domain>.<method>(...)`. `Page.captureScreenshot` gives evidence PNGs of the live window.
 - Fixture PDFs/Calibre libraries: build with the sidecar venv's `pypdf` (PdfWriter + add_metadata) and a hand-built `metadata.db` (schema slice in sidecar/tests/ or git history of the verify session).
-- Kill with `pkill -f "electron-vite dev"; pkill -f "node_modules/electron/dist/Electron.app"`. A SIGTERM'd instance leaves the profile DB's WAL needing recovery — a read-only open then fails; a normal `sqlite3` open recovers it.
+- Kill with `pkill -f "electron-vite dev"; pkill -f "node_modules/electron/dist/"`, then confirm with `lsof -nP -iTCP:9222 -sTCP:LISTEN` and `kill -9` whatever still holds the port. The pattern must not name the bundle: `scripts/dev-app-branding.mjs` renames `dist/Electron.app` to `dist/Musaeum.app`, so an `Electron.app` pattern matches nothing and leaves the app running — the stale-instance trap below. A dev instance has also been seen to ignore SIGTERM (2026-09-24), hence the port check. A SIGTERM'd instance leaves the profile DB's WAL needing recovery — a read-only open then fails; a normal `sqlite3` open recovers it.
 
 ## The stale-instance trap (fired twice, on two different sessions)
 

@@ -31,7 +31,7 @@
 | T8 | Sidecar tests: identifier precedence, cover-conflict positive case | done |
 | T9 | Calibre-migration insert in one transaction | done |
 | T10 | `orderedFormats()` in context menu and list Formats column | done |
-| T11 | Dialog focus management | done — NOT yet checked in-app (verify skill: Tab cycles inside each dialog, Esc returns focus to opener, Cancel is initial focus on the three delete/remove dialogs) |
+| T11 | Dialog focus management | done — checked in-app 2026-09-24 via the verify skill (real CDP key events, isolated profile, disk-image Kindle): Settings, BookEditor, DeleteBook (detail + card), DeleteSelection, RemoveFromDevice — focus starts inside (Cancel on the three destructive ones), Tab/Shift-Tab wrap without escaping, Esc restores the opener |
 | T12 | Source-scan tests for invariants 8 and 11 | done (also moved metadata:rehydrateBook → bulkHydrate.rehydrateBook, theme:openFolder → store.openThemeFolder) |
 | T13 | Pin sidecar Python dependencies | done |
 | U1 | **USER** — main window `sandbox: true` (needs in-app check) | todo |
