@@ -17,7 +17,7 @@
     "pack:dir": "npm run build && electron-builder --dir",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "format": "prettier --write .",
     "icons": "node scripts/make-icons.mjs && node scripts/dev-app-branding.mjs",

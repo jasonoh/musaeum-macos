@@ -1,0 +1,31 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    # macOS: better-sqlite3 is rebuilt against Electron in postinstall and the
+    # suite runs Electron-as-Node (`npm test`), matching the dev machine.
+    # storage-kind.test.ts's `runIf(existsSync(...))` cases need the real
+    # NAS/Dropbox mounts and skip here by design.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # test/invariants.test.ts reads vendor/foliate-js's commit history
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: python -m venv sidecar/.venv && sidecar/.venv/bin/pip install -r sidecar/requirements.txt -r sidecar/requirements-dev.txt
+      - run: sidecar/.venv/bin/python -m pytest sidecar/tests -q
