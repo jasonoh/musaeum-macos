@@ -292,42 +292,48 @@ export function startPdfTopUp(calibrePath: string): MigrationJob {
 
 function insertMigratedBooks(records: MigratedBookRecord[]): void {
   const now = new Date().toISOString()
-  for (const r of records) {
-    const book: Book = {
-      id: r.id,
-      title: r.title,
-      sortTitle: r.sort_title ?? null,
-      author: r.author ?? null,
-      authorSort: r.author_sort ?? null,
-      publisher: r.publisher ?? null,
-      publishedDate: r.published_date ?? null,
-      language: r.language ?? null,
-      description: r.description ?? null,
-      isbn10: r.identifiers?.isbn_10 ?? null,
-      isbn13: r.identifiers?.isbn_13 ?? null,
-      goodreadsId: r.identifiers?.goodreads ?? null,
-      openlibraryId: r.identifiers?.openlibrary ?? null,
-      seriesName: r.series?.name ?? null,
-      seriesIndex: r.series?.index ?? null,
-      seriesTotal: r.series?.total ?? null,
-      coverThumbPath: r.cover_thumb ?? null,
-      coverFullPath: r.cover_full ?? null,
-      formats: (r.formats ?? []) as BookFormat[],
-      tags: r.tags ?? [],
-      rating: r.rating ?? null,
-      dateAdded: now,
-      lastModified: now,
-      fileSizeBytes: r.file_size_bytes ?? null,
-      readStatus: (r.read_status ?? 'unread') as ReadStatus,
-      nasPath: join('books', r.id),
-      readingState: null
+  // One transaction for the whole library — 7000+ rows were one commit each.
+  // A failing insert is a single statement, which SQLite rolls back on its
+  // own; the catch below keeps it from escaping, so one bad record is logged
+  // and skipped without undoing the rest.
+  db.getDb().transaction(() => {
+    for (const r of records) {
+      const book: Book = {
+        id: r.id,
+        title: r.title,
+        sortTitle: r.sort_title ?? null,
+        author: r.author ?? null,
+        authorSort: r.author_sort ?? null,
+        publisher: r.publisher ?? null,
+        publishedDate: r.published_date ?? null,
+        language: r.language ?? null,
+        description: r.description ?? null,
+        isbn10: r.identifiers?.isbn_10 ?? null,
+        isbn13: r.identifiers?.isbn_13 ?? null,
+        goodreadsId: r.identifiers?.goodreads ?? null,
+        openlibraryId: r.identifiers?.openlibrary ?? null,
+        seriesName: r.series?.name ?? null,
+        seriesIndex: r.series?.index ?? null,
+        seriesTotal: r.series?.total ?? null,
+        coverThumbPath: r.cover_thumb ?? null,
+        coverFullPath: r.cover_full ?? null,
+        formats: (r.formats ?? []) as BookFormat[],
+        tags: r.tags ?? [],
+        rating: r.rating ?? null,
+        dateAdded: now,
+        lastModified: now,
+        fileSizeBytes: r.file_size_bytes ?? null,
+        readStatus: (r.read_status ?? 'unread') as ReadStatus,
+        nasPath: join('books', r.id),
+        readingState: null
+      }
+      try {
+        db.insertBook(book)
+      } catch (err) {
+        console.error(`[migration] failed to insert ${r.title}:`, err)
+      }
     }
-    try {
-      db.insertBook(book)
-    } catch (err) {
-      console.error(`[migration] failed to insert ${r.title}:`, err)
-    }
-  }
+  })()
 }
 
 /** Point the app at the migrated library. Explicit, user-confirmed. */
