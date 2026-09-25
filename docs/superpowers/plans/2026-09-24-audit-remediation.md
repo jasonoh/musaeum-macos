@@ -28,7 +28,7 @@
 | T5 | Doc drift + untrack `.obsidian/workspace.json` | done |
 | T6 | `library:updateBook` orchestration moves to `services/` | done |
 | T7 | `file-access.ts` tests | done |
-| T8 | Sidecar tests: identifier precedence, cover-conflict positive case | todo |
+| T8 | Sidecar tests: identifier precedence, cover-conflict positive case | done |
 | T9 | Calibre-migration insert in one transaction | todo |
 | T10 | `orderedFormats()` in context menu and list Formats column | todo |
 | T11 | Dialog focus management | todo |
