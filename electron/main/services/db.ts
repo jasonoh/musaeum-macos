@@ -533,9 +533,20 @@ export function insertBook(book: Book): void {
 }
 
 export function updateBook(id: string, updates: Partial<Book>): void {
+  // Invariant 4 at the write primitive: a patch that moves a title or author
+  // moves its sort key too, unless it names one itself (the editor's custom
+  // sort title). Without this a resolved title conflict kept its old key for
+  // good — catalog adoption only fills a *missing* key, never a stale one.
+  const patch: Partial<Book> = { ...updates }
+  if (typeof patch.title === 'string' && patch.sortTitle === undefined) {
+    patch.sortTitle = sortableTitle(patch.title)
+  }
+  if (patch.author !== undefined && patch.authorSort === undefined) {
+    patch.authorSort = sortableAuthor(patch.author)
+  }
   const sets: string[] = []
   const params: unknown[] = []
-  for (const [key, value] of Object.entries(updates)) {
+  for (const [key, value] of Object.entries(patch)) {
     const col = BOOK_COLUMN_MAP[key]
     if (!col) continue
     sets.push(`${col} = ?`)

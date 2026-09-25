@@ -16,7 +16,8 @@ import {
   logDeviceTransfer,
   replaceAllBooks,
   searchBooks,
-  setReadingState
+  setReadingState,
+  updateBook
 } from './db'
 
 beforeEach(() => {
@@ -259,5 +260,37 @@ describe('reading state', () => {
     expect(updated.readingState?.percent).toBe(0.1)
     // Turning a page is not a metadata edit
     expect(updated.lastModified).toBe('2020-01-01T00:00:00Z')
+  })
+})
+
+describe('updateBook — sort keys follow the fields they are derived from', () => {
+  it('re-derives sortTitle when a patch changes the title', () => {
+    insertBook({ ...makeBook('a', 'The Bakery Attack'), sortTitle: 'Bakery Attack, The' })
+    updateBook('a', { title: 'After the Quake' })
+    expect(getBook('a')?.sortTitle).toBe('After the Quake')
+  })
+
+  it('re-derives authorSort when a patch changes the author', () => {
+    insertBook({ ...makeBook('a'), author: 'Haruki Murakami', authorSort: 'Murakami, Haruki' })
+    updateBook('a', { author: 'Ursula K. Le Guin' })
+    expect(getBook('a')?.authorSort).toBe('Le Guin, Ursula K.')
+  })
+
+  it('clears authorSort when the author is cleared', () => {
+    insertBook({ ...makeBook('a'), author: 'Haruki Murakami', authorSort: 'Murakami, Haruki' })
+    updateBook('a', { author: null })
+    expect(getBook('a')?.authorSort).toBeNull()
+  })
+
+  it('keeps a sort key the patch supplies explicitly (the editor’s custom sort title)', () => {
+    insertBook(makeBook('a', 'The Road'))
+    updateBook('a', { title: 'The Road', sortTitle: 'Zzz custom' })
+    expect(getBook('a')?.sortTitle).toBe('Zzz custom')
+  })
+
+  it('leaves sort keys alone when the patch touches neither field', () => {
+    insertBook({ ...makeBook('a', 'The Road'), sortTitle: 'Road, The' })
+    updateBook('a', { publisher: 'Knopf' })
+    expect(getBook('a')?.sortTitle).toBe('Road, The')
   })
 })

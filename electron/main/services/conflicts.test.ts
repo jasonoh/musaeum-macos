@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { coverPreviews, resolveConflict } from './conflicts'
 import { writeCatalog } from './catalog'
-import { closeDb, getBook, getConflictQueue, insertBook, insertConflict } from './db'
+import { closeDb, getBook, getConflictQueue, insertBook, insertConflict, updateBook } from './db'
 import { list } from './field-overrides'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
@@ -129,6 +129,16 @@ describe('resolveConflict', () => {
     const entries = await fs.readdir(dir)
     expect(entries).toContain('After the Quake.epub')
     expect(entries).not.toContain('The Bakery Attack.epub')
+  })
+
+  it('re-derives the sort title when a title conflict resolves (invariant 4)', async () => {
+    await seed('a', 'The Bakery Attack')
+    updateBook('a', { sortTitle: 'Bakery Attack, The' })
+    insertConflict('a', 'title', [{ source: 'google_books', value: 'After the Quake' }])
+
+    await resolveConflict(soleConflictId(), { title: 'google_books' })
+
+    expect(getBook('a')?.sortTitle).toBe('After the Quake')
   })
 
   it('upserts the catalog and broadcasts unconditionally when online', async () => {
