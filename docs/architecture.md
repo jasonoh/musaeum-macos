@@ -222,7 +222,7 @@ The staging claims below are what Phase 1 put in place so that client would be c
 
 1. SQLite schema contains no UI-coupled fields
 2. `metadata.json` is the canonical data contract (documented above)
-3. REST API is real at `electron/main/api/rest.ts` — six read routes and one write behind a generated bearer token, bound to the tailnet address, still disabled by default via the `app_config` flag `rest_api_enabled = false`; the client contract is `docs/rest-api.md`
+3. REST API is real at `electron/main/api/rest.ts` — six read routes and two writes (the reading report and a book upload) behind a generated bearer token, bound to the tailnet address, still disabled by default via the `app_config` flag `rest_api_enabled = false`; the client contract is `docs/rest-api.md`
 4. All book file paths stored as relative paths from library root
 5. Covers at two resolutions: `cover_thumb.jpg` (200px), `cover_full.jpg` (600px)
 6. All data access goes through the service layer (IPC handlers contain no business logic) so extraction to a standalone API server stays cheap
