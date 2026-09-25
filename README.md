@@ -207,7 +207,7 @@ Requirements:
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **A place to keep the library**       | A mounted SMB share, an external drive, or any folder on this Mac — the app records which one it is when you choose it, and only a share ever gets a mount attempt |
 | **macOS** (arm64 build today)         | The app is an Electron macOS app; the packaged DMG is arm64                                                                                                        |
-| **Node 20.19+**                       | `npm run pack` needs it — electron-builder 26 loads an ESM-only dependency through `require`, which older Node refuses with `ERR_REQUIRE_ESM`                      |
+| **Node 22.12+**                       | `npm install` needs it — `@electron/rebuild` 4 (the `postinstall` native rebuild) requires it; it also covers electron-builder 26's ESM-through-`require` load in `npm run pack` |
 | **Python 3.11+**                      | The metadata/conversion sidecar. A packaged build finds it and builds its own venv on first launch                                                                 |
 | **Calibre** (optional)                | Only for `ebook-convert`, i.e. format conversion on send. Detected at `/Applications/calibre.app/Contents/MacOS/ebook-convert`, overridable in Settings            |
 | **A Google Books API key** (optional) | Hydration runs keyless, but the free tier is rate-limited well below what a bulk migration needs                                                                   |

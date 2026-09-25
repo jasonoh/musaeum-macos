@@ -11,7 +11,7 @@
 
 ## Packaging
 
-`electron-builder.yml` → `npm run pack` (DMG) / `npm run pack:dir` (unpacked `.app`). **Needs Node 20.19+**: electron-builder 26 `require()`s an ESM-only dependency, so on Node 18 the pack step dies with `ERR_REQUIRE_ESM` *after* electron-vite has already built — which reads as a build failure but isn't.
+`electron-builder.yml` → `npm run pack` (DMG) / `npm run pack:dir` (unpacked `.app`). **Needs Node 22.12+** since the Electron 44 upgrade (2026-09-25): `@electron/rebuild` 4 requires it, and it runs in `postinstall`. The older floor, 20.19, came from electron-builder 26 `require()`ing an ESM-only dependency — on Node 18 the pack step dies with `ERR_REQUIRE_ESM` *after* electron-vite has already built, which reads as a build failure but isn't.
 
 Three things in that config are load-bearing:
 

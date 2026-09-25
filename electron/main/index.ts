@@ -40,9 +40,20 @@ if (process.env.MUSAEUM_USER_DATA) {
 }
 
 // musaeum://cover/{bookId}/{thumb|full} — serves cover images from the
-// library without exposing arbitrary file:// access to the renderer
+// library without exposing arbitrary file:// access to the renderer.
+// `corsEnabled` is required, distinct from `standard`/`secure`/`supportFetchAPI`:
+// without it, `fetch('musaeum://…')` from the file:// renderer origin
+// (ReaderEngine.tsx's book-byte fetch, invariant 9) is rejected before the
+// handler ever runs — Chromium's CORS-enabled-scheme allowlist only exempts
+// chrome/chrome-extension/chrome-untrusted/data/http/https unconditionally,
+// and every other scheme, "standard" or not, needs this flag for a
+// cross-origin fetch to be attempted at all (`net::ERR_FAILED` /
+// `CorsDisabledScheme`, not a response from our own code).
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'musaeum', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  {
+    scheme: 'musaeum',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true }
+  }
 ])
 
 /**

@@ -57,7 +57,7 @@ npm test                                     # vitest main-process suite —
                                              # runs Electron-as-Node so the
                                              # better-sqlite3 native ABI matches;
                                              # invoke only via this script
-npm run pack                                 # DMG into dist/ — needs Node 20.19+
+npm run pack                                 # DMG into dist/ — needs Node 22.12+
 ```
 
 Dev database: `~/Library/Application Support/Musaeum/musaeum.db` (WAL — safe to inspect with the sqlite3 CLI while the app runs).
@@ -68,7 +68,7 @@ Dev database: `~/Library/Application Support/Musaeum/musaeum.db` (WAL — safe t
 
 | Layer            | Technology                        |
 |------------------|-----------------------------------|
-| Shell            | Electron (latest LTS)             |
+| Shell            | Electron 44                       |
 | UI               | React + TypeScript                |
 | Styling          | Tailwind CSS                      |
 | State            | Zustand                           |

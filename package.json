@@ -8,7 +8,7 @@
   "license": "MIT",
   "private": true,
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "dev": "electron-vite dev",
@@ -21,17 +21,17 @@
     "test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "format": "prettier --write .",
     "icons": "node scripts/make-icons.mjs && node scripts/dev-app-branding.mjs",
-    "postinstall": "electron-rebuild -f -w better-sqlite3 && node scripts/dev-app-branding.mjs"
+    "postinstall": "node node_modules/electron/install.js && electron-rebuild -f -w better-sqlite3 && node scripts/dev-app-branding.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^13.0.3",
     "chokidar": "^4.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.1",
+    "@electron/rebuild": "^4.2.0",
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.0",
@@ -39,7 +39,7 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "electron": "^37.2.0",
+    "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
     "eslint": "^10.7.0",
