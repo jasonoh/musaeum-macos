@@ -21,7 +21,12 @@ import zipfile
 import pytest
 
 import pipeline.hydration as hydration
-from extractors.epub_metadata import extract_embedded_cover, extract_epub_metadata
+from extractors.epub_metadata import (
+    MAX_COVER_IMAGE_SIZE,
+    MAX_XML_MEMBER_SIZE,
+    extract_embedded_cover,
+    extract_epub_metadata,
+)
 
 CONTAINER = """<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -350,3 +355,154 @@ def test_a_malformed_opf_yields_no_cover_rather_than_raising(tmp_path):
     path = _epub(tmp_path, opf="<package><manifest>trunc")
 
     assert extract_embedded_cover(path) is None
+
+
+# --- hostile XML: entity expansion and XXE ---------------------------------
+#
+# EPUBs are user-supplied files, not app-authored ones, so the OPF is
+# untrusted input. `defusedxml` (not stdlib `ElementTree`) is what stops a
+# billion-laughs OPF from consuming memory forever and an XXE OPF from
+# reading a local file the sidecar has no business touching.
+
+BILLION_LAUGHS_OPF = """<?xml version="1.0"?>
+<!DOCTYPE lolz [
+  <!ENTITY lol "lol">
+  <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+]>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>&lol3;</dc:title></metadata>
+  <manifest/>
+</package>
+"""
+
+XXE_OPF = """<?xml version="1.0"?>
+<!DOCTYPE package [
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>&xxe;</dc:title></metadata>
+  <manifest/>
+</package>
+"""
+
+
+def test_a_billion_laughs_opf_is_rejected_without_hanging(tmp_path):
+    path = _epub(tmp_path, opf=BILLION_LAUGHS_OPF)
+
+    # defusedxml refuses the entity declarations outright, before any
+    # expansion happens — this must return promptly, not hang or OOM.
+    with pytest.raises(Exception):
+        extract_epub_metadata(path)
+
+
+def test_a_billion_laughs_opf_yields_no_cover_rather_than_hanging(tmp_path):
+    path = _epub(tmp_path, opf=BILLION_LAUGHS_OPF)
+
+    assert extract_embedded_cover(path) is None
+
+
+def test_an_xxe_opf_does_not_read_a_local_file(tmp_path, monkeypatch):
+    # If the external entity were ever resolved, the sidecar would be
+    # exfiltrating whatever the parser could read off disk into a book's
+    # title. Fail the test loudly if that file is even opened.
+    real_open = open
+
+    def _guard(path_arg, *args, **kwargs):
+        if str(path_arg) == "/etc/passwd":
+            raise AssertionError("XXE resolved an external entity")
+        return real_open(path_arg, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", _guard)
+
+    path = _epub(tmp_path, opf=XXE_OPF)
+
+    with pytest.raises(Exception):
+        extract_epub_metadata(path)
+
+
+def test_hydration_keeps_going_when_the_opf_is_a_billion_laughs_attack(tmp_path, monkeypatch):
+    """Same invariant as the malformed-OPF case: a hostile file degrades to
+    no embedded source, never an exception across the hydration boundary."""
+    monkeypatch.setattr(hydration, "fetch_google_books", lambda *a: None)
+    monkeypatch.setattr(hydration, "fetch_openlibrary", lambda *a: None)
+    monkeypatch.setattr(hydration, "fetch_series", lambda *a: None)
+
+    hostile = _epub(tmp_path, name="hostile.epub", opf=BILLION_LAUGHS_OPF)
+    book_dir = str(tmp_path / "out")
+    os.makedirs(book_dir)
+
+    result = hydration.hydrate_metadata(
+        book_id="test-id",
+        file_path=hostile,
+        book_dir=book_dir,
+        known={"title": "What The Book Already Had"},
+        source_preferences={},
+    )
+
+    assert result["conflicts"] == []
+    assert result["metadata"].get("title") is None
+
+
+# --- oversized zip members --------------------------------------------------
+
+
+def test_an_oversized_opf_raises_rather_than_returning_half_a_book(tmp_path):
+    # Same convention as a malformed OPF: this is the layer that raises,
+    # `hydrate_metadata` is the layer that swallows it (see the tests above).
+    oversized_title = "x" * (MAX_XML_MEMBER_SIZE + 1)
+    path = _epub(tmp_path, opf=_package(f"<dc:title>{oversized_title}</dc:title>"))
+
+    with pytest.raises(ValueError):
+        extract_epub_metadata(path)
+
+
+def test_an_oversized_cover_image_is_skipped_rather_than_read(tmp_path):
+    # Built in tmp_path, not committed: a real fixture this size doesn't
+    # belong in the repo. Mostly-zero bytes compress and write instantly.
+    oversized = b"\xff\xd8" + b"\x00" * (MAX_COVER_IMAGE_SIZE - 1)
+    path = _epub(
+        tmp_path,
+        opf=_package(
+            '<meta name="cover" content="cover-img"/>',
+            '<item id="cover-img" href="images/cover.jpg" media-type="image/jpeg"/>',
+        ),
+        extra={"OEBPS/images/cover.jpg": oversized},
+    )
+
+    # Over the cap: treated as absent, not read into memory or crashed on.
+    assert extract_embedded_cover(path) is None
+
+
+def test_a_cover_image_right_at_the_cap_is_still_read(tmp_path):
+    at_cap = b"\xff\xd8" + b"\x00" * (MAX_COVER_IMAGE_SIZE - 2)
+    assert len(at_cap) == MAX_COVER_IMAGE_SIZE
+    path = _epub(
+        tmp_path,
+        opf=_package(
+            '<meta name="cover" content="cover-img"/>',
+            '<item id="cover-img" href="images/cover.jpg" media-type="image/jpeg"/>',
+        ),
+        extra={"OEBPS/images/cover.jpg": at_cap},
+    )
+
+    assert extract_embedded_cover(path) == at_cap
+
+
+def test_a_normal_epub_still_extracts_title_author_and_cover(tmp_path):
+    # The security hardening must not change behaviour on an ordinary file.
+    path = _epub(
+        tmp_path,
+        opf=_package(
+            FULL_METADATA + '<meta name="cover" content="cover-img"/>',
+            '<item id="cover-img" href="images/cover.jpg" media-type="image/jpeg"/>',
+        ),
+        extra={"OEBPS/images/cover.jpg": b"\xff\xd8jpeg-bytes"},
+    )
+
+    metadata = extract_epub_metadata(path)
+    assert metadata["title"] == "The Hobbit"
+    assert metadata["authors"] == [
+        {"name": "J. R. R. Tolkien", "sort": "Tolkien, J. R. R."}
+    ]
+    assert extract_embedded_cover(path) == b"\xff\xd8jpeg-bytes"

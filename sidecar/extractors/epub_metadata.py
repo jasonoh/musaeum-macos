@@ -2,7 +2,7 @@
 
 import re
 import zipfile
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from typing import Optional
 
 from extractors.html_text import html_to_text
@@ -18,9 +18,34 @@ NS = {
     "dc": "http://purl.org/dc/elements/1.1/",
 }
 
+# EPUBs in the library are user-supplied, not app-authored, so the zip and the
+# XML inside it are untrusted input. `defusedxml` blocks billion-laughs/XXE;
+# these caps bound how much of a single member we'll ever hold in memory, so
+# a lying or hostile size doesn't get to inflate that instead.
+MAX_XML_MEMBER_SIZE = 5 * 1024 * 1024  # container.xml/OPF are small package text
+MAX_COVER_IMAGE_SIZE = 50 * 1024 * 1024  # generous for a real embedded cover
+
+
+def _read_capped(z: zipfile.ZipFile, name: str, max_size: int) -> bytes:
+    """Read a zip member, bounded by `max_size` regardless of what its header claims.
+
+    The declared `file_size` is checked first as a cheap rejection, but the
+    actual read is *also* capped at `max_size + 1` bytes — a member whose
+    header understates its real (decompressed) size can't ride that lie past
+    the check and exhaust memory during the read itself.
+    """
+    info = z.getinfo(name)
+    if info.file_size > max_size:
+        raise ValueError(f"{name} exceeds the {max_size}-byte cap ({info.file_size} bytes)")
+    with z.open(info) as f:
+        data = f.read(max_size + 1)
+    if len(data) > max_size:
+        raise ValueError(f"{name} exceeded the {max_size}-byte cap while reading")
+    return data
+
 
 def _opf_path(z: zipfile.ZipFile) -> str:
-    container = ET.fromstring(z.read("META-INF/container.xml"))
+    container = ET.fromstring(_read_capped(z, "META-INF/container.xml", MAX_XML_MEMBER_SIZE))
     rootfile = container.find(".//container:rootfile", NS)
     if rootfile is None:
         raise ValueError("EPUB has no rootfile declaration")
@@ -41,7 +66,8 @@ def _normalize_isbn(raw: str) -> Optional[str]:
 
 def extract_epub_metadata(file_path: str) -> dict:
     with zipfile.ZipFile(file_path) as z:
-        opf = ET.fromstring(z.read(_opf_path(z)))
+        opf_path = _opf_path(z)
+        opf = ET.fromstring(_read_capped(z, opf_path, MAX_XML_MEMBER_SIZE))
 
     meta = opf.find("opf:metadata", NS)
     if meta is None:
@@ -110,7 +136,7 @@ def extract_embedded_cover(file_path: str) -> Optional[bytes]:
     try:
         with zipfile.ZipFile(file_path) as z:
             opf_path = _opf_path(z)
-            opf = ET.fromstring(z.read(opf_path))
+            opf = ET.fromstring(_read_capped(z, opf_path, MAX_XML_MEMBER_SIZE))
             manifest = opf.find("opf:manifest", NS)
             meta_el = opf.find("opf:metadata", NS)
             if manifest is None:
@@ -133,6 +159,6 @@ def extract_embedded_cover(file_path: str) -> Optional[bytes]:
 
             base = "/".join(opf_path.split("/")[:-1])
             full = f"{base}/{href}" if base else href
-            return z.read(full)
+            return _read_capped(z, full, MAX_COVER_IMAGE_SIZE)
     except Exception:
         return None
