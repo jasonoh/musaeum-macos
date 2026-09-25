@@ -4,6 +4,7 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { selectedBookId, useUIStore } from '@/stores/ui.store'
 import { CheckIcon, SpinnerIcon, TrashIcon } from '@/components/shared/icons'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 
 /**
  * Confirmation for destructive deletes. Multi-format books get a per-format
@@ -11,6 +12,7 @@ import { CheckIcon, SpinnerIcon, TrashIcon } from '@/components/shared/icons'
  * is what the main process does with a full selection too.
  */
 export function DeleteBookDialog() {
+  const dialogRef = useDialogFocus()
   const bookId = useUIStore((s) => s.deletingBookId)
   const requestDelete = useUIStore((s) => s.requestDelete)
   const selectBook = useUIStore((s) => s.selectBook)
@@ -83,6 +85,8 @@ export function DeleteBookDialog() {
       onClick={() => !busy && requestDelete(null)}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={`Delete ${book.title}`}
@@ -149,6 +153,7 @@ export function DeleteBookDialog() {
 
         <div className="mt-5 flex justify-end gap-2">
           <button
+            data-autofocus
             disabled={busy}
             onClick={() => requestDelete(null)}
             className="rounded-md border border-ink-600 px-3 py-1.5 text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"

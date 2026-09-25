@@ -7,6 +7,7 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { LockIcon, SpinnerIcon } from '@/components/shared/icons'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 
 /**
  * Direct metadata editing — the manual counterpart to hydration, for the cases
@@ -140,6 +141,7 @@ function changedFields(book: Book, next: Partial<Book>): Partial<Book> {
 }
 
 export function BookEditor() {
+  const dialogRef = useDialogFocus()
   const bookId = useUIStore((s) => s.editingBookId)
   const requestEdit = useUIStore((s) => s.requestEdit)
   const books = useLibraryStore((s) => s.books)
@@ -238,6 +240,8 @@ export function BookEditor() {
       onClick={() => !busy && close()}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={`Edit ${book.title}`}

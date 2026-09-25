@@ -8,6 +8,7 @@ import { RestApiSection } from './RestApiSection'
 import { useLibraryStore } from '@/stores/library.store'
 import { CheckIcon, EyeIcon, SpinnerIcon } from '@/components/shared/icons'
 import { AI_PROVIDERS, endpointHint, hostOf, matchProvider, providerById } from '@/lib/ai-providers'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 
 /**
  * The only way to change `app_config` from the UI. Everything here except the
@@ -85,6 +86,7 @@ function changedFields(view: SettingsView, form: FormState): Partial<EditableSet
 }
 
 export function SettingsModal() {
+  const dialogRef = useDialogFocus()
   const openModal = useUIStore((s) => s.openModal)
   const nasStatus = useNASStore((s) => s.status)
   const sync = useLibraryStore((s) => s.catalogSync)
@@ -313,6 +315,8 @@ export function SettingsModal() {
       onClick={() => !busy && close()}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Settings"

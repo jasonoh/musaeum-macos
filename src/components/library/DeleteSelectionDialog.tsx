@@ -4,6 +4,7 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { SpinnerIcon, TrashIcon } from '@/components/shared/icons'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 
 const PREVIEW_TITLES = 5
 
@@ -12,6 +13,7 @@ const PREVIEW_TITLES = 5
  * picker across a mixed selection has no coherent meaning.
  */
 export function DeleteSelectionDialog() {
+  const dialogRef = useDialogFocus()
   const requestSelectionDelete = useUIStore((s) => s.requestSelectionDelete)
   const selectedIds = useUIStore((s) => s.selection.ids)
   const clearSelection = useUIStore((s) => s.clearSelection)
@@ -64,6 +66,8 @@ export function DeleteSelectionDialog() {
       onClick={() => !busy && requestSelectionDelete(false)}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={`Delete ${selected.length} books`}
@@ -112,6 +116,7 @@ export function DeleteSelectionDialog() {
 
         <div className="mt-5 flex justify-end gap-2">
           <button
+            data-autofocus
             disabled={busy}
             onClick={() => requestSelectionDelete(false)}
             className="rounded-md border border-ink-600 px-3 py-1.5 text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"

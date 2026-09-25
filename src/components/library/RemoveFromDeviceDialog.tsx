@@ -3,6 +3,7 @@ import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
 import { SpinnerIcon, TrashIcon } from '@/components/shared/icons'
+import { useDialogFocus } from '@/hooks/useDialogFocus'
 
 /**
  * Confirmation for deleting a book's files off a connected device. The book
@@ -10,6 +11,7 @@ import { SpinnerIcon, TrashIcon } from '@/components/shared/icons'
  * the reading position, which lives in the `.sdr` folder that goes with it.
  */
 export function RemoveFromDeviceDialog() {
+  const dialogRef = useDialogFocus()
   const target = useUIStore((s) => s.removingFromDevice)
   const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
   const books = useLibraryStore((s) => s.books)
@@ -50,6 +52,8 @@ export function RemoveFromDeviceDialog() {
       onClick={() => !busy && requestDeviceRemoval(null)}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={`Remove ${book.title} from ${device.name}`}
@@ -70,6 +74,7 @@ export function RemoveFromDeviceDialog() {
 
         <div className="mt-5 flex justify-end gap-2">
           <button
+            data-autofocus
             disabled={busy}
             onClick={() => requestDeviceRemoval(null)}
             className="rounded-md border border-ink-600 px-3 py-1.5 text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
