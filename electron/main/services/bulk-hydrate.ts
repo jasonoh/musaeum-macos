@@ -51,6 +51,25 @@ let running = false
 let cancelled = false
 let current: Promise<void> = Promise.resolve()
 
+/**
+ * Refresh one book on request — `metadata:rehydrateBook`'s body. The one
+ * awaited hydration: this call is a user action, not a background chore, so the
+ * caller is told what happened rather than being left to watch the card. Import
+ * and the bulk job keep the non-blocking contract — there is nothing to report
+ * to, and fifty books must not hold one invoke open for minutes.
+ */
+export async function rehydrateBook(bookId: string): ReturnType<typeof importer.hydrate> {
+  nas.assertOnline()
+  // Before the fetch below, because a failure after it has no channel home
+  sidecar.assertAvailable()
+  const book = db.getBook(bookId)
+  if (!book?.nasPath) throw new Error('Book not found')
+  const bookDir = join(nas.getLibraryRoot()!, book.nasPath)
+  const file = await findHydratableFile(bookDir)
+  if (!file) throw new Error('No EPUB, MOBI or AZW3 file to refresh from')
+  return importer.hydrate(bookId, file, bookDir)
+}
+
 export function isBulkHydrateRunning(): boolean {
   return running
 }

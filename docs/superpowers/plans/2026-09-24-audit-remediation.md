@@ -32,7 +32,7 @@
 | T9 | Calibre-migration insert in one transaction | done |
 | T10 | `orderedFormats()` in context menu and list Formats column | done |
 | T11 | Dialog focus management | todo |
-| T12 | Source-scan tests for invariants 8 and 11 | todo |
+| T12 | Source-scan tests for invariants 8 and 11 | done (also moved metadata:rehydrateBook → bulkHydrate.rehydrateBook, theme:openFolder → store.openThemeFolder) |
 | T13 | Pin sidecar Python dependencies | todo |
 | U1 | **USER** — main window `sandbox: true` (needs in-app check) | todo |
 | U2 | **USER** — Electron 37 → supported major + `@electron/rebuild` 4 | todo |

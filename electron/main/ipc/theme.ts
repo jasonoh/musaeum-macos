@@ -1,9 +1,8 @@
-import { mkdirSync } from 'fs'
-import { dialog, shell } from 'electron'
+import { dialog } from 'electron'
 import type { ThemeImportResult, ThemeView } from '@shared/theme.types'
 import { broadcast } from '../services/events'
 import { importPaths, scanFolder, withThemeView } from '../services/theme/importer'
-import { getThemeView, setTheme, themeFolder } from '../services/theme/store'
+import { getThemeView, openThemeFolder, setTheme, themeFolder } from '../services/theme/store'
 import { handle } from './handle'
 
 /**
@@ -91,17 +90,5 @@ export function registerThemeHandlers(): void {
     withThemeView(await scanFolder())
   )
 
-  handle('theme:openFolder', async (): Promise<void> => {
-    const folder = themeFolder()
-    // The one `mkdir` in the whole feature, and it is here rather than in the
-    // read path so that *Reveal in Finder* works before the first import. The
-    // folder is never written *into* — this creates the directory and nothing
-    // else (D7/D8).
-    mkdirSync(folder, { recursive: true })
-    const problem = await shell.openPath(folder)
-    // `openPath` answers with a string: empty means it opened. A shell failure is
-    // the one failure here worth surfacing as a rejection — the user pressed a
-    // button and the button did nothing — and `handle()` reports it.
-    if (problem) throw new Error(problem)
-  })
+  handle('theme:openFolder', () => openThemeFolder())
 }

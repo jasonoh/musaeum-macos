@@ -1,3 +1,4 @@
+import { execSync } from 'child_process'
 import { readFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
@@ -51,5 +52,44 @@ describe('invariant 3 — no code reads `formats` by position', () => {
       )
 
     expect(offenders).toEqual([])
+  })
+})
+
+/**
+ * Invariant 8, enforced in its sharpest form: **an IPC handler does no file,
+ * path or process work of its own** — that is orchestration, and it belongs in
+ * `electron/main/services/` where it can be tested without the IPC layer. The
+ * 2026-09-24 audit moved the three handlers that did (`library:updateBook`,
+ * `metadata:rehydrateBook`, `theme:openFolder`); this keeps the next one out.
+ */
+describe('invariant 8 — IPC handlers do no file or process work of their own', () => {
+  it('no electron/main/ipc file imports fs, path or child_process', () => {
+    const dir = join(process.cwd(), 'electron/main/ipc')
+    const offenders = readdirSync(dir)
+      .filter((f) => f.endsWith('.ts') && !f.includes('.test.'))
+      .filter((f) =>
+        /from '(fs|fs\/promises|path|child_process)'/.test(readFileSync(join(dir, f), 'utf8'))
+      )
+    expect(offenders).toEqual([])
+  })
+})
+
+/**
+ * Invariant 11, enforced: **`vendor/foliate-js/` is never edited.** Divergences
+ * live in our code or `src/types/foliate-js.d.ts`. One commit — the vendoring —
+ * has ever touched the tree; a re-vendor is a deliberate act that updates the
+ * count below in the same commit. CI checks out full history for this.
+ */
+describe('invariant 11 — vendor/foliate-js is never edited', () => {
+  const git = (cmd: string) => execSync(cmd, { cwd: process.cwd(), encoding: 'utf8' }).trim()
+
+  it('has no uncommitted change', () => {
+    expect(git('git status --porcelain -- vendor/foliate-js')).toBe('')
+  })
+
+  it('has been touched by exactly the one vendoring commit', () => {
+    expect(
+      git('git log --format=%H -- vendor/foliate-js').split('\n').filter(Boolean)
+    ).toHaveLength(1)
   })
 })

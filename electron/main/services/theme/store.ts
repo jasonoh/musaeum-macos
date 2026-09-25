@@ -1,4 +1,5 @@
-import { app } from 'electron'
+import { mkdirSync } from 'fs'
+import { app, shell } from 'electron'
 import { extname, join } from 'path'
 import type {
   StoredTheme,
@@ -85,6 +86,21 @@ export const THEME_LIBRARY_KEY = 'theme_library'
  */
 export function themeFolder(): string {
   return join(app.getPath('userData'), 'themes')
+}
+
+/** *Reveal in Finder* for the theme folder — `theme:openFolder`'s body. */
+export async function openThemeFolder(): Promise<void> {
+  const folder = themeFolder()
+  // The one `mkdir` in the whole feature, and it is here rather than in the
+  // read path so that *Reveal in Finder* works before the first import. The
+  // folder is never written *into* — this creates the directory and nothing
+  // else (D7/D8).
+  mkdirSync(folder, { recursive: true })
+  const problem = await shell.openPath(folder)
+  // `openPath` answers with a string: empty means it opened. A shell failure is
+  // the one failure here worth surfacing as a rejection — the user pressed a
+  // button and the button did nothing — and `handle()` reports it.
+  if (problem) throw new Error(problem)
 }
 
 /**
