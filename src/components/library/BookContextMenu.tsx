@@ -16,6 +16,7 @@ import {
   RefreshIcon,
   TrashIcon
 } from '@/components/shared/icons'
+import { orderedFormats } from '@shared/book.types'
 
 const MARGIN = 8
 
@@ -142,7 +143,7 @@ export function BookContextMenu() {
           }}
         />
         <div className="my-1 h-px bg-ink-700" />
-        {book.formats.map((f) => (
+        {orderedFormats(book).map((f) => (
           <MenuItem
             key={f}
             icon={<OpenExternalIcon className="h-3.5 w-3.5" />}

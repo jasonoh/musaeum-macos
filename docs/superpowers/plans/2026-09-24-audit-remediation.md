@@ -30,7 +30,7 @@
 | T7 | `file-access.ts` tests | done |
 | T8 | Sidecar tests: identifier precedence, cover-conflict positive case | done |
 | T9 | Calibre-migration insert in one transaction | done |
-| T10 | `orderedFormats()` in context menu and list Formats column | todo |
+| T10 | `orderedFormats()` in context menu and list Formats column | done |
 | T11 | Dialog focus management | todo |
 | T12 | Source-scan tests for invariants 8 and 11 | todo |
 | T13 | Pin sidecar Python dependencies | todo |

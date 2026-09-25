@@ -1,5 +1,5 @@
 import type { Book, SortField } from '@shared/book.types'
-import { defaultSortDirection, seriesDisplay } from '@shared/book.types'
+import { defaultSortDirection, orderedFormats, seriesDisplay } from '@shared/book.types'
 import { modifiersFrom } from '@/lib/selection'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
@@ -110,7 +110,7 @@ function Row({ book }: { book: Book }) {
       </td>
       <td className="px-3 py-2">
         <span className="flex gap-1">
-          {book.formats.map((f) => (
+          {orderedFormats(book).map((f) => (
             <span
               key={f}
               className="rounded border border-ink-600 px-1 text-[10px] uppercase leading-[18px] text-parchment-faint"
