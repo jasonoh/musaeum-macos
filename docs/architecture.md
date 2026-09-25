@@ -13,7 +13,7 @@
 
 | Layer             | Technology                       |
 | ----------------- | -------------------------------- |
-| Shell             | Electron (latest LTS)            |
+| Shell             | Electron 44                      |
 | UI                | React + TypeScript               |
 | Styling           | Tailwind CSS                     |
 | State             | Zustand                          |

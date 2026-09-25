@@ -75,6 +75,29 @@ describe('invariant 8 — IPC handlers do no file or process work of their own',
 })
 
 /**
+ * Invariant 9's channel, pinned: **`musaeum://` stays `corsEnabled`.** The
+ * renderer reads book bytes with `fetch('musaeum://book/…')` from a `file://`
+ * (packaged) or `http://localhost` (dev) origin, and on Electron 44 Chromium
+ * refuses that cross-origin fetch — `Failed to fetch`, before our handler runs —
+ * unless the scheme carries the flag (measured 2026-09-25; 37 did not need it).
+ * The electron mock stubs `registerSchemesAsPrivileged`, so no behaviour test
+ * can see the flag go missing; the reader would just stop opening books.
+ */
+describe('invariant 9 — the musaeum scheme keeps the privileges the reader fetches through', () => {
+  it('registers musaeum as standard, secure, fetch-capable and CORS-enabled', () => {
+    const source = readFileSync(join(process.cwd(), 'electron/main/index.ts'), 'utf8')
+    const start = source.indexOf('registerSchemesAsPrivileged(')
+    const call = source.slice(start, source.indexOf('])', start))
+    // A slice that silently found nothing would satisfy nothing below, loudly.
+    expect(start).toBeGreaterThan(-1)
+    expect(call).toContain("scheme: 'musaeum'")
+    for (const privilege of ['standard', 'secure', 'supportFetchAPI', 'corsEnabled']) {
+      expect(call).toMatch(new RegExp(`\\b${privilege}: true\\b`))
+    }
+  })
+})
+
+/**
  * Invariant 11, enforced: **`vendor/foliate-js/` is never edited.** Divergences
  * live in our code or `src/types/foliate-js.d.ts`. One commit — the vendoring —
  * has ever touched the tree; a re-vendor is a deliberate act that updates the
