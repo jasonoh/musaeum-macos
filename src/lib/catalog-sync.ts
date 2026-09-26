@@ -1,4 +1,5 @@
 import type { CatalogSyncState } from '@shared/book.types'
+import type { NASState } from '@shared/metadata.types'
 
 export type CatalogSyncKind = 'refresh' | 'rebuild'
 
@@ -7,6 +8,20 @@ export type CatalogSyncKind = 'refresh' | 'rebuild'
  * a decider — the store's own test suite has no DOM, so the store stays thin
  * glue over these (`library.store`'s `runCatalogSync`).
  */
+
+/**
+ * Whether a refresh or rebuild may start now: the library is reachable and no
+ * job is already running — the gate Settings' buttons already apply, as a
+ * predicate for the two doors that can be pressed at any moment (⌘R and the
+ * sidebar's icon), since `runCatalogSync` does not refuse a second job over a
+ * running one.
+ */
+export function canStartCatalogSync(
+  nasState: NASState | undefined,
+  sync: CatalogSyncState | null
+): boolean {
+  return nasState === 'connected' && sync?.outcome !== 'running'
+}
 
 /** A job that has just started: no counts yet, no result. */
 export function startCatalogSync(kind: CatalogSyncKind): CatalogSyncState {

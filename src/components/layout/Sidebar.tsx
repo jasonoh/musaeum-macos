@@ -3,7 +3,8 @@ import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { DevicePanel } from '@/components/device/DevicePanel'
 import { FilterSidebar } from '@/components/shared/FilterSidebar'
-import { GearIcon, WarningIcon } from '@/components/shared/icons'
+import { GearIcon, RefreshIcon, WarningIcon } from '@/components/shared/icons'
+import { canStartCatalogSync } from '@/lib/catalog-sync'
 import { TRAFFIC_LIGHT_CENTER_Y, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 
 export function Sidebar() {
@@ -11,6 +12,10 @@ export function Sidebar() {
   const openModal = useUIStore((s) => s.openModal)
   const nasStatus = useNASStore((s) => s.status)
   const bookCount = useLibraryStore((s) => s.books.length)
+  const catalogSync = useLibraryStore((s) => s.catalogSync)
+  const refreshLibrary = useLibraryStore((s) => s.refreshLibrary)
+  const canReload = canStartCatalogSync(nasStatus?.state, catalogSync)
+  const syncRunning = catalogSync?.outcome === 'running'
 
   // State → token, not state → word: D4 owns the copy, and a colour is a
   // presentation choice this component keeps. It cannot disagree with the label
@@ -48,6 +53,20 @@ export function Sidebar() {
         <nav className="mb-4 px-2">
           <div className="flex w-full items-center gap-2 rounded-md bg-ink-800 px-2 py-1.5 text-[13px] font-medium text-parchment">
             Library
+            {/* Reload Library (also ⌘R): re-reads the shared catalog, which is
+                how books added on another machine or from the phone arrive
+                here without a restart. It spins for any running job — a
+                reload that finds the catalog unreadable becomes the rebuild,
+                and the status bar says which. */}
+            <button
+              onClick={() => void refreshLibrary()}
+              disabled={!canReload}
+              title="Reload Library (⌘R)"
+              aria-label="Reload Library"
+              className="-my-0.5 rounded p-0.5 text-parchment-faint transition-colors hover:text-gold-400 disabled:pointer-events-none disabled:opacity-40"
+            >
+              <RefreshIcon className={`h-3.5 w-3.5 ${syncRunning ? 'animate-spin' : ''}`} />
+            </button>
             <span className="ml-auto text-[11px] tabular-nums text-parchment-faint">
               {bookCount}
             </span>
@@ -72,7 +91,10 @@ export function Sidebar() {
               poll, and one is break-glass that costs 1,281 s over SMB at library
               scale. Acquisition now lives on the empty view and the Add Books
               control; both maintenance actions live in Settings → Library, with
-              descriptions. This column is for going places. */}
+              descriptions. This column is for going places — the one
+              exception is the reload icon on the Library row, because
+              picking up another machine's additions is routine, not
+              maintenance. */}
         </nav>
 
         <FilterSidebar />

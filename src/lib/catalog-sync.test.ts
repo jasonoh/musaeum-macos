@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CatalogSyncState } from '@shared/book.types'
 import {
   applyRebuildProgress,
+  canStartCatalogSync,
   describeCatalogSync,
   settleCatalogSync,
   startCatalogSync
@@ -124,5 +125,39 @@ describe('the transitions', () => {
 
   it('settling falls back to the caller’s kind when nothing was running', () => {
     expect(settleCatalogSync(null, 'refresh', 'done', 2).kind).toBe('refresh')
+  })
+})
+
+/**
+ * Three doors start a refresh — Settings' Reload, ⌘R, and the sidebar's icon.
+ * Settings disables its button from the state it can see; the other two can be
+ * pressed at any moment, so they read this predicate instead.
+ */
+describe('canStartCatalogSync', () => {
+  it('allows a start over a connected library with nothing running', () => {
+    expect(canStartCatalogSync('connected', null)).toBe(true)
+  })
+
+  it('allows a start once the previous job has settled', () => {
+    for (const outcome of ['done', 'cancelled', 'failed'] as const) {
+      expect(canStartCatalogSync('connected', state({ outcome }))).toBe(true)
+    }
+  })
+
+  it('refuses while a refresh or a rebuild is running', () => {
+    expect(canStartCatalogSync('connected', state({ kind: 'refresh' }))).toBe(false)
+    expect(canStartCatalogSync('connected', state({ kind: 'rebuild' }))).toBe(false)
+  })
+
+  it('refuses unless the library is connected', () => {
+    for (const nas of [
+      'disconnected',
+      'reconnecting',
+      'missing',
+      'unconfigured',
+      undefined
+    ] as const) {
+      expect(canStartCatalogSync(nas, null)).toBe(false)
+    }
   })
 })

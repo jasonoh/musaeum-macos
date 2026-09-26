@@ -13,7 +13,7 @@
 
 `services/menu.ts`, installed on `whenReady`. It replaces Electron's default menu, which is why the Edit submenu is spelled out — every ⌘C/⌘V/⌘Z the metadata editor needs comes from there, not for free.
 
-Items never act; they `broadcast('menuCommand', …)` and the renderer (`hooks/useMenuCommands.ts`) maps each to the same store action the on-screen control uses, so a menu item and its button can't drift apart. Commands today: Settings (**⌘,**, the shortcut macOS users expect and the only reason the menu is load-bearing rather than cosmetic), grid (⌘1), list (⌘2).
+Items never act; they `broadcast('menuCommand', …)` and the renderer (`hooks/useMenuCommands.ts`) maps each to the same store action the on-screen control uses, so a menu item and its button can't drift apart. Commands today: Settings (**⌘,**, the shortcut macOS users expect and the only reason the menu is load-bearing rather than cosmetic), grid (⌘1), list (⌘2), Reload Library (**⌘R** — re-reads the shared catalog, the same job as Settings' Reload and the sidebar's icon on the Library row; added 2026-09-26 for a secondary machine that needs to pick up books added elsewhere without a restart). Because the menu reflects no renderer state, Reload Library is never greyed out: pressed mid-job or with the library unreachable, the handler checks `canStartCatalogSync` (`src/lib/catalog-sync.ts`) and does nothing. **⌘R belongs to Reload Library, not the window:** the dev-only renderer reload moved to ⌥⌘R, and the packaged build has no window reload at all.
 
 The menu is built once and never rebuilt — nothing in it reflects renderer state (no checkmarks on the view items), because keeping checked state in sync would mean touching the native menu on every view switch.
 

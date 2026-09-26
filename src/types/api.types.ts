@@ -65,6 +65,12 @@ export type MenuCommand =
   | 'add-books'
   | 'view-grid'
   | 'view-list'
+  /**
+   * View ▸ Reload Library (⌘R): re-read the shared catalog, the same job as
+   * Settings' Reload and the sidebar's icon. A no-op while one is running or
+   * the library is unreachable.
+   */
+  | 'reload-library'
   | 'select-all'
   /**
    * Find inside the open book. A no-op with no book open — the library has its

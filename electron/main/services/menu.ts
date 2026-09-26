@@ -82,12 +82,18 @@ function buildTemplate(): MenuItemConstructorOptions[] {
       { label: 'Grid', accelerator: 'CmdOrCtrl+1', click: command('view-grid') },
       { label: 'List', accelerator: 'CmdOrCtrl+2', click: command('view-list') },
       { type: 'separator' },
+      // ⌘R is the Mac's "refresh", and here that means the library: re-read the
+      // shared catalog to pick up what another machine added (never a window
+      // reload, which the packaged build doesn't offer at all)
+      { label: 'Reload Library', accelerator: 'CmdOrCtrl+R', click: command('reload-library') },
+      { type: 'separator' },
       // Reload and DevTools are dev affordances; a shipped build shouldn't
       // offer a reload that drops the user back at an empty library
       ...(isPackaged
         ? []
         : ([
-            { role: 'reload' },
+            // Off ⌘R, which Reload Library owns
+            { role: 'reload', accelerator: 'Alt+CmdOrCtrl+R' },
             { role: 'forceReload' },
             { role: 'toggleDevTools' },
             { type: 'separator' }
