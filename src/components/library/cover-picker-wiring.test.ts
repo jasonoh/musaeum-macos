@@ -11,6 +11,16 @@ import { describe, expect, it } from 'vitest'
  * sentence and the call site; it does not prove a person can see the sentence
  * or that the call succeeds — that half is the running-app probe's, recorded in
  * the slice's annex.
+ *
+ * The cover control's case below is the one exception, and the reason it exists:
+ * it does not walk a sentence, it computes the control's contrast against the
+ * surface it rests on. Name the trap, because both halves failed here at once —
+ * the walk only knew the class name, and the probe reached the control by
+ * selector (`textContent.trim() === 'Choose cover'`), which passes just as
+ * happily for a control at 2.35:1 that nobody can find. `Choose cover` shipped
+ * unreadable behind a green walk and a green probe. So: when a probe reaches a
+ * control by selector, look at the frame it produced, not only at the state it
+ * read.
  */
 const read = (path: string): string => readFileSync(join(process.cwd(), path), 'utf8')
 
