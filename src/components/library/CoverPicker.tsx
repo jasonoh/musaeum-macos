@@ -2,10 +2,27 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CoverCandidate, MetadataSource } from '@shared/metadata.types'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
-import { coverTiles, sameCandidate, searchedCoverTiles, tileKey } from '@/lib/cover-candidate-state'
-import type { CandidateTile } from '@/lib/cover-candidate-state'
+import {
+  UPLOAD_TRIGGER_LABEL,
+  UPLOAD_TRIGGER_LINE,
+  coverTiles,
+  coverUploadReading,
+  sameCandidate,
+  searchedCoverTiles,
+  tileKey,
+  uploadCopy,
+  uploadRefusal
+} from '@/lib/cover-candidate-state'
+import type { CandidateTile, CoverUploadReading } from '@/lib/cover-candidate-state'
 import { useDialogFocus } from '@/hooks/useDialogFocus'
-import { CheckIcon, CloseIcon, LockIcon, SearchIcon, SpinnerIcon } from '@/components/shared/icons'
+import {
+  CheckIcon,
+  CloseIcon,
+  ImageIcon,
+  LockIcon,
+  SearchIcon,
+  SpinnerIcon
+} from '@/components/shared/icons'
 
 /**
  * Choosing which jacket a book wears.
@@ -14,8 +31,11 @@ import { CheckIcon, CloseIcon, LockIcon, SearchIcon, SpinnerIcon } from '@/compo
  * menu), mounted in `App.tsx` under a per-book key like `BookEditor`. It reads
  * two payloads — `metadata.coverCandidates`, the gather the 2026-09-21 spec's
  * slice 1b built, and `metadata.searchCovers`, the wider search slice 3a-ii put
- * behind a press (2026-09-25 design, D2) — calls one write, and calls one
- * release. No new channel, no new type, and nothing below the renderer changes.
+ * behind a press (2026-09-25 design, D2) — calls two writes and one release.
+ * The second write, `metadata.chooseCoverFromFile` (D6), carries only a bookId:
+ * its file dialog is the main process's, so no path and no `file://` reaches
+ * this component, and what comes back is either the updated book or
+ * `{cancelled: true}`. No new channel, and nothing below the renderer changes.
  *
  * Three things it is careful about, each because the alternative was a lie:
  * the candidates' images arrive as `data:` URLs from the sidecar (the renderer's
@@ -59,11 +79,18 @@ const SOURCE_LABELS: Record<string, string> = {
 function TileButton({
   tile,
   busy,
+  disabled,
   onPick
 }: {
   tile: CandidateTile
   /** The candidate being written right now, if any: every tile waits for it. */
   busy: CoverCandidate | null
+  /**
+   * True while a write that is not one of these tiles is in flight — the
+   * upload. Both writes land on the same two filenames, so a tile pressed
+   * during one would race it rather than queue behind it.
+   */
+  disabled: boolean
   onPick: (candidate: CoverCandidate) => void
 }) {
   const { candidate, mark, label } = tile
@@ -72,7 +99,7 @@ function TileButton({
 
   return (
     <button
-      disabled={busy !== null}
+      disabled={disabled || busy !== null}
       onClick={() => onPick(candidate)}
       className={`group flex flex-col items-center gap-2 rounded-md border bg-ink-800 p-3 transition-colors disabled:opacity-60 ${
         onBook ? 'border-gold-500/50' : 'border-ink-600 hover:border-gold-500/60 hover:bg-ink-700'
@@ -171,13 +198,52 @@ export function CoverPicker() {
    */
   const [held, setHeld] = useState(false)
 
+  /**
+   * True from the press until the write and its re-read have both landed — the
+   * upload's busy state, kept apart from `busy` because `busy` names a
+   * *candidate* and an uploaded image is not one (there is no fourth source,
+   * D6-b). It disables both triggers and every tile, for two different reasons:
+   * nothing may write over the rendition pair while it is being written (a tile
+   * pressed now would land on the same two filenames), and nothing may *read* the
+   * book's bytes into a payload that is stale before it arrives (a search
+   * started now would score against the file this write is replacing).
+   */
+  const [uploading, setUploading] = useState(false)
+  /**
+   * What `chooseCoverFromFile` answered, or null when nothing has been asked.
+   * Held as the reading rather than as a boolean, because the two answers are
+   * not "yes and no" — one is a book that moved and one is a dialog that closed
+   * (`src/lib/cover-candidate-state.ts`).
+   */
+  const [uploadReading, setUploadReading] = useState<CoverUploadReading | null>(null)
+  /**
+   * The sentence a refused upload rejected with — the service's own words (D6-d),
+   * in a line of its own rather than in the gather's `error`: a file the guard
+   * turned down says nothing about whether the gather ran, and the two findings
+   * would read as one if they shared a paragraph.
+   */
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
+  /**
+   * How many times this dialog has asked what the book wears. Bumping it is how
+   * a landed upload re-reads, and re-reading is the rule rather than the tidy
+   * thing to do: the write replaced the bytes *and* took the lock, and neither
+   * of the dialog's two facts can be recomputed from the call's own answer — the
+   * payload behind `candidates` was scored against the file that was on disk
+   * *before* the write, and `held` is the main process's record, not this
+   * component's. Zero at mount, where the effect below runs anyway.
+   */
+  const [readRun, setReadRun] = useState(0)
+
   useEffect(() => {
     if (!bookId) return
     let live = true
     // No reset of the local state here: the dialog is mounted under a per-book
     // key (`App.tsx`) and unmounted when it closes, so every open starts from
     // the initial values — and a `setState` in an effect body would cascade a
-    // render for a state that cannot be stale.
+    // render for a state that cannot be stale. A later run (an upload's, below)
+    // overwrites both answers with fresher ones rather than clearing them, so
+    // the dialog never falls back to the state it shows before the first read.
 
     void window.Musaeum.metadata
       .coverCandidates(bookId)
@@ -205,13 +271,13 @@ export function CoverPicker() {
     return () => {
       live = false
     }
-  }, [bookId])
+  }, [bookId, readRun])
 
   const close = () => requestCoverPicker(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) close()
+      if (e.key === 'Escape' && !busy && !uploading) close()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -258,6 +324,62 @@ export function CoverPicker() {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(null)
+    }
+  }
+
+  /**
+   * Use an image from this machine as the book's cover (D6 of the 2026-09-25
+   * design) — the fallback for the jacket that is in no database, or in none
+   * this app can reach.
+   *
+   * One press, one call: the file dialog belongs to the main process (D6-a), so
+   * this side sends the book's id and learns only whether the write happened.
+   * There is nothing to hand over and no path to name, which is why the whole
+   * of what this control can get wrong is what it *says*.
+   *
+   * The three states, each decided by `src/lib/cover-candidate-state.ts`:
+   *
+   * - **cancelled** — the dialog was closed. An answer, not a failure: nothing
+   *   was written, nothing is re-read and nothing is said (a line here would
+   *   report an event that did not happen).
+   * - **refused** — the call rejected with the sidecar's sentence. The write
+   *   never happened, so nothing is re-read either; the sentence is printed as
+   *   it arrived, because it is the only thing that tells a person *why*
+   *   (*"not an image"* and *"under 120 px"* are two different corrections).
+   * - **settled** — the write landed. Then this dialog re-reads what the book
+   *   wears instead of trusting the answer it was handed: the returned book
+   *   proves the row moved, but the tiles' marks were scored against the bytes
+   *   that were on disk *before* the write, so a mark set from the return value
+   *   would be this component inventing a fact (the same reason `choose` marks a
+   *   pick from the candidate it wrote and not from the payload's own flags).
+   *
+   * The re-read is the mount effect above, re-run by `readRun`: the same call,
+   * the same two facts (the gather's payload and the lock), one implementation —
+   * and `load()` after it is the refresh `choose` ends with, so the panel behind
+   * the dialog repaints the new jacket through a URL the row's clock moved.
+   */
+  const chooseImage = async (): Promise<void> => {
+    if (!book || uploading) return
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const outcome = await window.Musaeum.metadata.chooseCoverFromFile(book.id)
+      const reading = coverUploadReading(outcome)
+      if (reading.kind === 'cancelled') return
+
+      setUploadReading(reading)
+      // Bump before awaiting anything: the re-read is the effect's, and it must
+      // be the fresher run whether or not `load()` is slow.
+      setReadRun((run) => run + 1)
+      // `load()`'s own failure is not the upload's to report: the write already
+      // landed, and a library reload that throws would otherwise print under the
+      // sentence that says the image *was* used. The store reloads again on the
+      // next `libraryChanged` (`settleChoice` broadcasts one) either way.
+      await load().catch(() => {})
+    } catch (err) {
+      setUploadError(uploadRefusal(err))
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -322,13 +444,21 @@ export function CoverPicker() {
   const { tiles: searchTiles, notice: searchNotice } = searchedCoverTiles(
     searched?.map(withPick) ?? null
   )
+  /**
+   * What the dialog says about an upload, from the answer it was handed: its own
+   * line, and whether the gather's notice still stands. A landed upload stands
+   * it down — the notice explains an unmarked grid as *"resolved from a
+   * conflict, or replaced outside Musaeum"*, and this dialog is the one place
+   * that knows the replacement happened inside Musaeum, one paragraph below.
+   */
+  const { line: uploadLine, gatherNotice } = uploadCopy(uploadReading)
 
   if (!book) return null
 
   return (
     <div
       className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-scrim/80 p-8 backdrop-blur-sm"
-      onClick={() => !busy && close()}
+      onClick={() => !busy && !uploading && close()}
     >
       <div
         ref={dialogRef}
@@ -361,7 +491,7 @@ export function CoverPicker() {
             </p>
           )}
 
-          {notice && (
+          {gatherNotice && notice && (
             <p className="mb-3 rounded-md border border-ink-700 bg-ink-850 px-3 py-2 text-[12px] leading-relaxed text-parchment-dim">
               {notice}
             </p>
@@ -374,6 +504,7 @@ export function CoverPicker() {
                   key={tileKey(tile.candidate)}
                   tile={tile}
                   busy={busy}
+                  disabled={uploading}
                   onPick={(candidate) => void choose(candidate)}
                 />
               ))}
@@ -415,7 +546,7 @@ export function CoverPicker() {
           <div className="mt-4 border-t border-ink-800 pt-3">
             <button
               onClick={() => void lookFurther()}
-              disabled={busy !== null || searching}
+              disabled={busy !== null || searching || uploading}
               className="flex items-center gap-2 rounded-md border border-ink-600 px-3 py-1.5 text-[13px] text-parchment-dim transition-colors hover:border-gold-500/60 hover:text-parchment disabled:opacity-60"
             >
               {searching ? (
@@ -428,6 +559,44 @@ export function CoverPicker() {
             <p className="mt-1.5 text-[12px] leading-relaxed text-parchment-faint">
               Searches this book’s other editions — by their ISBNs, then by title and author.
             </p>
+
+            {/* The second source the gather cannot reach (D6), beside the search
+                because it is the same kind of thing: a way to get a jacket the
+                gather would never produce. Its own press and its own words — and
+                no network at all, since the dialog that picks the file belongs to
+                the main process and nothing here ever names a path. */}
+            <div className="mt-3">
+              <button
+                onClick={() => void chooseImage()}
+                disabled={uploading || searching || busy !== null}
+                className="flex items-center gap-2 rounded-md border border-ink-600 px-3 py-1.5 text-[13px] text-parchment-dim transition-colors hover:border-gold-500/60 hover:text-parchment disabled:opacity-60"
+              >
+                {uploading ? (
+                  <SpinnerIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <ImageIcon className="h-3.5 w-3.5" />
+                )}
+                {UPLOAD_TRIGGER_LABEL}
+              </button>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-parchment-faint">
+                {UPLOAD_TRIGGER_LINE}
+              </p>
+
+              {/* No sentence for the write in flight: see `UPLOAD_APPLIED`'s
+                  comment. The trigger's spinner above is the whole signal, and
+                  the dialog keeps its lines for things that are true of the book
+                  — the refusal and the landed sentence. */}
+
+              {/* The landed sentence, and the only notice of an upload that has
+                  one: `uploadCopy` gives the cancellation and the ask-yet state
+                  no line at all, because neither is news about the book. */}
+              {uploadLine && <p className="mt-2 text-[12px] text-parchment-dim">{uploadLine}</p>}
+
+              {/* The refusal, in the service's own words and in a line of its
+                  own: it is not the gather's finding and must not sit in the
+                  gather's paragraph (see the state's comment above). */}
+              {uploadError && <p className="mt-2 text-[12px] text-danger-400">{uploadError}</p>}
+            </div>
 
             {/* A search in flight gets a spinner and nothing else: `null` is
                 "not back yet", and "not back yet" must never read as "found
@@ -464,6 +633,7 @@ export function CoverPicker() {
                         key={tileKey(tile.candidate)}
                         tile={tile}
                         busy={busy}
+                        disabled={uploading}
                         onPick={(candidate) => void choose(candidate)}
                       />
                     ))}

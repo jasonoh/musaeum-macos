@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CoverCandidate } from '@shared/metadata.types'
+import { makeBook } from '../../test/helpers/book'
 import {
   NONE_APPLIED,
   NONE_APPLIED_NO_WINNER,
@@ -8,13 +9,19 @@ import {
   NO_SEARCH_RESULTS,
   SEARCHED_NONE_APPLIED,
   TILE_LABELS,
+  UPLOAD_APPLIED,
+  UPLOAD_TRIGGER_LABEL,
+  UPLOAD_TRIGGER_LINE,
   candidateMark,
   candidateTiles,
   coverTiles,
+  coverUploadReading,
   sameCandidate,
   searchedCoverTiles,
   searchedTiles,
-  tileKey
+  tileKey,
+  uploadCopy,
+  uploadRefusal
 } from './cover-candidate-state'
 
 /**
@@ -310,5 +317,98 @@ describe('sameCandidate — identity is the pair, not the source', () => {
         candidate({ source: 'openlibrary', url })
       )
     ).toBe(false)
+  })
+})
+
+/**
+ * The third source: an image of the user's own (D6, AC11–AC13).
+ *
+ * The control's copy and its two decisions live in the module for the same
+ * reason the other two groups' do — a rule inside a `.tsx` can only be decided
+ * by a running-app probe — and the two decisions are the ones a probe would
+ * otherwise be the *only* thing to catch: a cancellation that reads as a
+ * failure, and a landed upload that leaves the gather's explanation of an
+ * unmarked grid standing.
+ */
+describe('the upload control’s copy', () => {
+  it('says where the image comes from, and promises no search and no fetch', () => {
+    // The dialog that picks the file is macOS's and the path never crosses the
+    // boundary (D6-a), so where the image comes from is the one thing this copy
+    // owes the reader. The two negatives are the other half of the same rule:
+    // nothing is searched and nothing is fetched, so neither word may appear —
+    // a line borrowing the search's language would describe a round trip the
+    // gesture does not make, and one borrowing the gather's would claim a
+    // `winner` that cannot exist for a file the app was handed (D6-b).
+    expect(UPLOAD_TRIGGER_LABEL).toContain('image')
+    expect(UPLOAD_TRIGGER_LINE).toContain('this Mac')
+    expect(UPLOAD_TRIGGER_LINE).toContain('dialog')
+
+    expect(UPLOAD_TRIGGER_LABEL).not.toMatch(/search/i)
+    expect(UPLOAD_TRIGGER_LINE).not.toMatch(/search|fetch/i)
+  })
+
+  // There is no case here for "no busy sentence": the rule that this dialog shows
+  // no line while the file sheet is open is a *removal*, and the only test that
+  // could stand for it would scan this module for words like "writing" — pinning
+  // prose rather than behaviour, and failing on any later sentence that happens to
+  // use them. The reasoning lives in the block comment above `UPLOAD_APPLIED` and
+  // in the diff; the honest deciders around it — the landed sentence, the refusal
+  // in the service's own words, and a cancellation's silence — are the cases above
+  // and below.
+})
+
+describe('coverUploadReading — what the upload call’s answer means', () => {
+  it('reads a cancellation as an answer of its own, not as a failure', () => {
+    // `CoverUploadOutcome`'s two arms: the book the write produced, or
+    // `{cancelled: true}`. Only the second changes nothing, and this is the
+    // case that decides the branch the whole gesture's honesty rests on.
+    expect(coverUploadReading({ cancelled: true })).toEqual({ kind: 'cancelled' })
+    expect(coverUploadReading(makeBook('re-dressed'))).toEqual({ kind: 'settled' })
+  })
+})
+
+describe('uploadCopy — the dialog’s line, and the gather’s notice', () => {
+  it('says nothing at all for a cancellation, and for nothing asked yet', () => {
+    // The silent states are the point of the rule: a line for a cancellation
+    // would report a failure that did not happen, and the person who closed the
+    // dialog needs no notification that they did. Asked-yet and cancelled are
+    // the same silence on purpose — neither is news about the book.
+    expect(uploadCopy(null)).toEqual({ line: null, gatherNotice: true })
+    expect(uploadCopy({ kind: 'cancelled' })).toEqual({ line: null, gatherNotice: true })
+  })
+
+  it('reports a landed image, and stands the gather’s explanation down', () => {
+    // AC11's copy half. After an upload every gathered tile loses `applied` (an
+    // uploaded rendition is byte-identical to nothing the gather returned), so
+    // the dialog's own sentence is the true explanation of its own action —
+    // where the gather's would name a cause that is not what happened:
+    // *"resolved from a conflict, or replaced outside Musaeum"*. Only one of
+    // the two may print.
+    expect(uploadCopy({ kind: 'settled' })).toEqual({
+      line: UPLOAD_APPLIED,
+      gatherNotice: false
+    })
+    // The landed sentence reports the book and not the button that was pressed,
+    // and it stands in for a different sentence rather than varying it
+    expect(UPLOAD_APPLIED).toContain('cover on this book')
+    expect(UPLOAD_APPLIED).not.toBe(NONE_APPLIED)
+    expect(UPLOAD_APPLIED).not.toMatch(/conflict|outside Musaeum/)
+  })
+})
+
+describe('uploadRefusal — the sentence a refused file prints', () => {
+  it('prints the call’s own words, verbatim', () => {
+    // The guard's sentence is what makes a refusal actionable ("not an image"
+    // and "under 120 px" are two different corrections a person can make), so
+    // this rule passes it through untouched rather than composing a general one
+    const sentence = 'That image is too small — a cover needs at least 120 px on both sides'
+    expect(uploadRefusal(new Error(sentence))).toBe(sentence)
+  })
+
+  it('still says something when the rejection is not an Error', () => {
+    // `sidecar.call` rejects with an Error, but a rejection is `unknown` by
+    // type and a rule that returned '' here would print an empty line where the
+    // user is waiting to be told what happened
+    expect(uploadRefusal('sidecar refused')).toBe('sidecar refused')
   })
 })

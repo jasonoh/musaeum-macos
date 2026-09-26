@@ -1,3 +1,4 @@
+import type { CoverUploadOutcome } from '@shared/api.types'
 import type { CoverCandidate } from '@shared/metadata.types'
 
 /**
@@ -205,4 +206,130 @@ export function searchedTiles(hits: CoverCandidate[]): CoverTiles {
  */
 export function searchedCoverTiles(hits: CoverCandidate[] | null): CoverTiles {
   return hits === null ? { tiles: [], notice: null } : searchedTiles(hits)
+}
+
+/**
+ * The third source, and the only one whose bytes come from nowhere else: an
+ * image of the user's own.
+ *
+ * It is the picker's *second* control rather than a mode of the first, because
+ * the search trigger and this one are the same kind of thing — a source the
+ * gather cannot reach — while the things they do have nothing in common. The
+ * copy below has three obligations and they pull in different directions:
+ *
+ * 1. **It says where the image comes from**, because that is the part a person
+ *    cannot see: the dialog is macOS's and the renderer never receives the
+ *    path (`chooseCoverFromFile` carries a bookId and nothing else, D6-a), so
+ *    "a file on this Mac, chosen in Musaeum's own dialog" is the whole of what
+ *    this control can honestly promise.
+ * 2. **It must not borrow the search's language.** Nothing is searched, no
+ *    database is asked and no network is reached — `set_cover_from_file` reads
+ *    one file the user pointed at — so a line that said it searched anything
+ *    would be the app describing a round trip it does not make. That is why
+ *    the sentence names the Mac and the dialog rather than an edition.
+ * 3. **It must not borrow the gather's either.** No uploaded image can ever be
+ *    "what a fetch would write": `winner` is a fact about a pool a fetch
+ *    assembled, and a fetch cannot assemble this. The upload is a write, not a
+ *    candidate (D6-b), which is also why there is no fourth `MetadataSource`.
+ *
+ * These live here rather than in the component for the reason every rule in
+ * this app does: the renderer has no DOM harness, so copy written into a `.tsx`
+ * can only be decided by an expensive running-app probe, while a sentence in a
+ * plain module is pinned by a unit case.
+ */
+export const UPLOAD_TRIGGER_LABEL = 'Choose an image…'
+
+export const UPLOAD_TRIGGER_LINE =
+  'Uses an image file from this Mac, chosen in Musaeum’s own dialog.'
+
+/**
+ * There is deliberately **no sentence for the upload in flight.**
+ *
+ * There was one — *"Writing that image as the cover…"* — and it was removed
+ * because it cannot be true for the span it covers. The renderer makes one call
+ * (`chooseCoverFromFile`) that opens the native file sheet *and* then writes the
+ * file it returned, so "in flight" spans both, and the longer half by far is the
+ * person browsing their own disk. Measured on the running app: with the sheet
+ * open, the dialog behind it read *"Writing that image as the cover…"* about a
+ * write nobody had chosen yet — and cancelling then left it saying so until the
+ * press resolved.
+ *
+ * Nothing here can distinguish the two phases, on purpose: the whole boundary
+ * (D6-a) is that the path never reaches the renderer, so a "choosing" phase and a
+ * "writing" phase are not two things this side can see. A vaguer sentence was the
+ * alternative and it would have been a smaller lie rather than none. So the
+ * control shows a spinner while it is mid-gesture — which is true, and is what a
+ * spinner means — and the dialog adds only sentences about the book: the refusal
+ * above, and the landed line below.
+ */
+export const UPLOAD_APPLIED = 'Your image is now the cover on this book.'
+
+/**
+ * What the upload call's answer means for this dialog, in two states.
+ *
+ * A cancellation is an **answer**, not a failure (`api.types.ts` spells the
+ * union that way for exactly this reason): the person closed a dialog, nothing
+ * was written and there is no book to report. So it must not read as one — no
+ * refusal line, no error colour — and it must not re-read either, because
+ * nothing moved. This function exists so that reading is a rule with a case
+ * rather than a branch nobody asserted: `cancelled` is the only answer that
+ * changes nothing, and the difference between it and a refusal is the whole
+ * content of the gesture's honesty.
+ */
+export type CoverUploadReading = { kind: 'settled' } | { kind: 'cancelled' }
+
+export function coverUploadReading(outcome: CoverUploadOutcome): CoverUploadReading {
+  return 'cancelled' in outcome ? { kind: 'cancelled' } : { kind: 'settled' }
+}
+
+/**
+ * The sentence a refused upload prints: the call's own, verbatim.
+ *
+ * The refusal is a **value** rather than a throw across the boundary (D6-d):
+ * the sidecar's guard raises `ValueError` with the sentence the user reads —
+ * *"That file is not an image Musaeum can read"*, the 120 px floor's, the
+ * damaged-image one — and `sidecar.call`'s rejection carries it here intact.
+ * So this rule composes nothing and must not: every failure this gesture can
+ * have already has words, and a generic "that image could not be used" written
+ * here would replace a sentence that says *why* with one that does not (the
+ * slice-2 defect, in copy).
+ */
+export function uploadRefusal(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+export interface UploadCopy {
+  /** The upload's own line under the trigger, or null for a state with none. */
+  line: string | null
+  /** Whether the gather's book-level notice still stands beside its tiles. */
+  gatherNotice: boolean
+}
+
+/**
+ * What the dialog says about an upload: its own line, and whether the gather's
+ * notice still stands.
+ *
+ * One derivation rather than two, because the two answers are one decision — an
+ * upload that landed replaced the bytes *and* took the lock, and both sentences
+ * are about that single fact.
+ *
+ * `line` is absent for a cancellation, which is an answer rather than a
+ * failure, and absent while nothing has been asked this session: the two are
+ * the same silence on purpose, because neither is news about the book. A
+ * sentence for a cancellation would be the dialog reporting a failure that did
+ * not happen, which is the one thing this state exists to prevent.
+ *
+ * `gatherNotice` is false once an upload has landed, and that suppression is
+ * the point of the rule rather than a layout choice. The gather's notice
+ * explains an unmarked grid with *"None of these is the cover on your book now
+ * — it was resolved from a conflict, or replaced outside Musaeum"*. Its first
+ * half stays true, but its **explanation** does not: the cover was replaced
+ * here, in this dialog, by the person reading the sentence. So the upload's own
+ * line stands in the notice's place, and the story the dialog tells about its
+ * own action is the true one. Two sentences, one contradicting the other one
+ * line apart, is how a reader learns to skip both.
+ */
+export function uploadCopy(reading: CoverUploadReading | null): UploadCopy {
+  const settled = reading?.kind === 'settled'
+  return { line: settled ? UPLOAD_APPLIED : null, gatherNotice: !settled }
 }

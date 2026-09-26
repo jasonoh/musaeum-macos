@@ -33,14 +33,16 @@ describe('AC14a — the picker calls the existing surface and adds no channel', 
     )
     const distinct = [...new Set(calls)].sort()
 
-    // Exactly the five the picker needs: the gather, the write, the lock's
-    // read, the lock's release, and — as of slice 3a-ii — the wider search. A
-    // sixth name means a new surface rode in with the picker, which is what this
-    // criterion forbids; `searchCovers` is the one addition that was decided in
-    // a design (`2026-09-25-cover-sources-design.md`, D2) rather than slipping in.
+    // Exactly the six the picker needs: the gather, the write, the lock's read,
+    // the lock's release, the wider search (slice 3a-ii) and the upload's dialog
+    // (slice 3b-ii). A seventh name means a new surface rode in with the picker,
+    // which is what this criterion forbids; both additions were decided in the
+    // same design (`2026-09-25-cover-sources-design.md`, D2 and D6) rather than
+    // slipping in with a UI slice.
     expect(distinct).toEqual([
       'library.getFieldOverrides',
       'library.releaseFieldOverride',
+      'metadata.chooseCoverFromFile',
       'metadata.coverCandidates',
       'metadata.searchCovers',
       'metadata.setCover'
@@ -101,6 +103,96 @@ describe('AC8b — the wider search is asked about this book, and only on a pres
     expect(picker).toContain('Look for more covers')
     expect(picker).toContain('From a wider search')
     expect(picker).toMatch(/A fetch would not\s+write any of them/)
+  })
+})
+
+describe('AC11 — an uploaded image names the book, and never a path', () => {
+  it('calls chooseCoverFromFile with the book id and nothing else', () => {
+    // Its limit: this decides the call's *argument*, which is the half a walk can
+    // decide at all. That the dialog opens, that the write lands on disk and that
+    // the lock line then renders is the running-app probe's (AC11). The argument
+    // is the whole of D6-a from this side: the file dialog belongs to the main
+    // process, so a path here would be a value the renderer decided — and one
+    // that could name a path could ask the main process to write any file into a
+    // book's folder.
+    const picker = read(PICKER)
+
+    // `\s*` between the dots for the measured reason the walks above carry:
+    // prettier wraps `window.Musaeum.metadata` onto its own line when the call is
+    // part of a chain, and a pattern that assumed one line found too few.
+    const call = picker.match(
+      /window\.Musaeum\s*\.\s*metadata\s*\.\s*chooseCoverFromFile\s*\(\s*([^)]*)\)/
+    )
+    expect(call).not.toBeNull()
+    expect(call?.[1].trim()).toBe('book.id')
+
+    // One press, one call, and nothing that could open a dialog from this side
+    expect(picker.match(/chooseCoverFromFile\s*\(/g)).toHaveLength(1)
+    expect(picker).not.toMatch(/filePaths|showOpenDialog/)
+  })
+
+  it('keeps every mark off the answer, and both readings in the pure rule', () => {
+    // The rule the upload shares with a pick, walked on the component: `applied`
+    // is byte identity against what is on disk *now*, and the payload the tiles
+    // came from was scored against the bytes that were there *before* the write —
+    // so the only thing that may set a tile's mark is the candidate this session
+    // wrote (`setPicked`, inside `choose`), and an upload sets no mark at all.
+    // Its limit: that the dialog re-runs the gather afterwards, instead of
+    // leaving marks scored against the replaced file, is the probe's — a walk can
+    // only show that no second mark-setter exists to do it wrongly.
+    const picker = read(PICKER)
+
+    expect(picker.match(/setPicked\s*\(/g)).toHaveLength(1)
+    // What a cancellation or a landed write *means* is the pure rule's, so the
+    // branch that keeps them apart is not written in the JSX.
+    expect(picker).toContain('coverUploadReading(')
+    expect(picker).toContain('uploadCopy(')
+    // …and a cancelled answer stops the press there: the re-read below it (the
+    // run bump, then `load()`) must be unreachable from the cancelled arm,
+    // because a dialog somebody closed moved nothing to re-read. Control flow is
+    // the most a source walk can see of this, and this is its shape.
+    expect(picker).toMatch(/reading\.kind === 'cancelled'\)\s*return/)
+    // The gather's notice is gated on the rule's answer: an upload that landed
+    // must be able to stand it down, or the dialog prints the explanation this
+    // whole slice exists to make untrue.
+    expect(picker).toMatch(/\{gatherNotice && notice &&/)
+    // …and that gate is the rule's answer rather than a literal next to it: the
+    // whole suppression argument is that the dialog *knows* an upload landed, so
+    // a `gatherNotice` invented beside the destructuring would restore the notice
+    // this slice exists to make untrue.
+    expect(picker).toMatch(/gatherNotice[^=\n]*=[^=\n]*uploadCopy\(/)
+  })
+
+  it('renders each state, and gates every read on the write in flight', () => {
+    // The sentences are the lib's, where a unit case can decide them; that this
+    // control *renders* them is the walk's, because no unit case can see a
+    // `.tsx`. Braced, because the import above carries the same names — a
+    // mutation that deleted the JSX and left the import behind is exactly what an
+    // unbraced check would miss. One name per visible state of the control.
+    const picker = read(PICKER)
+
+    for (const name of ['{UPLOAD_TRIGGER_LABEL}', '{UPLOAD_TRIGGER_LINE}']) {
+      expect(picker).toContain(name)
+    }
+    expect(picker).toMatch(/\{uploadLine &&/)
+    // The refusal prints the call's own sentence — the rule is `uploadRefusal`'s,
+    // and that it is printed at all is this walk's: a swallowed rejection would
+    // leave a person staring at a dialog that closed and said nothing.
+    expect(picker).toMatch(/setUploadError\(uploadRefusal\(err\)\)/)
+
+    // One dialog at a time, and it is the guard inside the handler that enforces
+    // it: the trigger's `disabled` is the cosmetic half, because a greyed button
+    // still loses a race against a render.
+    expect(picker).toMatch(/if \(!book \|\| uploading\) return/)
+    // Both tile grids hand the upload's busy state down, and the count is the
+    // point: the two groups render identical `TileButton`s, so a grid left out is
+    // exactly the drift that would leave it live during a write. Both writes land
+    // on the same two filenames, and a tile pressed now would race rather than
+    // queue. The two triggers are gated on it as well — the count of four — a
+    // trigger being the control that starts a *read*, and a read started now
+    // assembles a payload from the file this write is replacing.
+    expect(picker.match(/disabled=\{uploading\}/g)).toHaveLength(2)
+    expect(picker.match(/disabled=\{[^}]*uploading[^}]*\}/g)).toHaveLength(4)
   })
 })
 
