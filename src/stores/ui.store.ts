@@ -95,6 +95,8 @@ interface UIState {
   deletingSelection: boolean
   /** Book whose metadata editor is open. */
   editingBookId: string | null
+  /** Book whose cover picker is open. */
+  coverPickerBookId: string | null
   /** Book + device whose "remove from device" confirmation is open. */
   removingFromDevice: DeviceRemovalTarget | null
   /**
@@ -132,6 +134,7 @@ interface UIState {
   requestDelete(bookId: string | null): void
   requestSelectionDelete(open: boolean): void
   requestEdit(bookId: string | null): void
+  requestCoverPicker(bookId: string | null): void
   requestDeviceRemoval(target: DeviceRemovalTarget | null): void
   setPythonEnv(progress: PythonEnvProgress | null): void
   /** Show a transient report; returns its id for callers that dismiss early. */
@@ -153,6 +156,22 @@ function bookOrder(): string[] {
   return useLibraryStore.getState().books.map((b) => b.id)
 }
 
+/**
+ * What outlives the session: the view choice, and nothing else.
+ *
+ * Exported rather than left inline so the rule has a decider. The store
+ * persists through zustand's middleware, and the test environment is `node`
+ * with no `localStorage`, so a case that reached for `.persist` would be
+ * asserting about a storage backend instead of about what is kept — while this
+ * function *is* the whole of "what is kept", and a fourth dialog's open flag
+ * added to the state without landing here is the mistake worth catching (every
+ * one of these is about what is on screen right now, and a dialog that reopens
+ * itself on the next launch has no business doing so).
+ */
+export const persistedUIState = (s: UIState): Pick<UIState, 'viewMode'> => ({
+  viewMode: s.viewMode
+})
+
 export const useUIStore = create<UIState>()(
   persist(
     (set, get) => ({
@@ -165,6 +184,7 @@ export const useUIStore = create<UIState>()(
       deletingBookId: null,
       deletingSelection: false,
       editingBookId: null,
+      coverPickerBookId: null,
       removingFromDevice: null,
       pythonEnv: null,
       toasts: [],
@@ -199,6 +219,9 @@ export const useUIStore = create<UIState>()(
       requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null }),
       requestSelectionDelete: (deletingSelection) => set({ deletingSelection, contextMenu: null }),
       requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null }),
+      // Both entry points (the detail panel's cover, the context menu) open the
+      // one dialog, so the menu has to go the way every other dialog's does
+      requestCoverPicker: (coverPickerBookId) => set({ coverPickerBookId, contextMenu: null }),
       requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null }),
       setPythonEnv: (pythonEnv) => set({ pythonEnv }),
 
@@ -249,9 +272,9 @@ export const useUIStore = create<UIState>()(
     }),
     {
       // Only the view choice outlives the session — selection, modals and
-      // dialogs are all about what is on screen right now
+      // dialogs are all about what is on screen right now (`persistedUIState`)
       name: 'musaeum.ui',
-      partialize: (s) => ({ viewMode: s.viewMode }),
+      partialize: persistedUIState,
       merge: (persisted, current) => {
         const { viewMode } = (persisted ?? {}) as { viewMode?: unknown }
         return viewMode === 'grid' || viewMode === 'list' ? { ...current, viewMode } : current

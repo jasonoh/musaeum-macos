@@ -262,7 +262,13 @@ export function BookEditor() {
                 <span className="text-parchment">
                   {overridden.map((f) => HYDRATED_FIELD_LABELS[f]).join(', ')}
                 </span>
-                . The padlock beside a field hands it back to Musaeum — its value stays.
+                . The padlock beside a field hands it back to Musaeum — its value stays.{' '}
+                {/* A cover lock has no padlock here: this editor has no cover
+                    field, so an instruction to click one would be untrue. Its
+                    release is the picker's (AC17) — see the source walk in
+                    `cover-picker-wiring.test.ts` */}
+                <span className="text-parchment">Cover</span> is released from{' '}
+                <span className="text-parchment">Choose cover</span> on the detail panel instead.
               </span>
             </p>
           )}

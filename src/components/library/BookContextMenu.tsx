@@ -10,6 +10,7 @@ import {
   CloseIcon,
   DeviceIcon,
   FolderIcon,
+  ImageIcon,
   OpenExternalIcon,
   PencilIcon,
   ReaderIcon,
@@ -37,6 +38,7 @@ export function BookContextMenu() {
   const selectBook = useUIStore((s) => s.selectBook)
   const requestDelete = useUIStore((s) => s.requestDelete)
   const requestEdit = useUIStore((s) => s.requestEdit)
+  const requestCoverPicker = useUIStore((s) => s.requestCoverPicker)
   const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
   const count = useUIStore(selectionCount)
   const clearSelection = useUIStore((s) => s.clearSelection)
@@ -175,6 +177,13 @@ export function BookContextMenu() {
           icon={<PencilIcon className="h-3.5 w-3.5" />}
           label="Edit metadata…"
           onClick={() => requestEdit(book.id)}
+        />
+        {/* Beside the editor rather than inside it: the editor has no cover
+            field, and the picker is a panel of its own (AC17) */}
+        <MenuItem
+          icon={<ImageIcon className="h-3.5 w-3.5" />}
+          label="Choose cover…"
+          onClick={() => requestCoverPicker(book.id)}
         />
         {/* The same action as the detail panel's refresh button, so it reports
             the same way — the menu is gone long before the fetch is */}

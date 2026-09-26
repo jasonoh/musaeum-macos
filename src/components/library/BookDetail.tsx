@@ -44,6 +44,7 @@ export function BookDetail() {
   const online = useNASStore((s) => s.status?.state === 'connected')
   const requestDelete = useUIStore((s) => s.requestDelete)
   const requestEdit = useUIStore((s) => s.requestEdit)
+  const requestCoverPicker = useUIStore((s) => s.requestCoverPicker)
   const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
   // Subscribed per book (a boolean selector), so the panel re-renders when
   // *this* book's refresh starts or ends and not on any other's
@@ -83,6 +84,16 @@ export function BookDetail() {
         <div className="mx-auto aspect-[2/3] w-44 overflow-hidden rounded-md shadow-cover ring-1 ring-parchment/5">
           <BookCover book={book} size="full" large />
         </div>
+        {/* The picker's entry point, sitting directly under the jacket rather
+            than over it: the cover is this panel's hero, and a badge pinned to
+            its bottom edge would hide part of the artwork on every book, for
+            good, to save one line of layout. */}
+        <button
+          onClick={() => requestCoverPicker(book.id)}
+          className="mx-auto mt-2 block rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-parchment-faint transition-colors hover:bg-ink-800 hover:text-gold-400"
+        >
+          Choose cover
+        </button>
 
         <h2 className="mt-4 text-center font-display text-xl leading-snug text-parchment">
           {book.title}

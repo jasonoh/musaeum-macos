@@ -163,6 +163,14 @@ export const PencilIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+export const ImageIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <rect x="4" y="5" width="16" height="14" rx="2" />
+    <circle cx="9" cy="10" r="1.4" />
+    <path d="M4.5 17.5l4.7-4.2a1.4 1.4 0 0 1 1.9 0l3.2 2.9m0 0l2.1-1.9a1.4 1.4 0 0 1 1.9 0l1.2 1.1" />
+  </svg>
+)
+
 export const FolderIcon = ({ className }: IconProps) => (
   <svg {...base(className)}>
     <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V7.5z" />

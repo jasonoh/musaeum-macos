@@ -6,6 +6,7 @@ import { ListView } from '@/components/library/ListView'
 import { BookContextMenu } from '@/components/library/BookContextMenu'
 import { BookDetail } from '@/components/library/BookDetail'
 import { BookEditor } from '@/components/library/BookEditor'
+import { CoverPicker } from '@/components/library/CoverPicker'
 import { DeleteBookDialog } from '@/components/library/DeleteBookDialog'
 import { DeleteSelectionDialog } from '@/components/library/DeleteSelectionDialog'
 import { ImportOverlay } from '@/components/library/ImportOverlay'
@@ -42,6 +43,7 @@ export default function App() {
   const deletingBookId = useUIStore((s) => s.deletingBookId)
   const deletingSelection = useUIStore((s) => s.deletingSelection)
   const editingBookId = useUIStore((s) => s.editingBookId)
+  const coverPickerBookId = useUIStore((s) => s.coverPickerBookId)
 
   return (
     <div className="flex h-full">
@@ -65,6 +67,9 @@ export default function App() {
       {deletingSelection && <DeleteSelectionDialog />}
       {/* Keyed so the form re-initializes from whichever book is being edited */}
       {editingBookId && <BookEditor key={editingBookId} />}
+      {/* Keyed so each book opens the picker with its own gather in flight, and
+          so a switch of book cannot leave the previous book's tiles on screen */}
+      {coverPickerBookId && <CoverPicker key={coverPickerBookId} />}
       <RemoveFromDeviceDialog />
       <ReaderView />
 

@@ -78,4 +78,6 @@ The map holds **live books only**, and it is enforced structurally rather than b
 
 Two rules keep it from doing damage: it sends **only changed fields**, so a save can't clobber what hydration wrote meanwhile; and a sort key equal to its derived form is shown as a live placeholder rather than a value, so renaming a book re-derives the sort title instead of stranding the old one (a genuinely custom key is shown and left alone). Renaming a book **does** rename its files (see `docs/invariants/files-and-deletion.md`).
 
+**One field is released somewhere else, and it is the one the editor has no input for.** A `cover` override — written when a jacket is chosen by hand in the cover picker (`components/library/CoverPicker.tsx`) — is released from that picker's *Hand it back to Musaeum* link on the detail panel, through the same `library:releaseFieldOverride` channel a padlock uses. So when the summary paragraph above lists **Cover**, it says where that release lives; a padlock chip is rendered per *editable* field, and there is no cover input to put one beside. The release's home is the picker because the picker is where the choice was made, and D4 refuses a cover field in this editor (see `docs/superpowers/specs/2026-09-21-cover-choice-design.md`).
+
 ---
