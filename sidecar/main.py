@@ -19,7 +19,7 @@ from conversion.converter import convert_format
 from extractors.calibre_db import read_calibre_db
 from extractors.epub_metadata import extract_epub_metadata
 from extractors.pdf_metadata import extract_pdf_metadata
-from pipeline.cover import fetch_cover, previews_for, write_choice
+from pipeline.cover import fetch_cover, previews_for, set_cover_from_file, write_choice
 from pipeline.hydration import cover_candidates, hydrate_metadata, search_candidates
 from pipeline.migrate import migrate_library
 from pipeline.topup import topup_pdfs
@@ -79,6 +79,18 @@ METHODS = {
         file_path=p["file_path"],
         book_dir=p["book_dir"],
         known=p.get("known") or {},
+    ),
+    # The picker's own image (D6): a file chosen in a *main-process* dialog, so
+    # the renderer never names a path and this method has no `source` parameter.
+    # An upload is a write rather than a scored candidate — the gather cannot
+    # produce one, which is why `SOURCE_PRIORITY` gains no key for it — and it
+    # needs neither identifiers nor an embedded jacket, so a book with no EPUB
+    # (a PDF-only row) can still be dressed. The guard's refusal arrives as the
+    # `error` field: it is the sentence the dialog prints, and nothing is written
+    # when it fires.
+    "set_cover_from_file": lambda p: set_cover_from_file(
+        book_dir=p["book_dir"],
+        image_path=p["image_path"],
     ),
     "convert_format": lambda p: convert_format(
         input_path=p["input_path"],

@@ -47,7 +47,12 @@ const api: MusaeumAPI = {
     coverPreviews: (urls) => invoke('metadata:coverPreviews', urls),
     coverCandidates: (bookId) => invoke('metadata:coverCandidates', bookId),
     searchCovers: (bookId) => invoke('metadata:searchCovers', bookId),
-    setCover: (bookId, choice) => invoke('metadata:setCover', bookId, choice)
+    setCover: (bookId, choice) => invoke('metadata:setCover', bookId, choice),
+    // The upload's dialog is the main process's (D6-a), so this carries a bookId
+    // and nothing else: the file path the dialog chose is written there and never
+    // travels back. The channel spelling here and the handler's must match —
+    // they are the same string read by two processes.
+    chooseCoverFromFile: (bookId) => invoke('metadata:chooseCoverFromFile', bookId)
   },
   devices: {
     getConnectedDevices: () => invoke('devices:getConnectedDevices'),

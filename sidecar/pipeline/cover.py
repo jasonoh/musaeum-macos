@@ -351,6 +351,86 @@ def write_choice(file_path: str, book_dir: str, source: str, url: Optional[str] 
     return _write_chosen(data, book_dir, source)
 
 
+def set_cover_from_file(book_dir: str, image_path: str) -> dict:
+    """Write an image from this machine as the book's cover (D6).
+
+    The third way a cover arrives, and the only one that starts from neither a
+    URL nor the book's own file: the path was chosen in a main-process dialog,
+    so it is an absolute path the renderer never sees. Everything after that is
+    the path the other two already take — `_write_chosen` derives the 600/200
+    renditions from `_renditions` and writes the two fixed filenames — because a
+    second encoder or a second thumbnail size would be a second answer to a
+    question this module has already answered (D6, `docs/superpowers/specs/
+    2026-09-25-cover-sources-design.md`).
+
+    Deliberately **not** a source: an upload is a write, not something the
+    gather could have produced, so it takes no `source` parameter, `SOURCE_PRIORITY`
+    gains no key, and `_score` is untouched — a fourth key there would be a
+    scoring change, and `refusalFor`'s first refusal would stop meaning "a source
+    the gather could have produced". The `"upload"` this passes to the writer is
+    provenance for the returned dict only; nothing persists it.
+
+    The guard runs before anything is written, and its refusals are sentences the
+    user reads — the main process hands the `ValueError`'s message straight to the
+    dialog's own line (D6-d), because "nothing was written" and "here is why" have
+    to arrive together.
+    """
+    return _write_chosen(_read_cover_file(image_path), book_dir, "upload")
+
+
+def _read_cover_file(image_path: str) -> bytes:
+    """The bytes of the file that is to become a cover, or the sentence refusing it.
+
+    Two refusals, both of them states a person can see and act on: a file PIL
+    cannot read as an image, and one smaller than the **120 px** floor
+    `score_candidates` applies above. That number is *quoted* from there rather
+    than re-chosen — a candidate the picker may not offer is not one an upload
+    may accept, and a person who saw the grid refuse an image would have no way
+    to learn why the dialog took it.
+
+    Raised as `ValueError` on purpose (D6-d): the message is the JSON-RPC
+    `error`, and therefore the value the picker prints. Nothing has been written
+    when one of these fires — the writer is never reached.
+    """
+    try:
+        with open(image_path, "rb") as fh:
+            data = fh.read()
+    except OSError:
+        # Missing, unreadable, or a directory — three causes, one sentence a
+        # person can act on: the file they picked is not one this app can read.
+        raise ValueError("That file could not be read") from None
+
+    # The pixels, not just the header. `Image.open` reads a file's dimensions
+    # lazily, so a *truncated* image — a half-finished download, which is the
+    # likeliest damaged file a person picks — passes `open` quite happily and
+    # only fails when something wants its bytes. Measured before this line
+    # existed: a JPEG cut to a third arrived at the dialog as
+    # `OSError: image file is truncated (2 bytes not processed)`, a Python
+    # exception where this guard's whole job is a sentence. Loading here keeps
+    # every refusal inside two categories a person can act on, and keeps the
+    # promise structural rather than inherited from `_write_cover`'s internal
+    # order: nothing is written before this function returns.
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+        width, height = img.size
+    except Image.UnidentifiedImageError:
+        raise ValueError("That file is not an image Musaeum can read") from None
+    except Exception:
+        # A real image that cannot be read all the way through: damaged, cut
+        # short, or something Pillow gives up on partway. Its own sentence,
+        # because "not an image" would be false about a file that plainly is one
+        # — and a person who picked a half-downloaded file needs to hear that,
+        # not to be told their file is not an image.
+        raise ValueError("That image is damaged — Musaeum could not read all of it") from None
+
+    if width < 120 or height < 120:
+        raise ValueError(
+            f"That image is {width}x{height} px — a cover needs at least 120 px on each side"
+        )
+    return data
+
+
 def preview_data_url(data: Optional[bytes], quality: int = 80) -> Optional[str]:
     """A small inlined JPEG for `data`, or `None` if it is not an image.
 

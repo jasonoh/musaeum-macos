@@ -78,6 +78,18 @@ export interface BulkDeleteResult {
   failed: { id: string; title: string; error: string }[]
 }
 
+/**
+ * What the cover-file dialog answered: the book as it now is, or a cancelled
+ * pick.
+ *
+ * A cancellation is an **answer**, not a failure: nothing was written and there
+ * is no book to report, so the renderer never has to test a path it never
+ * received (D6-a). It is also the only thing this call can tell the renderer
+ * about the file — the absolute path the dialog chose is written and digested in
+ * the main process, and never crosses the boundary.
+ */
+export type CoverUploadOutcome = Book | { cancelled: true }
+
 /** The API surface exposed on window.Musaeum via contextBridge. */
 export interface MusaeumAPI {
   library: {
@@ -185,6 +197,26 @@ export interface MusaeumAPI {
      * for a pair the gather never produced.
      */
     setCover(bookId: string, choice: CoverChoice): Promise<Book>
+    /**
+     * Use an image from this machine as the book's cover — the fallback for the
+     * jacket that is in no database, or in none this app can reach.
+     *
+     * The **dialog is the main process's** (D6-a): the renderer sends a bookId
+     * and receives either `{ cancelled: true }` or the updated book, so the
+     * absolute path the dialog chose is never a value a renderer can name, and
+     * `file://` reaches no component.
+     *
+     * The image is written through the path a picked jacket takes, so the cover
+     * is `cover_full.jpg` at 600 px, `cover_thumb.jpg` at 200 px, and **locked
+     * against the next fetch** exactly as a pick is. Rejects — writing nothing —
+     * when the file is not an image, or is under 120 px on either side: the
+     * message is the sentence to show.
+     *
+     * Deliberately needs no EPUB/MOBI/AZW3 in the book's folder (D6-e): an upload
+     * needs neither identifiers nor an embedded jacket, so a PDF-only book can be
+     * dressed.
+     */
+    chooseCoverFromFile(bookId: string): Promise<CoverUploadOutcome>
   }
 
   devices: {

@@ -2,12 +2,13 @@ import { mkdtempSync, readFileSync, rmSync } from 'fs'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { app } from 'electron'
+import { app, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CoverCandidate, CoverChoice } from '@shared/metadata.types'
 import { makeBook } from '../../../test/helpers/book'
+import { chooseCoverFromFile, type ShowImageDialog } from '../ipc/metadata'
 import { writeCatalog } from './catalog'
-import { chooseCover, coverCandidates, searchCovers } from './cover-choice'
+import { chooseCover, chooseUploadedCover, coverCandidates, searchCovers } from './cover-choice'
 import { closeDb, getBook, insertBook, updateBook } from './db'
 import { list } from './field-overrides'
 import * as librarySync from './library-sync'
@@ -15,17 +16,23 @@ import * as nas from './nas-manager'
 import * as sidecar from './sidecar'
 
 /**
- * The main process's half of choosing a cover: the boundary's refusals, and the
- * five things a choice writes.
+ * The main process's half of choosing a cover: the boundary's refusals, the five
+ * things a choice writes, and the two gestures that write them.
  *
  * The sidecar is stubbed, as it is in `conflicts.test.ts` — an unmocked
  * `assertAvailable` *starts* a live Python process, and this file is about what
  * the main process does with an answer, not about producing one. What that
  * leaves genuinely undecidable here is said out loud where it matters: the
- * *bytes* a choice writes are `write_choice`'s, decided in
- * `sidecar/tests/test_cover_candidates.py`, and the thumb on a candidate is the
+ * *bytes* a choice writes are `write_choice`'s and `set_cover_from_file`'s,
+ * decided in `sidecar/tests/test_cover_candidates.py` and
+ * `sidecar/tests/test_cover_upload.py`, and the thumb on a candidate is the
  * sidecar's too. This file decides the wiring, the refusals, the row, the
  * canonical file and the lock.
+ *
+ * It also carries the upload *dialog*'s two cases (`chooseCoverFromFile`), for
+ * `ipc/nas.test.ts`'s reason: that flow's decisions are a cancellation and a
+ * one-way path, and the dialog is injected so they can be decided at all — this
+ * repo has never driven an `ipcMain` handler.
  */
 vi.mock('./sidecar', () => ({ call: vi.fn(), assertAvailable: vi.fn() }))
 
@@ -355,6 +362,210 @@ describe('chooseCover', () => {
       })
     ).rejects.toThrow(/No EPUB, MOBI or AZW3/)
     expect(sidecar.call).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * D6 — the third gesture: an image from this machine.
+ *
+ * The same five writes as a pick, and that is the assertion rather than the
+ * setup for one: D6 says an uploaded cover is held *exactly* as a picked one is,
+ * so the row, `metadata.json`, the catalog and the lock are checked for this
+ * gesture too. What differs is the pre-flight, and one difference is the feature
+ * — a book with no EPUB can still be dressed (D6-e).
+ */
+describe('chooseUploadedCover', () => {
+  it('writes the two fixed filenames and settles the row, the file and the catalog', async () => {
+    const dir = await seed('a')
+    vi.mocked(sidecar.call).mockResolvedValue(WROTE)
+
+    const returned = await chooseUploadedCover('a', join(root, 'my jacket.png'))
+
+    expect(returned).toEqual(getBook('a'))
+    expect(returned.coverFullPath).toBe('cover_full.jpg')
+    expect(returned.coverThumbPath).toBe('cover_thumb.jpg')
+    // The canonical record names the same two fixed filenames...
+    const written = JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')) as {
+      cover: { full: string; thumb: string }
+    }
+    expect(written.cover).toEqual(WROTE)
+    // ...and the derived catalog is written after it, never instead of it
+    expect(upsert).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'a', coverFullPath: 'cover_full.jpg' })
+    ])
+    // D4/D6-c: the upload is the user's decision, so the next fetch must not
+    // move it — the lock is the half that makes "held like a pick" true
+    expect(list('a')).toEqual(['cover'])
+  })
+
+  it('sends the folder and the chosen path, and nothing a pick would send', async () => {
+    const dir = await seed('a')
+    vi.mocked(sidecar.call).mockResolvedValue(WROTE)
+    const chosen = join(root, 'my jacket.png')
+
+    await chooseUploadedCover('a', chosen)
+
+    // Exact object equality, so "no `source`, no `file_path`, no `url`" is
+    // asserted rather than assumed: an upload is a write, not a candidate the
+    // gather could have produced, so there is no source vocabulary to extend and
+    // no file to read (D6-b)
+    expect(sidecar.call).toHaveBeenCalledWith('set_cover_from_file', {
+      book_dir: dir,
+      image_path: chosen
+    })
+  })
+
+  it('dresses a book with no EPUB at all (D6-e)', async () => {
+    // The one place the upload is *better* than the other two sources. A
+    // PDF-only book cannot be gathered for, so `chooseCover` refuses it with
+    // "No EPUB, MOBI or AZW3" — asserted above — and the conflict queue's
+    // `fetch_cover` can only write a candidate it already offered. The upload
+    // asks the folder for nothing, so it does not share that pre-flight.
+    insertBook(makeBook('a'))
+    const dir = join(root, 'books/a')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(join(dir, 'Deep Work.pdf'), 'x')
+    vi.mocked(sidecar.call).mockResolvedValue(WROTE)
+
+    const returned = await chooseUploadedCover('a', join(root, 'jacket.png'))
+
+    expect(sidecar.call).toHaveBeenCalledWith('set_cover_from_file', {
+      book_dir: dir,
+      image_path: join(root, 'jacket.png')
+    })
+    expect(returned.coverFullPath).toBe('cover_full.jpg')
+    expect(list('a')).toEqual(['cover'])
+  })
+
+  it('writes nothing at all when the sidecar refuses the file', async () => {
+    const dir = await seed('a')
+    vi.mocked(sidecar.call).mockRejectedValue(
+      new Error('That file is not an image Musaeum can read')
+    )
+    const before = getBook('a')
+    const metadata = await fs.readFile(join(dir, 'metadata.json'), 'utf8')
+
+    await expect(chooseUploadedCover('a', join(root, 'notes.txt'))).rejects.toThrow(/not an image/)
+
+    // A refusal is a sentence *and* a no-op (AC12): no row moved, no lock
+    // recorded, no canonical file rewritten, no catalog write. A refusal that
+    // locked the field anyway would take the decision away from a person who
+    // never got a cover.
+    expect(getBook('a')).toEqual(before)
+    expect(list('a')).toEqual([])
+    expect(upsert).not.toHaveBeenCalled()
+    expect(await fs.readFile(join(dir, 'metadata.json'), 'utf8')).toBe(metadata)
+  })
+
+  it('refuses before it starts anything when there is no library', async () => {
+    await seed('a')
+    // An unconfigured root, as `coverCandidates` uses: it needs no share and no
+    // reconnect timer (a *disconnected* root schedules a real `open -g`)
+    await nas.setLibraryRoot('')
+
+    await expect(chooseUploadedCover('a', join(root, 'jacket.png'))).rejects.toThrow(
+      /No library folder is configured/
+    )
+    expect(sidecar.call).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * D6-c — the marking tail has one home, checked in the source rather than called.
+ *
+ * A runtime case cannot see this: with the sidecar stubbed, a second copy of the
+ * tail inside the upload's own body satisfies every assertion above. What this
+ * walk can see is the thing the criterion is *for* — an upload that forgot
+ * `markFromPatch` would write a cover the next fetch could silently move, and
+ * nothing else in either suite would notice.
+ */
+describe('D6-c — both gestures settle a cover through one tail', () => {
+  const COVER_CHOICE = 'electron/main/services/cover-choice.ts'
+  const source = readFileSync(join(process.cwd(), COVER_CHOICE), 'utf8')
+
+  /** One top-level function's source, from its signature to its closing brace. */
+  function body(name: string): string {
+    const start = source.indexOf(`function ${name}(`)
+    if (start === -1) throw new Error(`no ${name} in ${COVER_CHOICE}`)
+    return source.slice(start, source.indexOf('\n}', start))
+  }
+
+  it('calls the shared tail from both gestures rather than copying it', () => {
+    for (const gesture of ['chooseCover', 'chooseUploadedCover']) {
+      expect(body(gesture)).toContain('settleChoice(')
+      expect(body(gesture)).not.toContain('markFromPatch(')
+    }
+    // ...and the rule itself is written once, in the function they both call
+    expect(body('settleChoice')).toContain('fieldOverrides.markFromPatch(')
+    expect(source.match(/fieldOverrides\.markFromPatch\(/g)).toHaveLength(1)
+    expect(source.match(/librarySync\.upsertCatalog\(/g)).toHaveLength(1)
+    expect(source.match(/importer\.writeMetadataJson\(/g)).toHaveLength(1)
+  })
+})
+
+/**
+ * D6-a — the dialog is the main process's, and the path travels one way.
+ *
+ * `ipc/nas.test.ts`'s arrangement, on this flow: the dialog is injected, because
+ * no case in this repo has ever driven an `ipcMain` handler and
+ * `test/mocks/electron.ts` keeps `dialog` and `ipcMain` inert on purpose. What
+ * the seam decides is what the flow is about — that a cancellation is reported as
+ * a cancellation and writes nothing, and that the absolute path reaches the
+ * sidecar without becoming a value the renderer could name. What it does **not**
+ * decide is the two lines `registerMetadataHandlers` contributes (that the
+ * channel is registered and the bookId forwarded); those are the running-app
+ * probe's, and they are named here so the limit is recorded rather than implied.
+ */
+describe('chooseCoverFromFile (the upload dialog)', () => {
+  /** A dialog that answers with `chosen`, or with a cancellation when given null. */
+  function stubDialog(chosen: string | null): {
+    show: ShowImageDialog
+    asked: OpenDialogOptions[]
+  } {
+    const asked: OpenDialogOptions[] = []
+    const show: ShowImageDialog = vi.fn(async (options: OpenDialogOptions) => {
+      asked.push(options)
+      return chosen === null
+        ? ({ canceled: true, filePaths: [] } as OpenDialogReturnValue)
+        : ({ canceled: false, filePaths: [chosen] } as OpenDialogReturnValue)
+    })
+    return { show, asked }
+  }
+
+  it('reports a cancellation and writes nothing when the dialog is cancelled', async () => {
+    await seed('a')
+    const { show, asked } = stubDialog(null)
+    const before = getBook('a')
+
+    expect(await chooseCoverFromFile('a', show)).toEqual({ cancelled: true })
+
+    expect(asked).toHaveLength(1)
+    // One file, and only files: this dialog picks a jacket, not a folder and not
+    // a batch
+    expect(asked[0].properties).toEqual(['openFile'])
+    // Nothing reached the engine, and the book is untouched: a cancellation is an
+    // answer, not a failure and not a write
+    expect(sidecar.call).not.toHaveBeenCalled()
+    expect(getBook('a')).toEqual(before)
+    expect(list('a')).toEqual([])
+  })
+
+  it('hands the chosen path inward, and returns an outcome that cannot name it', async () => {
+    await seed('a')
+    const chosen = join(root, 'my jacket.png')
+    const { show } = stubDialog(chosen)
+    vi.mocked(sidecar.call).mockResolvedValue(WROTE)
+
+    const outcome = await chooseCoverFromFile('a', show)
+
+    expect(outcome).toEqual(getBook('a'))
+    // The path travelled one way only (D6-a): the sidecar was given it, and
+    // nothing the renderer receives mentions it
+    expect(sidecar.call).toHaveBeenCalledWith('set_cover_from_file', {
+      book_dir: join(root, 'books/a'),
+      image_path: chosen
+    })
+    expect(JSON.stringify(outcome)).not.toContain('my jacket')
   })
 })
 
