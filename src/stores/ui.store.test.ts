@@ -2,6 +2,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { persistedUIState, useUIStore } from './ui.store'
+import { EMPTY_SELECTION, applyClick, selectedId, type Selection } from '@/lib/selection'
 
 /**
  * The cover picker's slot, and the one rule about the whole store that the
@@ -35,6 +36,50 @@ describe('the cover picker slot', () => {
     useUIStore.getState().requestCoverPicker('book-1')
 
     expect(useUIStore.getState().contextMenu).toBeNull()
+  })
+})
+
+const PLAIN = { toggle: false, range: false }
+const TOGGLE = { toggle: true, range: false }
+const ORDER = ['book-1', 'book-2', 'book-7']
+
+/** A two-book selection — the scope the menu's bulk items apply to. */
+function twoBooks(): Selection {
+  return applyClick(applyClick(EMPTY_SELECTION, 'book-1', PLAIN, ORDER), 'book-2', TOGGLE, ORDER)
+}
+
+/**
+ * A right-click opens the menu and does nothing else.
+ *
+ * The mechanism of the owner's report (2026-09-25, the grid): the action used
+ * to make the clicked book the selection first, and `BookDetail` renders from
+ * the derived single selection — so a right-click opened the details panel
+ * *beside* the menu. What the menu then offers for the click is
+ * `contextMenuScope`'s, decided in `src/lib/selection.test.ts`.
+ */
+describe('the context menu', () => {
+  it('opens for the clicked book without selecting it', () => {
+    useUIStore.setState({ selection: EMPTY_SELECTION })
+    useUIStore.getState().openContextMenu({ bookId: 'book-7', x: 10, y: 10 })
+
+    const s = useUIStore.getState()
+    expect(s.contextMenu?.bookId).toBe('book-7')
+    // Both readings of "it selected something": the set, and the derived single
+    // selection the details panel is mounted from
+    expect([...s.selection.ids]).toEqual([])
+    expect(selectedId(s.selection)).toBeNull()
+  })
+
+  it('leaves a selection the click landed outside of untouched', () => {
+    const selection = twoBooks()
+    useUIStore.setState({ selection })
+
+    useUIStore.getState().openContextMenu({ bookId: 'book-7', x: 10, y: 10 })
+
+    // The same object, so nothing downstream of the selection re-rendered —
+    // the grid does not even re-flow
+    expect(useUIStore.getState().selection).toBe(selection)
+    expect([...selection.ids].sort()).toEqual(['book-1', 'book-2'])
   })
 })
 

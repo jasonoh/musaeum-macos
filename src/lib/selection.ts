@@ -98,6 +98,23 @@ export function prune(sel: Selection, existing: readonly string[]): Selection {
   return { ids, anchor, cursor }
 }
 
+/**
+ * What a right-click's menu acts on: the whole selection when the click landed
+ * inside one of several, and just the book clicked otherwise.
+ *
+ * This is the menu's *scope* and nothing more — no caller moves the selection
+ * for a right-click. Making the clicked book the selection first (Finder's
+ * rule) is what opened the details panel *beside* the menu: that panel renders
+ * from the derived single selection, so a right-click performed the left
+ * click's action as well as its own (reported by the owner from the grid,
+ * 2026-09-25). Scope without side effect: the ring stays where the user left
+ * it, and the menu still offers the bulk actions when the click was inside the
+ * selection they apply to.
+ */
+export function contextMenuScope(bookId: string, sel: Selection): 'selection' | 'book' {
+  return sel.ids.size > 1 && sel.ids.has(bookId) ? 'selection' : 'book'
+}
+
 /** The single-selection view of a selection: null unless exactly one. */
 export function selectedId(sel: Selection): string | null {
   if (sel.ids.size !== 1) return null

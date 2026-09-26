@@ -57,7 +57,7 @@ function Row({ book }: { book: Book }) {
   const select = useUIStore((s) => s.select)
   const toggleBookSelection = useUIStore((s) => s.toggleBookSelection)
   const selected = useUIStore((s) => s.selection.ids.has(book.id))
-  const openContextMenuFor = useUIStore((s) => s.openContextMenuFor)
+  const openContextMenu = useUIStore((s) => s.openContextMenu)
 
   return (
     <tr
@@ -66,7 +66,8 @@ function Row({ book }: { book: Book }) {
       onDoubleClick={() => useReaderStore.getState().openBook(book)}
       onContextMenu={(e) => {
         e.preventDefault()
-        openContextMenuFor({ bookId: book.id, x: e.clientX, y: e.clientY })
+        // The menu only — see BookCard: a right-click is not a click
+        openContextMenu({ bookId: book.id, x: e.clientX, y: e.clientY })
       }}
       style={{ height: ROW_HEIGHT - 1 }} // the collapsed border supplies the 1px
       // `select-none` because double-click opens the book: without it the

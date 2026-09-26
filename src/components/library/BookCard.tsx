@@ -80,7 +80,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
   // A boolean selector, so zustand re-renders only the cards whose membership
   // actually changed rather than every mounted card on every selection change
   const selected = useUIStore((s) => s.selection.ids.has(book.id))
-  const openContextMenuFor = useUIStore((s) => s.openContextMenuFor)
+  const openContextMenu = useUIStore((s) => s.openContextMenu)
   const requestDelete = useUIStore((s) => s.requestDelete)
   // Boolean selector again: only the card being refreshed re-renders
   const refreshing = useUIStore((s) => Boolean(s.refreshingBooks[book.id]))
@@ -93,7 +93,9 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
       className="group relative"
       onContextMenu={(e) => {
         e.preventDefault()
-        openContextMenuFor({ bookId: book.id, x: e.clientX, y: e.clientY })
+        // The menu only: a right-click never selects, or it would open the
+        // details panel too (the panel renders from the derived selection)
+        openContextMenu({ bookId: book.id, x: e.clientX, y: e.clientY })
       }}
     >
       <button

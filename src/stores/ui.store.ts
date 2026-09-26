@@ -128,8 +128,6 @@ interface UIState {
   setConflictCount(count: number): void
   setDraggingFiles(dragging: boolean): void
   openContextMenu(target: ContextMenuTarget): void
-  /** Right-click: books outside the selection become the selection first. */
-  openContextMenuFor(target: ContextMenuTarget): void
   closeContextMenu(): void
   requestDelete(bookId: string | null): void
   requestSelectionDelete(open: boolean): void
@@ -206,14 +204,12 @@ export const useUIStore = create<UIState>()(
       openModal: (modal) => set({ modal }),
       setConflictCount: (conflictCount) => set({ conflictCount }),
       setDraggingFiles: (isDraggingFiles) => set({ isDraggingFiles }),
+      // A right-click opens the menu and changes nothing else — it is not a
+      // click. It used to make the clicked book the selection first (Finder's
+      // rule), which opened the details panel beside the menu: the panel
+      // renders from the derived single selection. The menu reads its own
+      // scope from the click instead (`contextMenuScope`).
       openContextMenu: (contextMenu) => set({ contextMenu }),
-      openContextMenuFor: (target) =>
-        set((s) => ({
-          contextMenu: target,
-          selection: s.selection.ids.has(target.bookId)
-            ? s.selection
-            : applyClick(s.selection, target.bookId, PLAIN_CLICK, bookOrder())
-        })),
       closeContextMenu: () => set({ contextMenu: null }),
       // Opening any dialog always dismisses the menu that launched it
       requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null }),

@@ -3,6 +3,7 @@ import {
   EMPTY_SELECTION,
   applyClick,
   clear,
+  contextMenuScope,
   extendTo,
   modifiersFrom,
   prune,
@@ -174,6 +175,26 @@ describe('prune', () => {
   it('returns the same object when nothing changed, so stores can skip a render', () => {
     const sel = applyClick(EMPTY_SELECTION, 'a', PLAIN, ORDER)
     expect(prune(sel, ORDER)).toBe(sel)
+  })
+})
+
+describe('contextMenuScope', () => {
+  it('is the selection when the click landed inside a multi-selection', () => {
+    let sel = applyClick(EMPTY_SELECTION, 'a', PLAIN, ORDER)
+    sel = applyClick(sel, 'c', TOGGLE, ORDER)
+    expect(contextMenuScope('a', sel)).toBe('selection')
+    expect(contextMenuScope('c', sel)).toBe('selection')
+  })
+
+  it('is the book alone for one selected, none selected, or a click outside it', () => {
+    const one = applyClick(EMPTY_SELECTION, 'a', PLAIN, ORDER)
+    expect(contextMenuScope('a', one)).toBe('book')
+    expect(contextMenuScope('a', EMPTY_SELECTION)).toBe('book')
+    // The case that used to replace the selection: right-clicking a book that
+    // is not part of it. The menu is about that book; the selection is not its
+    // business, which is what keeps the details panel closed.
+    const two = applyClick(one, 'c', TOGGLE, ORDER)
+    expect(contextMenuScope('e', two)).toBe('book')
   })
 })
 

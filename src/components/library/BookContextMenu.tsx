@@ -3,6 +3,7 @@ import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
+import { contextMenuScope } from '@/lib/selection'
 import { refreshBookMetadata } from '@/lib/metadata-refresh'
 import { notifyError } from '@/lib/notify'
 import {
@@ -41,6 +42,10 @@ export function BookContextMenu() {
   const requestCoverPicker = useUIStore((s) => s.requestCoverPicker)
   const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
   const count = useUIStore(selectionCount)
+  // The Selection object itself (identity is stable between changes): the menu
+  // reads the scope of the click from it rather than assuming the right-click
+  // moved the selection — it no longer does
+  const selection = useUIStore((s) => s.selection)
   const clearSelection = useUIStore((s) => s.clearSelection)
   const requestSelectionDelete = useUIStore((s) => s.requestSelectionDelete)
   const books = useLibraryStore((s) => s.books)
@@ -80,7 +85,7 @@ export function BookContextMenu() {
   const book = books.find((b) => b.id === target.bookId)
   if (!book) return null
 
-  if (count >= 2) {
+  if (contextMenuScope(book.id, selection) === 'selection') {
     return (
       <div
         className="fixed inset-0 z-50"
