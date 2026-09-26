@@ -216,3 +216,61 @@ describe('AC17a — the editor says where a cover lock is released', () => {
     expect(editor).not.toMatch(/padlock beside Cover/)
   })
 })
+
+describe('the picker’s entry point is a control, not decoration', () => {
+  it('paints the panel’s cover control in a tier that clears the small-text floor', () => {
+    // Why a ratio and not a class name: the defect this pins was invisible in the
+    // source. The panel painted `Choose cover` in the palette's *faintest* token —
+    // measured on the owner's own theme (Tokyo Night Dark) at **2.35:1**, and at
+    // **3.99:1** on this repo's defaults, against the 4.5:1 floor for small text.
+    // His report was "there is no way for me to initiate a cover change directly":
+    // the control was there, at 11px, and could not be read. The theme engine's own
+    // audit lets *faint* sit at 2.2:1 and *dim* at 3.5:1 — floors for decoration —
+    // so a tier cannot be chosen for a labelled control by taste. This case reads
+    // the token pair off the component, resolves both through `index.css`, and does
+    // the arithmetic.
+    const detail = read('src/components/library/BookDetail.tsx')
+    const css = read('src/index.css')
+
+    const panel = /<aside[^>]*className="([^"]*)"/.exec(detail)
+    expect(panel, 'the detail panel’s own surface was not found').toBeTruthy()
+    const control =
+      /<button\s+onClick=\{\(\) => requestCoverPicker\(book\.id\)\}[\s\S]*?className="([^"]*)"/.exec(
+        detail
+      )
+    expect(control, 'the panel’s cover control was not found').toBeTruthy()
+
+    // drop state variants — `hover:bg-ink-800` is not the resting tier
+    const resting = (cls: string) =>
+      cls.replace(/\b(?:hover|focus|active|disabled|group-hover):\S+/g, '')
+    const tokenOf = (cls: string, kind: 'text' | 'bg') => {
+      const found = new RegExp(`(?:^|\\s)${kind}-([a-z0-9-]+)(?:\\s|$)`).exec(resting(cls))
+      expect(found, `no resting ${kind}-* token in "${cls.trim()}"`).toBeTruthy()
+      return found![1]
+    }
+    const rgb = (name: string): number[] => {
+      const hit = new RegExp(`--${name}:\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)`).exec(css)
+      expect(hit, `--${name} is not a default token in index.css`).toBeTruthy()
+      return [Number(hit![1]), Number(hit![2]), Number(hit![3])]
+    }
+    const channel = (c: number) => {
+      const v = c / 255
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+    }
+    const luminance = ([r, g, b]: number[]) =>
+      0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    const ratio = (a: number[], b: number[]) => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+      return (hi + 0.05) / (lo + 0.05)
+    }
+
+    const label = rgb(tokenOf(control![1], 'text'))
+    const surface = rgb(tokenOf(panel![1], 'bg'))
+    const measured = ratio(label, surface)
+
+    // 4.5:1 is WCAG AA for small text, and this is 11px semibold — so it is the
+    // floor, not a preference. Both the shipped tier (3.99:1) and the owner's theme
+    // (2.35:1) fail it.
+    expect(measured).toBeGreaterThanOrEqual(4.5)
+  })
+})

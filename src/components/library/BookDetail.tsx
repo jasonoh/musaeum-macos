@@ -87,10 +87,21 @@ export function BookDetail() {
         {/* The picker's entry point, sitting directly under the jacket rather
             than over it: the cover is this panel's hero, and a badge pinned to
             its bottom edge would hide part of the artwork on every book, for
-            good, to save one line of layout. */}
+            good, to save one line of layout.
+
+            Painted in `parchment` and given the panel's small-control border,
+            because it was `parchment-faint` until the owner reported that there
+            was "no way to initiate a cover change directly" — measured at
+            **2.35:1** on his own theme (Tokyo Night Dark) and **3.99:1** on the
+            defaults, against AA's 4.5:1 for text this size. The tier was the
+            mistake, not the colour: this palette's audit lets *faint* sit at
+            2.2:1 and *dim* at 3.5:1, floors meant for decoration, and a labelled
+            control is not decoration. It keeps no background of its own so the
+            contrast is measured against the surface it actually rests on, which
+            is what `cover-picker-wiring.test.ts` computes. */}
         <button
           onClick={() => requestCoverPicker(book.id)}
-          className="mx-auto mt-2 block rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-parchment-faint transition-colors hover:bg-ink-800 hover:text-gold-400"
+          className="mx-auto mt-2 block rounded border border-ink-600 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-parchment transition-colors hover:border-gold-500/50 hover:bg-ink-800 hover:text-gold-300"
         >
           Choose cover
         </button>
