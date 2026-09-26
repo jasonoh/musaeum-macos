@@ -1963,6 +1963,8 @@ git commit -m "feat: selection panel with bulk delete, send and refresh"
 
 ### Task 10: Selection-aware context menu
 
+> **Amended 2026-09-25, on the owner's report.** A right-click no longer makes the clicked book the selection. That side effect opened the **Details** panel beside the menu — the panel renders from the derived single selection — so one gesture ran its own action and the left click's. Steps 1 and 3 below are the behaviour as built at the time: the rule now lives in `docs/invariants/selection-and-keyboard.md`, the menu's scope is decided by `contextMenuScope` in `src/lib/selection.ts` (the selection when the click landed inside a multi-selection, the clicked book otherwise), and the `openContextMenuFor` action this task added is gone. What the task was *for* is unchanged: right-clicking inside a multi-selection still offers the bulk items.
+
 **Files:**
 - Modify: `src/components/library/BookContextMenu.tsx`
 - Modify: `src/components/library/BookCard.tsx` (context-menu handler)
