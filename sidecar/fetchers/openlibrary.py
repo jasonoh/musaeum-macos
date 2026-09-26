@@ -77,3 +77,62 @@ def fetch_openlibrary(
         "match_confidence": round(confidence, 2),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# The request budget for the wider search (D5). Every ISBN asked about is a
+# Google request, so the whole sequence is bounded at this many — a work that
+# lists 40 ISBNs costs the same as one that lists 6.
+KNOWN_ISBN_CAP = 6
+
+
+def known_isbns(
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    isbn_13: Optional[str] = None,
+) -> list:
+    """The ISBNs OpenLibrary lists for the work this book is — search-only (D5).
+
+    `fetch_openlibrary` keeps the first ISBN-13 and the first ISBN-10 it meets
+    and **discards the rest of the work's identifiers**, and those discarded ones
+    are the point: measured 2026-09-25, the work behind `9780262345064` lists 18
+    ISBNs, and two of them (`9780262345071`, `9780262534956`) are answered by
+    Google with the English jacket the book's own stored ISBN cannot reach.
+    Reading them is what turns "the app had the wrong identifier" into a jacket
+    a person can still choose.
+
+    Deliberately *not* part of `fetch_openlibrary`'s return: what that function
+    returns is persisted into `metadata.json`, so widening its `identifiers` dict
+    would change the stored shape — and the iOS contract with it — for a value
+    the record itself has no use for.
+
+    Deduped, **13-digit entries first** (the canonical form, and the one Google
+    indexes most often), capped at `KNOWN_ISBN_CAP`. Never raises: an
+    unreachable OpenLibrary degrades the search to the row's own identifiers plus
+    the title pass, which is the fallback it already has.
+    """
+    params = {"limit": 5, "fields": "*"}
+    if isbn_13:
+        params["q"] = f"isbn:{isbn_13}"
+    elif title:
+        params["title"] = title
+        if author:
+            params["author"] = author
+    else:
+        return []
+
+    try:
+        resp = requests.get(SEARCH_URL, params=params, timeout=TIMEOUT)
+        resp.raise_for_status()
+        docs = resp.json().get("docs") or []
+    except Exception:
+        return []
+
+    if not docs:
+        return []
+
+    listed = [i for i in (docs[0].get("isbn") or []) if isinstance(i, str) and i.isdigit()]
+    # `dict.fromkeys` dedupes while keeping the payload's own order, and the
+    # stable sort then lifts the 13-digit forms to the front without scrambling
+    # the order inside either group.
+    thirteen_first = sorted(dict.fromkeys(listed), key=lambda i: 0 if len(i) == 13 else 1)
+    return thirteen_first[:KNOWN_ISBN_CAP]

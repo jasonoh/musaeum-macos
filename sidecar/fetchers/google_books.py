@@ -160,3 +160,90 @@ def fetch_google_books(
         "match_confidence": round(confidence, 2),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# --- the search: the volumes that answer, plural ---------------------------
+#
+# `fetch_google_books` above answers *one* normalized record — the best match for
+# the question a hydration asked. The picker's wider search wants a different
+# arity: **every** volume that answers, each with its artwork, because this
+# book's two English editions answer two different ISBNs and the better of the
+# two is not the one a single-answer fetcher would have kept. Same endpoint, same
+# params, same key handling; only the shape of the reply differs.
+
+SEARCH_MAX_RESULTS = 5
+
+
+def _search_items(query: str) -> list:
+    """The volumes Google answers `query` with, or `[]`.
+
+    Never raises. A search is an extra question asked from a dialog, so a
+    request or parse failure is a *miss* — the caller renders fewer tiles, the
+    same shape a failed hydration has (invariant 12) — rather than an exception
+    crossing the RPC boundary and taking the whole press with it.
+    """
+    params = {"q": query, "maxResults": SEARCH_MAX_RESULTS, "printType": "books"}
+    api_key = os.environ.get("GOOGLE_BOOKS_API_KEY")
+    if api_key:
+        params["key"] = api_key
+    try:
+        resp = requests.get(API_URL, params=params, timeout=TIMEOUT)
+        resp.raise_for_status()
+        return resp.json().get("items") or []
+    except Exception:
+        return []
+
+
+def _search_candidates(query: str) -> list:
+    """Every answering volume that carries a real image, as candidate dicts.
+
+    Each volume's `imageLinks` goes through the same `_resolve_cover` the
+    hydration's fetcher uses, so Google's shared "image not available" tile
+    (`PLACEHOLDER_MD5`) cannot become a candidate here either — the trap does
+    not care which question found the volume. The bytes travel with the url for
+    the same reason they do above: the scoring step would otherwise download the
+    same image a second time.
+    """
+    candidates = []
+    for item in _search_items(query):
+        try:
+            links = (item.get("volumeInfo") or {}).get("imageLinks") or {}
+            url, data = _resolve_cover(links)
+        except Exception:
+            # A malformed item is a miss, not the end of the search: the other
+            # volumes in the same answer are still worth offering.
+            continue
+        if not url or not data:
+            continue
+        candidates.append({"source": "google_books", "url": url, "data": data})
+    return candidates
+
+
+def search_by_isbn(isbn: str) -> list:
+    """Every volume that answers `isbn:<isbn>`, artwork and all. `[]` on failure.
+
+    An ISBN question cannot return another book — the volume that answers *is*
+    the edition with that ISBN — so language and identity cannot drift, which is
+    what makes the identifier passes the safe half of the search's order (D2).
+    """
+    if not isbn:
+        return []
+    return _search_candidates(f"isbn:{isbn}")
+
+
+def search_by_title(title: str, author: Optional[str] = None) -> list:
+    """The *structured* title+author question, artwork and all. `[]` on failure.
+
+    `intitle:"…" inauthor:"…"`, never free text, because the difference is
+    measured and large: on 2026-09-25 the structured form of this book's title
+    answered **exactly 1** volume and its free-text form answered **300**, most
+    of them other titles by the same author. The caller runs this pass only once
+    every ISBN has missed (D2), so the imprecision is confined to rows that have
+    nothing left to lose — a good identifier is never traded for a fuzzy title.
+    """
+    if not title:
+        return []
+    query = f'intitle:"{title}"'
+    if author:
+        query += f' inauthor:"{author}"'
+    return _search_candidates(query)

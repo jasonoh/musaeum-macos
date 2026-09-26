@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync } from 'fs'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CoverCandidate, CoverChoice } from '@shared/metadata.types'
 import { makeBook } from '../../../test/helpers/book'
 import { writeCatalog } from './catalog'
-import { chooseCover, coverCandidates } from './cover-choice'
+import { chooseCover, coverCandidates, searchCovers } from './cover-choice'
 import { closeDb, getBook, insertBook, updateBook } from './db'
 import { list } from './field-overrides'
 import * as librarySync from './library-sync'
@@ -180,6 +180,71 @@ describe('coverCandidates', () => {
   })
 })
 
+describe('searchCovers', () => {
+  it('asks the wider question through the sidecar, on the row’s own identifiers', async () => {
+    // The searched group is reached on exactly the inputs the gather uses — the
+    // row's file and its own title/author/identifiers — because a hit it finds
+    // has to be a pair `setCover` can take. What differs is the *question*, never
+    // the plumbing: a search that read the file for its identifiers, or searched
+    // on a different title, would offer tiles a pick cannot use.
+    await seed('a')
+    updateBook('a', { isbn13: '9780262345064', author: 'Byung-Chul Han' })
+    vi.mocked(sidecar.call).mockResolvedValue([])
+
+    await searchCovers('a')
+
+    expect(sidecar.call).toHaveBeenCalledWith('search_covers', {
+      book_id: 'a',
+      file_path: join(root, 'books/a/Book a.epub'),
+      book_dir: join(root, 'books/a'),
+      known: {
+        title: 'Book a',
+        author: 'Byung-Chul Han',
+        identifiers: { isbn_13: '9780262345064' }
+      }
+    })
+  })
+
+  it('hands the searched array back untouched, with no entry claiming a winner', async () => {
+    // D3's `winner: false` is forced *in the sidecar*, and this is the main
+    // process's half of that arrangement: it is a pass-through, so a rewrite here
+    // would be a second opinion about a candidate — and the winner mark would
+    // then be computed in two places that can disagree.
+    await seed('a')
+    const candidates: CoverCandidate[] = [
+      {
+        source: 'google_books',
+        url: 'https://books.google.com/books/content?id=9eRVDwAAQBAJ&zoom=0',
+        width: 1352,
+        height: 2103,
+        score: 0.9722,
+        winner: false,
+        applied: false,
+        thumb: 'data:image/jpeg;base64,AAAA'
+      }
+    ]
+    vi.mocked(sidecar.call).mockResolvedValue(candidates)
+
+    const returned = await searchCovers('a')
+
+    expect(returned).toEqual(candidates)
+    expect(thumbsOf(returned).every((t) => t.startsWith('data:image/jpeg;base64,'))).toBe(true)
+  })
+
+  it('says why it cannot search rather than answering with an empty group', async () => {
+    // The gather's three pre-flight refusals, unchanged — the picker has to say
+    // *why*, and an empty searched group would be indistinguishable from a search
+    // that ran and found nothing.
+    insertBook(makeBook('a'))
+    const dir = join(root, 'books/a')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(join(dir, 'Deep Work.pdf'), 'x')
+
+    await expect(searchCovers('a')).rejects.toThrow(/No EPUB, MOBI or AZW3/)
+    expect(sidecar.call).not.toHaveBeenCalled()
+  })
+})
+
 describe('chooseCover', () => {
   /**
    * A refusal is a value the user reads: no engine started, no row touched and
@@ -290,5 +355,66 @@ describe('chooseCover', () => {
       })
     ).rejects.toThrow(/No EPUB, MOBI or AZW3/)
     expect(sidecar.call).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * AC5 — the search and the gather send one triple, walked in the source.
+ *
+ * A walk rather than a call, because the two must not *drift* and a runtime case
+ * cannot see that: the sidecar is mocked here, so calling both functions would
+ * only compare one mock's arguments against another's — a search that assembled
+ * its own `known` a line differently would still pass. The walk compares the two
+ * call sites as they are written.
+ *
+ * `\s*` and `[\s\S]*?` rather than literal whitespace, and the reason is the one
+ * the picker's own walk records: prettier wraps these calls across lines, and a
+ * pattern that assumed one line found two of four call sites (measured) — a walk
+ * that fails open. What this cannot prove is that either request *succeeds*;
+ * that is the sidecar's dispatch table and the running-app probe.
+ *
+ * It is also the case that keeps the two payloads one shape rather than two
+ * dialects: the gather's own runtime case above pins its keys, so a search that
+ * sent `file_path`/`book_dir`/`known` plus something else of its own would fail
+ * here rather than at the point a pick is refused.
+ */
+describe('AC5 — searchCovers sends the same triple coverCandidates sends', () => {
+  const COVER_CHOICE = 'electron/main/services/cover-choice.ts'
+
+  /** The object literal a `sidecar.call` in the file is handed, as source. */
+  function payload(method: string): string {
+    const body = readFileSync(join(process.cwd(), COVER_CHOICE), 'utf8').match(
+      new RegExp(`sidecar\\.call<[^>]+>\\(\\s*'${method}'\\s*,\\s*\\{([\\s\\S]*?)\\}\\s*\\)`)
+    )
+    if (!body) throw new Error(`no sidecar.call for ${method} in ${COVER_CHOICE}`)
+    return body[1]
+  }
+
+  /** The keys a payload object sends, in source order. */
+  const keys = (body: string): string[] => [...body.matchAll(/(\w+)\s*:/g)].map((match) => match[1])
+
+  /** The three lines that carry the triple, trimmed to survive prettier. */
+  const triple = (body: string): string[] =>
+    body
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) =>
+        ['file_path', 'book_dir', 'known'].some((key) => line.startsWith(`${key}:`))
+      )
+
+  it('carries file_path, book_dir and known — the same values, spelled the same way', () => {
+    expect(triple(payload('cover_candidates'))).toEqual([
+      'file_path: file,',
+      'book_dir: bookDir,',
+      'known: importer.knownFrom(book)'
+    ])
+    expect(triple(payload('search_covers'))).toEqual(triple(payload('cover_candidates')))
+  })
+
+  it('is the gather’s payload shape, so a searched hit is a pair a pick can take', () => {
+    expect(keys(payload('search_covers'))).toEqual(
+      expect.arrayContaining(['file_path', 'book_dir', 'known'])
+    )
+    expect(keys(payload('search_covers'))).toEqual(keys(payload('cover_candidates')))
   })
 })

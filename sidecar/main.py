@@ -20,7 +20,7 @@ from extractors.calibre_db import read_calibre_db
 from extractors.epub_metadata import extract_epub_metadata
 from extractors.pdf_metadata import extract_pdf_metadata
 from pipeline.cover import fetch_cover, previews_for, write_choice
-from pipeline.hydration import cover_candidates, hydrate_metadata
+from pipeline.hydration import cover_candidates, hydrate_metadata, search_candidates
 from pipeline.migrate import migrate_library
 from pipeline.topup import topup_pdfs
 
@@ -68,6 +68,17 @@ METHODS = {
         book_dir=p["book_dir"],
         source=p["source"],
         url=p.get("url"),
+    ),
+    # The wider search (D1): the jackets under the book's *other* identifiers.
+    # Asked only from the picker, never by a fetch — Google's jackets outrank
+    # OpenLibrary's by construction, so a fetch that asked this question would
+    # flip the applied cover for every book whose stored ISBN misses Google, on
+    # its next run, library-wide and unreviewed. `file_path` travels so the
+    # picker's calls send one triple; the search itself reads no file (D4).
+    "search_covers": lambda p: search_candidates(
+        file_path=p["file_path"],
+        book_dir=p["book_dir"],
+        known=p.get("known") or {},
     ),
     "convert_format": lambda p: convert_format(
         input_path=p["input_path"],

@@ -91,6 +91,43 @@ export async function coverCandidates(bookId: string): Promise<CoverCandidate[]>
 }
 
 /**
+ * The jackets that exist under the book's *other* identifiers — the picker's
+ * wider search (D2 of the 2026-09-25 cover-sources design).
+ *
+ * The same row, the same file, the same `known` and the same sidecar plumbing as
+ * the gather above, on purpose: a searched hit and a gathered one are the same
+ * currency — a `url` a pick may name — so a second dialect here would be a
+ * second answer to what a candidate is. What differs is the question, and it is
+ * deliberately one only this dialog asks (D1): Google's jackets outrank
+ * OpenLibrary's by construction, so a *fetch* that asked it would flip the
+ * applied cover for every book whose stored ISBN misses Google, on the next
+ * re-fetch, across the whole library, with no review.
+ *
+ * Every entry comes back with `winner: false`, forced in the sidecar: the mark
+ * means "what a fetch would write", and no fetch would write a jacket it never
+ * asked for. So a searched hit is never auto-applied, is never the subject of
+ * the 15% review band, and carries no score-based recommendation. `applied`
+ * still means byte identity with what is on disk now, and is true for whichever
+ * group is wearing the book.
+ *
+ * Rejects with the reason when it cannot run, for the gather's three reasons —
+ * offline, no metadata engine, no EPUB/MOBI/AZW3 in the folder — because the
+ * picker has to say *why* rather than show an empty group.
+ */
+export async function searchCovers(bookId: string): Promise<CoverCandidate[]> {
+  nas.assertOnline()
+  sidecar.assertAvailable()
+  const { book, bookDir } = resolve(bookId)
+  const file = await hydratableFile(bookDir)
+  return sidecar.call<CoverCandidate[]>('search_covers', {
+    book_id: bookId,
+    file_path: file,
+    book_dir: bookDir,
+    known: importer.knownFrom(book)
+  })
+}
+
+/**
  * Choose a cover: write the bytes, settle the row, and record the decision.
  *
  * Returns the updated book, so a caller can report what the book now wears

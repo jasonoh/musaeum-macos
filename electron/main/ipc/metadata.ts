@@ -25,6 +25,11 @@ export function registerMetadataHandlers(): void {
   // ones the UI slice will call.
   handle('metadata:coverCandidates', (bookId: string) => coverChoice.coverCandidates(bookId))
 
+  // The wider search, the same thin shape by construction: the pre-flight, the
+  // refusals and the payload belong to the service, which is what keeps this a
+  // wrapper rather than a second place the answer is composed (invariant 8).
+  handle('metadata:searchCovers', (bookId: string) => coverChoice.searchCovers(bookId))
+
   handle('metadata:setCover', (bookId: string, choice: CoverChoice) =>
     coverChoice.chooseCover(bookId, choice)
   )

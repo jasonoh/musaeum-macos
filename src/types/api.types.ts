@@ -159,6 +159,23 @@ export interface MusaeumAPI {
      */
     coverCandidates(bookId: string): Promise<CoverCandidate[]>
     /**
+     * The jackets that exist under the book's *other* identifiers, and — only
+     * when every identifier misses — under its title and author. The one
+     * question a **fetch** deliberately never asks (D1 of the cover-sources
+     * design): Google's jackets outrank OpenLibrary's by construction, so a
+     * fetch that asked this would flip the applied cover for every book whose
+     * stored ISBN misses Google, on its next run, library-wide and unreviewed.
+     *
+     * The same payload as `coverCandidates`, over its own hits, with `winner`
+     * false on **every** entry: the mark means "what a fetch would write", and
+     * no fetch would write a jacket it never asked for. Nothing is written and
+     * nothing is persisted (D4) — every press re-asks the network.
+     *
+     * Rejects with the reason when the search cannot run, on `coverCandidates`'
+     * three pre-flight conditions.
+     */
+    searchCovers(bookId: string): Promise<CoverCandidate[]>
+    /**
      * Choose one of those candidates: writes the cover bytes, updates the row,
      * rewrites `metadata.json`, upserts the catalog and records `cover` as the
      * user's own decision (so the next fetch cannot move it again). Returns the

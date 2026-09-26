@@ -14,6 +14,7 @@ cover-choice design), for a book whose jacket a person wants to choose rather
 than one a fetch is settling.
 """
 
+import hashlib
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -22,8 +23,8 @@ from typing import Optional
 from extractors.epub_metadata import extract_epub_metadata
 from extractors.pdf_metadata import extract_pdf_metadata
 from fetchers.goodreads import fetch_series
-from fetchers.google_books import fetch_google_books
-from fetchers.openlibrary import fetch_openlibrary
+from fetchers.google_books import fetch_google_books, search_by_isbn, search_by_title
+from fetchers.openlibrary import KNOWN_ISBN_CAP, fetch_openlibrary, known_isbns
 from pipeline.conflict import merge_metadata
 from pipeline.cover import gather_candidates, score_candidates, select_cover, summarise_candidates
 
@@ -121,6 +122,123 @@ def cover_candidates(file_path: str, book_dir: str, known: dict) -> list:
     return summarise_candidates(
         score_candidates(gather_candidates(file_path, google, openlib)), book_dir
     )
+
+
+# The whole ISBN sequence's request budget (D5). It is *derived*, not chosen:
+# the row contributes at most two identifiers and `known_isbns` caps the work's
+# list at its own `KNOWN_ISBN_CAP`, so this is their sum. A flat 6 would silently
+# truncate the work's list to four entries and crowd out the row's own, which are
+# the most precise identifiers the book has — measured on the book that produced
+# this feature, where the second English jacket sits at the work's index 5 and a
+# flat cap reaches the first one only.
+MAX_SEARCH_ISBNS = 2 + KNOWN_ISBN_CAP
+
+
+def search_candidates(file_path: str, book_dir: str, known: dict) -> list:
+    """The wider search: the jackets that exist under the book's *other*
+    identifiers, or — only as a last resort — under its title and author.
+
+    Where `cover_candidates` asks the question a *fetch* asks, this asks the one
+    a fetch deliberately never asks (D1 of
+    `docs/superpowers/specs/2026-09-25-cover-sources-design.md`): the identifiers
+    OpenLibrary lists for the work, among them the ISBNs of other editions. Those
+    are the jackets a fetch cannot reach — and, because a fetch would not write a
+    jacket it never asked for, the jackets it must never be allowed to write
+    silently.
+
+    The order is the whole safety argument, so it is fixed here (D2):
+
+    1. the ISBNs **the row is known by** — `known`'s `isbn_13`, then `isbn_10`;
+    2. the ISBNs OpenLibrary lists for the same work (`known_isbns`);
+    3. *only when no ISBN answered*, `intitle:"<title>" inauthor:"<author>"`.
+
+    The identifier passes run to the **end** of the list rather than stopping at
+    the first hit: this book's two English volumes come from two different ISBNs
+    (800x1245 and 1352x2103, the same jacket design), and stopping early would
+    deny the better of the two. The fuzzy pass is confined to rows whose
+    identifiers are all junk, and it is structured rather than free text —
+    measured 2026-09-25, `intitle:"…" inauthor:"…"` answers exactly 1 volume
+    where the free-text form of the same title answers 300.
+
+    Nothing is written and nothing is persisted (D4): every press re-asks the
+    network, `metadata.json` is untouched, and no candidate list is cached.
+
+    Every entry comes back with `winner: false` (D3). `winner` means "what a
+    fetch would write", and a fetch would never ask this question — the mark is
+    forced here, on the way out, rather than by a parameter on
+    `summarise_candidates`, because that function's meaning is shared with the
+    gather and must not learn about a group whose head is not its winner.
+    `applied` keeps its byte-identity meaning, unchanged. `url` is present on
+    every entry (every hit here is online); a hit that somehow arrived without
+    one is dropped, because it is not one `set_cover` could take.
+
+    `file_path` travels only so this call sends the same
+    `{file_path, book_dir, known}` triple the gather does — the searched group is
+    online-only and nothing is read from the file.
+
+    Never raises: a failing fetcher is a miss, exactly as in `_sources`.
+    """
+    identifiers = {k: v for k, v in (known.get("identifiers") or {}).items() if v}
+    isbn_13 = identifiers.get("isbn_13")
+    isbn_10 = identifiers.get("isbn_10")
+    title = known.get("title")
+    author = known.get("author")
+
+    # (a) the row's own identifiers, (b) the work's — deduped across both and
+    # capped as one sequence, because each entry in it is a Google request
+    listed = (isbn_13, isbn_10, *_search_call(known_isbns, title, author, isbn_13))
+    asked = list(dict.fromkeys(isbn for isbn in listed if isbn))[:MAX_SEARCH_ISBNS]
+
+    hits = []
+    for isbn in asked:
+        hits.extend(_search_call(search_by_isbn, isbn))
+
+    # (c) the structured title pass, only when every identifier missed
+    if not hits:
+        hits = _search_call(search_by_title, title, author)
+
+    out = []
+    for entry in summarise_candidates(score_candidates(_dedupe_by_bytes(hits)), book_dir):
+        if not entry.get("url"):
+            continue
+        entry["winner"] = False
+        out.append(entry)
+    return out
+
+
+def _search_call(fn, *args) -> list:
+    """`fn(*args)` as a list, or `[]` — a failing fetcher is a miss (D2).
+
+    The three search functions each promise never to raise; this is the caller's
+    half of that promise, so a bug in one of them costs a tile rather than the
+    whole press. The same shape as `_safe`, which does it for the hydration's own
+    two fetchers.
+    """
+    try:
+        return list(fn(*args) or [])
+    except Exception:
+        return []
+
+
+def _dedupe_by_bytes(hits: list) -> list:
+    """The hits, one per distinct image.
+
+    Two ISBNs of one work answer the *same* volume — measured here, where a
+    sibling ISBN and the work's own ISBN-13 both reach the English jacket — so a
+    search that simply concatenated its passes would offer that jacket twice.
+    Keyed on the bytes rather than the url, because one image is served from
+    several query-string spellings and only the bytes say it is the same image.
+    """
+    seen = set()
+    unique = []
+    for hit in hits:
+        data = hit.get("data")
+        key = hashlib.md5(data).hexdigest() if data else f"url:{hit.get('url')}"
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(hit)
+    return unique
 
 
 def _sources(file_path: str, known: dict) -> tuple:
