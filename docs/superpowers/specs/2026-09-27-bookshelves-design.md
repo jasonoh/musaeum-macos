@@ -1,7 +1,7 @@
 # Design: bookshelves — user-made shelves on the Mac, mapped for the phone
 
 **Date:** 2026-09-27
-**Status:** Design approved section by section with Jason on 2026-09-27; written spec awaiting review. Nothing is built.
+**Status:** Design approved section by section with Jason on 2026-09-27; written spec reviewed and approved the same day. Nothing is built. **Next step:** `superpowers:writing-plans` against this document, producing `docs/superpowers/plans/2026-09-27-bookshelves-slice1.md` (one plan per slice, as the phone-upload work did). A fresh session should read this spec, then the invariant docs named under **Depends on**, before planning.
 **Scope:** Arbitrary, user-named, non-exclusive shelves on the desktop app — create, rename, delete, browse, add by drag or by menu, remove with a Remove-vs-Delete choice and an Undo, send a whole shelf to a Kindle — plus the REST surface the phone needs to browse shelves and toggle a book's membership, and a map of the phone's implementation. It does **not** cover smart (saved-query) shelves, manual ordering within a shelf, reordering shelves in the sidebar, or creating/renaming/deleting shelves from the phone (see *Rejected and deferred*).
 **Depends on:** `docs/invariants/nas-and-catalog.md` (the catalog's write-and-adopt pattern this copies), `docs/invariants/files-and-deletion.md` (the delete paths shelves hook into), `docs/invariants/selection-and-keyboard.md` (the selection grammar drag reads), `docs/invariants/library-views.md` (the one WHERE builder, virtualization), `docs/rest-api.md` and `docs/superpowers/specs/2026-09-22-ios-companion-design.md` (contract discipline, AC19).
 **Interacts with:** the device transfer queue (`src/stores/device.store.ts:76`), the Finder drop overlay (`src/hooks/useDragDrop.ts`), the delete dialogs, `BookContextMenu`, `SelectionPanel`, `BookDetail`, `Sidebar`.
@@ -162,7 +162,7 @@ Types live in `src/types/shelf.types.ts`; handlers in `electron/main/ipc/shelves
 
 ## D8 — Sort: *Date Added to Shelf*
 
-**Decision:** `SortField` gains `'shelf_added'` (label: *Date Added to Shelf* — newest/oldest first). It is offered in the sort control only while a shelf is open. Opening a shelf sets the sort to `shelf_added desc`; leaving it restores the library sort, which remains the only persisted sort. `SORT_SQL.shelf_added` orders by the correlated `added_at` for the active shelf, then the id tiebreak every ordered query already ends with. Reaching main without a `shelfId`, it falls back to title (the existing unknown-field rule), never throws.
+**Decision:** `SortField` gains `'shelf_added'` (label: *Date Added to Shelf* — newest/oldest first, added to `SORT_LABELS` in `src/types/book.types.ts`). It is offered in the sort control only while a shelf is open: `Toolbar.tsx`'s `SORT_OPTIONS` gains both directions of it, filtered out when `activeShelfId` is null. The list view gets **no** new column for it — a column header click selects that column's sort as today, and `Toolbar`'s existing "append the current sort if it is not in the list" rule keeps the select honest either way. Opening a shelf sets the sort to `shelf_added desc`; leaving it restores the library sort, which remains the only persisted sort. `SORT_SQL.shelf_added` orders by the correlated `added_at` for the active shelf, then the id tiebreak every ordered query already ends with. Reaching main without a `shelfId`, it falls back to title (the existing unknown-field rule), never throws.
 
 ## D9 — Desktop UI
 
@@ -171,7 +171,7 @@ Types live in `src/types/shelf.types.ts`; handlers in `electron/main/ipc/shelves
 - A **Shelves** section follows it, before Filters: header label with a **+** (inline name field; Enter creates, Esc cancels), then one row per shelf — name, count, active highlight identical to the Library row's.
 - Right-click a shelf → **Rename** (also double-click; inline), **Send to ‹device›** (one per connected Kindle; absent when none), **Delete Shelf…** → confirm: *"Delete the shelf “‹name›”? Its N books stay in your library."*
 - No shelves → a muted *"Drag books here to start a shelf"* line in the section.
-- When a shelf is open, the view header names it with its count; an empty shelf's view reads *"Drag books here, or use Add to Shelf."*
+- **There is no view header, and this feature adds none.** The toolbar (`src/components/layout/Toolbar.tsx`) is Add Books · search · sort · grid/list, and a new bar above the virtualized views would change their geometry (invariant 7). The open shelf is named in two places that already exist: its highlighted sidebar row (with its count), and the search field's placeholder, which reads *Search “‹shelf›”* while a shelf is open (`src/components/shared/SearchBar.tsx`). An empty shelf's view body reads *"Drag books here, or use Add to Shelf."* in the empty-library slot's styling.
 
 **Drag (`BookCard.tsx`, `ListView.tsx`, new `src/lib/book-drag.ts`).**
 - Native HTML5 drag on the card button and the list row. Payload scope: `dragScope(bookId, selection)` — the whole selection when the dragged book is in it, that book alone otherwise — mirroring `contextMenuScope`; **the selection is not changed** by starting a drag.
@@ -189,7 +189,7 @@ Types live in `src/types/shelf.types.ts`; handlers in `electron/main/ipc/shelves
 **Removing inside a shelf (new `ShelfRemoveDialog.tsx`).**
 - The context menu gains **Remove from “‹shelf›”** while a shelf is open: immediate, Undo toast.
 - The trash entry points — card hover, detail panel, selection panel, the context menu's Delete — open `ShelfRemoveDialog` first while a shelf is open: **Remove from Shelf** (focused, Enter) and **Delete from Library…**. The latter hands over to the **existing** `DeleteBookDialog` / `DeleteSelectionDialog` (per-format picker, offline notice), which stay the only place anything is deleted. With no shelf open, every entry point behaves exactly as today.
-- Remove toast: *"Removed 3 from To Read"* with **Undo** for ~6 s → `restoreBooks`. The toast system gains an action button if it has none.
+- Remove toast: *"Removed 3 from To Read"* with **Undo** → `restoreBooks`. This is the existing toast surface as it stands: `Toast.action` (`src/stores/ui.store.ts:34`, rendered at `src/components/shared/Toasts.tsx:31`) and the `success` lifetime of 6000 ms (`ui.store.ts:38`). No toast changes.
 
 **Send shelf to Kindle.** The shelf's context menu item calls the existing `device.store.sendBooksToDevice(bookIds, deviceId)`, which already skips books on the device and enqueues into the serial transfer queue. Toast: *"Sending 14 to ‹device› · 3 already on it"*. A shelf of more than 25 books asks first (*"Send 60 books to ‹device›?"*), because the queue has no bulk cancel.
 
@@ -197,7 +197,7 @@ Types live in `src/types/shelf.types.ts`; handlers in `electron/main/ipc/shelves
 
 **Decision:**
 
-- **`GET /api/shelves`** (and `HEAD`) → `{ "shelves": [{ "id", "name", "kind", "count", "updatedAt" }] }`, alphabetical, `kind: "manual"` only.
+- **`GET /api/shelves`** (and `HEAD`) → `{ "shelves": [{ "id", "name", "kind", "count", "updatedAt" }] }`, alphabetical, `kind: "manual"` only, `count` as D6 defines it. Like the other JSON reads it answers **200 from the cache while the library is offline** (`docs/rest-api.md` § *Failure semantics*).
 - **`GET /api/library?shelf={id}`** and **`GET /api/library/facets?shelf={id}`** — scoped through the same WHERE builder. Unknown shelf → **404**. `sort=shelf_added` without `shelf` → **400**. With `shelf` and no `sort` (and no `q`), the order is `shelf_added` descending, matching the Mac.
 - **Every book payload gains `"shelves": ["shelf-id", …]`** — ids only, always present (`[]` when none), on the list, the detail, the reading `PUT`'s and the upload's `book`. The page read fills it with one batched `IN` query over the page's ids; names come from `/api/shelves`, so a rename changes no book payload.
 - **`PUT /api/shelves/{id}/books/{bookId}`** adds; **`DELETE`** on the same path removes. No body. Both idempotent (an existing member keeps its `added_at`; removing a non-member is 200). Both answer `200 { "book": … }` in the detail shape. Unknown shelf or book → 404; share offline → **503 `library offline`**, `Retry-After: 5`. Both run through `services/shelves.ts` (D3), so the Mac's sidebar updates live.
@@ -206,6 +206,8 @@ Types live in `src/types/shelf.types.ts`; handlers in `electron/main/ipc/shelves
 **Why `apiVersion` stays 1 — a correction to the design as discussed.** The section-4 conversation proposed bumping to 2 so the phone could gate on it. Reading the client while writing this spec showed that would **lock out every installed phone**: it requires `health.apiVersion == 1` exactly (`MusaeumClient.swift:148`). Everything here is additive, and the client ignores keys it does not know, so a v1 client is unaffected — the same reasoning, and the same outcome, as the upload spec's D7. **Capability detection instead:** the phone probes `GET /api/shelves` once per connect; `404` → no shelf UI.
 
 ## D11 — The phone (map only; built in `musaeum-ios` from its own annex)
+
+The annex lives in that repository, `../musaeum-ios/docs/plans/`, numbered in that repo's own slice sequence (the upload's was `2026-09-23-slice4-upload.md`), and is written only after slice 5 lands here — that repo's invariant 1 is that the contract lives in this one.
 
 - **Core/API:** `Shelf` in `ContractModels.swift` (through `StrictObject`); `shelves: [String]` on the book model, **read as `[]` when absent** — `StrictObject` throws on an absent key, and a pre-shelves Mac omits it, so a required read would break the whole library against an older Mac. This is the one deliberate exception to that repo's "always present" rule, and the annex records it as such; `shelf` on `LibraryQuery`; `shelves()`, `addToShelf`, `removeFromShelf` on `MusaeumClient`.
 - **Library:** a shelf picker in the library header (*All Books ▾* → shelves). A shelf scopes the list, defaults to *Date Added to Shelf*, and keeps search and filters.
@@ -252,7 +254,7 @@ Types live in `src/types/shelf.types.ts`; handlers in `electron/main/ipc/shelves
 ### Slice 2 — shelf UI (renderer)
 
 16. The sidebar lists shelves alphabetically with counts; **+** creates inline; rename and delete work from the context menu; delete's confirmation names the book count and deletes no book.
-17. Opening a shelf scopes the view, the search and the filter counts; **Clear** keeps the shelf; **Library** leaves it and restores the prior sort.
+17. Opening a shelf scopes the view, the search and the filter counts, and the search placeholder reads *Search “‹shelf›”*; **Clear** keeps the shelf; **Library** leaves it, restores the prior sort and the stock placeholder. No element is added above either view (grid and list geometry unchanged — the existing row-height tests still pass untouched).
 18. *Date Added to Shelf* appears only inside a shelf and is the default there.
 19. **Add to Shelf ▸** works from the context menu (both scopes) and the selection panel; checks and toggle-remove work for a single book; **New Shelf…** creates with the scope's books.
 20. `BookDetail` lists the book's shelves; a chip navigates; **×** removes with Undo.
