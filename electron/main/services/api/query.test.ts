@@ -171,6 +171,15 @@ describe('parseSort — the field/direction rule', () => {
       expect(parseSort(url(`/api/library?${query}`).searchParams)).toEqual({ ok: false })
     }
   )
+
+  it('refuses shelf_added, which has no shelf to order by on this surface yet', () => {
+    // The type grew the field for the Mac (bookshelves D8); the wire has no
+    // `shelf` parameter until slice 5, so here it is still an unknown sort
+    expect(parseSort(url('/api/library?sort=shelf_added').searchParams)).toEqual({ ok: false })
+    expect(parseSort(url('/api/library?sort=shelf_added&dir=desc').searchParams)).toEqual({
+      ok: false
+    })
+  })
 })
 
 describe('intParam and listParam — the two building blocks', () => {

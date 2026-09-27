@@ -142,7 +142,11 @@ export function parseSort(
   if (field === null && direction === null) return { ok: true, sort: null }
 
   const candidate = { field: field ?? 'title', direction: direction ?? 'asc' }
-  if (!isBookSort(candidate)) return { ok: false }
+  // `shelf_added` is a real sort on the Mac (bookshelves D8) but means nothing
+  // without a shelf, and this surface has no `shelf` parameter until the
+  // bookshelves slice 5 — so until then it is exactly the unknown field it was
+  // before the type grew it. Slice 5 replaces this with "400 unless `shelf`".
+  if (!isBookSort(candidate) || candidate.field === 'shelf_added') return { ok: false }
 
   return {
     ok: true,

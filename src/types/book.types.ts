@@ -189,7 +189,19 @@ export function primaryFormat(book: Book): BookFormat | null {
   return orderedFormats(book)[0] ?? null
 }
 
-export type SortField = 'title' | 'author' | 'series' | 'date_added' | 'rating' | 'read_status'
+export type SortField =
+  | 'title'
+  | 'author'
+  | 'series'
+  | 'date_added'
+  | 'rating'
+  | 'read_status'
+  /**
+   * When a book was put on the open shelf (bookshelves D8). Offered only inside a
+   * shelf; reaching main without a `shelfId` it falls back to title, like any
+   * field `SORT_SQL` has no expression for.
+   */
+  | 'shelf_added'
 
 export interface BookSort {
   field: SortField
@@ -203,7 +215,11 @@ const SORT_LABELS: Record<SortField, { asc: string; desc: string }> = {
   series: { asc: 'Series', desc: 'Series (reversed)' },
   date_added: { asc: 'Oldest First', desc: 'Recently Added' },
   rating: { asc: 'Lowest Rated', desc: 'Highest Rated' },
-  read_status: { asc: 'Read Status', desc: 'Read Status (reversed)' }
+  read_status: { asc: 'Read Status', desc: 'Read Status (reversed)' },
+  shelf_added: {
+    asc: 'Date Added to Shelf, Oldest First',
+    desc: 'Date Added to Shelf, Newest First'
+  }
 }
 
 export function sortLabel(sort: BookSort): string {
@@ -230,7 +246,7 @@ export function isBookSort(value: unknown): value is BookSort {
  * ascending, while dates and ratings are most useful highest-first.
  */
 export function defaultSortDirection(field: SortField): 'asc' | 'desc' {
-  return field === 'date_added' || field === 'rating' ? 'desc' : 'asc'
+  return field === 'date_added' || field === 'rating' || field === 'shelf_added' ? 'desc' : 'asc'
 }
 
 export interface BookFilters {
@@ -240,6 +256,12 @@ export interface BookFilters {
   formats?: BookFormat[]
   readStatus?: ReadStatus[]
   minRating?: number
+  /**
+   * Narrow to one shelf's books (bookshelves D7). A scope rather than a facet —
+   * the UI's Clear keeps it — but it reaches SQL through the same WHERE builder
+   * as the filters, so the list, the page, the count and the facets agree.
+   */
+  shelfId?: string
   sort?: BookSort
 }
 

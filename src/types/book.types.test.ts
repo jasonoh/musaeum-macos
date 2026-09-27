@@ -3,13 +3,16 @@ import { makeBook } from '../../test/helpers/book'
 import {
   BOOK_FILE_EXTENSIONS,
   bookFileFilter,
+  defaultSortDirection,
   isBookFile,
+  isBookSort,
   primaryFormat,
   orderedFormats,
   readableFormat,
   seriesDisplay,
   sortableAuthor,
-  sortableTitle
+  sortableTitle,
+  sortLabel
 } from './book.types'
 
 /**
@@ -195,5 +198,18 @@ describe('orderedFormats', () => {
 
   it('is empty for a book with no files', () => {
     expect(orderedFormats({ ...makeBook('a'), formats: [] })).toEqual([])
+  })
+})
+
+describe('shelf_added — the sort that only exists inside a shelf (bookshelves D8)', () => {
+  it('is a sort the guard accepts, newest first on first click, with its own labels', () => {
+    expect(isBookSort({ field: 'shelf_added', direction: 'desc' })).toBe(true)
+    expect(defaultSortDirection('shelf_added')).toBe('desc')
+    expect(sortLabel({ field: 'shelf_added', direction: 'desc' })).toBe(
+      'Date Added to Shelf, Newest First'
+    )
+    expect(sortLabel({ field: 'shelf_added', direction: 'asc' })).toBe(
+      'Date Added to Shelf, Oldest First'
+    )
   })
 })
