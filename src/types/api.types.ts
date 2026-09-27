@@ -405,5 +405,7 @@ export const EVENT_CHANNELS = {
   themeChanged: 'event:theme-changed',
   aiChunk: 'event:ai-chunk',
   aiDone: 'event:ai-done',
-  aiError: 'event:ai-error'
+  aiError: 'event:ai-error',
+  /** Shelves or their membership changed — a write here, over REST, or an adoption (bookshelves D6). */
+  shelvesChanged: 'event:shelves-changed'
 } as const
