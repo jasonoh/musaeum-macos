@@ -4,6 +4,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ManualShelfEntry } from '@shared/shelf.types'
 import { makeBook } from '../../../test/helpers/book'
 import { deleteBook, deleteBooks, deleteFormats } from './book-delete'
 import { readCatalog, writeCatalog } from './catalog'
@@ -20,6 +21,8 @@ import { subscribe } from './events'
 import { list as listOverrides, markFromPatch } from './field-overrides'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
+import * as shelves from './shelves'
+import { readShelvesFile, shelvesPath } from './shelves-file'
 
 let root: string
 
@@ -302,5 +305,87 @@ describe('the review count after a delete', () => {
     // the entry for the deleted book is the one that goes
     expect(listOverrides('c-ov')).toEqual([])
     expect(listOverrides('shared')).toEqual(['author'])
+  })
+})
+
+describe('deleting a book takes it off every shelf (bookshelves D5)', () => {
+  function countShelfWrites(): () => number {
+    const spy = vi.spyOn(fs, 'writeFile')
+    return () =>
+      spy.mock.calls.filter(([path]) => String(path).endsWith('shelves.json.part')).length
+  }
+
+  async function membersOnDisk(): Promise<Record<string, string[]>> {
+    const read = await readShelvesFile(root)
+    if (read.state !== 'ok') throw new Error(`shelves.json is ${read.state}`)
+    return Object.fromEntries(
+      read.file.shelves.map((s) => [
+        (s as ManualShelfEntry).name,
+        (s as ManualShelfEntry).books.map((m) => m.id)
+      ])
+    )
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('prunes a bulk delete from every shelf with one write (AC12)', async () => {
+    for (const id of ['a', 'b', 'c']) await seed(id, ['epub'])
+    const one = await shelves.create('One', ['a', 'b'])
+    const two = await shelves.create('Two', ['b', 'c'])
+    const writes = countShelfWrites()
+
+    await deleteBooks(['a', 'b'])
+
+    expect(writes()).toBe(1)
+    expect(await membersOnDisk()).toEqual({ One: [], Two: ['c'] })
+    expect(shelves.list()).toEqual([
+      { id: one.id, name: 'One', kind: 'manual', count: 0 },
+      { id: two.id, name: 'Two', kind: 'manual', count: 1 }
+    ])
+  })
+
+  it('prunes a single delete the same way (AC12)', async () => {
+    await seed('a', ['epub'])
+    await seed('b', ['epub'])
+    await shelves.create('One', ['a', 'b'])
+    const writes = countShelfWrites()
+
+    await deleteBook('a')
+
+    expect(writes()).toBe(1)
+    expect(await membersOnDisk()).toEqual({ One: ['b'] })
+  })
+
+  it('writes nothing for books on no shelf, and creates no shelves.json', async () => {
+    await seed('a', ['epub'])
+    await seed('b', ['epub'])
+    const writes = countShelfWrites()
+
+    await deleteBooks(['a'])
+    await deleteBook('b')
+
+    expect(writes()).toBe(0)
+    await expect(fs.access(shelvesPath(root))).rejects.toThrow()
+  })
+
+  it('keeps the delete when the shelves cannot be pruned, and says the shelves changed', async () => {
+    await seed('a', ['epub'])
+    await shelves.create('One', ['a'])
+    await fs.writeFile(shelvesPath(root), 'not json{', 'utf8')
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const events: string[] = []
+    const unsubscribe = subscribe((event) => {
+      events.push(event)
+    })
+
+    await expect(deleteBook('a')).resolves.toBeUndefined()
+    unsubscribe()
+
+    expect(getBook('a')).toBeNull()
+    expect(shelves.list()[0].count).toBe(0)
+    expect(error).toHaveBeenCalled()
+    expect(events).toContain('shelvesChanged')
   })
 })

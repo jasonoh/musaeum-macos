@@ -5,6 +5,7 @@ import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Book } from '@shared/book.types'
+import type { ManualShelfEntry, ShelvesFile } from '@shared/shelf.types'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
 import {
@@ -20,6 +21,8 @@ import { subscribe } from './events'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import { noteStatusChange } from './reading-state'
+import * as shelves from './shelves'
+import { readShelvesFile, shelvesPath, writeShelvesFile } from './shelves-file'
 
 let root: string
 
@@ -546,5 +549,95 @@ describe('flushPendingWrites', () => {
     } finally {
       errSpy.mockRestore()
     }
+  })
+})
+
+describe('shelf adoption beside the catalog’s (bookshelves D4)', () => {
+  const AT = '2026-09-27T10:00:00.000Z'
+  const shelvesFile = (members: string[]): ShelvesFile => ({
+    version: 1,
+    shelves: [
+      {
+        id: 's1',
+        name: 'To Read',
+        kind: 'manual',
+        created_at: AT,
+        updated_at: AT,
+        books: members.map((id) => ({ id, added_at: AT }))
+      }
+    ]
+  })
+
+  it('adopts on connect, keeping a member the catalog lacks out of the cache and in the file (AC11)', async () => {
+    await writeCatalog(root, [makeBook('a'), makeBook('b')])
+    await writeShelvesFile(root, shelvesFile(['a', 'imported-elsewhere']))
+    await librarySync.syncOnConnect()
+
+    expect(shelves.list()).toEqual([{ id: 's1', name: 'To Read', kind: 'manual', count: 1 }])
+    const read = await readShelvesFile(root)
+    if (read.state !== 'ok') throw new Error(`shelves.json is ${read.state}`)
+    expect((read.file.shelves[0] as ManualShelfEntry).books.map((m) => m.id)).toEqual([
+      'a',
+      'imported-elsewhere'
+    ])
+  })
+
+  it('re-adopts on Reload after the book swap, so a member whose book has arrived is counted (AC11)', async () => {
+    await writeCatalog(root, [makeBook('a')])
+    await writeShelvesFile(root, shelvesFile(['a', 'b']))
+    await librarySync.syncOnConnect()
+    expect(shelves.list()[0].count).toBe(1)
+
+    await writeCatalog(root, [makeBook('a'), makeBook('b')])
+    await librarySync.refreshLibrary()
+    expect(shelves.list()[0].count).toBe(2)
+  })
+
+  it('empties the shelf cache when the library has no shelves.json', async () => {
+    await writeCatalog(root, [makeBook('a')])
+    await writeShelvesFile(root, shelvesFile(['a']))
+    await librarySync.syncOnConnect()
+    expect(shelves.list()).toHaveLength(1)
+
+    await fs.rm(shelvesPath(root))
+    await librarySync.refreshLibrary()
+    expect(shelves.list()).toEqual([])
+  })
+
+  it('keeps the last adopted shelves when shelves.json is unreadable, and never rewrites it', async () => {
+    await writeCatalog(root, [makeBook('a')])
+    await writeShelvesFile(root, shelvesFile(['a']))
+    await librarySync.syncOnConnect()
+    await fs.writeFile(shelvesPath(root), 'not json{', 'utf8')
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await librarySync.refreshLibrary()
+    expect(shelves.list()).toEqual([{ id: 's1', name: 'To Read', kind: 'manual', count: 1 }])
+    expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe('not json{')
+    vi.restoreAllMocks()
+  })
+
+  it('tells the renderer the shelves changed', async () => {
+    await writeCatalog(root, [makeBook('a')])
+    const events: string[] = []
+    const unsubscribe = subscribe((event) => {
+      events.push(event)
+    })
+    await librarySync.syncOnConnect()
+    unsubscribe()
+    expect(events).toContain('shelvesChanged')
+  })
+
+  it('leaves shelves.json alone on Rebuild Catalog — it neither reads nor writes it', async () => {
+    await fs.mkdir(join(root, 'books'), { recursive: true })
+    await writeShelvesFile(root, shelvesFile([]))
+    const read = vi.spyOn(fs, 'readFile')
+    const write = vi.spyOn(fs, 'writeFile')
+    await librarySync.rebuildCatalog()
+    const touched = [...read.mock.calls, ...write.mock.calls].filter(([path]) =>
+      String(path).includes('shelves.json')
+    )
+    expect(touched).toEqual([])
+    vi.restoreAllMocks()
   })
 })

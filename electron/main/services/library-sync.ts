@@ -3,6 +3,7 @@ import * as catalog from './catalog'
 import * as db from './db'
 import { broadcast } from './events'
 import * as nas from './nas-manager'
+import * as shelves from './shelves'
 
 /**
  * Bridges catalog.json (NAS) and the local SQLite cache. Single-book writes
@@ -211,6 +212,11 @@ export async function syncOnConnect(): Promise<void> {
     console.error('[catalog] on-connect sync failed:', err)
     handledRoots.delete(root)
   }
+  // Shelves are their own canonical file (bookshelves D1, D4), adopted after the
+  // book swap so a member whose book just arrived is counted. Outside the
+  // catalog's try: a missing or unreadable catalog says nothing about
+  // shelves.json, and `adopt` never rejects.
+  await shelves.adopt(root)
 }
 
 /**
@@ -225,10 +231,19 @@ export async function refreshLibrary(): Promise<CatalogSyncOutcome> {
   nas.assertOnline()
   const root = nas.getLibraryRoot()!
   const result = await catalog.readCatalogDetailed(root)
-  if (result.state !== 'ok') return rebuildCatalog()
-  adopt(result.file.books)
-  handledRoots.add(root)
-  return { books: result.file.books.length, cancelled: false }
+  let outcome: CatalogSyncOutcome
+  if (result.state !== 'ok') {
+    outcome = await rebuildCatalog()
+  } else {
+    adopt(result.file.books)
+    handledRoots.add(root)
+    outcome = { books: result.file.books.length, cancelled: false }
+  }
+  // Reload re-reads shelves.json too (bookshelves D4) — here, after the swap,
+  // and not in `rebuildCatalog`, which the spec keeps away from shelves. A
+  // cancelled walk changed no books, so the shelves have nothing to catch up on.
+  if (!outcome.cancelled) await shelves.adopt(root)
+  return outcome
 }
 
 // Read by the walk's per-folder predicate, set by `cancelRefresh`.

@@ -9,6 +9,7 @@ import * as fieldOverrides from './field-overrides'
 import { writeMetadataJson } from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
+import * as shelves from './shelves'
 
 /**
  * The row and everything that hangs off it. The conflicts go inside
@@ -52,6 +53,23 @@ async function removeFolder(dir: string, id: string): Promise<void> {
   }
 }
 
+/**
+ * Take deleted books off every shelf — one shelves.json write for the batch,
+ * never one per book (bookshelves D5). Logged and swallowed (invariant 12): the
+ * book is already gone, and a stale member is left out of the cache by adoption
+ * and dropped by the next write that touches its shelf. The cache already lost
+ * the membership with the row (`db.deleteBook`), so the renderer is told even
+ * though the file could not be.
+ */
+async function pruneFromShelves(ids: string[]): Promise<void> {
+  try {
+    await shelves.pruneBooks(ids)
+  } catch (err) {
+    console.error('[delete] could not take deleted books off their shelves:', err)
+    broadcast('shelvesChanged')
+  }
+}
+
 /** Remove a book, its NAS folder, its cache row, and its catalog entry. */
 export async function deleteBook(id: string): Promise<void> {
   nas.assertOnline()
@@ -67,6 +85,7 @@ export async function deleteBook(id: string): Promise<void> {
     await removeFolder(join(nas.getLibraryRoot()!, book.nasPath), id)
   }
   librarySync.removeBookFromCatalog(id)
+  await pruneFromShelves([id])
   // The queue shrank with the book, and the badge has to hear about it — see
   // `announceReviewCount`
   announceReviewCount()
@@ -142,6 +161,7 @@ export async function deleteBooks(ids: string[]): Promise<BulkDeleteResult> {
   nas.assertOnline()
   const root = nas.getLibraryRoot()!
   const failed: BulkDeleteResult['failed'] = []
+  const deletedIds: string[] = []
   let deleted = 0
 
   for (const id of ids) {
@@ -157,6 +177,7 @@ export async function deleteBooks(ids: string[]): Promise<BulkDeleteResult> {
         await removeFolder(join(root, book.nasPath), id)
       }
       deleted++
+      deletedIds.push(id)
     } catch (err) {
       failed.push({
         id,
@@ -168,6 +189,7 @@ export async function deleteBooks(ids: string[]): Promise<BulkDeleteResult> {
 
   if (deleted > 0) {
     librarySync.writeFullCatalog()
+    await pruneFromShelves(deletedIds)
     // Once for the batch, not once per book: the count is one number, and a
     // dozen books would be a dozen identical reloads
     announceReviewCount()
