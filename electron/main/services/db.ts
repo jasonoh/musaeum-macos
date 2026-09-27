@@ -12,6 +12,8 @@ import type {
 } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
 import type { ConflictCandidate, MetadataConflict } from '@shared/metadata.types'
+import type { ShelfScope, ShelfSummary, ShelvesFile } from '@shared/shelf.types'
+import { isManualShelf } from '@shared/shelf.types'
 import migration001 from '../schema/migrations/001_initial.sql?raw'
 import migration002 from '../schema/migrations/002_sort_keys.sql?raw'
 import migration003 from '../schema/migrations/003_reading_state.sql?raw'
@@ -281,6 +283,16 @@ function bookWhere(filters?: BookFilters, tablePrefix = ''): BookWhere {
     )
     params.push(...filters.formats)
   }
+  if (filters?.shelfId) {
+    // A shelf is a scope (bookshelves D7), but it enters SQL here like any
+    // filter, so the list, the page, the count and the facets cannot disagree.
+    // `books.id` rather than `col('id')`: every caller's FROM names `books`,
+    // and inside the subquery an unqualified `id` would be a guess.
+    conditions.push(
+      'EXISTS (SELECT 1 FROM shelf_books WHERE shelf_books.book_id = books.id AND shelf_books.shelf_id = ?)'
+    )
+    params.push(filters.shelfId)
+  }
 
   return { conditions, params }
 }
@@ -316,12 +328,12 @@ export interface BookPageRequest {
  */
 function selectBooks(filters: BookFilters | undefined, page: BookPageRequest | null): BookRow[] {
   const where = bookWhere(filters)
+  const order = orderClause(filters?.sort, '', filters?.shelfId)
   const paging = page ? ' LIMIT ? OFFSET ?' : ''
-  const params = page ? [...where.params, page.limit, page.offset] : where.params
+  // WHERE, then ORDER BY, then LIMIT/OFFSET — the order the placeholders appear in
+  const params = [...where.params, ...order.params, ...(page ? [page.limit, page.offset] : [])]
   return getDb()
-    .prepare(
-      `SELECT * FROM books ${whereClause(where)} ORDER BY ${orderClause(filters?.sort)}${paging}`
-    )
+    .prepare(`SELECT * FROM books ${whereClause(where)} ORDER BY ${order.sql}${paging}`)
     .all(...params) as BookRow[]
 }
 
@@ -357,6 +369,12 @@ export function countBooks(filters?: BookFilters): number {
   return row.n
 }
 
+/** An ORDER BY body and what it binds — only `shelf_added` binds anything. */
+interface OrderBy {
+  sql: string
+  params: unknown[]
+}
+
 /**
  * ORDER BY body for a sort; falls back to title ascending on an unknown field.
  *
@@ -374,17 +392,30 @@ export function countBooks(filters?: BookFilters): number {
  * uniqueness key, not a field the user chose to sort by. Pinning it also means
  * flipping a sort's direction and flipping it back returns tied rows to the
  * order they started in.
+ *
+ * `shelf_added` is the one sort that is not a column (bookshelves D8): it is
+ * the open shelf's `added_at`, a correlated read bound to `shelfId`. Without a
+ * shelf it has nothing to order by and takes the unknown-field fallback to
+ * title, like any field `SORT_SQL` has no expression for — never a throw.
  */
 function orderClause(
   sort: BookSort = { field: 'title', direction: 'asc' },
-  tablePrefix = ''
-): string {
+  tablePrefix = '',
+  shelfId?: string
+): OrderBy {
   const dir = sort.direction === 'desc' ? 'DESC' : 'ASC'
+  const tiebreak = `${tablePrefix}id ASC`
+  if (sort.field === 'shelf_added' && shelfId) {
+    return {
+      sql: `(SELECT shelf_books.added_at FROM shelf_books WHERE shelf_books.book_id = books.id AND shelf_books.shelf_id = ?) ${dir}, ${tiebreak}`,
+      params: [shelfId]
+    }
+  }
   // Direction applies to every key, so descending 'series' fully reverses
   // series order rather than only flipping the index within each series
   const keys = (SORT_SQL[sort.field] ?? SORT_SQL.title)(tablePrefix).map((expr) => `${expr} ${dir}`)
-  keys.push(`${tablePrefix}id ASC`)
-  return keys.join(', ')
+  keys.push(tiebreak)
+  return { sql: keys.join(', '), params: [] }
 }
 
 export function getBook(id: string): Book | null {
@@ -406,10 +437,13 @@ export function bookExists(id: string): boolean {
 /**
  * FTS search. Results are ordered by the given sort so the list-view headers
  * and the toolbar dropdown stay live during a search; with no sort they fall
- * back to FTS relevance rank.
+ * back to FTS relevance rank. A `scope` searches inside one shelf (bookshelves
+ * D7); the facet filters are still not applied here — widening that is not
+ * this feature.
  */
-export function searchBooks(query: string, sort?: BookSort): Book[] {
-  return searchRows(query, sort, undefined, null).map(rowToBook)
+export function searchBooks(query: string, sort?: BookSort, scope?: ShelfScope): Book[] {
+  const filters = scope?.shelfId ? { shelfId: scope.shelfId } : undefined
+  return searchRows(query, sort, filters, null).map(rowToBook)
 }
 
 /**
@@ -467,15 +501,22 @@ function searchRows(
   // same `id` tiebreak a sorted one has — appended only when there is no sort,
   // because reverse-engineering `orderClause` would be the second ordering rule
   // this file refuses to grow (invariant 4).
-  const order = sort ? orderClause(sort, 'books.') : 'rank, books.id ASC'
-  const params = page ? [match, ...where.params, page.limit, page.offset] : [match, ...where.params]
+  const order: OrderBy = sort
+    ? orderClause(sort, 'books.', filters?.shelfId)
+    : { sql: 'rank, books.id ASC', params: [] }
+  const params = [
+    match,
+    ...where.params,
+    ...order.params,
+    ...(page ? [page.limit, page.offset] : [])
+  ]
 
   return getDb()
     .prepare(
       `SELECT books.* FROM books_fts
        JOIN books ON books.rowid = books_fts.rowid
        WHERE books_fts MATCH ?${where.conditions.length ? ` AND ${where.conditions.join(' AND ')}` : ''}
-       ORDER BY ${order}${paging}`
+       ORDER BY ${order.sql}${paging}`
     )
     .all(...params) as BookRow[]
 }
@@ -682,30 +723,38 @@ export function replaceAllBooks(books: Book[]): void {
   }
 }
 
-export function getFacets(): LibraryFacets {
+/**
+ * The filter sidebar's counts. With a `scope` they count one shelf's books
+ * (bookshelves D7) — through `bookWhere`, the one place a filter becomes SQL, so
+ * a count and the list it sits beside cannot disagree.
+ */
+export function getFacets(scope?: ShelfScope): LibraryFacets {
   const d = getDb()
+  const where = bookWhere(scope?.shelfId ? { shelfId: scope.shelfId } : undefined)
+  const and = where.conditions.map((c) => ` AND ${c}`).join('')
+  const p = where.params
   const authors = d
     .prepare(
-      `SELECT author AS value, COUNT(*) AS count FROM books WHERE author IS NOT NULL GROUP BY author ORDER BY count DESC, author`
+      `SELECT author AS value, COUNT(*) AS count FROM books WHERE author IS NOT NULL${and} GROUP BY author ORDER BY count DESC, author`
     )
-    .all() as { value: string; count: number }[]
+    .all(...p) as { value: string; count: number }[]
   const series = d
     .prepare(
-      `SELECT series_name AS value, COUNT(*) AS count FROM books WHERE series_name IS NOT NULL GROUP BY series_name ORDER BY count DESC, series_name`
+      `SELECT series_name AS value, COUNT(*) AS count FROM books WHERE series_name IS NOT NULL${and} GROUP BY series_name ORDER BY count DESC, series_name`
     )
-    .all() as { value: string; count: number }[]
+    .all(...p) as { value: string; count: number }[]
   const tags = d
     .prepare(
       `SELECT json_each.value AS value, COUNT(*) AS count FROM books, json_each(books.tags)
-       WHERE books.tags IS NOT NULL GROUP BY json_each.value ORDER BY count DESC, value`
+       WHERE books.tags IS NOT NULL${and} GROUP BY json_each.value ORDER BY count DESC, value`
     )
-    .all() as { value: string; count: number }[]
+    .all(...p) as { value: string; count: number }[]
   const formats = d
     .prepare(
       `SELECT json_each.value AS value, COUNT(*) AS count FROM books, json_each(books.formats)
-       WHERE books.formats IS NOT NULL GROUP BY json_each.value ORDER BY count DESC, value`
+       WHERE books.formats IS NOT NULL${and} GROUP BY json_each.value ORDER BY count DESC, value`
     )
-    .all() as { value: BookFormat; count: number }[]
+    .all(...p) as { value: BookFormat; count: number }[]
   const readStatus = d
     .prepare(
       // The fallback is READ_STATUS_FALLBACK, `rowToBook`'s own rule in SQL, so a row
@@ -713,10 +762,89 @@ export function getFacets(): LibraryFacets {
       // "ordered by count descending" true of this list too, as the document says of
       // all five
       `SELECT COALESCE(read_status, '${READ_STATUS_FALLBACK}') AS value, COUNT(*) AS count FROM books
+       ${whereClause(where)}
        GROUP BY COALESCE(read_status, '${READ_STATUS_FALLBACK}') ORDER BY count DESC, value`
     )
-    .all() as { value: ReadStatus; count: number }[]
+    .all(...p) as { value: ReadStatus; count: number }[]
   return { authors, series, tags, formats, readStatus }
+}
+
+// --- Shelves: a cache of shelves.json (services/shelves.ts owns every write) ---
+
+/**
+ * Replace the shelf cache with a file's view, in one transaction (bookshelves
+ * D2, D4). Called by every shelf write with the file it just wrote, and by
+ * adoption with the file it just read — one path, so the two cannot drift.
+ *
+ * - Only manual shelves: a kind this build does not know stays in the file and
+ *   out of the cache (D1).
+ * - A member whose book this cache does not hold is left out and **kept in the
+ *   file** — the catalog may simply be behind (a book imported on another Mac).
+ * - A repeated shelf id or member in a hand-edited file is ignored, first
+ *   occurrence wins, rather than failing the whole adoption on a primary key.
+ */
+export function replaceAllShelves(file: ShelvesFile): void {
+  const d = getDb()
+  const insertShelf = d.prepare(
+    "INSERT INTO shelves (id, name, kind, created_at, updated_at) VALUES (?, ?, 'manual', ?, ?)"
+  )
+  const insertMember = d.prepare(
+    `INSERT OR IGNORE INTO shelf_books (shelf_id, book_id, added_at)
+     SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM books WHERE id = ?)`
+  )
+  d.transaction(() => {
+    d.prepare('DELETE FROM shelf_books').run()
+    d.prepare('DELETE FROM shelves').run()
+    const seen = new Set<string>()
+    for (const shelf of file.shelves) {
+      if (!isManualShelf(shelf) || seen.has(shelf.id)) continue
+      seen.add(shelf.id)
+      insertShelf.run(shelf.id, shelf.name, shelf.created_at, shelf.updated_at)
+      for (const member of shelf.books) {
+        insertMember.run(shelf.id, member.id, member.added_at, member.id)
+      }
+    }
+  })()
+}
+
+interface ShelfSummaryRow {
+  id: string
+  name: string
+  count: number
+}
+
+function toShelfSummary(r: ShelfSummaryRow): ShelfSummary {
+  return { id: r.id, name: r.name, kind: 'manual', count: r.count }
+}
+
+/**
+ * Every shelf, alphabetically and case-insensitively, then by id (D6). The count
+ * is the cache's membership, which holds only books the library has —
+ * `replaceAllShelves`, `deleteBook` and `replaceAllBooks` all keep it that way.
+ */
+export function listShelves(): ShelfSummary[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT s.id, s.name, COUNT(sb.book_id) AS count
+         FROM shelves s LEFT JOIN shelf_books sb ON sb.shelf_id = s.id
+        GROUP BY s.id
+        ORDER BY s.name COLLATE NOCASE, s.id`
+    )
+    .all() as ShelfSummaryRow[]
+  return rows.map(toShelfSummary)
+}
+
+/** The shelves one book is on, in `listShelves`'s order. */
+export function shelvesForBook(bookId: string): ShelfSummary[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT s.id, s.name,
+              (SELECT COUNT(*) FROM shelf_books c WHERE c.shelf_id = s.id) AS count
+         FROM shelves s JOIN shelf_books m ON m.shelf_id = s.id AND m.book_id = ?
+        ORDER BY s.name COLLATE NOCASE, s.id`
+    )
+    .all(bookId) as ShelfSummaryRow[]
+  return rows.map(toShelfSummary)
 }
 
 // --- Metadata conflicts ---

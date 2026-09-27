@@ -3,8 +3,24 @@ import { rmSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { ManualShelfEntry, ShelfEntry, ShelvesFile } from '@shared/shelf.types'
 import { makeBook } from '../../../test/helpers/book'
-import { closeDb, getDb, insertBook } from './db'
+import {
+  closeDb,
+  countBooks,
+  deleteBook,
+  getBooks,
+  getBooksPage,
+  getDb,
+  getFacets,
+  insertBook,
+  listShelves,
+  replaceAllBooks,
+  replaceAllShelves,
+  searchBooks,
+  searchBooksPage,
+  shelvesForBook
+} from './db'
 
 const dbPath = (): string => join(app.getPath('userData'), 'musaeum.db')
 
@@ -77,5 +93,189 @@ describe('migration 006 (bookshelves D2)', () => {
     } finally {
       raw.close()
     }
+  })
+})
+
+const T = (day: number): string => `2026-09-${String(day).padStart(2, '0')}T10:00:00.000Z`
+
+function manualShelf(id: string, name: string, members: [string, string][]): ManualShelfEntry {
+  return {
+    id,
+    name,
+    kind: 'manual',
+    created_at: T(1),
+    updated_at: T(1),
+    books: members.map(([bookId, at]) => ({ id: bookId, added_at: at }))
+  }
+}
+
+function file(shelves: ShelfEntry[]): ShelvesFile {
+  return { version: 1, shelves }
+}
+
+const ids = (books: { id: string }[]): string[] => books.map((b) => b.id)
+
+/**
+ * Four books. `s1` "To Read" holds b (day 2), c (day 1), d (day 3) and a book
+ * this library does not have; `s2` "alpha" holds a; `s3` is a smart shelf.
+ */
+function seed(): void {
+  insertBook({ ...makeBook('a', 'Alpha Voyage'), author: 'Adams' })
+  insertBook({ ...makeBook('b', 'Bravo Voyage'), author: 'Baker' })
+  insertBook({ ...makeBook('c', 'Charlie'), author: 'Carter' })
+  insertBook({ ...makeBook('d', 'Delta Voyage'), author: 'Baker' })
+  replaceAllShelves(
+    file([
+      manualShelf('s1', 'To Read', [
+        ['b', T(2)],
+        ['c', T(1)],
+        ['d', T(3)],
+        ['imported-elsewhere', T(4)]
+      ]),
+      manualShelf('s2', 'alpha', [['a', T(1)]]),
+      { id: 's3', kind: 'smart', name: 'Smart', rule: {} }
+    ])
+  )
+}
+
+describe('the shelf cache (bookshelves D2, D4, D6)', () => {
+  it('lists manual shelves alphabetically, case-insensitively, counting only books the library holds', () => {
+    seed()
+    expect(listShelves()).toEqual([
+      { id: 's2', name: 'alpha', kind: 'manual', count: 1 },
+      { id: 's1', name: 'To Read', kind: 'manual', count: 3 }
+    ])
+  })
+
+  it('names the shelves a book is on, and none for a book on no shelf', () => {
+    seed()
+    expect(shelvesForBook('b')).toEqual([{ id: 's1', name: 'To Read', kind: 'manual', count: 3 }])
+    expect(shelvesForBook('imported-elsewhere')).toEqual([])
+    insertBook(makeBook('e'))
+    expect(shelvesForBook('e')).toEqual([])
+  })
+
+  it('survives a hand-edited file that repeats a shelf or a member — the first occurrence wins', () => {
+    insertBook(makeBook('a'))
+    insertBook(makeBook('b'))
+    expect(() =>
+      replaceAllShelves(
+        file([
+          manualShelf('s1', 'One', [
+            ['a', T(1)],
+            ['a', T(2)]
+          ]),
+          manualShelf('s1', 'Duplicate', [['b', T(1)]])
+        ])
+      )
+    ).not.toThrow()
+    expect(listShelves()).toEqual([{ id: 's1', name: 'One', kind: 'manual', count: 1 }])
+    expect(getDb().prepare('SELECT added_at FROM shelf_books WHERE book_id = ?').get('a')).toEqual({
+      added_at: T(1)
+    })
+  })
+
+  it('replaces the whole cache, so a file with no shelves empties it', () => {
+    seed()
+    replaceAllShelves(file([]))
+    expect(listShelves()).toEqual([])
+    expect(getDb().prepare('SELECT COUNT(*) AS n FROM shelf_books').get()).toEqual({ n: 0 })
+  })
+
+  it('drops a deleted book from the cache, and so does a swap that no longer holds it', () => {
+    seed()
+    deleteBook('b')
+    expect(listShelves().find((s) => s.id === 's1')?.count).toBe(2)
+    replaceAllBooks([makeBook('a'), makeBook('d')])
+    expect(listShelves().find((s) => s.id === 's1')?.count).toBe(1)
+  })
+})
+
+describe('a shelf as a scope on every library read (bookshelves D7, D8)', () => {
+  it('scopes getBooks, the page read and the count through the shared WHERE builder', () => {
+    seed()
+    expect(ids(getBooks({ shelfId: 's1' }))).toEqual(['b', 'c', 'd'])
+    expect(countBooks({ shelfId: 's1' })).toBe(3)
+    const page = getBooksPage({ shelfId: 's1' }, { limit: 1, offset: 1 })
+    expect(ids(page.books)).toEqual(['c'])
+    expect(page.total).toBe(3)
+    // …and composes with the facet filters rather than replacing them
+    expect(ids(getBooks({ shelfId: 's1', authors: ['Baker'] }))).toEqual(['b', 'd'])
+  })
+
+  it('orders shelf_added by when each book was shelved, in both directions', () => {
+    seed()
+    const shelfAdded = (direction: 'asc' | 'desc') =>
+      ids(getBooks({ shelfId: 's1', sort: { field: 'shelf_added', direction } }))
+    expect(shelfAdded('desc')).toEqual(['d', 'b', 'c'])
+    expect(shelfAdded('asc')).toEqual(['c', 'b', 'd'])
+  })
+
+  it('breaks a shelf_added tie by id ascending, whatever the direction', () => {
+    insertBook(makeBook('b'))
+    insertBook(makeBook('c'))
+    replaceAllShelves(
+      file([
+        manualShelf('s1', 'Tied', [
+          ['c', T(1)],
+          ['b', T(1)]
+        ])
+      ])
+    )
+    for (const direction of ['asc', 'desc'] as const) {
+      expect(ids(getBooks({ shelfId: 's1', sort: { field: 'shelf_added', direction } }))).toEqual([
+        'b',
+        'c'
+      ])
+    }
+  })
+
+  it('binds the shelf sort ahead of the page, so a paged shelf_added read is the right slice', () => {
+    seed()
+    const page = getBooksPage(
+      { shelfId: 's1', sort: { field: 'shelf_added', direction: 'desc' } },
+      { limit: 2, offset: 1 }
+    )
+    expect(ids(page.books)).toEqual(['b', 'c'])
+    expect(page.total).toBe(3)
+  })
+
+  it('falls back to title for shelf_added without a shelf, and never throws', () => {
+    seed()
+    expect(ids(getBooks({ sort: { field: 'shelf_added', direction: 'desc' } }))).toEqual(
+      ids(getBooks({ sort: { field: 'title', direction: 'desc' } }))
+    )
+  })
+
+  it('scopes the facets to the shelf, and leaves the unscoped facets as they were', () => {
+    seed()
+    const scoped = getFacets({ shelfId: 's1' })
+    expect(scoped.authors).toEqual([
+      { value: 'Baker', count: 2 },
+      { value: 'Carter', count: 1 }
+    ])
+    expect(scoped.readStatus).toEqual([{ value: 'unread', count: 3 }])
+    expect(scoped.formats).toEqual([{ value: 'epub', count: 3 }])
+    expect(getFacets().authors).toEqual([
+      { value: 'Baker', count: 2 },
+      { value: 'Adams', count: 1 },
+      { value: 'Carter', count: 1 }
+    ])
+  })
+
+  it('searches only the shelf, in any sort, including shelf_added', () => {
+    seed()
+    expect(ids(searchBooks('Voyage')).sort()).toEqual(['a', 'b', 'd'])
+    expect(ids(searchBooks('Voyage', undefined, { shelfId: 's1' })).sort()).toEqual(['b', 'd'])
+    expect(
+      ids(searchBooks('Voyage', { field: 'shelf_added', direction: 'desc' }, { shelfId: 's1' }))
+    ).toEqual(['d', 'b'])
+    const page = searchBooksPage(
+      'Voyage',
+      { limit: 1, offset: 0 },
+      { shelfId: 's1', sort: { field: 'shelf_added', direction: 'desc' } }
+    )
+    expect(ids(page.books)).toEqual(['d'])
+    expect(page.total).toBe(2)
   })
 })
