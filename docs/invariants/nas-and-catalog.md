@@ -43,6 +43,7 @@
 ```
 {library_root}/
   catalog.json                     # derived cache of all metadata.json (multi-machine)
+  shelves.json                     # canonical: every shelf and its members (see docs/invariants/shelves.md)
   books/
     {uuid}/
       {sanitized-title}.epub

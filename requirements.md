@@ -471,7 +471,7 @@ Launch migration wizard
 - [ ] iOS companion app (architecture staged)
 - [ ] Reading mode (in-app reader)
 - [ ] Goodreads sync
-- [ ] Custom collections (data model present, UI deferred)
+- [ ] Custom collections (data model present, UI deferred) — superseded by `docs/superpowers/specs/2026-09-27-bookshelves-design.md`; the unused `collections` / `book_collections` tables this line referred to were dropped in migration 006
 - [ ] REST API (stubbed, disabled)
 
 ---

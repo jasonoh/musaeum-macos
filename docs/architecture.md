@@ -93,6 +93,7 @@ Musaeum/
 │   │   ├── ipc/
 │   │   │   ├── handle.ts         # IPCResult wrapper — all handlers use this
 │   │   │   ├── library.ts        # book CRUD + import handlers
+│   │   │   ├── shelves.ts        # thin wrappers over services/shelves.ts
 │   │   │   ├── metadata.ts       # conflict queue, resolve, rehydrate
 │   │   │   ├── device.ts         # devices, transfers, Apple Books
 │   │   │   ├── nas.ts            # status, reconnect, choose library root
@@ -115,6 +116,8 @@ Musaeum/
 │   │   │   ├── migration.ts      # migration orchestration (node side)
 │   │   │   ├── catalog.ts        # catalog.json read/write/upsert + rebuild walk
 │   │   │   ├── library-sync.ts   # catalog ⇄ SQLite cache (adopt, refresh, rebuild)
+│   │   │   ├── shelves.ts        # every shelf write: one queue, file then cache
+│   │   │   ├── shelves-file.ts   # shelves.json parse (strict) + atomic write
 │   │   │   ├── settings.ts       # app_config reads/writes + validation
 │   │   │   ├── menu.ts           # native application menu (⌘, ⌘1 ⌘2)
 │   │   │   ├── api/              # the REST surface's logic, none of it in the socket

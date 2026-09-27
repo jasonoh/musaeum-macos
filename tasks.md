@@ -372,6 +372,11 @@ Three smaller consequences, all real:
 - [x] In-app reader — shipped 2026-08-13 for epub/mobi/azw3 (see the reader section above). **Annotations, highlights and bookmarks remain**, and are still Post-MVP: they need a storage decision before any UI.
 - [ ] iOS companion app (REST API activation; contract already staged) — **specified 2026-09-22**: `docs/superpowers/specs/2026-09-22-ios-companion-design.md`, indexed in _Specified, not scheduled_ above. The three forks are settled (reading is in v1, the client is a bespoke SwiftUI app in its own repo, the server is tailnet-only behind a bearer token); sign-off was granted 2026-09-22, and **all four server-side slices are now built, reviewed, fixed and committed** (the slice bullets below carry each one's record, its review's findings and its mutation campaign). What remains is the client itself — a bespoke SwiftUI app in its own repo, written against `docs/rest-api.md`.
 - [ ] Goodreads account sync
-- [ ] Collections UI (schema present, UI deferred)
+- [ ] Bookshelves — slice 1 (storage, service, IPC) landed 2026-09-27 (`docs/invariants/shelves.md`, `docs/superpowers/plans/2026-09-27-bookshelves-slice1.md`); slices 2–6 are open: shelf UI (sidebar, menu path, `BookDetail` chips, Undo), drag-and-drop, send shelf to Kindle, the REST contract, and the phone (`musaeum-ios`). Design: `docs/superpowers/specs/2026-09-27-bookshelves-design.md`, which also names what it deferred and the condition that would revive each:
+  - Smart shelves — revived by its own brainstorm.
+  - Manual order within a shelf — revived when _Date Added to Shelf_ stops being enough.
+  - Reordering shelves in the sidebar (alphabetical for now) — revived by a shelf count where alphabetical stops working.
+  - Shelf create/rename/delete from the phone (browse and add/remove only, per option B) — revived as additive `POST`/`PATCH`/`DELETE /api/shelves…` routes.
+  - Search honouring facet filters — pre-existing behaviour, not widened by shelves; revived if shelf-scoped search makes the asymmetry noticeable.
 - [ ] REST API (stub present at `electron/main/api/rest.ts`, disabled) — **specified 2026-09-22**, and it is no longer separate work: it is the iOS companion's four server-side slices, activated behind the same `rest_api_enabled` flag (`docs/superpowers/specs/2026-09-22-ios-companion-design.md`).
 - [ ] Auto-updater (pending distribution decision above)

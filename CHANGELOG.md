@@ -2,6 +2,12 @@
 
 All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https://keepachangelog.com); versions follow semver once the app is packaged.
 
+## [Unreleased] — 2026-09-27
+
+### Added
+
+- Shelves' storage, service and IPC — slice 1 of the bookshelves design (`docs/superpowers/specs/2026-09-27-bookshelves-design.md`). `{library_root}/shelves.json` is a new canonical file, mirrored into a SQLite cache (migration 006, which also drops the never-used `collections` / `book_collections` tables); `services/shelves.ts` is the one writer — file first, cache second, one serial queue, one write per operation; `window.Musaeum.shelves` exposes create/rename/delete/addBooks/removeBooks/restoreBooks/list/forBook over IPC. A shelf is a scope on the existing library reads (`shelfId` on `BookFilters`, `shelf_added` as a sort), not a new filter path. No UI yet — see `docs/invariants/shelves.md`.
+
 ## [Unreleased] — 2026-09-26
 
 ### Added

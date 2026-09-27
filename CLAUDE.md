@@ -24,6 +24,7 @@ This file loads at the start of every session and is the **index**, not the manu
 | `docs/invariants/reader.md` | the reader, foliate-js, `musaeum://book`, reading position |
 | `docs/invariants/refresh-feedback.md` | what a re-fetch reports, the toast surface, the bulk job |
 | `docs/invariants/files-and-deletion.md` | on-disk filenames, deletion, bulk actions, duplicate gating |
+| `docs/invariants/shelves.md` | `shelves.json`, the shelf service and cache, a shelf-scoped read or sort |
 | `docs/invariants/settings-and-editing.md` | `app_config`, persisted UI state, the metadata editor |
 | `docs/invariants/packaging-and-python.md` | `electron-builder.yml`, the Python bootstrap, the bundle |
 | `docs/invariants/menu-and-branding.md` | the native menu, the app name, the dock icon |

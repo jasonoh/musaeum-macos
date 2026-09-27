@@ -69,9 +69,40 @@ This is the canonical data contract (iOS companion depends on it). The writer is
 
 ---
 
+## shelves.json (library-level, stored on NAS)
+
+One file per library, not one per book — `{library_root}/shelves.json`, canonical the way `metadata.json` is canonical, and never derived (`docs/invariants/shelves.md`). Written only by `electron/main/services/shelves.ts`; read by `services/shelves-file.ts`.
+
+```json
+{
+  "version": 1,
+  "shelves": [
+    {
+      "id": "uuid-v4",
+      "name": "To Read",
+      "kind": "manual",
+      "created_at": "2026-09-27T10:00:00.000Z",
+      "updated_at": "2026-09-27T10:05:00.000Z",
+      "books": [{ "id": "book-uuid", "added_at": "2026-09-27T10:05:00.000Z" }]
+    }
+  ]
+}
+```
+
+- `version` — the file format's own version, independent of the REST `apiVersion`. A file whose `version` this build does not recognize is treated as unreadable and never rewritten in this build's shape.
+- `shelves[].id` — a UUID, stable for the shelf's life.
+- `shelves[].kind` — `"manual"` for every shelf this build creates or edits. A kind this build does not know (a future smart shelf) is preserved on every write exactly as read, never edited or dropped.
+- `shelves[].name` — trimmed, non-empty, at most 80 characters, unique case-insensitively among manual shelves.
+- `shelves[].created_at` / `updated_at` — ISO 8601; `updated_at` moves on a rename or a membership change, never on a no-op.
+- `shelves[].books[].id` / `added_at` — one row per member, `added_at` set when the book joined and preserved by an Undo (`restoreBooks`) so the book returns to its place under *Date Added to Shelf*.
+
+A hand-edited or corrupted file — invalid JSON, or a manual shelf missing a required field — makes the **whole file** unreadable rather than dropping the one bad entry: every mutation refuses with a named sentence until it is repaired by hand, because silently discarding an entry on the next write would destroy it. See `docs/invariants/shelves.md` for the full reasoning (storage choice, the write queue, adoption, and deletion's residue).
+
+---
+
 ## SQLite Schema
 
-Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the original spec plus: FTS5 sync triggers (insert/update/delete), indices on `isbn_13` / series / author, `device_history.error` column, and a partial index on unresolved conflicts. Schema versioning via `PRAGMA user_version`; new migrations are appended to the `MIGRATIONS` array in `services/db.ts`. `device_history.book_id` lost its `REFERENCES books(id)` in migration 005 — history outlives the book it was sent for, and the constraint made a sent book undeletable (`docs/invariants/files-and-deletion.md`).
+Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the original spec plus: FTS5 sync triggers (insert/update/delete), indices on `isbn_13` / series / author, `device_history.error` column, and a partial index on unresolved conflicts. Schema versioning via `PRAGMA user_version`; new migrations are appended to the `MIGRATIONS` array in `services/db.ts`. `device_history.book_id` lost its `REFERENCES books(id)` in migration 005 — history outlives the book it was sent for, and the constraint made a sent book undeletable (`docs/invariants/files-and-deletion.md`). Migration 006 dropped the never-used `collections` / `book_collections` tables — guarded to fail the migration rather than discard rows if either ever held any — and added `shelves` / `shelf_books` as a cache of `shelves.json`, with no foreign keys, because a member may name a book this machine's catalog does not hold yet and the rows are replaced wholesale on every write and on adoption (`docs/invariants/shelves.md`).
 
 ```sql
 CREATE TABLE books (
@@ -111,17 +142,24 @@ CREATE VIRTUAL TABLE books_fts USING fts5(
   content='books', content_rowid='rowid'
 );
 
-CREATE TABLE collections (
-  id    TEXT PRIMARY KEY,
-  name  TEXT NOT NULL,
-  color TEXT
+-- shelves / shelf_books replace the never-used collections / book_collections
+-- tables (migration 006) — a cache of shelves.json, no foreign keys.
+CREATE TABLE shelves (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  kind        TEXT NOT NULL DEFAULT 'manual',
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
 );
 
-CREATE TABLE book_collections (
-  book_id       TEXT REFERENCES books(id),
-  collection_id TEXT REFERENCES collections(id),
-  PRIMARY KEY (book_id, collection_id)
+CREATE TABLE shelf_books (
+  shelf_id  TEXT NOT NULL,
+  book_id   TEXT NOT NULL,
+  added_at  TEXT NOT NULL,
+  PRIMARY KEY (shelf_id, book_id)
 );
+
+CREATE INDEX idx_shelf_books_book ON shelf_books(book_id);
 
 CREATE TABLE device_history (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,16 +240,27 @@ interface MusaeumAPI {
   library: {
     getBooks(filters?: BookFilters): Promise<Book[]>
     getBook(id: string): Promise<Book>
-    searchBooks(query: string, sort?: BookSort): Promise<Book[]>  // sort ?? rank
+    searchBooks(query: string, sort?: BookSort, scope?: ShelfScope): Promise<Book[]>  // sort ?? rank; scope narrows to one shelf
     updateBook(id: string, updates: Partial<Book>): Promise<void>
     getFieldOverrides(id: string): Promise<HydratedField[]>   // fields a fetch must not touch
     releaseFieldOverride(id: string, field: HydratedField): Promise<HydratedField[]>
     deleteBook(id: string): Promise<void>
     deleteFormats(id: string, formats: BookFormat[]): Promise<{ bookDeleted: boolean }>
     deleteBooks(ids: string[]): Promise<BulkDeleteResult>  // batched; partial-tolerant
-    getFacets(): Promise<LibraryFacets>          // filter sidebar counts
+    getFacets(scope?: ShelfScope): Promise<LibraryFacets>  // filter sidebar counts; one shelf's, when scoped
     refreshLibrary(): Promise<{ books: number }>   // re-read catalog.json into cache
     rebuildCatalog(): Promise<{ books: number }>   // recovery: walk metadata.json files
+  }
+  shelves: {                                     // user-made shelves; see docs/invariants/shelves.md
+    list(): Promise<ShelfSummary[]>              // alphabetical, case-insensitive
+    forBook(bookId: string): Promise<ShelfSummary[]>
+    create(name: string, bookIds?: string[]): Promise<ShelfSummary>  // names: trimmed, ≤80 chars, unique
+    rename(id: string, name: string): Promise<void>
+    delete(id: string): Promise<void>            // books stay in the library
+    addBooks(id: string, bookIds: string[]): Promise<ShelfAddResult>  // { added, alreadyOn }
+    removeBooks(id: string, bookIds: string[]): Promise<ShelfMembership[]>  // for an Undo
+    restoreBooks(id: string, memberships: ShelfMembership[]): Promise<void>
+    onChanged(cb): Unsubscribe                   // shelf or membership changed
   }
   import: {
     addFiles(filePaths: string[]): Promise<ImportResult[]>
