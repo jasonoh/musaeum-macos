@@ -230,3 +230,85 @@ export async function restoreBooks(id: string, memberships: ShelfMembership[]): 
     return { result: undefined, changed: restored > 0 }
   })
 }
+
+export async function rename(id: string, name: string): Promise<void> {
+  const clean = cleanName(name)
+  return mutate((file, now) => {
+    const shelf = findShelf(file, id)
+    assertNameFree(file, clean, id)
+    if (shelf.name === clean) return { result: undefined, changed: false }
+    shelf.name = clean
+    shelf.updated_at = now
+    return { result: undefined, changed: true }
+  })
+}
+
+/** Remove a shelf. Its books stay in the library — a shelf is a list, not a container. */
+export async function deleteShelf(id: string): Promise<void> {
+  return mutate((file) => {
+    findShelf(file, id)
+    file.shelves = file.shelves.filter((s) => !(isManualShelf(s) && s.id === id))
+    return { result: undefined, changed: true }
+  })
+}
+
+/**
+ * Take deleted books off every shelf — **one** write for the whole batch, never
+ * one per book (D5). No write at all when no shelf holds any of them, so a
+ * library that has never used shelves never gets a `shelves.json` from a
+ * delete. May reject; `book-delete.ts` logs and swallows that, because the book
+ * is already gone (invariant 12).
+ */
+export async function pruneBooks(bookIds: string[]): Promise<void> {
+  if (bookIds.length === 0) return
+  return mutate((file, now) => {
+    const gone = new Set(bookIds)
+    let changed = false
+    for (const shelf of file.shelves) {
+      if (!isManualShelf(shelf)) continue
+      const kept = shelf.books.filter((m) => !gone.has(m.id))
+      if (kept.length === shelf.books.length) continue
+      shelf.books = kept
+      shelf.updated_at = now
+      changed = true
+    }
+    return { result: undefined, changed }
+  })
+}
+
+// Adoption logs an unreadable file once a session, not on every connect and Reload
+let reportedUnreadable = false
+
+/**
+ * Land `shelves.json` in the cache — on connect and on Reload, after the book
+ * swap (D4). Through the same queue as the writes: an adoption that read the
+ * file just before a write landed must not replace the cache after it and undo
+ * it.
+ *
+ * - A missing file is a library with no shelves, and **empties** the cache — a
+ *   root switched to another library must not keep showing the last one's.
+ * - An unreadable file leaves the cache as it was: browsing continues from the
+ *   last good view, and the writes refuse until it is repaired.
+ * - Never rejects: a shelf problem must not fail a catalog sync.
+ */
+export function adopt(root: string): Promise<void> {
+  return enqueue(async () => {
+    try {
+      const read = await readShelvesFile(root)
+      if (read.state === 'invalid') {
+        if (!reportedUnreadable) {
+          console.error(`[shelves] ${SHELVES_UNREADABLE}; keeping the last adopted shelves`)
+          reportedUnreadable = true
+        }
+        return
+      }
+      db.replaceAllShelves(read.state === 'ok' ? read.file : emptyShelvesFile())
+      broadcast('shelvesChanged')
+    } catch (err) {
+      console.error(
+        '[shelves] could not read shelves.json — keeping the last adopted shelves:',
+        err
+      )
+    }
+  })
+}

@@ -7,9 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ManualShelfEntry, ShelvesFile } from '@shared/shelf.types'
 import { makeBook } from '../../../test/helpers/book'
 import { closeDb, getBooks, insertBook } from './db'
+import { subscribe } from './events'
 import * as nas from './nas-manager'
 import * as shelves from './shelves'
-import { readShelvesFile, shelvesPath } from './shelves-file'
+import { readShelvesFile, shelvesPath, writeShelvesFile } from './shelves-file'
 
 let root: string
 
@@ -192,5 +193,148 @@ describe('names (bookshelves D3, AC10)', () => {
       'There is already a shelf named “To Read”.'
     )
     expect(shelves.list().map((s) => s.name)).toEqual(['To Read'])
+  })
+})
+
+const AT = '2026-09-01T00:00:00.000Z'
+
+/** Every mutation, pointed at shelf `id` — for the refusals every one of them shares. */
+function everyMutation(id: string): [string, () => Promise<unknown>][] {
+  return [
+    ['create', () => shelves.create('Brand New')],
+    ['rename', () => shelves.rename(id, 'Renamed')],
+    ['deleteShelf', () => shelves.deleteShelf(id)],
+    ['addBooks', () => shelves.addBooks(id, ['c'])],
+    ['removeBooks', () => shelves.removeBooks(id, ['a'])],
+    ['restoreBooks', () => shelves.restoreBooks(id, [{ bookId: 'b', addedAt: AT }])],
+    ['pruneBooks', () => shelves.pruneBooks(['a'])]
+  ]
+}
+
+describe('rename and delete', () => {
+  it('lets a shelf take its own name in another case, and refuses another shelf’s (AC10)', async () => {
+    const shelf = await shelves.create('To Read')
+    const other = await shelves.create('Later')
+    await shelves.rename(shelf.id, 'TO READ')
+    expect(shelves.list().find((s) => s.id === shelf.id)?.name).toBe('TO READ')
+    await expect(shelves.rename(other.id, '  to read ')).rejects.toThrow(
+      'There is already a shelf named “TO READ”.'
+    )
+  })
+
+  it('deletes the shelf and leaves every book in the library', async () => {
+    const shelf = await shelves.create('To Read', ['a', 'b'])
+    await shelves.deleteShelf(shelf.id)
+    expect(shelves.list()).toEqual([])
+    expect((await onDisk()).shelves).toEqual([])
+    expect(getBooks().map((b) => b.id)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('refusals every mutation shares', () => {
+  it.each([
+    ['invalid JSON', 'not json{'],
+    ['an unknown version', JSON.stringify({ version: 2, shelves: [] })]
+  ])(
+    'refuses every mutation over %s, and never rewrites the file (AC6, AC9)',
+    async (_label, text) => {
+      await fs.writeFile(shelvesPath(root), text, 'utf8')
+      for (const [name, call] of everyMutation('s1')) {
+        await expect(call(), name).rejects.toThrow(shelves.SHELVES_UNREADABLE)
+      }
+      expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe(text)
+    }
+  )
+
+  it('refuses every change to a shelf deleted on another Mac, drops it from the cache, and leaves the file alone (AC8)', async () => {
+    const shelf = await shelves.create('Doomed', ['a'])
+    await writeShelvesFile(root, { version: 1, shelves: [] }) // another Mac deleted it
+    const before = await fs.readFile(shelvesPath(root), 'utf8')
+    const events: string[] = []
+    const unsubscribe = subscribe((event) => {
+      events.push(event)
+    })
+
+    const onShelf = everyMutation(shelf.id).filter(([name]) =>
+      ['rename', 'deleteShelf', 'addBooks', 'removeBooks', 'restoreBooks'].includes(name)
+    )
+    for (const [name, call] of onShelf) {
+      await expect(call(), name).rejects.toThrow(shelves.SHELF_GONE)
+    }
+    unsubscribe()
+
+    expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe(before)
+    expect(shelves.list()).toEqual([])
+    expect(events.filter((e) => e === 'shelvesChanged')).toHaveLength(5)
+  })
+
+  it('refuses every mutation while the library is unreachable, changing neither file nor cache (AC15)', async () => {
+    const shelf = await shelves.create('To Read', ['a'])
+    const before = await fs.readFile(shelvesPath(root), 'utf8')
+    const cached = shelves.list()
+    await nas.setLibraryRoot(join(root, 'does-not-exist'))
+
+    for (const [name, call] of everyMutation(shelf.id)) {
+      await expect(call(), name).rejects.toThrow(/missing|offline/)
+    }
+    expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe(before)
+    expect(shelves.list()).toEqual(cached)
+  })
+})
+
+describe('pruneBooks (bookshelves D5)', () => {
+  it('takes books off every shelf in one write', async () => {
+    const one = await shelves.create('One', ['a', 'b'])
+    const two = await shelves.create('Two', ['b', 'c'])
+    const writes = countWrites()
+    await shelves.pruneBooks(['a', 'b'])
+    expect(writes()).toBe(1)
+    const disk = await onDisk()
+    expect(manualOnDisk(disk, one.id).books).toEqual([])
+    expect(manualOnDisk(disk, two.id).books.map((m) => m.id)).toEqual(['c'])
+  })
+
+  it('writes nothing when no shelf holds the books, and creates no file where there was none', async () => {
+    const writes = countWrites()
+    await shelves.pruneBooks(['a'])
+    expect(writes()).toBe(0)
+    await expect(fs.access(shelvesPath(root))).rejects.toThrow()
+  })
+})
+
+describe('adopt (bookshelves D4)', () => {
+  it('skips a kind it does not know for the cache, and a later write carries it back unchanged (AC7)', async () => {
+    const smart = {
+      id: 'smart-1',
+      kind: 'smart',
+      name: 'Unread SF',
+      rule: { tags: ['sf'], readStatus: 'unread' },
+      future: [1, 2, 3]
+    }
+    const manual: ManualShelfEntry = {
+      id: 'manual-1',
+      name: 'To Read',
+      kind: 'manual',
+      created_at: AT,
+      updated_at: AT,
+      books: []
+    }
+    await writeShelvesFile(root, { version: 1, shelves: [smart, manual] })
+    await shelves.adopt(root)
+    expect(shelves.list().map((s) => s.id)).toEqual(['manual-1'])
+
+    await shelves.addBooks('manual-1', ['a'])
+    const carried = (await onDisk()).shelves.find((s) => s.id === 'smart-1')
+    expect(JSON.stringify(carried)).toBe(JSON.stringify(smart))
+  })
+
+  it('never rejects, and keeps the cache when the file is unreadable', async () => {
+    await shelves.create('To Read', ['a'])
+    const cached = shelves.list()
+    await fs.writeFile(shelvesPath(root), 'not json{', 'utf8')
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await expect(shelves.adopt(root)).resolves.toBeUndefined()
+    expect(shelves.list()).toEqual(cached)
+    expect(error).toHaveBeenCalled()
   })
 })
