@@ -2,6 +2,7 @@ import { dialog } from 'electron'
 import type { Book, BookFilters, BookFormat, BookSort, DuplicateDecision } from '@shared/book.types'
 import { bookFileFilter } from '@shared/book.types'
 import type { HydratedField } from '@shared/metadata.types'
+import type { ShelfScope } from '@shared/shelf.types'
 import * as bookDelete from '../services/book-delete'
 import * as db from '../services/db'
 import * as fieldOverrides from '../services/field-overrides'
@@ -28,9 +29,11 @@ export function registerLibraryHandlers(): void {
     fieldOverrides.release(id, field)
   )
 
-  handle('library:searchBooks', (query: string, sort?: BookSort) => db.searchBooks(query, sort))
+  handle('library:searchBooks', (query: string, sort?: BookSort, scope?: ShelfScope) =>
+    db.searchBooks(query, sort, scope)
+  )
 
-  handle('library:getFacets', () => db.getFacets())
+  handle('library:getFacets', (scope?: ShelfScope) => db.getFacets(scope))
 
   handle('library:refreshLibrary', () => librarySync.refreshLibrary())
   handle('library:rebuildCatalog', () => librarySync.rebuildCatalog())

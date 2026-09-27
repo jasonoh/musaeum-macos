@@ -40,6 +40,7 @@ import type {
   PythonEnvProgress,
   SettingsView
 } from './settings.types'
+import type { ShelfAddResult, ShelfMembership, ShelfScope, ShelfSummary } from './shelf.types'
 import type { ThemeImportResult, ThemeView } from './theme.types'
 
 /**
@@ -101,8 +102,11 @@ export interface MusaeumAPI {
   library: {
     getBooks(filters?: BookFilters): Promise<Book[]>
     getBook(id: string): Promise<Book>
-    /** Sorted by `sort` when given, otherwise by FTS relevance rank. */
-    searchBooks(query: string, sort?: BookSort): Promise<Book[]>
+    /**
+     * Sorted by `sort` when given, otherwise by FTS relevance rank. A `scope`
+     * searches inside one shelf; the facet filters are not applied to a search.
+     */
+    searchBooks(query: string, sort?: BookSort, scope?: ShelfScope): Promise<Book[]>
     updateBook(id: string, updates: Partial<Book>): Promise<void>
     /** Fields the user has set, which a metadata fetch must not touch. */
     getFieldOverrides(id: string): Promise<HydratedField[]>
@@ -119,7 +123,8 @@ export interface MusaeumAPI {
      * outright — `bookDeleted` tells the caller that happened.
      */
     deleteFormats(id: string, formats: BookFormat[]): Promise<{ bookDeleted: boolean }>
-    getFacets(): Promise<LibraryFacets>
+    /** The filter sidebar's counts — one shelf's, when a `scope` is given. */
+    getFacets(scope?: ShelfScope): Promise<LibraryFacets>
     /**
      * Re-read catalog.json into the local cache. Falls back to a full rebuild
      * when the catalog can't be read — the same call, minutes instead of
@@ -130,6 +135,30 @@ export interface MusaeumAPI {
     rebuildCatalog(): Promise<CatalogSyncOutcome>
     /** Stop a running rebuild; nothing is written. A no-op when none is running. */
     cancelRefresh(): Promise<void>
+  }
+
+  /**
+   * User-made shelves (bookshelves D6). Every write lands in
+   * `{library_root}/shelves.json` first and the cache second, so each rejects
+   * while the library is unreachable, while shelves.json is unreadable, and for
+   * a shelf deleted on another Mac — with main's sentence as the message.
+   */
+  shelves: {
+    /** Alphabetical, case-insensitive. `count` counts only books the library holds. */
+    list(): Promise<ShelfSummary[]>
+    forBook(bookId: string): Promise<ShelfSummary[]>
+    /** Names are trimmed, non-empty, ≤ 80 characters and unique case-insensitively. */
+    create(name: string, bookIds?: string[]): Promise<ShelfSummary>
+    rename(id: string, name: string): Promise<void>
+    /** Removes the shelf; its books stay in the library. */
+    delete(id: string): Promise<void>
+    /** Idempotent: a book already on the shelf keeps its place and counts as `alreadyOn`. */
+    addBooks(id: string, bookIds: string[]): Promise<ShelfAddResult>
+    /** Resolves to what was removed, timestamps included — hand it to `restoreBooks` to Undo. */
+    removeBooks(id: string, bookIds: string[]): Promise<ShelfMembership[]>
+    restoreBooks(id: string, memberships: ShelfMembership[]): Promise<void>
+    /** Shelves or membership changed — here, over REST, or by adoption. */
+    onChanged(cb: () => void): Unsubscribe
   }
 
   import: {

@@ -14,6 +14,7 @@ import { registerMigrationHandlers } from './ipc/migration'
 import { registerNASHandlers } from './ipc/nas'
 import { registerReaderHandlers } from './ipc/reader'
 import { registerSettingsHandlers } from './ipc/settings'
+import { registerShelvesHandlers } from './ipc/shelves'
 import { registerThemeHandlers } from './ipc/theme'
 import { resolveBookFile, resolveCoverFile } from './services/book-bytes'
 import { closeDb } from './services/db'
@@ -188,6 +189,7 @@ app.whenReady().then(() => {
   registerMigrationHandlers()
   registerFileHandlers()
   registerSettingsHandlers()
+  registerShelvesHandlers()
   registerReaderHandlers()
   registerThemeHandlers()
   registerAiHandlers()

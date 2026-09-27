@@ -19,17 +19,28 @@ const api: MusaeumAPI = {
   library: {
     getBooks: (filters) => invoke('library:getBooks', filters),
     getBook: (id) => invoke('library:getBook', id),
-    searchBooks: (query, sort) => invoke('library:searchBooks', query, sort),
+    searchBooks: (query, sort, scope) => invoke('library:searchBooks', query, sort, scope),
     updateBook: (id, updates) => invoke('library:updateBook', id, updates),
     getFieldOverrides: (id) => invoke('library:getFieldOverrides', id),
     releaseFieldOverride: (id, field) => invoke('library:releaseFieldOverride', id, field),
     deleteBook: (id) => invoke('library:deleteBook', id),
     deleteBooks: (ids) => invoke('library:deleteBooks', ids),
     deleteFormats: (id, formats) => invoke('library:deleteFormats', id, formats),
-    getFacets: () => invoke('library:getFacets'),
+    getFacets: (scope) => invoke('library:getFacets', scope),
     refreshLibrary: () => invoke('library:refreshLibrary'),
     rebuildCatalog: () => invoke('library:rebuildCatalog'),
     cancelRefresh: () => invoke('library:cancelRefresh')
+  },
+  shelves: {
+    list: () => invoke('shelves:list'),
+    forBook: (bookId) => invoke('shelves:forBook', bookId),
+    create: (name, bookIds) => invoke('shelves:create', name, bookIds),
+    rename: (id, name) => invoke('shelves:rename', id, name),
+    delete: (id) => invoke('shelves:delete', id),
+    addBooks: (id, bookIds) => invoke('shelves:addBooks', id, bookIds),
+    removeBooks: (id, bookIds) => invoke('shelves:removeBooks', id, bookIds),
+    restoreBooks: (id, memberships) => invoke('shelves:restoreBooks', id, memberships),
+    onChanged: (cb) => listen(EVENT_CHANNELS.shelvesChanged, () => cb())
   },
   import: {
     addFiles: (filePaths) => invoke('import:addFiles', filePaths),
