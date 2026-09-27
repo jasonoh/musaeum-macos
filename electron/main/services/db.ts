@@ -17,8 +17,16 @@ import migration002 from '../schema/migrations/002_sort_keys.sql?raw'
 import migration003 from '../schema/migrations/003_reading_state.sql?raw'
 import migration004 from '../schema/migrations/004_device_file_identity.sql?raw'
 import migration005 from '../schema/migrations/005_device_history_outlives_book.sql?raw'
+import migration006 from '../schema/migrations/006_shelves.sql?raw'
 
-const MIGRATIONS: string[] = [migration001, migration002, migration003, migration004, migration005]
+const MIGRATIONS: string[] = [
+  migration001,
+  migration002,
+  migration003,
+  migration004,
+  migration005,
+  migration006
+]
 
 let db: Database.Database | null = null
 
@@ -601,7 +609,7 @@ export function touchReadingState(id: string, updatedAt: string): void {
 
 /**
  * Remove a book's cache row. Dependent rows go with it — a conflict or a
- * collection membership is about the book and means nothing without it — with
+ * shelf membership is about the book and means nothing without it — with
  * one deliberate exception: `device_history` outlives the book, because it is
  * a log of what this machine sent rather than a child of the row (migration
  * 005; `replaceAllBooks` honours the same rule).
@@ -609,7 +617,7 @@ export function touchReadingState(id: string, updatedAt: string): void {
 export function deleteBook(id: string): void {
   const d = getDb()
   d.transaction(() => {
-    d.prepare('DELETE FROM book_collections WHERE book_id = ?').run(id)
+    d.prepare('DELETE FROM shelf_books WHERE book_id = ?').run(id)
     d.prepare('DELETE FROM metadata_conflicts WHERE book_id = ?').run(id)
     d.prepare('DELETE FROM books WHERE id = ?').run(id)
   })()
@@ -656,8 +664,8 @@ export function findByTitleAuthor(title: string, author: string | null): Book | 
  * Replace the entire local cache with the catalog's view of the library.
  * device_history may reference books that no longer exist (they were sent
  * from this machine, then deleted elsewhere) — history is kept, so FKs are
- * disabled for the swap. Conflict/collection rows for vanished books are
- * pruned; FTS follows via the existing triggers.
+ * disabled for the swap. Conflict and shelf-membership rows for vanished
+ * books are pruned; FTS follows via the existing triggers.
  */
 export function replaceAllBooks(books: Book[]): void {
   const d = getDb()
@@ -667,7 +675,7 @@ export function replaceAllBooks(books: Book[]): void {
       d.prepare('DELETE FROM books').run()
       for (const b of books) insertBook(b)
       d.prepare('DELETE FROM metadata_conflicts WHERE book_id NOT IN (SELECT id FROM books)').run()
-      d.prepare('DELETE FROM book_collections WHERE book_id NOT IN (SELECT id FROM books)').run()
+      d.prepare('DELETE FROM shelf_books WHERE book_id NOT IN (SELECT id FROM books)').run()
     })()
   } finally {
     d.pragma('foreign_keys = ON')
