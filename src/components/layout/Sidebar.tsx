@@ -39,10 +39,19 @@ export function Sidebar() {
           The box, not the caps, is what can be centred: a line box centres its
           leading, and text paints on a whole-pixel grid here (measured — `top`
           anywhere from 25.5 to 26.25 paints identically, +1px moves a full
-          pixel), so the caps' own half pixel is not reachable from CSS. */}
+          pixel), so the caps' own half pixel is not reachable from CSS.
+
+          The finish is the phone's wordmark (musaeum-ios `Wordmark.swift`):
+          Roman, to match the icon's hairline M, embossed — a gold ramp face, a
+          lit top edge, a dark lip below. The ramp's stops sit on the caps'
+          band of the 1.5 line box (30–72%), not the box's full height: spread
+          over the box, the caps drew only its dark lower half and read dimmer
+          than the flat gold they replaced. The edges are `drop-shadow` filters,
+          not `text-shadow`: under `bg-clip-text` the glyphs are transparent and
+          a text-shadow would show through them. */}
       <div className="app-drag relative h-14 shrink-0">
         <h1
-          className="absolute -translate-y-1/2 translate-x-[0.13em] text-center font-display text-[15px] font-semibold tracking-[0.18em] text-gold-400"
+          className="absolute -translate-y-1/2 translate-x-[0.13em] bg-[linear-gradient(to_bottom,rgb(var(--gold-300))_30%,rgb(var(--gold-400))_52%,rgb(var(--gold-500))_72%)] bg-clip-text text-center font-display text-[15px] font-normal tracking-[0.18em] text-transparent [filter:drop-shadow(0_-0.5px_0_rgb(var(--gold-300)/0.55))_drop-shadow(0_1px_0.6px_rgb(var(--scrim)/0.7))]"
           style={{ left: TRAFFIC_LIGHT_RIGHT_EDGE, right: 0, top: TRAFFIC_LIGHT_CENTER_Y }}
         >
           MUSAEUM
