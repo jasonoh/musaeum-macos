@@ -7,9 +7,11 @@ import { mobiFile } from '../../../test/helpers/mobi'
 import {
   COVER_MARKER_SUFFIX,
   deviceCoverSize,
+  fillDeviceCovers,
   setCoverEncoderForTests,
   thumbnailsDir,
-  writeDeviceCover
+  writeDeviceCover,
+  type DeviceCoverOwner
 } from './device-covers'
 
 /**
@@ -233,5 +235,276 @@ describe('a device that will not take the write', () => {
     if (result.ok) throw new Error(`expected a refusal, got ${result.name}`)
     expect(result.kind).toBe('failed')
     expect(result.reason).toMatch(/ENOTDIR|EEXIST|not a directory/)
+  })
+})
+
+/**
+ * The connect pass: the entries for the files a device already holds.
+ *
+ * Everything here is real except the codec — the cache is a real directory, the
+ * names are the shipped rule, and the owners are shaped exactly as
+ * `deviceFileOwners` produces them (that view is decided in
+ * `device-manager.test.ts`; this file decides what the pass does with it). The
+ * one thing this suite *cannot* decide is whether a jacket read off the share
+ * produces the right pixels; that is `scripts/device-cover-probe.ts`, which runs
+ * the shipped writer under a real Electron.
+ */
+describe('the connect pass', () => {
+  const OTHER_UUID = '1b3e27dc-8ba1-4c74-9920-838a02c3c444'
+
+  /** An owner row as `deviceFileOwners` produces one. */
+  function owner(
+    path: string,
+    bookId: string,
+    uuid: string | null = UUID,
+    cdetype: string | null = CDETYPE
+  ): DeviceCoverOwner {
+    return { path, bookId, uuid, cdetype }
+  }
+
+  /** The cache as a sorted list, so an ordering fact cannot hide a wrong set. */
+  async function cache(): Promise<string[]> {
+    return (await entries()).sort()
+  }
+
+  it('writes one entry per file, and reads the book’s jacket once (AC11)', async () => {
+    // One book, two formats: two identities, so two entries — and one jacket,
+    // because the share's latency is the pass's cost rather than the device's
+    const cover = vi.fn(() => coverPath)
+
+    const report = await fillDeviceCovers({
+      mountPath: mount,
+      owners: [
+        owner('/Volumes/Kindle/documents/Fixture Codex.azw3', 'a', UUID),
+        owner('/Volumes/Kindle/documents/Fixture Codex.mobi', 'a', OTHER_UUID)
+      ],
+      coverPathFor: cover
+    })
+
+    expect(await cache()).toEqual([NAME, OTHER_NAME].sort())
+    expect(report).toEqual({
+      written: 2,
+      present: 0,
+      unnamed: 0,
+      coverless: 0,
+      failed: 0,
+      jackets: 1
+    })
+    expect(cover).toHaveBeenCalledTimes(1)
+    expect(cover).toHaveBeenCalledWith('a')
+  })
+
+  it('leaves the entries the device already has alone, and counts them (AC15)', async () => {
+    const input = {
+      mountPath: mount,
+      owners: [
+        owner('/Volumes/Kindle/documents/Fixture Codex.azw3', 'a', UUID),
+        owner('/Volumes/Kindle/documents/Other Codex.mobi', 'b', OTHER_UUID)
+      ],
+      coverPathFor: () => coverPath
+    }
+
+    const first = await fillDeviceCovers(input)
+    expect(first.written).toBe(2)
+
+    const second = await fillDeviceCovers(input)
+
+    // Nothing rewritten, and no jacket read the second time: what the device can
+    // already show is decided by one `readdir`, before any book is opened
+    expect(second).toEqual({
+      written: 0,
+      present: 2,
+      unnamed: 0,
+      coverless: 0,
+      failed: 0,
+      jackets: 0
+    })
+    expect(await cache()).toEqual([NAME, OTHER_NAME].sort())
+  })
+
+  it('deletes the marker of the entry it is writing, and nothing else (AC14)', async () => {
+    // This is the app's second path that deletes files on a mounted device, and
+    // the first one already deleted a real file off a real Kindle from a passing
+    // test run: the pass inherits the send's single-name rule, and a decoy for an
+    // entry nobody is writing has to survive it
+    await fs.mkdir(thumbnailsDir(mount), { recursive: true })
+    const surviving = [
+      'someone_else_EBOK_portrait.jpg',
+      `${OTHER_NAME}${COVER_MARKER_SUFFIX}`,
+      'a-foreign-file'
+    ]
+    for (const name of surviving) await fs.writeFile(join(thumbnailsDir(mount), name), 'x')
+    // ...and a marker for *our* entry, which is the one deletion the pass makes
+    await fs.writeFile(join(thumbnailsDir(mount), NAME + COVER_MARKER_SUFFIX), '')
+
+    const report = await fillDeviceCovers({
+      mountPath: mount,
+      owners: [owner('/Volumes/Kindle/documents/Fixture Codex.azw3', 'a')],
+      coverPathFor: () => coverPath
+    })
+
+    expect(report.written).toBe(1)
+    expect(await cache()).toEqual([...surviving, NAME].sort())
+  })
+
+  it('gives no entry to a file two books both claim (AC17a)', async () => {
+    // The file carries a name one book answers to and a title inside it that
+    // another does — both are true, and choosing between their jackets is
+    // choosing which book wears the wrong one
+    const cover = vi.fn(() => coverPath)
+
+    const report = await fillDeviceCovers({
+      mountPath: mount,
+      owners: [
+        owner('/Volumes/Kindle/documents/Loose Ends.azw3', 'a'),
+        owner('/Volumes/Kindle/documents/Loose Ends.azw3', 'b')
+      ],
+      coverPathFor: cover
+    })
+
+    expect(await cache()).toEqual([])
+    expect(report).toEqual({
+      written: 0,
+      present: 0,
+      unnamed: 1,
+      coverless: 0,
+      failed: 0,
+      jackets: 0
+    })
+    expect(cover).not.toHaveBeenCalled()
+  })
+
+  it('needs both halves of the identity to name an entry with (AC11)', async () => {
+    // Every real file measured carries both (4/4 on 2026-09-26), so this is the
+    // defensive arm: a name the device would never look up is not written
+    const report = await fillDeviceCovers({
+      mountPath: mount,
+      owners: [
+        owner('/Volumes/Kindle/documents/No Uuid.azw3', 'a', null, CDETYPE),
+        owner('/Volumes/Kindle/documents/No Cdetype.azw3', 'b', UUID, null)
+      ],
+      coverPathFor: () => coverPath
+    })
+
+    expect(await cache()).toEqual([])
+    expect(report).toEqual({
+      written: 0,
+      present: 0,
+      unnamed: 2,
+      coverless: 0,
+      failed: 0,
+      jackets: 0
+    })
+  })
+
+  it('counts a book with no jacket and still writes its neighbour’s (AC16)', async () => {
+    const report = await fillDeviceCovers({
+      mountPath: mount,
+      owners: [
+        owner('/Volumes/Kindle/documents/No Jacket.azw3', 'a', UUID),
+        owner('/Volumes/Kindle/documents/With Jacket.azw3', 'b', OTHER_UUID)
+      ],
+      coverPathFor: (bookId) => (bookId === 'b' ? coverPath : null)
+    })
+
+    expect(await cache()).toEqual([OTHER_NAME])
+    expect(report).toEqual({
+      written: 1,
+      present: 0,
+      unnamed: 0,
+      coverless: 1,
+      failed: 0,
+      jackets: 1
+    })
+  })
+
+  it('counts a jacket the codec refuses, warns about it once, and throws nothing (AC16)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    setCoverEncoderForTests(() => {
+      throw new Error('not an image')
+    })
+
+    const report = await fillDeviceCovers({
+      mountPath: mount,
+      owners: [owner('/Volumes/Kindle/documents/Fixture Codex.azw3', 'a')],
+      coverPathFor: () => coverPath
+    })
+
+    expect(report).toEqual({
+      written: 0,
+      present: 0,
+      unnamed: 0,
+      coverless: 1,
+      failed: 0,
+      jackets: 0
+    })
+    expect(await cache()).toEqual([])
+    // The one surprise in this path is worth a line; a book with no jacket is not
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('cannot encode the cover'),
+      expect.anything()
+    )
+  })
+
+  it('reports a device that refuses the writes, and leaves no partial (AC16)', async () => {
+    await fs.writeFile(join(mount, 'system'), 'not a directory')
+
+    const report = await fillDeviceCovers({
+      mountPath: mount,
+      owners: [
+        owner('/Volumes/Kindle/documents/Fixture Codex.azw3', 'a', UUID),
+        owner('/Volumes/Kindle/documents/Other Codex.mobi', 'b', OTHER_UUID)
+      ],
+      coverPathFor: () => coverPath
+    })
+
+    expect(report).toEqual({
+      written: 0,
+      present: 0,
+      unnamed: 0,
+      coverless: 0,
+      failed: 2,
+      jackets: 2
+    })
+    expect(await cache()).toEqual([])
+  })
+
+  it('writes into the mount path it is handed, and that is the whole of its guard (AC16)', async () => {
+    // **The device-went-away case, at this layer, is not what the design
+    // assumed.** `mkdir(recursive)` will *create* the chain under any parent the
+    // filesystem lets it write, so a pass handed the path of a departed mount
+    // writes into a directory tree that never belonged to a device. Nothing here
+    // checks for a device, and nothing here should: the pass holds paths. What
+    // stops it in the application is one layer up — the owners it is handed come
+    // from the *current* scan, and a scan that enumerated nothing schedules no
+    // pass at all (decided in `device-manager.test.ts`).
+    //
+    // On a real Mac the same call cannot create anything: `/Volumes` is
+    // root-owned, so a mount that has gone answers `EACCES`, which lands in
+    // `failed` like any other refusal — the writer's non-fatal arm. This suite
+    // cannot produce that, and says so rather than pretending to.
+    const report = await fillDeviceCovers({
+      mountPath: join(mount, 'not-a-mount'),
+      owners: [owner('/Volumes/Kindle/documents/Fixture Codex.azw3', 'a')],
+      coverPathFor: () => coverPath
+    })
+
+    expect(report).toMatchObject({ written: 1, failed: 0 })
+  })
+
+  it('names an entry from the owners list alone, without asking the device (AC16)', async () => {
+    // The file is not there at all, and the pass writes its entry anyway — on
+    // purpose. It reads nothing off the device (one `readdir` of the cache and
+    // no opens is the whole of its device cost), so a file that left is not this
+    // pass's business: `deviceFileOwners` reads the current scan, so such a file
+    // never reaches here in the application.
+    const report = await fillDeviceCovers({
+      mountPath: mount,
+      owners: [owner('/Volumes/Kindle/documents/Vanished.azw3', 'a')],
+      coverPathFor: () => coverPath
+    })
+
+    expect(await cache()).toEqual([NAME])
+    expect(report.written).toBe(1)
   })
 })

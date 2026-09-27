@@ -28,6 +28,14 @@ import { readEmbeddedIdentity } from './mobi-header'
  *   is the app's second path that deletes files on a mounted device; the first
  *   one already deleted a real file off a real Kindle from a passing test run.
  *
+ * Two callers write entries, and they differ in exactly one place: **where the
+ * name comes from.** A send reads the identity out of the file whose bytes were
+ * just verified (`writeDeviceCover`); the connect pass takes the identity the
+ * header pass already read and cached for each file on the device, because
+ * reading it again would be an `open` per file — a cold device measures ~72 s of
+ * those, and the pass adds none (`fillDeviceCovers`). Everything after the name
+ * is one path: the same fitted encode, the same marker rule, the same write.
+ *
  * Nothing here throws (invariant 12). A missing cover is a cosmetic device-side
  * cache miss: it must never fail a send, and it must never reach the screen.
  */
@@ -42,6 +50,15 @@ export const DEVICE_COVER_BOX = { width: 330, height: 500 } as const
 
 /** Lands in the device's measured byte band on real jackets. */
 const JPEG_QUALITY = 85
+
+/**
+ * How many books have their jacket encoded at once during a connect pass.
+ *
+ * The same bound the header pass uses (`device-manager.ts`'s `KEY_WORKERS`), and
+ * for the same reason: what these workers are waiting on is the share's
+ * per-file latency, not its throughput, so a wider pool buys nothing.
+ */
+const COVER_WORKERS = 8
 
 /** What the device leaves beside an entry when it fails to generate its own. */
 export const COVER_MARKER_SUFFIX = '.tmp.partial'
@@ -117,6 +134,28 @@ export function setCoverEncoderForTests(encoder: CoverEncoder | null): void {
   encodeCover = encoder ?? encodeWithNativeImage
 }
 
+/**
+ * The jacket as entry bytes, or `null` when there are none.
+ *
+ * A codec that is missing or blows up is a warning, never a throw: it is the
+ * one surprise in this module's encode step, and slice 1's send path has
+ * reported it exactly this way since it shipped. A jacket that is simply not
+ * there (`nativeImage` answers an empty image) is ordinary and silent.
+ *
+ * Handed the *bytes*, the callers decide how often this runs: a send encodes
+ * once, a connect pass encodes once per book however many files that book has
+ * on the device.
+ */
+function encodeEntry(coverPath: string): Buffer | null {
+  try {
+    const bytes = encodeCover(coverPath)
+    return bytes?.length ? bytes : null
+  } catch (err) {
+    console.warn(`[device] cannot encode the cover at ${coverPath}:`, err)
+    return null
+  }
+}
+
 export interface CoverWriteInput {
   /** The mounted device. */
   mountPath: string
@@ -135,6 +174,33 @@ export type CoverWriteResult =
   | { ok: false; kind: 'failed'; reason: string }
 
 /**
+ * Write one entry, given the name the device will look it up under.
+ *
+ * The whole of the write, shared by the send and the connect pass. Two rules
+ * live here and nowhere else:
+ *
+ * - **The only file deleted is `<this entry>.tmp.partial`** — the exact name
+ *   being written, because its absence is a precondition of our own write. No
+ *   sweep, no heuristic: a stray marker for an entry we are not writing is left
+ *   where it is.
+ * - **The marker goes before the entry**, so a write that fails afterwards has
+ *   at least unhidden whatever was already there.
+ */
+async function writeEntry(dir: string, name: string, bytes: Buffer): Promise<CoverWriteResult> {
+  try {
+    await fs.mkdir(dir, { recursive: true })
+    const markerCleared = await fs
+      .unlink(join(dir, name + COVER_MARKER_SUFFIX))
+      .then(() => true)
+      .catch(() => false)
+    await fs.writeFile(join(dir, name), bytes)
+    return { ok: true, name, bytes: bytes.length, markerCleared }
+  } catch (err) {
+    return { ok: false, kind: 'failed', reason: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
  * Write the device's cover entry for a file that has just landed on it.
  *
  * Returns a result rather than throwing, for every cause: no identity in the
@@ -147,29 +213,168 @@ export async function writeDeviceCover(input: CoverWriteInput): Promise<CoverWri
     return { ok: false, kind: 'skipped', reason: 'identity' }
   if (!input.coverPath) return { ok: false, kind: 'skipped', reason: 'cover' }
 
-  let bytes: Buffer | null
-  try {
-    bytes = encodeCover(input.coverPath)
-  } catch (err) {
-    console.warn(`[device] cannot encode the cover at ${input.coverPath}:`, err)
-    return { ok: false, kind: 'skipped', reason: 'encode' }
-  }
-  if (!bytes?.length) return { ok: false, kind: 'skipped', reason: 'encode' }
+  const bytes = encodeEntry(input.coverPath)
+  if (!bytes) return { ok: false, kind: 'skipped', reason: 'encode' }
 
-  const name = deviceCoverName(identity.uuid, identity.cdetype)
-  const dir = thumbnailsDir(input.mountPath)
-  try {
-    await fs.mkdir(dir, { recursive: true })
-    // Before the write, and only this one: the marker suppresses an entry the
-    // device would otherwise render, and a write that fails after this has at
-    // least unhidden whatever was already there
-    const markerCleared = await fs
-      .unlink(join(dir, name + COVER_MARKER_SUFFIX))
-      .then(() => true)
-      .catch(() => false)
-    await fs.writeFile(join(dir, name), bytes)
-    return { ok: true, name, bytes: bytes.length, markerCleared }
-  } catch (err) {
-    return { ok: false, kind: 'failed', reason: err instanceof Error ? err.message : String(err) }
+  return writeEntry(
+    thumbnailsDir(input.mountPath),
+    deviceCoverName(identity.uuid, identity.cdetype),
+    bytes
+  )
+}
+
+// --- The connect pass: the entries the device's own library is missing ---
+
+/** One file on the device, and the book the library attributes it to. */
+export interface DeviceCoverOwner {
+  /** The file on the device. */
+  path: string
+  /** The library book that file carries. */
+  bookId: string
+  /** EXTH 113, read off that file's header and cached by the identity pass. */
+  uuid: string | null
+  /** EXTH 501, from the same reading. */
+  cdetype: string | null
+}
+
+export interface FillDeviceCoversInput {
+  /** The mounted device. */
+  mountPath: string
+  /** What the device holds and which book each file carries (`deviceFileOwners`). */
+  owners: DeviceCoverOwner[]
+  /**
+   * The book's jacket on the share, or null when there is none to read — no
+   * path, or the library is not reachable right now. Asked **once per book**.
+   */
+  coverPathFor: (bookId: string) => string | null
+}
+
+/**
+ * What one pass did.
+ *
+ * Every count is per *file* except `jackets`, which is per book: the difference
+ * between the two is the pass's own cost (a book sent in two formats is one
+ * jacket read and two entries). `unnamed` and `coverless` are ordinary — a PDF
+ * has no identity to name an entry with and a book the library never gave a
+ * jacket has none to write — and `failed` is the only count that means
+ * something went wrong.
+ */
+export interface CoverPassReport {
+  /** Entries written this pass. */
+  written: number
+  /** Files that wanted an entry and already had one. */
+  present: number
+  /** Files an entry cannot be named for: no cached identity, or two books claiming it. */
+  unnamed: number
+  /** Files whose book has no jacket to write. */
+  coverless: number
+  /** Entries that could not be produced or written. */
+  failed: number
+  /** Jackets read and encoded — one per book, not one per file. */
+  jackets: number
+}
+
+/**
+ * Fill in the cover entries for the files a device already holds.
+ *
+ * Runs behind the identity pass (`device-manager`'s `runKeyPass`), because its
+ * input is what that pass caches: every file's own EXTH 113/501. **It reads
+ * nothing off the device** — one `readdir` of `system/thumbnails/`, no stats and
+ * no opens — and it re-derives no matching: which file carries which book is
+ * `deviceFileOwners`'s answer, and this function only decides which of those
+ * files can be *named* and which of them the device cannot already show.
+ *
+ * Four rules, and each is the reading of a measurement:
+ *
+ * - **A name already in the cache means the device has the entry.** One
+ *   directory listing decides it, so a second connect is a `readdir` and no
+ *   writes — that is what makes the pass idempotent.
+ * - **A file two books claim gets no entry.** Presence is allowed to answer both
+ *   (`getOnDeviceBookIds` does, on the same inputs); a *jacket*, chosen between
+ *   two books, is a jacket on the wrong one. Ambiguity is refused, exactly as the
+ *   match rule refuses a file that names no book at all.
+ * - **A book's jacket is read once**, however many of its files are on the
+ *   device — one encode, then one write per entry name.
+ * - **Nothing here throws.** A jacket that cannot be read, a device that refuses
+ *   every write: each is counted and the pass returns (invariant 12).
+ */
+export async function fillDeviceCovers(input: FillDeviceCoversInput): Promise<CoverPassReport> {
+  const report: CoverPassReport = {
+    written: 0,
+    present: 0,
+    unnamed: 0,
+    coverless: 0,
+    failed: 0,
+    jackets: 0
   }
+  const dir = thumbnailsDir(input.mountPath)
+
+  // One readdir, no stats: whether the device can already show an entry is one
+  // name in this list. A cache directory that does not exist is a device that
+  // holds no entries, which is the first pass's own case.
+  const cached = new Set(await fs.readdir(dir).catch((): string[] => []))
+
+  // The file→book pairs, gathered by file, so a file the library attributes to
+  // two books can be recognised as ambiguous before anything is written
+  const byPath = new Map<string, DeviceCoverOwner[]>()
+  for (const owner of input.owners) {
+    const claims = byPath.get(owner.path)
+    if (claims) claims.push(owner)
+    else byPath.set(owner.path, [owner])
+  }
+
+  /** entry name → the one file whose identity names it. */
+  const wanted = new Map<string, DeviceCoverOwner>()
+  for (const claims of byPath.values()) {
+    const owner = claims[0]
+    if (claims.length > 1 && claims.some((claim) => claim.bookId !== owner.bookId)) {
+      report.unnamed++
+      continue
+    }
+    if (!owner.uuid || !owner.cdetype) {
+      report.unnamed++
+      continue
+    }
+    const name = deviceCoverName(owner.uuid, owner.cdetype)
+    if (cached.has(name)) {
+      report.present++
+      continue
+    }
+    // Two files can share a name — the duplicate send this device has already
+    // been measured carrying — and the entry is the identity's, so it is one entry
+    wanted.set(name, owner)
+  }
+
+  /** bookId → the entry names its files need. One jacket, however many names. */
+  const byBook = new Map<string, string[]>()
+  for (const [name, owner] of wanted) {
+    const names = byBook.get(owner.bookId)
+    if (names) names.push(name)
+    else byBook.set(owner.bookId, [name])
+  }
+
+  const books = [...byBook.keys()]
+  let next = 0
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const bookId = books[next++]
+      if (!bookId) return
+      const names = byBook.get(bookId)!
+      const coverPath = input.coverPathFor(bookId)
+      const bytes = coverPath ? encodeEntry(coverPath) : null
+      if (!bytes) {
+        report.coverless += names.length
+        continue
+      }
+      report.jackets++
+      for (const name of names) {
+        const result = await writeEntry(dir, name, bytes)
+        if (result.ok) report.written++
+        else report.failed++
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(COVER_WORKERS, books.length) }, () => worker()))
+  return report
 }

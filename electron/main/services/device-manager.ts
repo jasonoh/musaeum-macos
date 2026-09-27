@@ -3,8 +3,10 @@ import { basename, dirname, join, relative, resolve } from 'path'
 import type { Book } from '@shared/book.types'
 import type { Device } from '@shared/device.types'
 import * as db from './db'
+import { fillDeviceCovers, type DeviceCoverOwner } from './device-covers'
 import { broadcast } from './events'
 import { isMobiFamily, readEmbeddedIdentity } from './mobi-header'
+import * as nas from './nas-manager'
 import { sanitizeTitle } from './sanitize'
 
 const POLL_INTERVAL_MS = 5_000
@@ -193,9 +195,7 @@ function scheduleKeyPass(deviceId: string): void {
 async function runKeyPass(deviceId: string): Promise<void> {
   const device = getDevice(deviceId)
   if (!device) return
-  const candidates = [...(deviceContents.get(deviceId)?.values() ?? [])]
-    .flat()
-    .filter(isMobiFamily)
+  const candidates = [...(deviceContents.get(deviceId)?.values() ?? [])].flat().filter(isMobiFamily)
   if (!candidates.length) return
 
   const known = deviceIdentities.get(deviceId) ?? new Map<string, db.DeviceFileIdentityRecord>()
@@ -251,6 +251,12 @@ async function runKeyPass(deviceId: string): Promise<void> {
   announce()
 
   pruneKeyCache(deviceId, candidates)
+
+  // The entries behind the reading that just landed. Deliberately the *last*
+  // thing this pass does and deliberately not awaited: the scan's own work is
+  // done, presence has been announced, and a device that leaves mid-write must
+  // not hold the header pass open (D6).
+  scheduleCoverPass(deviceId)
 }
 
 /**
@@ -312,6 +318,81 @@ function pruneKeyCache(deviceId: string, candidates: string[]): void {
   if (stale.length) db.deleteDeviceFileIdentities(stale)
 }
 
+// --- The cover pass: the entries a device cannot draw for itself ---
+
+/** deviceId → the cover pass currently writing it. */
+const coverPasses = new Map<string, Promise<void>>()
+/** Devices whose file set moved while their cover pass was running. */
+const coverPassQueued = new Set<string>()
+
+/**
+ * Fill in the device's cover cache, behind the identity pass, one device at a
+ * time.
+ *
+ * Scheduled from the tail of `runKeyPass` rather than from the scan, because the
+ * identities *are* this pass's input: run it first and every file is a miss. The
+ * coalescing pair mirrors the header pass's own, and for the same reason — the
+ * header pass is re-run whenever the file set moves, so a cover pass already
+ * writing would otherwise be joined by a second one reading the same jackets off
+ * the share and racing it through `readdir`.
+ *
+ * A device whose scan found nothing to read never gets here at all: `runKeyPass`
+ * returns before its tail, which is the guard this pass and `pruneKeyCache`
+ * share (`device-manager.ts`'s empty-candidates return is the one place a volume
+ * mid-unmount is distinguishable from a device with no books on it).
+ */
+function scheduleCoverPass(deviceId: string): void {
+  if (coverPasses.has(deviceId)) {
+    coverPassQueued.add(deviceId)
+    return
+  }
+  const pass = runCoverPass(deviceId)
+    .catch((err: unknown) => {
+      // Best-effort by design (invariant 12): the device can be unplugged
+      // mid-pass, and a missing cover is a cosmetic device-side cache miss
+      console.error(`[device] writing ${deviceId} covers failed:`, err)
+    })
+    .finally(() => {
+      coverPasses.delete(deviceId)
+      if (coverPassQueued.delete(deviceId)) scheduleCoverPass(deviceId)
+    })
+  coverPasses.set(deviceId, pass)
+}
+
+async function runCoverPass(deviceId: string): Promise<void> {
+  const device = getDevice(deviceId)
+  if (!device) return
+
+  const owners = deviceFileOwners(deviceId)
+  if (!owners.length) return
+
+  // The library root is resolved once for the whole pass, and only while the
+  // share is up. These are hundreds of jackets read off a share that may be
+  // away, and the encoder is synchronous on this process (`nativeImage`), so a
+  // path under a share that has gone is a stall rather than a caught error.
+  // Offline costs the entries and nothing else; `library-edit.ts` resolves a
+  // book's folder behind the same question.
+  const root = nas.isOnline() ? nas.getLibraryRoot() : null
+  const books = new Map(db.getBooks().map((book) => [book.id, book]))
+  const coverPathFor = (bookId: string): string | null => {
+    if (!root) return null
+    const book = books.get(bookId)
+    if (!book?.nasPath || !book.coverFullPath) return null
+    return join(root, book.nasPath, book.coverFullPath)
+  }
+
+  const report = await fillDeviceCovers({ mountPath: device.mountPath, owners, coverPathFor })
+
+  // The pass's whole surface, and D6's reason for having one: the *first* connect
+  // after this ships reads a jacket per coverless book off the share, and this
+  // line is what makes that cost visible. Every later connect reports the same
+  // books under `present` and writes nothing.
+  console.log(
+    `[device] covers on ${device.name}: ${report.written} written, ${report.present} already there, ` +
+      `${report.unnamed} unnameable, ${report.coverless} with no jacket, ${report.failed} failed`
+  )
+}
+
 /**
  * Files we wrote to the device ourselves, per device and book: the one
  * book-keeping fact a device file cannot give back once the title moves on.
@@ -339,13 +420,22 @@ export function noteSentFile(deviceId: string, bookId: string, filename: string)
 }
 
 /**
- * Whether this book still holds a file we sent it, under the name we sent it —
- * the match rule that survives a retitle.
+ * The names a book was sent under, resolved against what the device still holds.
+ *
+ * A send receipt is only ever a second *match key*: the file named has to be in
+ * the scan for the claim to hold, so deleting or renaming it on the device drops
+ * the claim with everything else.
  */
-function holdsFileWeSent(deviceId: string, bookId: string, stems: Map<string, string[]>): boolean {
+function pathsWeSent(deviceId: string, bookId: string, stems: Map<string, string[]>): string[] {
   const names = sentFiles.get(deviceId)?.get(bookId)
-  if (!names) return false
-  return names.some((name) => stems.get(fileStem(name))?.some((p) => basename(p) === name))
+  if (!names) return []
+  const paths: string[] = []
+  for (const name of names) {
+    for (const path of stems.get(fileStem(name)) ?? []) {
+      if (basename(path) === name) paths.push(path)
+    }
+  }
+  return paths
 }
 
 /** The key a library title and a file's own title are compared under. */
@@ -439,13 +529,38 @@ function deviceLibrary(deviceId: string, books: Book[], present: Set<string>): D
 }
 
 /**
+ * The device files that carry this book — **the match rule, in one place**.
+ *
+ * Three arms, and the order they are gathered in is not a priority: a file is
+ * carrying the book if *any* of them says so, which is exactly what presence has
+ * always answered. They are gathered here, as paths, for one reason: the
+ * direction the cover pass needs is *"which book does this file carry"*, and a
+ * second implementation of the rule answering that is the drift class this
+ * repo's invariants exist to prevent. Inverting a function is not a second
+ * function — the client pass reads this one through `deviceFileOwners`, and the
+ * two answers cannot disagree.
+ */
+function pathsCarryingBook(
+  deviceId: string,
+  book: Book,
+  stems: Map<string, string[]>,
+  device: DeviceLibrary
+): string[] {
+  const paths = new Set<string>()
+  for (const path of stems.get(titleKey(book.title)) ?? []) paths.add(path)
+  for (const path of filesCarryingBook(book, device)) paths.add(path)
+  for (const path of pathsWeSent(deviceId, book.id, stems)) paths.add(path)
+  return [...paths]
+}
+
+/**
  * Book IDs the device holds.
  *
- * Three readings, and a book is present under any of them: the filename rule
- * (what Musaeum writes itself, plus the names of files we sent under a title
- * that has since moved), the title *and* author inside the file, and the
- * title inside the file alone where the library holds exactly one book with
- * that title.
+ * A book is present when any of the three readings above finds a file carrying
+ * it: the filename rule (what Musaeum writes itself, plus the names of files we
+ * sent under a title that has since moved), the title *and* author inside the
+ * file, and the title inside the file alone where the library holds exactly one
+ * book with that title.
  *
  * The middle pair is why this reaches a device another tool filled: matching
  * the title each file carries inside it reaches 1,343 of 1,555 files on the
@@ -463,17 +578,46 @@ export function getOnDeviceBookIds(deviceId: string): string[] {
   const books = db.getBooks()
   const device = deviceLibrary(deviceId, books, new Set([...stems.values()].flat()))
 
-  const ids: string[] = []
+  return books
+    .filter((book) => pathsCarryingBook(deviceId, book, stems, device).length > 0)
+    .map((book) => book.id)
+}
+
+/**
+ * Which book each file on the device carries — the match rule read the other way
+ * round, for a caller that starts from the file.
+ *
+ * The cover pass is that caller, and it is why this exists: the device looks an
+ * entry up by the identity *inside* the file (`thumbnail_<uuid>_<cdetype>_
+ * portrait.jpg`), so a pass filling those entries in starts from the files and
+ * needs each one's book. It is derived here rather than in the pass, from the
+ * same inputs `getOnDeviceBookIds` uses and — through `pathsCarryingBook` — from
+ * the very same function, so "which files carry book X" and "which book does
+ * this file carry" cannot answer differently.
+ *
+ * Only files the identity pass has actually read appear: a file whose header
+ * carries no uuid has no entry to be named after it, and one the current scan no
+ * longer holds is not a file at all. `uuid`/`cdetype` stay nullable here because
+ * that is a fact about the reading, not about the match — deciding what can be
+ * *named* is the writer's business (`fillDeviceCovers`).
+ */
+export function deviceFileOwners(deviceId: string): DeviceCoverOwner[] {
+  const stems = deviceContents.get(deviceId)
+  if (!stems || stems.size === 0) return []
+
+  const books = db.getBooks()
+  const device = deviceLibrary(deviceId, books, new Set([...stems.values()].flat()))
+  const identities = deviceIdentities.get(deviceId)
+
+  const owners: DeviceCoverOwner[] = []
   for (const book of books) {
-    if (
-      stems.has(titleKey(book.title)) ||
-      holdsFileWeSent(deviceId, book.id, stems) ||
-      filesCarryingBook(book, device).length > 0
-    ) {
-      ids.push(book.id)
+    for (const path of pathsCarryingBook(deviceId, book, stems, device)) {
+      const identity = identities?.get(path)
+      if (!identity) continue
+      owners.push({ path, bookId: book.id, uuid: identity.uuid, cdetype: identity.cdetype })
     }
   }
-  return ids
+  return owners
 }
 
 /**

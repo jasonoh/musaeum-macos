@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { mobiFile } from '../../../test/helpers/mobi'
 import { closeDb, getDeviceFileIdentities, insertBook } from './db'
+import { setCoverEncoderForTests } from './device-covers'
 import {
+  deviceFileOwners,
   getConnectedDevices,
   getOnDeviceBookIds,
   noteSentFile,
@@ -20,6 +22,28 @@ import {
   titleKey
 } from './device-manager'
 import * as events from './events'
+import * as nas from './nas-manager'
+
+/**
+ * The library's own state is not this suite's subject, but the cover pass asks
+ * it exactly one question before reading a jacket — is the share up? — and
+ * "offline" is one of the pass's own cases. Only that answer and the root are
+ * replaced; the rest of the module, status machine included, stays real, which
+ * is how `api/rest.test.ts` and `api/upload.test.ts` carry the same dependency.
+ */
+vi.mock('./nas-manager', async () => {
+  const actual = await vi.importActual<typeof import('./nas-manager')>('./nas-manager')
+  return { ...actual, isOnline: vi.fn(() => true), getLibraryRoot: vi.fn(() => null) }
+})
+
+/**
+ * The codec is Chromium's and does not exist under `npm test` (see
+ * `test/mocks/electron.ts`). Swapping it, rather than mocking `device-covers`,
+ * leaves everything the pass decides — the names, the dedupe, the readdir, the
+ * marker, the write — real. What the real codec *produces* is decided by
+ * `scripts/device-cover-probe.ts` under a real Electron.
+ */
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46])
 
 let mount: string
 let documents: string
@@ -137,7 +161,14 @@ const realFs = {
   statfs: fs.statfs,
   open: fs.open,
   readFile: fs.readFile,
-  rm: fs.rm
+  rm: fs.rm,
+  // The cover pass creates a directory and writes into it — and the suite's
+  // mount path is `/Volumes/Kindle`, which on a machine with the reader plugged
+  // in is the reader. The first passing run that reached this path without these
+  // three rehomed would have written entries onto a real device.
+  mkdir: fs.mkdir,
+  writeFile: fs.writeFile,
+  unlink: fs.unlink
 }
 
 let volumes: string
@@ -213,6 +244,13 @@ function mountVolumesStandIn(): void {
   const open = realFs.open as unknown as (p: PathLike, flags?: string) => Promise<unknown>
   const readFile = realFs.readFile as unknown as (p: PathLike, o?: unknown) => Promise<unknown>
   const rm = realFs.rm as unknown as (p: PathLike, o?: unknown) => Promise<unknown>
+  const mkdir = realFs.mkdir as unknown as (p: PathLike, o?: unknown) => Promise<unknown>
+  const writeFile = realFs.writeFile as unknown as (
+    p: PathLike,
+    d?: unknown,
+    o?: unknown
+  ) => Promise<unknown>
+  const unlink = realFs.unlink as unknown as (p: PathLike) => Promise<unknown>
   Object.assign(fs, {
     readdir: (p: PathLike, o?: unknown) => tracked(() => readdir(rehome(p), o)),
     access: (p: PathLike, mode?: number) => tracked(() => realFs.access(rehome(p), mode)),
@@ -260,7 +298,14 @@ function mountVolumesStandIn(): void {
     // tree is a removal that cannot reach the volume the test is standing in
     // for. (`fs.rm` was missing here, and a fixture whose name a real Kindle
     // happened to share was deleted from the real device by a passing run.)
-    rm: (p: PathLike, o?: unknown) => tracked(() => rm(rehome(p), o))
+    rm: (p: PathLike, o?: unknown) => tracked(() => rm(rehome(p), o)),
+    // The cover pass's own three calls. It *creates* `system/thumbnails` and
+    // writes entries into it, which is the one shape of damage this stand-in
+    // exists to make impossible: without these, the suite would create that
+    // directory and write into it on whatever `/Volumes/Kindle` is.
+    mkdir: (p: PathLike, o?: unknown) => tracked(() => mkdir(rehome(p), o)),
+    writeFile: (p: PathLike, d?: unknown, o?: unknown) => tracked(() => writeFile(rehome(p), d, o)),
+    unlink: (p: PathLike) => tracked(() => unlink(rehome(p)))
   })
 }
 
@@ -332,6 +377,13 @@ describe('on-device presence', () => {
     mountedVolumes = new Set()
     volumeFreeBytes = new Map()
     opens = 0
+    // `vi.restoreAllMocks` in teardown leaves a bare `vi.fn()` answering
+    // `undefined`, which would silently read as "the library is away" for every
+    // case after the first — so the answers this suite depends on are set per
+    // case, not once.
+    vi.mocked(nas.isOnline).mockReturnValue(true)
+    vi.mocked(nas.getLibraryRoot).mockReturnValue(null)
+    setCoverEncoderForTests(() => JPEG)
     mountVolumesStandIn()
   })
 
@@ -341,6 +393,7 @@ describe('on-device presence', () => {
     rmSync(volumes, { recursive: true, force: true })
     volumes = mkdtempSync(join(tmpdir(), 'musaeum-volumes-'))
     await poll()
+    setCoverEncoderForTests(null)
     Object.assign(fs, realFs)
     rmSync(volumes, { recursive: true, force: true })
     vi.restoreAllMocks()
@@ -603,7 +656,9 @@ describe('on-device presence', () => {
           author: 'Daniel H. Pink'
         })
       )
-      insertBook({ ...makeBook('a', 'Fixture Drive: The Surprising Truth About What Motivates Us') })
+      insertBook({
+        ...makeBook('a', 'Fixture Drive: The Surprising Truth About What Motivates Us')
+      })
 
       await poll()
 
@@ -763,7 +818,11 @@ describe('on-device presence', () => {
      */
     it('re-reads a file the device replaced under the same name', async () => {
       const name = 'Banks, Iain M_/Fixture Codex, The - Iain M. Banks.azw3'
-      await putOnDevice('Kindle', name, mobiFile({ title: 'The Fixture Codex', author: 'Iain M. Banks' }))
+      await putOnDevice(
+        'Kindle',
+        name,
+        mobiFile({ title: 'The Fixture Codex', author: 'Iain M. Banks' })
+      )
       insertBook({ ...makeBook('a', 'The Fixture Codex'), author: 'Iain M. Banks' })
       await poll()
       expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
@@ -781,7 +840,11 @@ describe('on-device presence', () => {
         CALIBRE_NAME,
         mobiFile({ title: 'The Fixture Codex', author: 'Banks, Iain M.' })
       )
-      await putOnDevice('Kindle', 'Pink, Daniel H_/Fixture Drive - Daniel H. Pink.azw3', mobiFile({ title: 'Drive' }))
+      await putOnDevice(
+        'Kindle',
+        'Pink, Daniel H_/Fixture Drive - Daniel H. Pink.azw3',
+        mobiFile({ title: 'Drive' })
+      )
       insertBook({ ...makeBook('a', 'The Fixture Codex'), author: 'Iain M. Banks' })
       await poll()
       expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
@@ -791,8 +854,366 @@ describe('on-device presence', () => {
 
       // The row goes with the file, and the entry in the reading goes with it:
       // a stale one would keep claiming a book that is no longer there
-      expect(getDeviceFileIdentities([devicePath('Pink, Daniel H_/Fixture Drive - Daniel H. Pink.azw3')]).size).toBe(0)
+      expect(
+        getDeviceFileIdentities([devicePath('Pink, Daniel H_/Fixture Drive - Daniel H. Pink.azw3')])
+          .size
+      ).toBe(0)
       expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
+    })
+  })
+
+  /**
+   * The cover pass: the entries for the library already on the device.
+   *
+   * Slice 1 writes one entry per send. That leaves every file the device
+   * acquired before it — the 1,567 measured on 2026-09-17, of which 77 were ever
+   * given an entry by hand — with no cover at all, which is the whole of the
+   * owner's complaint. So the pass runs behind the header pass, which is where
+   * its input (each file's own EXTH 113/501) comes from, and reads nothing off
+   * the device itself.
+   */
+  describe('the cover pass', () => {
+    // The entry names are spelled out, never derived from `deviceCoverName`: the
+    // device's spelling is an external fact and the expectation has to be one too
+    const U1 = '5f8e82e4-671f-46b8-9d7c-808c2755dc8b'
+    const U2 = '1b3e27dc-8ba1-4c74-9920-838a02c3c444'
+    const U3 = '26ff164d-f8d1-4588-b0e7-45fffa91c871'
+    const ENTRY_1 = 'thumbnail_5f8e82e4-671f-46b8-9d7c-808c2755dc8b_EBOK_portrait.jpg'
+    const ENTRY_2 = 'thumbnail_1b3e27dc-8ba1-4c74-9920-838a02c3c444_EBOK_portrait.jpg'
+    const ENTRY_3 = 'thumbnail_26ff164d-f8d1-4588-b0e7-45fffa91c871_EBOK_portrait.jpg'
+
+    /** The share the library lives on, per case. */
+    let share: string
+
+    beforeEach(async () => {
+      share = mkdtempSync(join(tmpdir(), 'musaeum-share-'))
+      vi.mocked(nas.getLibraryRoot).mockReturnValue(share)
+    })
+
+    afterEach(() => {
+      rmSync(share, { recursive: true, force: true })
+    })
+
+    /** A book's jacket on the share. The bytes do not matter: the codec is swapped. */
+    async function putJacket(bookId: string): Promise<void> {
+      const dir = join(share, 'books', bookId)
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(join(dir, 'cover_full.jpg'), 'not an image — the codec is swapped')
+    }
+
+    /** A book that has a jacket to write on the device. */
+    function bookWithCover(id: string, title: string, author?: string): void {
+      insertBook({
+        ...makeBook(id, title),
+        ...(author ? { author } : {}),
+        coverFullPath: 'cover_full.jpg'
+      })
+    }
+
+    /**
+     * The entries in a fake volume's cover cache, sorted — `[]` when the cache
+     * does not exist. The un-shimmed `readdir`: this is the test's own business
+     * and must not count as a filesystem call in flight.
+     */
+    async function entriesOn(volume: string): Promise<string[]> {
+      return realFs
+        .readdir(join(volumes, volume, 'system', 'thumbnails'))
+        .then((names) => names.sort())
+        .catch((): string[] => [])
+    }
+
+    /** The pass's own log lines, and only those. */
+    function coversLines(spy: { mock: { calls: unknown[][] } }): string[] {
+      return spy.mock.calls
+        .map(([message]) => String(message))
+        .filter((message) => message.includes('covers on'))
+    }
+
+    it('writes the entries a device’s own library is missing, and opens no file to do it (AC11)', async () => {
+      // A file Musaeum named, a file Calibre named, and one the library does not
+      // have at all — the three cases the pass has to tell apart
+      await putOnDevice(
+        'Kindle',
+        'Leviathan Wakes.azw3',
+        mobiFile({ title: 'Leviathan Wakes', uuid: U1, cdetype: 'EBOK' })
+      )
+      await putOnDevice(
+        'Kindle',
+        CALIBRE_NAME,
+        mobiFile({
+          title: 'The Fixture Codex',
+          author: 'Banks, Iain M.',
+          uuid: U2,
+          cdetype: 'EBOK'
+        })
+      )
+      await putOnDevice(
+        'Kindle',
+        'Unknown Thing.azw3',
+        mobiFile({ title: 'Nobody’s Book', uuid: U3, cdetype: 'EBOK' })
+      )
+      bookWithCover('a', 'Leviathan Wakes')
+      bookWithCover('b', 'The Fixture Codex', 'Iain M. Banks')
+      await putJacket('a')
+      await putJacket('b')
+      mountVolume('Kindle', 8_000_000_000)
+
+      await poll()
+
+      expect(await entriesOn('Kindle')).toEqual([ENTRY_1, ENTRY_2].sort())
+      // Nobody's book is on the device and carries an identity, but no library
+      // book is it, so nothing names an entry for it
+      expect(await entriesOn('Kindle')).not.toContain(ENTRY_3)
+      // The pass reads nothing off the device: three header reads for three
+      // files, and not one more. Reading each file's identity here instead of
+      // taking it from the cache would be ~72s of opens on a cold device.
+      expect(opens).toBe(3)
+      // The entries are on the device by the time the connect settles, and what
+      // presence answers is unchanged by any of it
+      expect(getOnDeviceBookIds('kindle:Kindle').sort()).toEqual(['a', 'b'])
+    })
+
+    it('answers the file→book direction consistently with presence (AC13)', async () => {
+      await putOnDevice(
+        'Kindle',
+        'Leviathan Wakes.azw3',
+        mobiFile({ title: 'Leviathan Wakes', uuid: U1, cdetype: 'EBOK' })
+      )
+      await putOnDevice(
+        'Kindle',
+        CALIBRE_NAME,
+        mobiFile({
+          title: 'The Fixture Codex',
+          author: 'Banks, Iain M.',
+          uuid: U2,
+          cdetype: 'EBOK'
+        })
+      )
+      bookWithCover('a', 'Leviathan Wakes')
+      bookWithCover('b', 'The Fixture Codex', 'Iain M. Banks')
+      await putJacket('a')
+      await putJacket('b')
+
+      await poll()
+
+      const owners = deviceFileOwners('kindle:Kindle')
+      const present = getOnDeviceBookIds('kindle:Kindle')
+
+      // By hand, first: the pairs this fixture is built to produce
+      expect(owners.map((o) => [o.path, o.bookId]).sort()).toEqual(
+        [
+          [devicePath('Leviathan Wakes.azw3'), 'a'],
+          [devicePath(CALIBRE_NAME), 'b']
+        ].sort()
+      )
+
+      // Then as a property: every pair this view produces is one presence agrees
+      // with, over a file the current scan holds, carrying the identity that
+      // names the entry. This is the case that catches the reverse rule drifting
+      // away from the forward one — the two share `pathsCarryingBook`, and if a
+      // later edit gives either its own copy, this loop is what reddens.
+      const scanned = new Set([...(await scanDocuments('/Volumes/Kindle')).values()].flat())
+      for (const pair of owners) {
+        expect(present).toContain(pair.bookId)
+        expect(scanned.has(pair.path)).toBe(true)
+        expect(pair.uuid).toBeTruthy()
+        expect(pair.cdetype).toBeTruthy()
+      }
+    })
+
+    it('gives no entry to a file that names neither of two books sharing its title (AC12)', async () => {
+      // The ambiguity guard, seen from the cover side: neither book can claim
+      // this file, so no jacket may be put on it. Its neighbour, which carries
+      // the author, is claimed and gets one.
+      await putOnDevice(
+        'Kindle',
+        CALIBRE_NAME,
+        mobiFile({ title: 'The Fixture Codex', uuid: U2, cdetype: 'EBOK' })
+      )
+      await putOnDevice(
+        'Kindle',
+        'Banks, Iain M_/Fixture Codex, The - Iain M. Banks.mobi',
+        mobiFile({
+          title: 'The Fixture Codex',
+          author: 'Banks, Iain M.',
+          uuid: U3,
+          cdetype: 'EBOK'
+        })
+      )
+      bookWithCover('a', 'The Fixture Codex', 'Iain M. Banks')
+      bookWithCover('b', 'The Fixture Codex', 'Someone Else')
+      await putJacket('a')
+      await putJacket('b')
+
+      await poll()
+
+      expect(deviceFileOwners('kindle:Kindle').map((o) => o.path)).toEqual([
+        devicePath('Banks, Iain M_/Fixture Codex, The - Iain M. Banks.mobi')
+      ])
+      expect(await entriesOn('Kindle')).toEqual([ENTRY_3])
+    })
+
+    it('gives no entry to a file two books both claim (AC17a)', async () => {
+      // The name says one book, the title inside it another, and both are true:
+      // presence answers with both, and a jacket chosen between them is a jacket
+      // on the wrong book
+      await putOnDevice(
+        'Kindle',
+        'Loose Ends.azw3',
+        mobiFile({ title: 'Caliban’s War', uuid: U1, cdetype: 'EBOK' })
+      )
+      bookWithCover('a', 'Loose Ends')
+      bookWithCover('b', 'Caliban’s War')
+      await putJacket('a')
+      await putJacket('b')
+
+      await poll()
+
+      expect(getOnDeviceBookIds('kindle:Kindle').sort()).toEqual(['a', 'b'])
+      expect(
+        deviceFileOwners('kindle:Kindle')
+          .map((o) => o.bookId)
+          .sort()
+      ).toEqual(['a', 'b'])
+      expect(await entriesOn('Kindle')).toEqual([])
+    })
+
+    it('writes nothing while the library is away, and changes no presence (AC16a)', async () => {
+      // A pass that runs unasked over a whole device is a different exposure
+      // from one send: the encoder is synchronous on this process, so a jacket
+      // under a share that has gone is a stall rather than a caught error.
+      // Offline costs the entries, and nothing else.
+      await putOnDevice(
+        'Kindle',
+        'Leviathan Wakes.azw3',
+        mobiFile({ title: 'Leviathan Wakes', uuid: U1, cdetype: 'EBOK' })
+      )
+      bookWithCover('a', 'Leviathan Wakes')
+      await putJacket('a')
+      vi.mocked(nas.isOnline).mockReturnValue(false)
+
+      await poll()
+
+      expect(await entriesOn('Kindle')).toEqual([])
+      expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
+    })
+
+    it('fails every write without failing the connect, and leaves presence standing (AC16)', async () => {
+      await putOnDevice(
+        'Kindle',
+        'Leviathan Wakes.azw3',
+        mobiFile({ title: 'Leviathan Wakes', uuid: U1, cdetype: 'EBOK' })
+      )
+      bookWithCover('a', 'Leviathan Wakes')
+      await putJacket('a')
+      // `system` is a file, so the cache directory cannot be created: the same
+      // refusal slice 1's own case uses, now arriving on the connect path
+      await fs.writeFile(join(volumes, 'Kindle', 'system'), 'not a directory')
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+      await poll()
+
+      expect(await entriesOn('Kindle')).toEqual([])
+      // The header pass's own results are untouched — that is what "non-fatal"
+      // buys, and the book's bytes are on the device either way
+      expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
+      expect(coversLines(log)).toEqual([expect.stringContaining('1 failed')])
+    })
+
+    it('writes no entry for a file that left the device, and keeps the one it has (AC16)', async () => {
+      await putOnDevice(
+        'Kindle',
+        'Leviathan Wakes.azw3',
+        mobiFile({ title: 'Leviathan Wakes', uuid: U1, cdetype: 'EBOK' })
+      )
+      await putOnDevice(
+        'Kindle',
+        CALIBRE_NAME,
+        mobiFile({
+          title: 'The Fixture Codex',
+          author: 'Banks, Iain M.',
+          uuid: U2,
+          cdetype: 'EBOK'
+        })
+      )
+      bookWithCover('a', 'Leviathan Wakes')
+      bookWithCover('b', 'The Fixture Codex', 'Iain M. Banks')
+      await putJacket('a')
+      await putJacket('b')
+      await poll()
+      expect(await entriesOn('Kindle')).toEqual([ENTRY_1, ENTRY_2].sort())
+
+      // Removed on the device itself, outside Musaeum: the poll compares stems
+      // and the header pass behind it re-reads what moved
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+      rmSync(join(volumes, 'Kindle', 'documents', CALIBRE_NAME))
+      await poll()
+
+      // The scan is what decides a file exists, so a file that is gone is not
+      // one the pass can name an entry for — and its book drops out of presence
+      // with it. The *entry* stays: nothing in this feature deletes one, and the
+      // only file it ever deletes is the marker of the entry it is writing.
+      expect(deviceFileOwners('kindle:Kindle').map((o) => o.path)).toEqual([
+        devicePath('Leviathan Wakes.azw3')
+      ])
+      expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
+      expect(await entriesOn('Kindle')).toEqual([ENTRY_1, ENTRY_2].sort())
+      // The pass ran again and wrote nothing: the entry that is already on the
+      // device is decided by the cache listing, before any jacket is read
+      expect(coversLines(log)).toEqual([expect.stringContaining('0 written')])
+    })
+
+    it('runs no pass for a device whose files the library cannot attribute (AC17)', async () => {
+      // The same guard, arrived at from the other side — and the side that
+      // actually needs it. The case above is decided one level up, by
+      // `runKeyPass`'s own empty-candidates return; this one has files, the
+      // header pass reads them, and the cover pass's own `owners.length` guard is
+      // what stops it. Without that guard the pass still runs, reads the device's
+      // cache directory and reports a line of zeros for a device there is nothing
+      // to say about. (Found by the mutation campaign: removing the guard left
+      // the suite green, which is what a decider resting on its neighbour looks
+      // like.)
+      await putOnDevice(
+        'Kindle',
+        'Unknown Thing.azw3',
+        mobiFile({ title: 'Nobody’s Book', uuid: U3, cdetype: 'EBOK' })
+      )
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+      await poll()
+
+      expect(opens).toBe(1)
+      expect(coversLines(log)).toEqual([])
+      expect(await entriesOn('Kindle')).toEqual([])
+    })
+
+    it('runs no pass at all for a device whose scan enumerated nothing (AC17)', async () => {
+      // An empty file list is also what a volume mid-unmount looks like, and the
+      // guard is `runKeyPass`'s own empty-candidates return — the same call
+      // `pruneKeyCache` makes. Two devices, only one of them with anything to
+      // read, so the instrument is shown firing where it should and not where it
+      // should not.
+      await fs.mkdir(join(volumes, 'Kindle', 'system', 'thumbnails'), { recursive: true })
+      mountVolume('Kindle', 4_000_000_000)
+
+      await putOnDevice(
+        'Kindle Two',
+        'Leviathan Wakes.azw3',
+        mobiFile({ title: 'Leviathan Wakes', uuid: U1, cdetype: 'EBOK' })
+      )
+      bookWithCover('a', 'Leviathan Wakes')
+      await putJacket('a')
+      mountVolume('Kindle Two', 4_000_000_000)
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+      await poll()
+
+      // The decider is the pass having *run*, named by its own log line — a
+      // device with nothing to name an entry for would write nothing either way,
+      // so the absence of writes decides nothing on its own.
+      expect(coversLines(log)).toEqual([expect.stringContaining('covers on Kindle Two')])
+      expect(await entriesOn('Kindle')).toEqual([])
+      expect(await entriesOn('Kindle Two')).toEqual([ENTRY_1])
     })
   })
 })
