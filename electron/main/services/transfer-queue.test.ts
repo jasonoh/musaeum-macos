@@ -1,12 +1,15 @@
 import { mkdtempSync, rmSync, type PathLike } from 'fs'
 import { promises as fs } from 'fs'
+import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TransferJob } from '@shared/device.types'
 import { makeBook } from '../../../test/helpers/book'
+import { mobiFile } from '../../../test/helpers/mobi'
 import { closeDb, getBook, insertBook, setConfig, updateBook } from './db'
+import { setCoverEncoderForTests } from './device-covers'
 import * as deviceManager from './device-manager'
 import * as events from './events'
 import * as nas from './nas-manager'
@@ -42,12 +45,31 @@ const STEM = 'leviathan-wakes-2011'
 
 const realFs = { open: fs.open, stat: fs.stat }
 
+/** What the injected codec returns — the entry must carry it byte for byte. */
+const COVER_JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x01, 0x02, 0x03])
+/** The azw3's identity, and the mobi's — different on purpose (see D1). */
+const UUID = '5f8e82e4-671f-46b8-9d7c-808c2755dc8b'
+const OTHER_UUID = '1b3e27dc-8ba1-4c74-9920-838a02c3c444'
+const ENTRY = `thumbnail_${UUID}_EBOK_portrait.jpg`
+
 let root: string
 let mount: string
 let bookDir: string
 
-async function put(name: string, contents: string): Promise<void> {
+async function put(name: string, contents: string | Buffer): Promise<void> {
   await fs.writeFile(join(bookDir, name), contents)
+}
+
+/** A book with a jacket on the share, and a row that points at it. */
+async function putCover(): Promise<string> {
+  await put('cover_full.jpg', COVER_JPEG)
+  updateBook('a', { coverFullPath: 'cover_full.jpg' })
+  return join(bookDir, 'cover_full.jpg')
+}
+
+/** What the device's cover cache holds, if the app ever created it. */
+async function thumbnails(): Promise<string[]> {
+  return fs.readdir(join(mount, 'system', 'thumbnails')).catch(() => [])
 }
 
 async function documents(): Promise<string[]> {
@@ -90,10 +112,14 @@ beforeEach(async () => {
     freeBytes: 4_000_000_000
   })
   vi.mocked(deviceManager.refreshDeviceContents).mockResolvedValue()
+  // The codec is Chromium's, which vitest has no access to; everything the cover
+  // entry's *naming and placement* depends on stays real (see device-covers.ts)
+  setCoverEncoderForTests(() => COVER_JPEG)
 })
 
 afterEach(() => {
   Object.assign(fs, realFs)
+  setCoverEncoderForTests(null)
   vi.restoreAllMocks()
   // The offline case schedules a reconnect, and a reconnect shells out to
   // `open smb://…` — cancel it before it can reach the real NAS
@@ -260,6 +286,116 @@ describe('the copy path', () => {
       expect.stringContaining('ignoring close() failure'),
       expect.objectContaining({ code: 'EBADF' })
     )
+  })
+})
+
+describe('the device cover entry', () => {
+  it('is named from the identity inside the file that was copied', async () => {
+    // Two formats of one book, with different identities — measured on the real
+    // library (Red Rising: 5f8e82e4… as azw3, 1b3e27dc… as mobi). The azw3 wins
+    // the preference order, so the entry must carry the azw3's identity: this is
+    // what makes "the book's uuid" the wrong answer.
+    await put(`${STEM}.mobi`, mobiFile({ title: TITLE, uuid: OTHER_UUID, cdetype: 'EBOK' }))
+    await put(`${STEM}.azw3`, mobiFile({ title: TITLE, uuid: UUID, cdetype: 'EBOK' }))
+    await putCover()
+
+    const job = await transfer()
+
+    expect(job).toMatchObject({ status: 'done', format: 'azw3' })
+    expect(await thumbnails()).toEqual([ENTRY])
+    expect(await fs.readFile(join(mount, 'system', 'thumbnails', ENTRY))).toEqual(COVER_JPEG)
+    // The book itself still landed, and under the name presence looks for
+    expect(await documents()).toEqual([`${TITLE}.azw3`])
+  })
+
+  it('is on the device by the time the job reports done', async () => {
+    // "Sent" has to mean the cover too, or the button reports a finished send
+    // while the device is still showing a blank tile. The instrument is the
+    // broadcast the renderer reacts to: the file is checked at that instant.
+    await put(`${STEM}.azw3`, mobiFile({ title: TITLE, uuid: UUID, cdetype: 'EBOK' }))
+    await putCover()
+    const atDone: boolean[] = []
+    const entry = join(mount, 'system', 'thumbnails', ENTRY)
+    vi.spyOn(events, 'broadcast').mockImplementation((event: string, payload?: unknown) => {
+      if (event === 'transferProgress' && (payload as TransferJob).status === 'done') {
+        atDone.push(existsSync(entry))
+      }
+    })
+
+    const job = await transfer()
+
+    expect(job.status).toBe('done')
+    expect(atDone).toEqual([true])
+  })
+
+  it('touches nothing on the device or the share but the cover cache', async () => {
+    await put(`${STEM}.azw3`, mobiFile({ title: TITLE, uuid: UUID, cdetype: 'EBOK' }))
+    await putCover()
+    const shareBefore = (await fs.readdir(bookDir)).sort()
+
+    await transfer()
+
+    expect((await fs.readdir(mount)).sort()).toEqual(['documents', 'system'])
+    expect(await fs.readdir(join(mount, 'system'))).toEqual(['thumbnails'])
+    expect(await thumbnails()).toEqual([ENTRY])
+    // The library is the canonical record and this path never writes to it
+    expect((await fs.readdir(bookDir)).sort()).toEqual(shareBefore)
+    expect(existsSync(join(bookDir, 'metadata.json'))).toBe(false)
+  })
+
+  it('sends a book with no jacket, writes no cache at all, and says nothing', async () => {
+    await put(`${STEM}.azw3`, mobiFile({ title: TITLE, uuid: UUID, cdetype: 'EBOK' }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const job = await transfer()
+
+    expect(job).toMatchObject({ status: 'done', format: 'azw3' })
+    expect(await thumbnails()).toEqual([])
+    expect(existsSync(join(mount, 'system'))).toBe(false)
+    // A book without a jacket is not news: a line per send would be noise
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('sends a PDF with a jacket and no entry, because there is no identity to name one with', async () => {
+    updateBook('a', { formats: ['pdf'] })
+    await put(`${STEM}.pdf`, '%PDF-1.4 bytes')
+    await putCover()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const job = await transfer()
+
+    expect(job).toMatchObject({ status: 'done', format: 'pdf' })
+    expect(await thumbnails()).toEqual([])
+    // Likewise ordinary — every PDF send would log one otherwise
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('reports the send as done when the jacket cannot be encoded', async () => {
+    await put(`${STEM}.azw3`, mobiFile({ title: TITLE, uuid: UUID, cdetype: 'EBOK' }))
+    await putCover()
+    setCoverEncoderForTests(() => null)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const job = await transfer()
+
+    expect(job.status).toBe('done')
+    expect(await thumbnails()).toEqual([])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('encode'))
+  })
+
+  it('reports the send as done when the device refuses the entry, and says why', async () => {
+    // The book's bytes are verified onto the device before any of this runs, so
+    // the send is a success whatever the cache does — invariant 12
+    await put(`${STEM}.azw3`, mobiFile({ title: TITLE, uuid: UUID, cdetype: 'EBOK' }))
+    await putCover()
+    await fs.writeFile(join(mount, 'system'), 'not a directory')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const job = await transfer()
+
+    expect(job.status).toBe('done')
+    expect(await documents()).toEqual([`${TITLE}.azw3`])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('no cover entry'))
   })
 })
 

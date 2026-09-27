@@ -34,4 +34,19 @@ export const protocol = {
 // the wiring that writes it is decided by the source walk in
 // services/theme/store.test.ts, not here (AC5.5's A25 residual).
 export const nativeTheme = { themeSource: 'dark' }
+/**
+ * The device-cover codec is the one place in the main process that needs
+ * Chromium's image codecs, and `npm test` has no Chromium. A table reaching
+ * `nativeImage` here would write no cover and report success, so it is loud
+ * instead: a test that forgets `setCoverEncoderForTests()` fails at the call
+ * rather than asserting an entry that never appeared. The real codec is decided
+ * by `scripts/device-cover-probe.ts`, under a real Electron.
+ */
+export const nativeImage = {
+  createFromPath: (): never => {
+    throw new Error(
+      'nativeImage is not available under vitest — inject the codec with setCoverEncoderForTests()'
+    )
+  }
+}
 export class BrowserWindow {}

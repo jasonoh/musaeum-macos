@@ -6,6 +6,7 @@ import { pipeline } from 'stream/promises'
 import type { BookFormat } from '@shared/book.types'
 import type { TransferJob } from '@shared/device.types'
 import { computeFileSizeBytes } from './book-files'
+import { writeDeviceCover } from './device-covers'
 import * as db from './db'
 import { getDevice, noteSentFile, refreshDeviceContents } from './device-manager'
 import { broadcast } from './events'
@@ -141,6 +142,26 @@ async function runTransfer(job: TransferJob): Promise<void> {
     // filename is built from the title *now*, and once the device holds the file
     // nothing on the device says which book it was once the title moves on.
     noteSentFile(job.deviceId, job.bookId, deviceName)
+
+    // The device's own cover cache, which it no longer fills in for itself. The
+    // entry is named from the identity inside *this* file — not the book, which
+    // carries a different uuid per format — so it is written here, where the
+    // file that was copied is known. Nothing in it can fail the send: the bytes
+    // verified above are what "sent" means, and a missing cover is a cosmetic
+    // device-side cache miss (invariant 12).
+    const cover = await writeDeviceCover({
+      mountPath: device.mountPath,
+      sourceFile,
+      coverPath: book.coverFullPath ? join(bookDir, book.coverFullPath) : null
+    })
+    // A PDF send and a book with no jacket are ordinary: they write no entry and
+    // have nothing to say. A jacket that cannot be turned into one, or a device
+    // that refuses the write, is worth a line — but never an error, because the
+    // book's bytes are on the device either way.
+    if (!cover.ok && cover.reason !== 'identity' && cover.reason !== 'cover') {
+      console.warn(`[transfer] no cover entry for “${book.title}”: ${cover.reason}`)
+    }
+
     emit(job, { status: 'done', progress: 1 })
     await refreshDeviceContents(job.deviceId)
   } catch (err) {
