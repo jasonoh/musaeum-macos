@@ -30,6 +30,13 @@ describe('useDragDrop declares no book-extension list of its own', () => {
     expect(SOURCE).toMatch(/\.filter\(\(f\) => isBookFile\(f\.name\)\)/)
   })
 
+  it('asks the shared predicate rather than naming a type itself (AC25)', () => {
+    // The two halves of AC25 are decided over `isImportDrag` itself, in
+    // `book-drag.test.ts`; this one holds the wiring — the hook must *ask*.
+    expect(SOURCE).toMatch(/isImportDrag\(/)
+    expect(SOURCE).not.toMatch(/includes\('Files'\)/)
+  })
+
   it('still hands the surviving paths to the pipeline through the preload', () => {
     // The on-ramp's other half is unchanged: paths are resolved in the preload
     // (the renderer never invents a file:// path), and progress arrives on the

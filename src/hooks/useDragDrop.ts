@@ -1,12 +1,16 @@
 import { useEffect } from 'react'
 import { isBookFile } from '@shared/book.types'
+import { isImportDrag } from '@/lib/book-drag'
 import { useUIStore } from '@/stores/ui.store'
 
 /**
  * Window-level drag-and-drop import. Files dropped anywhere on the app are
  * resolved to paths in the preload and handed to the import pipeline.
  *
- * The gate is `isBookFile` from `@shared/book.types`, not a list of its own:
+ * The overlay's gate is `isImportDrag` (`src/lib/book-drag.ts`) — the same
+ * predicate the book drag's MIME type is tested against, so the overlay's
+ * answer and that drag's MIME cannot drift apart. The *file* gate below stays
+ * `isBookFile` from `@shared/book.types`, not a list of its own:
  * this hook and the File picker (`import:fromDialog`) have to accept the same
  * files, and the one time this list lived here alone it kept the old three
  * formats after PDF went first-class — a dropped PDF was silently discarded,
@@ -20,7 +24,7 @@ export function useDragDrop(): void {
 
     const onDragEnter = (e: DragEvent) => {
       e.preventDefault()
-      if (e.dataTransfer?.types.includes('Files') && ++depth === 1) {
+      if (isImportDrag([...(e.dataTransfer?.types ?? [])]) && ++depth === 1) {
         setDraggingFiles(true)
       }
     }
