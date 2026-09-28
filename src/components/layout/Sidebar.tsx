@@ -3,6 +3,7 @@ import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { DevicePanel } from '@/components/device/DevicePanel'
 import { FilterSidebar } from '@/components/shared/FilterSidebar'
+import { ShelfList } from '@/components/layout/ShelfList'
 import { GearIcon, RefreshIcon, WarningIcon } from '@/components/shared/icons'
 import { canStartCatalogSync } from '@/lib/catalog-sync'
 import { TRAFFIC_LIGHT_CENTER_Y, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
@@ -14,6 +15,9 @@ export function Sidebar() {
   const bookCount = useLibraryStore((s) => s.books.length)
   const catalogSync = useLibraryStore((s) => s.catalogSync)
   const refreshLibrary = useLibraryStore((s) => s.refreshLibrary)
+  const activeShelfId = useLibraryStore((s) => s.activeShelfId)
+  const setActiveShelf = useLibraryStore((s) => s.setActiveShelf)
+  const libraryActive = activeShelfId === null
   const canReload = canStartCatalogSync(nasStatus?.state, catalogSync)
   const syncRunning = catalogSync?.outcome === 'running'
 
@@ -60,7 +64,33 @@ export function Sidebar() {
 
       <div className="flex-1 overflow-y-auto py-3">
         <nav className="mb-4 px-2">
-          <div className="flex w-full items-center gap-2 rounded-md bg-ink-800 px-2 py-1.5 text-[13px] font-medium text-parchment">
+          {/* Navigation, not a label: clicking it leaves whatever shelf is open
+              (D9). The highlight is the same pair the shelf rows use, which is
+              what makes "where am I" one glance rather than two rules.
+
+              A `role="button"` div rather than a button element, because the
+              row's reload control is a real button and HTML forbids one button
+              inside another: the row stays one target, the reload icon keeps
+              its own handler (and stops its click reaching here, so reloading
+              does not also navigate), and nothing about the geometry or the
+              highlight moves. */}
+          <div
+            role="button"
+            tabIndex={0}
+            aria-pressed={libraryActive}
+            onClick={() => setActiveShelf(null)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setActiveShelf(null)
+              }
+            }}
+            className={`flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] ${
+              libraryActive
+                ? 'bg-ink-800 font-medium text-parchment'
+                : 'text-parchment-dim hover:bg-ink-800 hover:text-parchment'
+            }`}
+          >
             Library
             {/* Reload Library (also ⌘R): re-reads the shared catalog, which is
                 how books added on another machine or from the phone arrive
@@ -68,7 +98,10 @@ export function Sidebar() {
                 reload that finds the catalog unreadable becomes the rebuild,
                 and the status bar says which. */}
             <button
-              onClick={() => void refreshLibrary()}
+              onClick={(e) => {
+                e.stopPropagation()
+                void refreshLibrary()
+              }}
               disabled={!canReload}
               title="Reload Library (⌘R)"
               aria-label="Reload Library"
@@ -103,9 +136,13 @@ export function Sidebar() {
               descriptions. This column is for going places — the one
               exception is the reload icon on the Library row, because
               picking up another machine's additions is routine, not
-              maintenance. */}
+              maintenance. Shelves are places too, which is why they follow
+              the Library row rather than sitting below the filters. */}
         </nav>
 
+        {/* Shelves are navigation — the same column as Library, above the
+            facets. See the note in the `nav` block above. */}
+        <ShelfList />
         <FilterSidebar />
       </div>
 

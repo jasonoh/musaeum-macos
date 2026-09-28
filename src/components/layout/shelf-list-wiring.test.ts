@@ -55,3 +55,32 @@ describe('the shelf section (AC16)', () => {
     expect(SOURCE).not.toMatch(/onDragOver|onDrop|dataTransfer/)
   })
 })
+
+const APP = readFileSync(join(process.cwd(), 'src', 'App.tsx'), 'utf8')
+const GRID = readFileSync(
+  join(process.cwd(), 'src', 'components', 'library', 'GridView.tsx'),
+  'utf8'
+)
+const LIST = readFileSync(
+  join(process.cwd(), 'src', 'components', 'library', 'ListView.tsx'),
+  'utf8'
+)
+
+describe('no element is added above either view (invariant 7)', () => {
+  it('leaves the toolbar row exactly as it was: toolbar, banner, view', () => {
+    // A view header naming the open shelf was designed and rejected for this
+    // reason; the shelf is named in the sidebar row and the search field's
+    // placeholder instead
+    const main = APP.indexOf('<main')
+    const between = APP.slice(APP.lastIndexOf('<Toolbar', main), main)
+    expect(between.match(/<[A-Z]/g)?.length).toBe(2) // Toolbar, NASStatusBanner
+  })
+
+  it('leaves the two views\u2019 geometry constants and cells alone', () => {
+    // The constants are computed, not measured (library-views.md); they are the
+    // thing this slice must not touch, and the cells that carry them are
+    // asserted by their own block-level shape rather than here
+    expect(GRID).toMatch(/cardWidth \* 1\.5 \+ CARD_META_MARGIN \+ CARD_META_HEIGHT/)
+    expect(LIST).toMatch(/ROW_HEIGHT/)
+  })
+})
