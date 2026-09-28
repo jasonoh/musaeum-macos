@@ -26,7 +26,6 @@ function stubShelves(handlers: {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  vi.restoreAllMocks()
   useShelvesStore.setState({ shelves: [], byBook: {}, revision: 0 })
 })
 
@@ -41,17 +40,16 @@ describe('the list', () => {
   })
 
   it('keeps what it has when the read fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     useShelvesStore.setState({ shelves: [READING] })
     stubShelves({ list: async () => Promise.reject(new Error('Library is offline')) })
     await useShelvesStore.getState().load()
-    // A share blip must not empty the sidebar — and the failure is reported
-    // once by the reporter, which is Task 6's
+    // A share blip must not empty the sidebar. The sentence is said by
+    // `reportShelfFailure` (shelf-feedback.test.ts), which is a session-wide
+    // singleton and so not asserted here.
     expect(useShelvesStore.getState().shelves).toEqual([READING])
   })
 
   it('keeps what it has when a forBook read fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     stubShelves({
       list: async () => [READING],
       forBook: async () => Promise.reject(new Error('Library is offline'))

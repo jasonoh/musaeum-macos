@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ShelfSummary } from '@shared/shelf.types'
+import { reportShelfFailure } from '@/lib/shelf-feedback'
 
 /**
  * The shelves the app knows about: the list the sidebar draws, one book's
@@ -15,9 +16,8 @@ import type { ShelfSummary } from '@shared/shelf.types'
  * sidebar cannot show a shelf the share refused to write. `useLibrary` is the
  * one subscriber.
  *
- * A failed *read* is logged and kept quiet here (the `console.error` idiom
- * `library.store`'s own `load()` uses); Task 6 replaces both of these with the
- * session reporter, which is where "once, and in the user's words" belongs.
+ * A failed *read* is kept quiet here: the list it already has is left alone,
+ * and the sentence is main's, said once a session by `reportShelfFailure`.
  */
 interface ShelvesState {
   /** Alphabetical, case-insensitive — main's own order. */
@@ -45,8 +45,10 @@ export const useShelvesStore = create<ShelvesState>()((set) => ({
     } catch (err) {
       // Deliberately not `set({ shelves: [] })`: a failed read is not an empty
       // library, and a sidebar that empties itself on a blip teaches the user
-      // their shelves are gone
-      console.error('shelf list failed:', err)
+      // their shelves are gone. The sentence is main's, and the session says it
+      // once — the sidebar's rows here, the phone's toggles and every menu
+      // write all end up in the same reporter.
+      reportShelfFailure(err)
     }
   },
 
@@ -55,7 +57,7 @@ export const useShelvesStore = create<ShelvesState>()((set) => ({
       const shelves = await window.Musaeum.shelves.forBook(bookId)
       set((s) => ({ byBook: { ...s.byBook, [bookId]: shelves } }))
     } catch (err) {
-      console.error('shelves for book failed:', err)
+      reportShelfFailure(err)
     }
   },
 
