@@ -11,9 +11,9 @@
 
 ## Remembered UI state
 
-View mode (`ui.store`) and sort (`library.store`) survive a restart, persisted per machine to `localStorage` under `musaeum.ui` / `musaeum.library` via zustand's `persist`. Deliberately *not* persisted: selection, modals, and the search query and filters — reopening to a filtered library that looks like a much smaller one is state whose cause the user can't see.
+View mode (`ui.store`) and sort (`library.store`) survive a restart, persisted per machine to `localStorage` under `musaeum.ui` / `musaeum.library` via zustand's `persist`. Deliberately *not* persisted: selection, modals, and the search query and filters — reopening to a filtered library that looks like a much smaller one is state whose cause the user can't see. **The open shelf is not persisted either, and the sort that is persisted is the library's own:** while a shelf is open the library store's `sort` *is* `shelf_added desc`, so `persistedLibraryState` writes `librarySort` instead, and `restoredSort` refuses a stored `shelf_added`. The shelf sort is a scoped default, never a preference (`docs/invariants/shelves.md`, *The renderer*).
 
-Both stores `merge` through a validator (`isBookSort` in `book.types.ts`, a literal check for the view) rather than trusting storage: it was written by whatever build ran last, and a sort field that no longer exists would reach `db.SORT_SQL` with no expression to match. Note that `localStorage` is keyed by origin, so a dev server on a different port starts from defaults; packaged builds load from `file://` and are stable.
+Both stores `merge` through a validator rather than trusting storage: it was written by whatever build ran last, and a sort field that no longer exists would reach `db.SORT_SQL` with no expression to match. For `ui.store` that is a literal check on the view; for `library.store` it is `restoredSort` — `isBookSort` **plus** the refusal of `shelf_added`, which the type has accepted since bookshelves slice 1. Note that `localStorage` is keyed by origin, so a dev server on a different port starts from defaults; packaged builds load from `file://` and are stable.
 
 ---
 

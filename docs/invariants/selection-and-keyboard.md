@@ -17,6 +17,8 @@ Selection is a `Selection` (`src/lib/selection.ts`): a `Set` of ids plus an **an
 
 `useLibrary` prunes the selection to the loaded books on every library change. Without it, selecting twelve books and then searching leaves them selected but invisible, and "Delete 12 books" would delete books the user cannot see. The cost — narrowing a filter drops the selection — is deliberate.
 
+**Inside a shelf that cost is paid on entry**, deliberately (bookshelves D7). A scoped read changes `books`, so the prune runs and a selection made in the library is dropped when a shelf opens: the books are still selected, still on screen behind a filter, and no longer visible once the scope narrows. Nothing new implements this — it falls out of the existing effect — which is exactly why it is written down here. The alternative, keeping a selection whose books the current view does not contain, is the state the prune exists to make impossible.
+
 **⌘A is a menu command, not a key listener.** The Edit menu's `{ role: 'selectAll' }` owns that accelerator, so `menu.ts` replaces it with a custom item and `useMenuCommands` routes by focus: an input or textarea gets `select()`, anything else selects every loaded book.
 
 Both views show membership the same way (gold ring on a card, gold row tint); the list adds a **checkbox column** with a tri-state select-all header, whose cell must keep a 20px line and a block-level child like every other cell — the row pitch is still exactly `ROW_HEIGHT` (measured: 37px pitch, 36px on the `<tr>` plus the collapsed border).

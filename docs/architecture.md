@@ -151,8 +151,10 @@ Musaeum/
 ├── src/                          # Renderer (React)
 │   ├── main.tsx / App.tsx / index.css
 │   ├── components/
-│   │   ├── layout/               # Sidebar, Toolbar, StatusBar
-│   │   ├── library/              # GridView, ListView, BookCard, BookDetail, ImportOverlay
+│   │   ├── layout/               # Sidebar, Toolbar, StatusBar, ShelfList (the shelf
+│   │   │                         # section + its rename field and delete confirm)
+│   │   ├── library/              # GridView, ListView, BookCard, BookDetail, ImportOverlay,
+│   │   │                         # ShelfPicker (Add to Shelf…), ShelfRemoveDialog
 │   │   ├── metadata/             # ConflictQueue, ConflictResolver
 │   │   ├── device/               # DevicePanel, TransferQueue
 │   │   ├── migration/            # MigrationWizard
@@ -162,12 +164,15 @@ Musaeum/
 │   │   │                         # ReaderAsk, ReaderPrefsPopover
 │   │   └── shared/               # FilterSidebar, SearchBar, NASStatusBanner, Toasts,
 │   │                             # icons
-│   ├── stores/                   # library / device / nas / ui / reader / theme zustand stores
+│   ├── stores/                   # library / shelves / device / nas / ui / reader / theme
+│   │                             # zustand stores (shelves = the list + a revision)
 │   ├── hooks/                    # useLibrary, useDevice, useNASStatus, useDragDrop,
 │   │                             # useMenuCommands, useTheme
 │   ├── lib/                      # renderer-side pure logic: selection, metadata-feedback,
 │   │                             # metadata-refresh, notify, reader-search, ask-context,
-│   │                             # recall, theme/ (css var apply path + the reader's
+│   │                             # recall, shelf-membership (the add/remove/Undo pair),
+│   │                             # shelf-feedback (one failure sentence per session),
+│   │                             # theme/ (css var apply path + the reader's
 │   │                             # derived page palette and its injected stylesheet)
 │   └── types/                    # SHARED contracts: book / device / metadata /
 │                                 # settings / api (MusaeumAPI + IPCResult) /

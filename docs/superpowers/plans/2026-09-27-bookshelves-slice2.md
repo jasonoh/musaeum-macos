@@ -2998,3 +2998,62 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - Slice 4 sends `bookIds` — and while a shelf is open the natural source is the scope's loaded rows, `useLibraryStore.getState().books.map((b) => b.id)`, not the shelf's membership in SQL. That is a decision for slice 4's plan; noted here because it is the one place the two differ (a book on the shelf whose file is missing is in `books` but not in `count`).
 - `library.store`'s `reconcileScope(existingShelfIds)` already exists and is wired: a slice that adds a second way to leave a shelf (a keyboard shortcut, a view header) should call `setActiveShelf(null)`, not clear `activeShelfId` directly, or the sort will not be restored.
 - The failure reporter is a session-wide singleton by design. If a slice ever needs "and now say it again" (a manual Retry button, say), that is a new decision, not a `Set.delete`.
+
+---
+
+## Built — slice 2
+
+**Status:** landed 2026-09-27, `src/` only. Green at every commit (`typecheck`, `lint --max-warnings=0`, `prettier` on code files, full suite).
+
+**Commits** (in order, `71fff98` → tip):
+
+| | | |
+| --- | --- | --- |
+| `a8ba2a9` | library.store — the scope, the one persisted sort, and the reads that carry it | Tasks 2 + 3, merged |
+| `9987936` | the open shelf is part of the result set | Task 1 |
+| `c5ced9f` | the shelf store | Task 4 |
+| `281e0f6` | one subscriber to `shelves:changed` | Task 5 |
+| `bddd55d` | shelf failures are reported once a session | Task 6 |
+| `6453d31` | an empty shelf is its own empty state | Task 7 |
+| `5db481e` | the sidebar's shelf section | Task 8 |
+| `0b997a7` | Library is a door, and the shelves are places | Task 9 |
+| `0dc2c48` | the sort control and the placeholder know the shelf | Task 10 |
+| `8afa15a` | the add, the remove, and the Undo that keeps its timestamps | Task 11 |
+| `b1102fd` | the Add to Shelf picker | Task 12 |
+| `5520562` | Add to Shelf from both menu scopes and the panel | Task 13 |
+| `e970144` | a book's shelves, on the detail panel | Task 14 |
+| `13e1f2d` | inside a shelf, the trash asks first | Task 15 |
+| *tip* | docs — the renderer's shelf rules, and the spec's next step | Task 16 |
+
+**Counts, as built against the table at the top.** 2a's 6 files, 2b's 7, 2c's 8 — **21 code files, exactly as budgeted** — plus **11 test files** (7 of them new): **32 `src/` files touched, 13 new**. `src/types/` unchanged, and no file under `electron/` or `sidecar/` in any of the 15 commits (`git diff --name-only a3f5d35..HEAD`). The four files the plan flagged as another session's uncommitted work were already committed at `a3f5d35` by the time this slice ran — nothing needed leaving modified, and every commit staged by name anyway.
+
+**Tests.** `npm test` **1723 passed / 77 files / 2 skipped** → **1812 passed / 84 files / 2 skipped**: +89 cases, +7 files. The last four cases are the review's (below), and both new guards were confirmed to fail without them before being committed.
+
+**Where the build diverged from the plan, all recorded rather than quietly fixed:**
+
+1. **Task 2 landed before Task 1**, and **Tasks 2 and 3 landed as one commit** (`a8ba2a9`). The plan allows the reorder ("if you prefer a green commit at every step…") and acknowledges the coupling: Task 2's four scope cases cannot pass until `load()` carries the scope, so the split would have been red. The commit message names both.
+2. **The Library row is a `role="button"` div, not a button.** The plan's snippet nests the Reload button inside the Library button — invalid HTML, and it makes reloading also navigate. Built as a div with `role="button"`, `aria-pressed`, `tabIndex={0}` and an Enter/Space handler; the reload control stops propagation. This is the one component-shape change a reviewer should look at.
+3. **`shelf-remove-wiring.test.ts` asserts `requestLibraryDelete` without parens.** The dialog passes the reference (`onClick={requestLibraryDelete}`), so the plan's `/requestLibraryDelete\(\)/` never matched. The assertion still reddens if the handover is removed.
+4. **`ShelfRemoveDialog`'s docblock does not contain the literal `Remove from Shelf`.** The plan's own wording did, which put that string in the file earlier than the button and made the plan's "focus is on the safe answer" assertion walk backwards to the wrong `<button>`. The assertion is unchanged; the docblock says *"Its primary action takes the initial focus"*.
+5. **Task 9's and Task 10's walk cases both live in `shelf-list-wiring.test.ts`** (the plan asked for Task 10's there "to keep the file count down"; Task 9's invariant-7 walks joined them).
+6. **Extra cases beyond the plan's list**, each because a real shape was uncovered: R7's *disabled with `copy.label`, not `deleteBlocked`* in `context-menu-wiring.test.ts`; the no-shelf-open bulk case and the "hands over to the dialog that always owned deletion" case in `ui.store.test.ts`; "is mounted once, from the app root" in `shelf-remove-wiring.test.ts`; and the plan's `useLibrary.test.ts` walk gained a case pinning that `loadShelves()` is sequenced *before* `reconcileScope` (the plan described that order only in prose).
+7. **`library-emptiness.ts`'s `shelfId` is required**, matching `storageConnected`'s precedent — a scope is not a detail a second view may silently drop. This is what makes the plan's "do Task 2's Steps 1–3 first" note load-bearing in a second way.
+
+**Do not run Prettier over the markdown.** Task 16 says to run `prettier --write` on "the files you touched"; done literally, it rewrote ~400 lines of unrelated formatting across seven already-committed docs (emphasis markers, table padding) — the docs tree is deliberately *not* Prettier-formatted (`npx prettier --check "docs/**/*.md"` fails 48 files). The churn was reverted and the edits re-applied by hand. Format code files; leave prose alone.
+
+**The live check (all three review gates), over CDP against the built app and the real library.** Not a description — DOM reads, with the app launched as `electron . --remote-debugging-port=9223` (a second instance; the user's own `dist/` build was left running and untouched). What was measured:
+
+- *Part 2a* — with a shelf open, the rows changed and the sort control offered *Date Added to Shelf* first; `localStorage`'s `musaeum.library` read `{"sort":{"field":"title","direction":"asc"}}` **while the shelf was open on `shelf_added desc`**, which is note 1 confirmed against a real persisted value rather than a unit case.
+- *Part 2b* — `+` → the inline field → Enter created the shelf and the sidebar drew it with its count; double-click opened the rename field prefilled; the row menu's *Delete Shelf…* opened the confirmation naming the shelf; the two sentences were read off the DOM (the placeholder read `Search "Slice 2 probe"`, the empty pane read *This shelf is empty* / *Drag books here, or use Add to Shelf.*).
+- *AC17's search scoping, and Review Focus 5* — with `the` typed in the library (5509 matches), entering the empty shelf showed **Nothing matches "the"**: the scope really reaches the search, and the query survived entering and leaving.
+- *Part 2c* — menu → *Add to Shelf…* → picker → `Added 1 to Slice 2 probe`; the card's trash inside the shelf opened `ShelfRemoveDialog` with **focus on *Remove from Shelf***; *Delete from Library…* handed over to the real `DeleteBookDialog` (cancelled, never confirmed); *Remove from Shelf* produced the toast and its Undo put the book back.
+- **The library was left as found**: `shelves.json` is `{"version":1,"shelves":[]}` (it had no shelves before the probe and has none after), 7121 books in the DB, and the book the delete dialog offered is still there.
+
+**Review findings, and what was done with each.** The 2a review (a `delegate_task` reviewer) found **no blocker and no functional defect**, with five named checks passing against the real code and a pristine copy of `281e0f6` typechecking clean on both tsconfigs with 42/42 on the four 2a test files. Four nits:
+
+1. **`shelves.store.loadForBook` could commit a pre-change answer after `invalidate()` cleared the cache** — the revision exists precisely to prevent this, and the write path bypassed it. **Fixed**: the revision is captured before the read and the write is skipped if it moved, with a case that fails without the guard.
+2. **`load()` had no staleness guard** — and this slice gave it a new way to be asked twice at once (two sidebar clicks → two scoped reads whose SQL is not the same cost). **Fixed**, using the same `resultSetKey` the views use so "what a read reads" has one definition, with a case that fails without the guard.
+3. **`settings-and-editing.md` still described the old single-validator persisted rule** — it named `isBookSort` and did not say the persisted sort is the library's own. **Fixed** in Task 16 (and the note that `library-views.md` never mentioned `shelf_added` was fixed by the same task).
+4. An operational note that the working tree was mid-flight when the review ran (HEAD had moved past `281e0f6`). Nothing to do; the review was correct to evaluate its gate at its own tip.
+
+**Still open, handed to slice 3:** the empty-shelf pane's sentence names two actions neither of which works from that pane (*A gap this plan does not close*, now in `tasks.md` with the three options). Everything else in the plan's scope landed.
