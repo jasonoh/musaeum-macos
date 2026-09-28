@@ -104,7 +104,10 @@ function cleanName(raw: unknown): string {
   return name
 }
 
-const foldName = (name: string): string => name.normalize('NFC').toLocaleLowerCase()
+// `toLowerCase()`, not `toLocaleLowerCase()`: name uniqueness is a rule about
+// a file several Macs share, and locale-dependent folding (Turkish I) could
+// make two Macs disagree about whether two names clash.
+const foldName = (name: string): string => name.normalize('NFC').toLowerCase()
 
 /**
  * Unique case-insensitively among manual shelves, checked against the re-read
@@ -279,6 +282,11 @@ export async function pruneBooks(bookIds: string[]): Promise<void> {
 // Adoption logs an unreadable file once a session, not on every connect and Reload
 let reportedUnreadable = false
 
+/** Test-only: undo `reportedUnreadable`'s carry-over between tests in one file. */
+export function resetAdoptionLogForTests(): void {
+  reportedUnreadable = false
+}
+
 /**
  * Land `shelves.json` in the cache — on connect and on Reload, after the book
  * swap (D4). Through the same queue as the writes: an adoption that read the
@@ -303,6 +311,7 @@ export function adopt(root: string): Promise<void> {
         return
       }
       db.replaceAllShelves(read.state === 'ok' ? read.file : emptyShelvesFile())
+      reportedUnreadable = false // a repaired (or never-broken) file is news again if it breaks later
       broadcast('shelvesChanged')
     } catch (err) {
       console.error(

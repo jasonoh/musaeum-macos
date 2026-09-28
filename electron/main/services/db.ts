@@ -35,11 +35,21 @@ let db: Database.Database | null = null
 export function getDb(): Database.Database {
   if (!db) {
     const path = join(app.getPath('userData'), 'musaeum.db')
-    db = new Database(path)
-    db.pragma('journal_mode = WAL')
-    db.pragma('foreign_keys = ON')
-    registerFunctions(db)
-    runMigrations(db)
+    const opened = new Database(path)
+    opened.pragma('journal_mode = WAL')
+    opened.pragma('foreign_keys = ON')
+    try {
+      registerFunctions(opened)
+      runMigrations(opened)
+    } catch (err) {
+      // A throw here (a migration guard, e.g. 006's collections_must_be_empty
+      // check) must not leave `db` pointing at a half-migrated connection —
+      // every later getDb() would otherwise return it unchecked, instead of
+      // this same error, forever (M3).
+      opened.close()
+      throw err
+    }
+    db = opened
   }
   return db
 }

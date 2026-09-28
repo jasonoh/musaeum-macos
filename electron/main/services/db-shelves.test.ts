@@ -85,6 +85,9 @@ describe('migration 006 (bookshelves D2)', () => {
     closeDb()
 
     expect(() => getDb()).toThrow(/collections_must_be_empty_before_006/)
+    // A half-migrated connection must not linger: a second call throws too,
+    // rather than silently handing back a db stuck between migrations (M3)
+    expect(() => getDb()).toThrow(/collections_must_be_empty_before_006/)
     closeDb()
     const raw = new Database(dbPath(), { readonly: true })
     try {

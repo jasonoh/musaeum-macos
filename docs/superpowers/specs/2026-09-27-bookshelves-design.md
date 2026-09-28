@@ -1,7 +1,7 @@
 # Design: bookshelves — user-made shelves on the Mac, mapped for the phone
 
 **Date:** 2026-09-27
-**Status:** Design approved section by section with Jason on 2026-09-27; written spec reviewed and approved the same day. Slice 1 (storage, service, IPC) landed 2026-09-27 — plan `docs/superpowers/plans/2026-09-27-bookshelves-slice1.md`. **Next step:** `superpowers:writing-plans` against this document, producing `docs/superpowers/plans/2026-09-27-bookshelves-slice1.md` (one plan per slice, as the phone-upload work did). A fresh session should read this spec, then the invariant docs named under **Depends on**, before planning.
+**Status:** Design approved section by section with Jason on 2026-09-27; written spec reviewed and approved the same day. Slice 1 (storage, service, IPC) landed 2026-09-27 — plan `docs/superpowers/plans/2026-09-27-bookshelves-slice1.md`. **Next step:** `superpowers:writing-plans` against this document, producing `docs/superpowers/plans/2026-09-27-bookshelves-slice2.md` (one plan per slice, as the phone-upload work did). A fresh session should read this spec, then the invariant docs named under **Depends on**, before planning.
 **Scope:** Arbitrary, user-named, non-exclusive shelves on the desktop app — create, rename, delete, browse, add by drag or by menu, remove with a Remove-vs-Delete choice and an Undo, send a whole shelf to a Kindle — plus the REST surface the phone needs to browse shelves and toggle a book's membership, and a map of the phone's implementation. It does **not** cover smart (saved-query) shelves, manual ordering within a shelf, reordering shelves in the sidebar, or creating/renaming/deleting shelves from the phone (see *Rejected and deferred*).
 **Depends on:** `docs/invariants/nas-and-catalog.md` (the catalog's write-and-adopt pattern this copies), `docs/invariants/files-and-deletion.md` (the delete paths shelves hook into), `docs/invariants/selection-and-keyboard.md` (the selection grammar drag reads), `docs/invariants/library-views.md` (the one WHERE builder, virtualization), `docs/rest-api.md` and `docs/superpowers/specs/2026-09-22-ios-companion-design.md` (contract discipline, AC19).
 **Interacts with:** the device transfer queue (`src/stores/device.store.ts:76`), the Finder drop overlay (`src/hooks/useDragDrop.ts`), the delete dialogs, `BookContextMenu`, `SelectionPanel`, `BookDetail`, `Sidebar`.
@@ -127,6 +127,8 @@ No foreign keys: membership may name a book the local catalog does not hold yet 
 ## D5 — Deleting a book takes it off every shelf, batched
 
 **Decision:** `book-delete.deleteBook` and `deleteBooks` call `shelves.pruneBooks(ids)` after the catalog removal — one `shelves.json` write for the whole bulk delete, never per book. A failure to prune is logged and swallowed (invariant 12's posture: the book is already gone; a stale member is ignored by D4's rule and removed by the next prune or write that touches it).
+
+**Errata (2026-09-27, slice 1):** a member left in shelves.json by a failed prune is not removed by a later write — no write sweeps existing members, since D4 keeps members whose book this Mac's catalog lacks. It stays in the file, invisible in the cache (see docs/invariants/shelves.md).
 
 ## D6 — The preload surface: `window.Musaeum.shelves`
 
