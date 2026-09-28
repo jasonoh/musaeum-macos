@@ -54,7 +54,7 @@ The client's connect check. Answer it before anything else: `library` says wheth
 ```json payload=health
 {
   "apiVersion": 1,
-  "version": "0.1.0",
+  "version": "0.5.0",
   "books": 7100,
   "library": "online"
 }

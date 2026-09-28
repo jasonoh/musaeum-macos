@@ -87,9 +87,24 @@ const DUPLICATE = {
   matchType: 'isbn' as const
 }
 
+/**
+ * The app's own version, read from the one place that defines it.
+ *
+ * `package.json` is the single source: electron-builder names the DMG from it and
+ * `app.getVersion()` answers it at runtime, so the health payload's `version` is a
+ * *derived* value. The document's example has to state the same number, and the
+ * deep-equality case below is what enforces it — which only works while this
+ * fixture reads the version rather than restating it. Hard-coded on both sides,
+ * the two literals agree with each other and with nothing else, so a release bump
+ * leaves the contract advertising a version the server no longer speaks and no
+ * case goes red.
+ */
+const APP_VERSION = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'))
+  .version as string
+
 /** The payloads the document must describe. Built by the shaper, never by hand. */
 const PAYLOADS: Record<string, unknown> = {
-  health: healthPayload({ version: '0.1.0', books: 7100, online: true }),
+  health: healthPayload({ version: APP_VERSION, books: 7100, online: true }),
   book: bookPayload(GOLDEN),
   library: libraryPayload({ books: [GOLDEN], total: 1, limit: DEFAULT_PAGE_LIMIT, offset: 0 }),
   facets: facetsPayload({
