@@ -24,6 +24,20 @@ interface LibraryState {
   query: string
   filters: BookFilters
   sort: BookSort
+  /**
+   * The open shelf, or null for the whole library (bookshelves D7). Sits above
+   * the facet filters: **Clear** empties `filters` and leaves this alone.
+   *
+   * Not persisted, and not restored at launch — the store's existing
+   * "never reopen filtered" rule, for the same reason.
+   */
+  activeShelfId: string | null
+  /**
+   * The library's *own* sort — the only one that outlives the session (D8).
+   * While a shelf is open `sort` is that shelf's sort, and this is what leaving
+   * restores; while the library is on screen the two are kept equal.
+   */
+  librarySort: BookSort
   importJobs: Record<string, ImportProgress>
   /**
    * The refresh-or-rebuild the status bar is showing — live counter, then the
@@ -40,6 +54,10 @@ interface LibraryState {
   toggleFilter(kind: FacetKind, value: string): void
   clearFilters(): void
   setSort(sort: BookSort): void
+  /** Open a shelf, or leave it with null. Remembers and restores the library sort. */
+  setActiveShelf(shelfId: string | null): void
+  /** Drop a scope the shelf list no longer holds. See the docblock. */
+  reconcileScope(existingShelfIds: string[]): void
   upsertImportJob(progress: ImportProgress): void
   removeImportJob(jobId: string): void
   refreshLibrary(): Promise<void>
@@ -62,6 +80,36 @@ const EMPTY_FILTERS: BookFilters = {}
 const SETTLED_DONE_MS = 8_000
 
 let settledTimer: ReturnType<typeof setTimeout> | null = null
+
+/** D8's default inside a shelf; also what its sort control offers first. */
+const SHELF_ADDED_DESC: BookSort = { field: 'shelf_added', direction: 'desc' }
+
+/**
+ * What outlives the session: the library's own sort, and nothing else.
+ *
+ * Exported rather than left inline so the rule has a decider, the `persistedUIState`
+ * pattern. D8's sentence is exact — the library sort "remains the only persisted
+ * sort" — so while a shelf is open this deliberately persists `librarySort`, not
+ * the effective `sort`, which is then *Date Added to Shelf*.
+ */
+export const persistedLibraryState = (s: LibraryState): Pick<LibraryState, 'sort'> => ({
+  // D8: the library sort is the only persisted sort. While a shelf is open the
+  // state's `sort` is *Date Added to Shelf*, which means nothing without a shelf
+  // and would come back as the library's own order on the next launch
+  sort: s.librarySort
+})
+
+/**
+ * A restored sort, or null when storage holds nothing this build may use.
+ *
+ * `isBookSort` alone is no longer enough — it accepts `shelf_added` since slice
+ * 1, so a build that persisted one would restore a library sorted by a shelf's
+ * membership. Exported for the same reason `persistedUIState` is: the rule gets
+ * a decider instead of a case that reaches into the storage backend.
+ */
+export function restoredSort(value: unknown): BookSort | null {
+  return isBookSort(value) && value.field !== 'shelf_added' ? value : null
+}
 
 export const useLibraryStore = create<LibraryState>()(
   persist(
@@ -112,18 +160,29 @@ export const useLibraryStore = create<LibraryState>()(
         query: '',
         filters: EMPTY_FILTERS,
         sort: { field: 'title', direction: 'asc' },
+        librarySort: { field: 'title', direction: 'asc' },
+        activeShelfId: null,
         importJobs: {},
         catalogSync: null,
         bulkHydrate: null,
 
         async load() {
-          const { query, filters, sort } = get()
+          const { query, filters, sort, activeShelfId } = get()
           set({ loading: true })
           try {
+            // The scope travels on the read, not in `filters` (R4): it is not
+            // one of the filter sidebar's facets, so *Clear* cannot reach it and
+            // `hasActive` cannot claim it — the spec's "Clear keeps the shelf",
+            // true by construction
+            const scope = activeShelfId ? { shelfId: activeShelfId } : undefined
             const books = query.trim()
-              ? await window.Musaeum.library.searchBooks(query, sort)
-              : await window.Musaeum.library.getBooks({ ...filters, sort })
-            const facets = await window.Musaeum.library.getFacets()
+              ? await window.Musaeum.library.searchBooks(query, sort, scope)
+              : await window.Musaeum.library.getBooks({
+                  ...filters,
+                  sort,
+                  ...(activeShelfId ? { shelfId: activeShelfId } : {})
+                })
+            const facets = await window.Musaeum.library.getFacets(scope)
             set({ books, facets, loading: false })
           } catch (err) {
             console.error('library load failed:', err)
@@ -154,8 +213,45 @@ export const useLibraryStore = create<LibraryState>()(
           void get().load()
         },
 
+        /**
+         * Entering a shelf sets its default order and remembers the library's;
+         * leaving restores it. The memory is written only from *outside* a
+         * shelf: switching straight from one shelf to another must not
+         * overwrite it with a shelf sort, and a sort chosen inside a shelf is
+         * that visit's own (R1).
+         */
+        setActiveShelf(shelfId) {
+          const { activeShelfId, sort, librarySort } = get()
+          if (shelfId === activeShelfId) return
+          if (shelfId === null) {
+            set({ activeShelfId: null, sort: librarySort })
+          } else {
+            set({
+              activeShelfId: shelfId,
+              librarySort: activeShelfId ? librarySort : sort,
+              sort: SHELF_ADDED_DESC
+            })
+          }
+          void get().load()
+        },
+
+        /**
+         * A scope whose shelf has gone: deleted here, deleted on another Mac, or
+         * a library root switched to one that never had it. Main broadcasts on
+         * every adoption as well as every write, so this runs whenever the list
+         * is refreshed — and without it the app would sit on a scope no list
+         * holds, where every read answers nothing and every write refuses
+         * ("That shelf no longer exists"). Leaving the scope keeps the query and
+         * the filters: they are the user's, and they were not what vanished.
+         */
+        reconcileScope(existingShelfIds) {
+          const { activeShelfId } = get()
+          if (!activeShelfId || existingShelfIds.includes(activeShelfId)) return
+          get().setActiveShelf(null)
+        },
+
         setSort(sort) {
-          set({ sort })
+          set(get().activeShelfId ? { sort } : { sort, librarySort: sort })
           void get().load()
         },
 
@@ -211,13 +307,13 @@ export const useLibraryStore = create<LibraryState>()(
       // Sort is the only durable preference here. Query and filters are not
       // restored on purpose: reopening to a filtered library that looks like
       // a much smaller one is the kind of state a user can't see the cause of.
+      // The *open shelf* is not restored either, for the same reason.
       name: 'musaeum.library',
-      partialize: (s) => ({ sort: s.sort }),
+      partialize: persistedLibraryState,
       merge: (persisted, current) => {
         const { sort } = (persisted ?? {}) as { sort?: unknown }
-        // Storage is only as trustworthy as the build that wrote it, and an
-        // unknown field would reach SORT_SQL with no expression to match
-        return isBookSort(sort) ? { ...current, sort } : current
+        const restored = restoredSort(sort)
+        return restored ? { ...current, sort: restored, librarySort: restored } : current
       }
     }
   )
