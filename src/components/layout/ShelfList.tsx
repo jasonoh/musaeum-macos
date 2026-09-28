@@ -4,7 +4,9 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useShelvesStore } from '@/stores/shelves.store'
 import { PencilIcon, PlusIcon, TrashIcon } from '@/components/shared/icons'
+import { BOOK_DRAG_MIME, dragPayload } from '@/lib/book-drag'
 import { reportShelfFailure } from '@/lib/shelf-feedback'
+import { addToShelf } from '@/lib/shelf-membership'
 import { useDialogFocus } from '@/hooks/useDialogFocus'
 
 /** Which row's name is being typed. Local: it is about this column, not the app. */
@@ -35,8 +37,9 @@ type Editing = { mode: 'create' } | { mode: 'rename'; id: string } | null
  * `shelves:changed` arriving mid-rename cannot clobber what is being typed
  * (Review Focus 3).
  *
- * Slice 4 adds *Send to ‹device›* above *Delete Shelf…*; slice 3 makes the rows
- * drop targets. Neither is stubbed here.
+ * Slice 3 landed the rows: they are drop targets, and a drop adds through
+ * `addToShelf` so the toast is the module's. Slice 4 adds *Send to ‹device›*
+ * above *Delete Shelf…* and is not stubbed here.
  */
 export function ShelfList() {
   const dialogRef = useDialogFocus()
@@ -51,6 +54,8 @@ export function ShelfList() {
   const [name, setName] = useState('')
   const [menu, setMenu] = useState<{ shelf: ShelfSummary; x: number; y: number } | null>(null)
   const [confirming, setConfirming] = useState<ShelfSummary | null>(null)
+  /** The row (or `'create'`) the pointer is over mid-drag; set by dragover, cleared by drop/leave. */
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
 
   useEffect(() => {
     if (!menu) return
@@ -76,6 +81,58 @@ export function ShelfList() {
     setName(shelf.name)
     setEditing({ mode: 'rename', id: shelf.id })
     setMenu(null)
+  }
+
+  /**
+   * Whether a drag in flight is one of ours. The test is on the *event's* types,
+   * not on the slot alone (S1): after a drag the window never saw end — Escape,
+   * or a release over another app, with the source unmounted mid-drag so no
+   * `dragend` reaches the window — the slot can still hold the previous drag's
+   * ids, and a Finder file drop must not be answered from them.
+   */
+  const isBookDrag = (e: React.DragEvent): boolean =>
+    [...(e.dataTransfer?.types ?? [])].includes(BOOK_DRAG_MIME)
+
+  /**
+   * Whether a drag in flight may land on this row.
+   *
+   * Refused — no ring, and a refusal `dropEffect`, which is what turns the
+   * cursor into a "no" — when the drag is not a book drag, when nothing is
+   * being carried, when the share cannot take a write (AC28), and for the shelf
+   * that is already open: the books in the payload are that shelf's own rows,
+   * so "adding" them is a no-op and the toast would read *Already on To Read*
+   * for the one gesture most likely to repeat (S3).
+   */
+  const canAcceptDrop = (e: React.DragEvent, shelfId: string): boolean => {
+    const ids = dragPayload()
+    return isBookDrag(e) && Boolean(ids?.length) && online && shelfId !== activeShelfId
+  }
+
+  const onRowDragOver = (e: React.DragEvent, shelf: ShelfSummary) => {
+    // `dropEffect` has to be set on every dragover: Chromium resets it
+    if (!e.dataTransfer) return
+    if (!canAcceptDrop(e, shelf.id)) {
+      e.dataTransfer.dropEffect = 'none'
+      setDropTarget((t) => (t === shelf.id ? null : t))
+      return
+    }
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropTarget(shelf.id)
+  }
+
+  const onRowDrop = async (e: React.DragEvent, shelfId: string) => {
+    e.preventDefault()
+    setDropTarget(null)
+    if (!isBookDrag(e)) return
+    const ids = dragPayload()
+    if (!ids?.length || !online) return
+    // The id, re-looked-up: `shelves:changed` can land between the ring
+    // appearing and the drop, and a captured object would be the old shelf
+    // (Review Focus 3)
+    const shelf = useShelvesStore.getState().shelves.find((s) => s.id === shelfId)
+    if (!shelf) return
+    await addToShelf(shelf, [...ids])
   }
 
   /**
@@ -166,12 +223,17 @@ export function ShelfList() {
             ) : (
               <button
                 onClick={() => setActiveShelf(shelf.id)}
+                onDragOver={(e) => onRowDragOver(e, shelf)}
+                onDragLeave={() => setDropTarget((t) => (t === shelf.id ? null : t))}
+                onDrop={(e) => void onRowDrop(e, shelf.id)}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   setMenu({ shelf, x: e.clientX, y: e.clientY })
                 }}
                 onDoubleClick={() => startRename(shelf)}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ${
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ring-inset ${
+                  dropTarget === shelf.id ? 'ring-1 ring-gold-400' : ''
+                } ${
                   active
                     ? 'bg-ink-800 font-medium text-parchment'
                     : 'text-parchment-dim hover:bg-ink-800 hover:text-parchment'

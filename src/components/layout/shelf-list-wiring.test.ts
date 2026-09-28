@@ -68,8 +68,51 @@ describe('the shelf section (AC16)', () => {
     expect(SOURCE).toMatch(/copy\.deleteBlocked/)
   })
 
-  it('is not a drop target yet \u2014 slice 3 owns drag', () => {
-    expect(SOURCE).not.toMatch(/onDragOver|onDrop|dataTransfer/)
+  it('is a drop target, on the rows and on the two create controls (AC26)', () => {
+    const src = bare(SOURCE)
+    expect(src).toMatch(/onDragOver=/)
+    expect(src).toMatch(/onDrop=/)
+    expect(src).toMatch(/dragPayload\(\)/)
+    // The payload is read in the target's own handler, and the window's drop
+    // clears it: an `e.stopPropagation()` in a *drop* handler would leave the
+    // slot populated for the next drag to pick up (S5, Review Focus 1). Scoped
+    // to the handler block on purpose — the row menu stops propagation on its
+    // own click, and a bare `not.toMatch` over the file would fail on that
+    // instead of on a drop. The end anchor is the *next* `return (` after the
+    // handler, not the file's first: that one is the menu effect's cleanup
+    // (`return () => {`), which sits above these handlers.
+    const start = src.indexOf('const canAcceptDrop')
+    const dragBlock = src.slice(start, src.indexOf('return (', start))
+    expect(dragBlock.length).toBeGreaterThan(200)
+    expect(dragBlock).not.toMatch(/stopPropagation/)
+  })
+
+  it('refuses a drop while the share cannot take a write (AC28)', () => {
+    expect(bare(SOURCE)).toMatch(/dropEffect = 'none'/)
+    // `online`, the same status the write gate reads — not a second opinion
+    expect(bare(SOURCE)).toMatch(/!online/)
+  })
+
+  it('answers a book drag only — a stale slot cannot adopt a foreign drop (S1)', () => {
+    // The gate is on the *event's* types, not the slot alone: a drag the window
+    // never saw end can leave the slot populated, and a Finder file drop must
+    // not be answered from it (the part-3a review's S1)
+    expect(bare(SOURCE)).toMatch(/includes\(BOOK_DRAG_MIME\)/)
+    expect(bare(SOURCE)).toMatch(/isBookDrag\(e\) &&/) // the ring's decision asks
+    expect(bare(SOURCE)).toMatch(/!isBookDrag\(e\)/) // and the drop itself re-asks
+  })
+
+  it('adds through the shared module, so the toast is the module\u2019s (AC26)', () => {
+    expect(bare(SOURCE)).toMatch(/addToShelf\(/)
+    expect(bare(SOURCE)).not.toMatch(/Added \$\{/)
+  })
+
+  it('rings the row it is hovering, and moves nothing (invariant 7, S6)', () => {
+    expect(bare(SOURCE)).toMatch(/ring-1 ring-gold-400/)
+    // A `border` in the row's class list would add 2px to the row and move every
+    // shelf below the hovered one while the drag is in flight — a screenshot
+    // shows jitter, the build shows nothing (S6)
+    expect(bare(SOURCE)).not.toMatch(/dropTarget[\s\S]{0,200}?border/)
   })
 
   it('promises only actions that work, and offers them as controls', () => {
