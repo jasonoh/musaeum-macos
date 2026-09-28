@@ -23,6 +23,9 @@ import { describe, expect, it } from 'vitest'
 const read = (file: string): string =>
   readFileSync(join(process.cwd(), 'src', 'components', 'library', file), 'utf8')
 
+/** Block comments stripped before matching — see `bare()` in `shelf-list-wiring.test.ts`. */
+const bare = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, '')
+
 const CARD = read('BookCard.tsx')
 const LIST = read('ListView.tsx')
 
@@ -31,24 +34,28 @@ describe('the drag sources (AC25, invariant 7)', () => {
     // The card's button is its click target and the row's <tr> owns its own
     // clicks; the drag belongs to the box that covers both the artwork and the
     // meta lines (S1)
-    expect(CARD).toMatch(/^\s+draggable$/m) // a bare `draggable` on the card's root div
-    expect(LIST).toMatch(/^\s+draggable$/m)
+    expect(bare(CARD)).toMatch(/^\s+draggable$/m) // a bare `draggable` on the card's root div
+    expect(bare(LIST)).toMatch(/^\s+draggable$/m)
     // Not the buttons: `[\s\S]{0,600}` rather than `[^>]*`, because a button's
     // props are one per line and `[^>]*` would sail past its opening tag and
     // match nothing whatever the file said
-    expect(CARD).not.toMatch(/<button[\s\S]{0,600}?draggable/)
-    expect(LIST).not.toMatch(/<button[\s\S]{0,600}?draggable/)
+    expect(bare(CARD)).not.toMatch(/<button[\s\S]{0,600}?draggable/)
+    expect(bare(LIST)).not.toMatch(/<button[\s\S]{0,600}?draggable/)
   })
 
   it('starts the drag through the one module, and ends it by clearing the payload', () => {
-    for (const source of [CARD, LIST]) {
+    for (const source of [bare(CARD), bare(LIST)]) {
       expect(source).toMatch(/startBookDrag\(/)
       expect(source).toMatch(/clearDragPayload/)
     }
   })
 
-  it('adds no child to either box (invariant 7)', () => {
-    // A drag image is built offscreen precisely so it is not a node in the view
-    expect(CARD).not.toMatch(/<span[^>]*dragImage/)
+  it('builds no drag image and adds no child in either view (invariant 7)', () => {
+    // The fan is constructed offscreen, in the module, precisely so it is not a
+    // node in a view: `setDragImage` is the only way a view could grow one, and
+    // neither box may name it
+    for (const source of [bare(CARD), bare(LIST)]) {
+      expect(source).not.toMatch(/setDragImage|dragImage/)
+    }
   })
 })
