@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ForeignShelfEntry, ManualShelfEntry, ShelvesFile } from '@shared/shelf.types'
 import {
   emptyShelvesFile,
@@ -94,10 +94,29 @@ describe('readShelvesFile / writeShelvesFile', () => {
     await expect(readShelvesFile(root)).rejects.toThrow()
   })
 
+  it('rethrows ENOENT when the library root itself is gone, rather than reading it as "no shelves" (F3)', async () => {
+    await expect(readShelvesFile(join(root, 'gone'))).rejects.toThrow()
+  })
+
   it('round-trips through an atomic write and leaves no .part behind', async () => {
     const file: ShelvesFile = { version: 1, shelves: [manual, smart] }
     await writeShelvesFile(root, file)
     expect(await readShelvesFile(root)).toEqual({ state: 'ok', file })
     expect(await fs.readdir(root)).toEqual(['shelves.json'])
+  })
+
+  it('cleans up its scratch file and rethrows when the rename fails (F2)', async () => {
+    const file: ShelvesFile = { version: 1, shelves: [manual] }
+    await writeShelvesFile(root, file) // an existing shelves.json, so we can tell it was untouched
+    const before = await fs.readFile(shelvesPath(root), 'utf8')
+    vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('share dropped'))
+
+    await expect(writeShelvesFile(root, { version: 1, shelves: [] })).rejects.toThrow(
+      'share dropped'
+    )
+
+    expect(await fs.readdir(root)).toEqual(['shelves.json'])
+    expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe(before)
+    vi.restoreAllMocks()
   })
 })

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'fs'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ManualShelfEntry } from '@shared/shelf.types'
@@ -309,10 +309,15 @@ describe('the review count after a delete', () => {
 })
 
 describe('deleting a book takes it off every shelf (bookshelves D5)', () => {
+  /** A shelves.json scratch file: `shelves.json.<uuid>.part`, one per write (F2). */
+  function isShelvesScratch(path: unknown): boolean {
+    const name = basename(String(path))
+    return name.startsWith('shelves.json.') && name.endsWith('.part')
+  }
+
   function countShelfWrites(): () => number {
     const spy = vi.spyOn(fs, 'writeFile')
-    return () =>
-      spy.mock.calls.filter(([path]) => String(path).endsWith('shelves.json.part')).length
+    return () => spy.mock.calls.filter(([path]) => isShelvesScratch(path)).length
   }
 
   async function membersOnDisk(): Promise<Record<string, string[]>> {

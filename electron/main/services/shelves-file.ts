@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import type {
@@ -100,12 +101,32 @@ export function parseShelvesFile(text: string): ShelvesFile | null {
   return { ...raw, version: SHELVES_FILE_VERSION, shelves }
 }
 
+/**
+ * ENOENT on `shelvesPath(root)` means one of two different things, and only
+ * one of them is "no shelves": the root itself may have vanished — a share
+ * unmounted or a local folder moved, in the up-to-30-second window before
+ * `nas.assertOnline()` notices (F3) — in which case `shelves.json`'s own
+ * absence says nothing. Only a root that still exists and simply has no file
+ * is a library that has never had a shelf.
+ */
+async function rootIsMissing(root: string): Promise<boolean> {
+  try {
+    await fs.stat(root)
+    return false
+  } catch {
+    return true
+  }
+}
+
 export async function readShelvesFile(root: string): Promise<ShelvesReadState> {
   let text: string
   try {
     text = await fs.readFile(shelvesPath(root), 'utf8')
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { state: 'missing' }
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (await rootIsMissing(root)) throw err
+      return { state: 'missing' }
+    }
     // A share blip must not read as "no shelves": adoption would empty the
     // cache, and a mutation would start from nothing and overwrite the file
     throw err
@@ -115,12 +136,30 @@ export async function readShelvesFile(root: string): Promise<ShelvesReadState> {
 }
 
 /**
- * Atomic write: `.part` then rename, so a crash or a dropped share never leaves
- * a torn file — the same pattern as `catalog.ts`'s `writeCatalog`. Indented,
- * because this file is canonical and a person may open it to repair it.
+ * Atomic write: a scratch file then rename, so a crash or a dropped share
+ * never leaves a torn file — the same pattern as `catalog.ts`'s
+ * `writeCatalog`. Indented, because this file is canonical and a person may
+ * open it to repair it.
+ *
+ * Unlike `writeCatalog`'s fixed `catalog.json.part`, the scratch name here
+ * carries a `randomUUID()`, not a pid+counter (`importer.ts`'s
+ * `writeMetadataJson` uses that pair, and explains why there too): this file
+ * is written by several Macs sharing the one NAS folder, and a pid is unique
+ * only within one machine. Two Macs writing inside the same SMB window could
+ * otherwise both pick `shelves.json.part` and rename each other's half-written
+ * scratch file into place — a torn canonical file, worse than the
+ * last-write-wins the spec already accepts for concurrent edits. If the
+ * rename fails, the scratch file is removed (best-effort) and the original
+ * error is rethrown, so a failed write never litters the share.
  */
 export async function writeShelvesFile(root: string, file: ShelvesFile): Promise<void> {
   const target = shelvesPath(root)
-  await fs.writeFile(`${target}.part`, `${JSON.stringify(file, null, 2)}\n`, 'utf8')
-  await fs.rename(`${target}.part`, target)
+  const scratch = `${target}.${randomUUID()}.part`
+  await fs.writeFile(scratch, `${JSON.stringify(file, null, 2)}\n`, 'utf8')
+  try {
+    await fs.rename(scratch, target)
+  } catch (err) {
+    await fs.rm(scratch, { force: true }).catch(() => undefined)
+    throw err
+  }
 }

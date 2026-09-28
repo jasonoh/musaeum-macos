@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'fs'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ManualShelfEntry, ShelvesFile } from '@shared/shelf.types'
@@ -20,6 +20,7 @@ beforeEach(async () => {
   for (const f of ['musaeum.db', 'musaeum.db-wal', 'musaeum.db-shm']) {
     rmSync(join(dir, f), { force: true })
   }
+  shelves.resetAdoptionLogForTests() // module-level; would otherwise carry over between tests
   root = mkdtempSync(join(tmpdir(), 'musaeum-shelves-'))
   await nas.setLibraryRoot(root) // temp dir exists → state becomes 'connected'
   for (const id of ['a', 'b', 'c']) insertBook(makeBook(id))
@@ -44,10 +45,16 @@ function manualOnDisk(file: ShelvesFile, id: string): ManualShelfEntry {
   return shelf as ManualShelfEntry
 }
 
-/** Counts writes of shelves.json from here on — every write goes through its `.part`. */
+/** A shelves.json scratch file: `shelves.json.<uuid>.part`, one per write (F2). */
+function isShelvesScratch(path: unknown): boolean {
+  const name = basename(String(path))
+  return name.startsWith('shelves.json.') && name.endsWith('.part')
+}
+
+/** Counts writes of shelves.json from here on — every write goes through its scratch file. */
 function countWrites(): () => number {
   const spy = vi.spyOn(fs, 'writeFile')
-  return () => spy.mock.calls.filter(([path]) => String(path).endsWith('shelves.json.part')).length
+  return () => spy.mock.calls.filter(([path]) => isShelvesScratch(path)).length
 }
 
 describe('writes: file first, cache second, one write each (bookshelves D3)', () => {
@@ -334,6 +341,33 @@ describe('adopt (bookshelves D4)', () => {
     await fs.writeFile(shelvesPath(root), 'not json{', 'utf8')
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     await expect(shelves.adopt(root)).resolves.toBeUndefined()
+    expect(shelves.list()).toEqual(cached)
+    expect(error).toHaveBeenCalled()
+  })
+
+  it('logs an unreadable file again if it breaks again after being repaired (M2)', async () => {
+    await shelves.create('To Read', ['a'])
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await fs.writeFile(shelvesPath(root), 'not json{', 'utf8')
+    await shelves.adopt(root)
+    await shelves.adopt(root) // still broken: not logged a second time
+    expect(error).toHaveBeenCalledTimes(1)
+
+    await writeShelvesFile(root, { version: 1, shelves: [] }) // repaired
+    await shelves.adopt(root)
+    expect(shelves.list()).toEqual([])
+
+    await fs.writeFile(shelvesPath(root), 'not json{', 'utf8') // breaks again
+    await shelves.adopt(root)
+    expect(error).toHaveBeenCalledTimes(2)
+  })
+
+  it('never rejects, and keeps the cache when the library root itself has vanished (F3)', async () => {
+    await shelves.create('To Read', ['a'])
+    const cached = shelves.list()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await expect(shelves.adopt(join(root, 'gone'))).resolves.toBeUndefined()
     expect(shelves.list()).toEqual(cached)
     expect(error).toHaveBeenCalled()
   })
