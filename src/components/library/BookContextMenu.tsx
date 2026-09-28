@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
+import { useNASStore } from '@/stores/nas.store'
 import { useReaderStore } from '@/stores/reader.store'
+import { shelfById, useShelvesStore } from '@/stores/shelves.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
 import { contextMenuScope } from '@/lib/selection'
+import { removeFromShelf } from '@/lib/shelf-membership'
 import { refreshBookMetadata } from '@/lib/metadata-refresh'
 import { notifyError } from '@/lib/notify'
 import {
@@ -41,6 +44,7 @@ export function BookContextMenu() {
   const requestEdit = useUIStore((s) => s.requestEdit)
   const requestCoverPicker = useUIStore((s) => s.requestCoverPicker)
   const requestDeviceRemoval = useUIStore((s) => s.requestDeviceRemoval)
+  const requestShelfPicker = useUIStore((s) => s.requestShelfPicker)
   const count = useUIStore(selectionCount)
   // The Selection object itself (identity is stable between changes): the menu
   // reads the scope of the click from it rather than assuming the right-click
@@ -49,6 +53,14 @@ export function BookContextMenu() {
   const clearSelection = useUIStore((s) => s.clearSelection)
   const requestSelectionDelete = useUIStore((s) => s.requestSelectionDelete)
   const books = useLibraryStore((s) => s.books)
+  // The open shelf, for *Remove from “‹shelf›”*. The name is read from the list
+  // rather than kept beside the id (R3), so a rename follows for free — and the
+  // item is omitted entirely until it is known, because a menu reading
+  // `Remove from “undefined”` is worse than no item at all.
+  const activeShelfId = useLibraryStore((s) => s.activeShelfId)
+  const shelfName = useShelvesStore((s) => shelfById(s, activeShelfId)?.name ?? null)
+  const online = useNASStore((s) => s.status?.state === 'connected')
+  const label = useNASStore((s) => s.status?.copy.label ?? undefined)
   // Selected as stable slices rather than a derived array, so the menu doesn't
   // re-render on every unrelated device-store update
   const devices = useDeviceStore((s) => s.devices)
@@ -113,6 +125,13 @@ export function BookContextMenu() {
               clearSelection()
               closeContextMenu()
             }}
+          />
+          <MenuItem
+            icon={<BookIcon className="h-3.5 w-3.5" />}
+            label="Add to Shelf…"
+            disabled={!online}
+            title={online ? undefined : label}
+            onClick={() => requestShelfPicker({ bookIds: [...selection.ids] })}
           />
           <MenuItem
             icon={<TrashIcon className="h-3.5 w-3.5" />}
@@ -200,6 +219,38 @@ export function BookContextMenu() {
             void refreshBookMetadata(book.id)
           }}
         />
+        <div className="my-1 h-px bg-ink-700" />
+        <MenuItem
+          icon={<BookIcon className="h-3.5 w-3.5" />}
+          label="Add to Shelf…"
+          disabled={!online}
+          title={online ? undefined : label}
+          onClick={() => requestShelfPicker({ bookIds: [book.id] })}
+        />
+        {shelfName && (
+          // Immediate, with the Undo standing in for a confirmation (D9). Only
+          // while a shelf is open, and only once its name is known (R3).
+          //
+          // This scope and not the selection's: the bulk answer already exists
+          // one step away — the selection menu's *Delete N books…* opens
+          // `ShelfRemoveDialog`, whose first button is this same remove. Two
+          // doors to one action, which is what D9 asks for.
+          <MenuItem
+            icon={<CloseIcon className="h-3.5 w-3.5" />}
+            label={`Remove from “${shelfName}”`}
+            disabled={!online}
+            title={online ? undefined : label}
+            onClick={() => {
+              closeContextMenu()
+              const shelf = useShelvesStore.getState().shelves.find((s) => s.id === activeShelfId)
+              // This branch *is* the single-book scope — the file resolves the
+              // scope once, with `contextMenuScope`, and the selection scope
+              // returned above — so the payload is the book alone
+              if (shelf) void removeFromShelf(shelf, [book.id])
+            }}
+          />
+        )}
+        <div className="my-1 h-px bg-ink-700" />
         {holding.map((d) => (
           <MenuItem
             key={d.id}
@@ -223,22 +274,28 @@ function MenuItem({
   icon,
   label,
   danger,
+  disabled,
+  title,
   onClick
 }: {
   icon: React.ReactNode
   label: string
   danger?: boolean
+  disabled?: boolean
+  title?: string
   onClick(): void
 }) {
   return (
     <button
       role="menuitem"
+      disabled={disabled}
+      title={title}
       onClick={onClick}
       className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] ${
         danger
           ? 'text-parchment-dim hover:bg-danger-500/15 hover:text-danger-400'
           : 'text-parchment-dim hover:bg-ink-800 hover:text-parchment'
-      }`}
+      } disabled:pointer-events-none disabled:opacity-40`}
     >
       {icon}
       {label}

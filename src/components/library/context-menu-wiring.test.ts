@@ -65,3 +65,43 @@ describe('the menu', () => {
     expect(MENU).not.toContain('count >= 2')
   })
 })
+
+describe('the shelf entries (AC19)', () => {
+  const MENU = read('BookContextMenu.tsx')
+  const PANEL = read('SelectionPanel.tsx')
+
+  it('offers Add to Shelf… in both scopes and in the panel', () => {
+    // Two scopes in one file, so this counts rather than matches once
+    expect(MENU.match(/label="Add to Shelf…"/g)?.length).toBe(2)
+    expect(PANEL).toContain('Add to Shelf…')
+  })
+
+  it('opens the picker through the store, in both scopes', () => {
+    expect(MENU.match(/requestShelfPicker\(/g)?.length).toBe(2)
+    // The selection scope is the same list the bulk delete uses: the selection
+    // itself, read at the moment of the click
+    expect(MENU).toMatch(/selection\.ids/)
+  })
+
+  it('offers Remove from “shelf” only while a shelf is open, and does it immediately', () => {
+    expect(MENU).toMatch(/Remove from “/)
+    expect(MENU).toMatch(/removeFromShelf\(/)
+    // It does not open a dialog: D9 makes this one immediate, with the Undo
+    // standing in for the confirmation
+    expect(MENU).not.toMatch(/requestShelfRemove/)
+  })
+
+  it('omits the shelf item when the shelf name is not loaded rather than guessing one', () => {
+    // A menu item reading Remove from “undefined” is worse than no item; the
+    // trash path still offers the shelf's own remove
+    expect(MENU).toMatch(/shelfName &&/)
+  })
+
+  it('disables rather than hides when the share is away (R7)', () => {
+    // The items are shelf writes, so they take the write gate's own question —
+    // and the tooltip is the status row's label, not a delete-shaped sentence
+    expect(MENU).toMatch(/disabled=\{!online\}/)
+    expect(MENU).toMatch(/copy\.label/)
+    expect(MENU).not.toMatch(/copy\.deleteBlocked/)
+  })
+})

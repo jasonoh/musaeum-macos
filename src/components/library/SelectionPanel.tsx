@@ -4,6 +4,7 @@ import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
 import {
+  BookIcon,
   CloseIcon,
   RefreshIcon,
   SendIcon,
@@ -27,6 +28,8 @@ export function SelectionPanel() {
   const requestSelectionDelete = useUIStore((s) => s.requestSelectionDelete)
   const books = useLibraryStore((s) => s.books)
   const online = useNASStore((s) => s.status?.state === 'connected')
+  const label = useNASStore((s) => s.status?.copy.label ?? undefined)
+  const requestShelfPicker = useUIStore((s) => s.requestShelfPicker)
   const devices = useDeviceStore((s) => s.devices)
   const onDevice = useDeviceStore((s) => s.onDevice)
   const transfers = useDeviceStore((s) => s.transfers)
@@ -118,6 +121,17 @@ export function SelectionPanel() {
         >
           <RefreshIcon className="h-4 w-4" />
           Refresh metadata
+        </button>
+        {/* The selection is the scope: the picker is the same dialog one card's
+            menu opens, and for a bulk scope nothing is ticked (D9) */}
+        <button
+          disabled={!online}
+          title={online ? undefined : label}
+          onClick={() => requestShelfPicker({ bookIds: selected.map((b) => b.id) })}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-ink-600 px-3 py-2 text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
+        >
+          <BookIcon className="h-4 w-4" />
+          Add to Shelf…
         </button>
         {/* Set apart from the recoverable actions above it, and the only one
             styled as danger */}
