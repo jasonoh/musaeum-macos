@@ -89,7 +89,7 @@ export function libraryViewState(input: {
   if (!input.storageConnected) return 'library-unavailable'
   // An empty shelf is not an empty library, and the promise it makes is the
   // shelf's own — which is why it sits *below* the storage gate rather than
-  // above it (R5): "drag books here" is a write, and with the share gone the
-  // banner's sentence is the honest one.
+  // above it (R5): its copy is a write instruction ("add books from the
+  // library…"), and with the share gone the banner's sentence is the honest one.
   return input.shelfId ? 'empty-shelf' : 'empty-library'
 }

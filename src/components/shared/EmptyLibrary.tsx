@@ -49,11 +49,15 @@ export function EmptyLibrary({ state, query }: { state: LibraryViewState; query:
       ) : state === 'empty-shelf' ? (
         <>
           <p className="font-display text-lg text-parchment-dim">This shelf is empty</p>
-          {/* D9's sentence, word for word. In slice 2 neither action it names
-              can be performed from this pane — drag arrives in slice 3, and the
-              menu path needs a card to right-click — which is recorded as an
-              open copy question in the plan, not patched over here. */}
-          <p className="max-w-sm text-sm">Drag books here, or use Add to Shelf.</p>
+          {/* D9's sentence named two actions, and in slice 2 this pane can
+              perform neither: drag arrives in slice 3, and *Add to Shelf* is a
+              right-click on a card, of which an empty shelf has none. So the
+              copy names the route that works today — Library, then right-click —
+              rather than a promise the pane cannot keep. Slice 3 restores the
+              drag half. */}
+          <p className="max-w-sm text-sm">
+            Add books from the library — right-click a book, then Add to Shelf…
+          </p>
         </>
       ) : (
         <>

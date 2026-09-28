@@ -110,9 +110,9 @@ describe('an empty shelf (AC17)', () => {
   })
 
   it('renders nothing when the library cannot take a write (R5)', () => {
-    // The shelf's own copy is a write instruction ("drag books here"), so it
-    // takes the same gate the first-run pane takes — the banner above carries
-    // the sentence and the recovery instead
+    // The shelf's own copy is a write instruction ("add books from the
+    // library"), so it takes the same gate the first-run pane takes — the
+    // banner above carries the sentence and the recovery instead
     expect(view({ shelfId: 's1', storageConnected: false })).toBe('library-unavailable')
   })
 

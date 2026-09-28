@@ -15,6 +15,19 @@ import { describe, expect, it } from 'vitest'
 const read = (file: string): string =>
   readFileSync(join(process.cwd(), 'src', 'components', 'layout', file), 'utf8')
 
+/**
+ * Source with block comments removed. A comment *naming* a pattern is not the
+ * pattern: this file's own explanatory comments quote `role="button"` and
+ * "Drag books here", and matching either is how a walk fails spuriously. Line
+ * comments are left alone — stripping `//` would also cut `musaeum://`, which
+ * weakens a negative assertion rather than strengthening it.
+ */
+const bare = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, '')
+
+/** A file outside `layout/`, for the walks that span a component boundary. */
+const readSrc = (...parts: string[]): string =>
+  readFileSync(join(process.cwd(), 'src', ...parts), 'utf8')
+
 const SOURCE = read('ShelfList.tsx')
 
 describe('the shelf section (AC16)', () => {
@@ -57,6 +70,23 @@ describe('the shelf section (AC16)', () => {
 
   it('is not a drop target yet \u2014 slice 3 owns drag', () => {
     expect(SOURCE).not.toMatch(/onDragOver|onDrop|dataTransfer/)
+  })
+
+  it('promises only actions that work, and offers them as controls', () => {
+    // The spec's empty state read "Drag books here to start a shelf", and D9's
+    // pane named drag too. Drag is slice 3 and the card sets
+    // `draggable={false}`, so shipping either sentence ships a false affordance
+    // — the one thing a reader tries first, fails at, and reads as a broken app.
+    // No renderer copy may promise drag until drag exists.
+    const empty = readSrc('components', 'shared', 'EmptyLibrary.tsx')
+    for (const source of [SOURCE, empty]) expect(bare(source)).not.toMatch(/Drag books here/i)
+    // …and the fact that makes those sentences false, pinned here so the two
+    // cannot drift apart: should this ever read `true`, that guard is obsolete
+    const card = readSrc('components', 'library', 'BookCard.tsx')
+    expect(bare(card)).toMatch(/draggable=\{false\}/)
+    // The empty state is a control, not an instruction: with no shelves the
+    // first thing a reader does is press the action rather than be told of one
+    expect(bare(SOURCE)).toMatch(/>\s*New shelf\s*</)
   })
 })
 
@@ -143,15 +173,6 @@ describe('the placeholder (AC17)', () => {
 })
 
 const SIDEBAR = read('Sidebar.tsx')
-
-/**
- * Source with block comments removed. A comment *naming* a pattern is not the
- * pattern: this test's own explanatory comment mentions `role="button"`, and
- * matching it is how a walk fails spuriously. Line comments are left alone —
- * stripping `//` would also cut `musaeum://`, which weakens a negative assertion
- * rather than strengthening it.
- */
-const bare = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, '')
 
 describe('the Library row is navigation (AC17)', () => {
   it('leaves the open shelf through setActiveShelf(null), the one way out', () => {

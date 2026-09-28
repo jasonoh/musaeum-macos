@@ -126,10 +126,21 @@ export function ShelfList() {
         </button>
       </div>
 
+      {/* The empty state is a *control*, not an instruction. The spec's line here
+          was "Drag books here to start a shelf" — true once slice 3 lands, but
+          this chrome shipped first, and a sentence naming an action that does
+          not exist is worse than no sentence. Slice 3 makes this row a drop
+          target as well; until then, pressing it starts a shelf. */}
       {shelves.length === 0 && !editing && (
-        <p className="px-2 py-1 text-[12px] text-parchment-faint">
-          Drag books here to start a shelf
-        </p>
+        <button
+          onClick={startCreate}
+          disabled={!online}
+          title={online ? 'New shelf' : label}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-faint transition-colors hover:bg-ink-800 hover:text-parchment disabled:pointer-events-none disabled:opacity-40"
+        >
+          <PlusIcon className="h-3.5 w-3.5" />
+          New shelf
+        </button>
       )}
 
       {editing?.mode === 'create' && (
