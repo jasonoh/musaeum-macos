@@ -107,6 +107,22 @@ describe('the shelf section (AC16)', () => {
     expect(bare(SOURCE)).not.toMatch(/Added \$\{/)
   })
 
+  it('creates a shelf from a drop on + and on the empty-state row (AC26)', () => {
+    // Both create controls take a drop, and both go through the same
+    // `startCreate`, which is where the pending books are handed over
+    expect(bare(SOURCE)).toMatch(/onDrop=\{\(e\) => onCreateDrop\(e\)\}/)
+    expect(bare(SOURCE).match(/onCreateDrop\(e\)/g)).toHaveLength(2)
+    expect(bare(SOURCE)).toMatch(/startCreate\(\[\.\.\.ids\]\)/)
+  })
+
+  it('creates with the books the drag carried, and with none on a click', () => {
+    // `create(name, bookIds?)`: the second argument is slice 1's and this is its
+    // first caller (handoff 6)
+    expect(bare(SOURCE)).toMatch(/shelves\.create\(trimmed, pending \?\? undefined\)/)
+    // A plain click must not inherit the last drop's books
+    expect(bare(SOURCE)).toMatch(/setPending\(null\)/)
+  })
+
   it('rings the row it is hovering, and moves nothing (invariant 7, S6)', () => {
     expect(bare(SOURCE)).toMatch(/ring-1 ring-gold-400/)
     // A `border` in the row's class list would add 2px to the row and move every

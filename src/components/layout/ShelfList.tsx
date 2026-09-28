@@ -37,9 +37,10 @@ type Editing = { mode: 'create' } | { mode: 'rename'; id: string } | null
  * `shelves:changed` arriving mid-rename cannot clobber what is being typed
  * (Review Focus 3).
  *
- * Slice 3 landed the rows: they are drop targets, and a drop adds through
- * `addToShelf` so the toast is the module's. Slice 4 adds *Send to ‹device›*
- * above *Delete Shelf…* and is not stubbed here.
+ * Slice 3 landed: the rows are drop targets, and the **+** and the empty-state
+ * row create with the dragged books (the drop's ids ride `pending`, so a field
+ * abandoned with Escape takes nothing with it — S4). Slice 4 adds *Send to
+ * ‹device›* above *Delete Shelf…* and is not stubbed here.
  */
 export function ShelfList() {
   const dialogRef = useDialogFocus()
@@ -56,6 +57,8 @@ export function ShelfList() {
   const [confirming, setConfirming] = useState<ShelfSummary | null>(null)
   /** The row (or `'create'`) the pointer is over mid-drag; set by dragover, cleared by drop/leave. */
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  /** The books a create control was dropped with: outlives the drag, dies with the field (S4). */
+  const [pending, setPending] = useState<string[] | null>(null)
 
   useEffect(() => {
     if (!menu) return
@@ -71,14 +74,18 @@ export function ShelfList() {
     }
   }, [menu])
 
-  const startCreate = () => {
+  const startCreate = (ids: string[] | null = null) => {
     setName('')
+    setPending(ids)
     setEditing({ mode: 'create' })
     setMenu(null)
   }
 
   const startRename = (shelf: ShelfSummary) => {
     setName(shelf.name)
+    // A rename abandons any create field that was open, and the books that field
+    // was holding go with it (S4): they were only ever the field's.
+    setPending(null)
     setEditing({ mode: 'rename', id: shelf.id })
     setMenu(null)
   }
@@ -136,6 +143,35 @@ export function ShelfList() {
   }
 
   /**
+   * A drop on a create control (`+`, or the empty-state row) opens the name
+   * field with the dragged books held in `pending`, not in the drag's slot: the
+   * slot's lifetime is the drag and the field outlives it (S4). The same gate as
+   * the rows — a foreign drag is refused, and (as measured) a refusal's
+   * `dropEffect = 'none'` means the browser delivers no `drop` at all.
+   */
+  const onCreateDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer) return
+    if (!isBookDrag(e) || !dragPayload()?.length || !online) {
+      e.dataTransfer.dropEffect = 'none'
+      setDropTarget((t) => (t === 'create' ? null : t))
+      return
+    }
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropTarget('create')
+  }
+
+  /** An abandoned field takes the pending books with it — nothing was created (S4). */
+  const onCreateDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDropTarget(null)
+    if (!isBookDrag(e)) return
+    const ids = dragPayload()
+    if (!ids?.length || !online) return
+    startCreate([...ids])
+  }
+
+  /**
    * Enter commits, Escape and blur cancel, and an empty name is a cancel rather
    * than a refusal: an abandoned field is not an error to report.
    */
@@ -144,12 +180,15 @@ export function ShelfList() {
     const trimmed = name.trim()
     if (!trimmed) {
       setEditing(null)
+      setPending(null)
       return
     }
     try {
-      if (editing.mode === 'create') await window.Musaeum.shelves.create(trimmed)
+      if (editing.mode === 'create')
+        await window.Musaeum.shelves.create(trimmed, pending ?? undefined)
       else await window.Musaeum.shelves.rename(editing.id, trimmed)
       setEditing(null)
+      setPending(null)
       // A create selects nothing: the new row appears and the view stays where
       // the user put it (the sheet's `+` does not jump either)
     } catch (err) {
@@ -173,27 +212,34 @@ export function ShelfList() {
           Shelves
         </span>
         <button
-          onClick={startCreate}
+          onClick={() => startCreate()}
+          onDragOver={onCreateDragOver}
+          onDrop={(e) => onCreateDrop(e)}
           disabled={!online}
           title={online ? 'New shelf' : label}
           aria-label="New shelf"
-          className="ml-auto rounded p-0.5 text-parchment-faint transition-colors hover:text-gold-400 disabled:pointer-events-none disabled:opacity-40"
+          className={`ml-auto rounded p-0.5 text-parchment-faint transition-colors hover:text-gold-400 disabled:pointer-events-none disabled:opacity-40 ${
+            dropTarget === 'create' ? 'ring-1 ring-gold-400 ring-inset' : ''
+          }`}
         >
           <PlusIcon className="h-3.5 w-3.5" />
         </button>
       </div>
 
       {/* The empty state is a *control*, not an instruction. The spec's line here
-          was "Drag books here to start a shelf" — true once slice 3 lands, but
-          this chrome shipped first, and a sentence naming an action that does
-          not exist is worse than no sentence. Slice 3 makes this row a drop
-          target as well; until then, pressing it starts a shelf. */}
+          was "Drag books here to start a shelf" — and it is a drop target now
+          (slice 3), so dropping books on it starts the shelf with them; the
+          sentence stays out because the control teaches the rest. */}
       {shelves.length === 0 && !editing && (
         <button
-          onClick={startCreate}
+          onClick={() => startCreate()}
+          onDragOver={onCreateDragOver}
+          onDrop={(e) => onCreateDrop(e)}
           disabled={!online}
           title={online ? 'New shelf' : label}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-faint transition-colors hover:bg-ink-800 hover:text-parchment disabled:pointer-events-none disabled:opacity-40"
+          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-faint transition-colors hover:bg-ink-800 hover:text-parchment disabled:pointer-events-none disabled:opacity-40 ${
+            dropTarget === 'create' ? 'ring-1 ring-gold-400 ring-inset' : ''
+          }`}
         >
           <PlusIcon className="h-3.5 w-3.5" />
           New shelf
@@ -205,7 +251,10 @@ export function ShelfList() {
           value={name}
           onChange={setName}
           onCommit={commit}
-          onCancel={() => setEditing(null)}
+          onCancel={() => {
+            setEditing(null)
+            setPending(null)
+          }}
         />
       )}
 
@@ -218,7 +267,10 @@ export function ShelfList() {
                 value={name}
                 onChange={setName}
                 onCommit={commit}
-                onCancel={() => setEditing(null)}
+                onCancel={() => {
+                  setEditing(null)
+                  setPending(null)
+                }}
               />
             ) : (
               <button
