@@ -99,7 +99,17 @@ describe('the shelf section (AC16)', () => {
     // not be answered from it (the part-3a review's S1)
     expect(bare(SOURCE)).toMatch(/includes\(BOOK_DRAG_MIME\)/)
     expect(bare(SOURCE)).toMatch(/isBookDrag\(e\) &&/) // the ring's decision asks
-    expect(bare(SOURCE)).toMatch(/!isBookDrag\(e\)/) // and the drop itself re-asks
+    expect(bare(SOURCE)).toMatch(/!isBookDrag\(e\)/) // every handler re-asks it
+    expect(bare(SOURCE)).toMatch(/!canAcceptDrop\(e, shelfId\)/) // and the drop re-asks the whole gate
+  })
+
+  it('lets a foreign drag fall through instead of refusing it (F1)', () => {
+    // `dropEffect = 'none'` suppresses the `drop` event itself (measured
+    // 2026-09-28), so a refusal aimed at a Finder file drag would eat the
+    // import over the shelf section: every handler tests the MIME type and
+    // *returns*, leaving the event to the window's file-import handler. Four:
+    // the two row handlers and the two create-control ones.
+    expect(bare(SOURCE).match(/if \(!isBookDrag\(e\)\) return/g)).toHaveLength(4)
   })
 
   it('adds through the shared module, so the toast is the module\u2019s (AC26)', () => {

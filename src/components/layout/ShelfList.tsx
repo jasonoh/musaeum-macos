@@ -104,11 +104,17 @@ export function ShelfList() {
    * Whether a drag in flight may land on this row.
    *
    * Refused — no ring, and a refusal `dropEffect`, which is what turns the
-   * cursor into a "no" — when the drag is not a book drag, when nothing is
-   * being carried, when the share cannot take a write (AC28), and for the shelf
-   * that is already open: the books in the payload are that shelf's own rows,
-   * so "adding" them is a no-op and the toast would read *Already on To Read*
-   * for the one gesture most likely to repeat (S3).
+   * cursor into a "no" — when nothing is being carried, when the share cannot
+   * take a write (AC28), and for the shelf that is already open: the books in
+   * the payload are that shelf's own rows, so "adding" them is a no-op and the
+   * toast would read *Already on To Read* for the one gesture most likely to
+   * repeat (S3).
+   *
+   * The MIME test is part of the gate, but a drag that fails it must be **left
+   * alone, not refused** — the callers return early on `isBookDrag` before they
+   * could ever set a refusal, because refusing a foreign drag would suppress it
+   * too (see `onRowDragOver`): a Finder file drop over the shelf section belongs
+   * to the window's import handler.
    */
   const canAcceptDrop = (e: React.DragEvent, shelfId: string): boolean => {
     const ids = dragPayload()
@@ -118,6 +124,11 @@ export function ShelfList() {
   const onRowDragOver = (e: React.DragEvent, shelf: ShelfSummary) => {
     // `dropEffect` has to be set on every dragover: Chromium resets it
     if (!e.dataTransfer) return
+    // A drag that is not ours falls through untouched — no refusal, no ring.
+    // A `dropEffect = 'none'` refusal here would suppress the `drop` event
+    // itself (measured 2026-09-28), and a Finder file drop over the shelf
+    // section must still reach the window's import handler (part-3b review, F1)
+    if (!isBookDrag(e)) return
     if (!canAcceptDrop(e, shelf.id)) {
       e.dataTransfer.dropEffect = 'none'
       setDropTarget((t) => (t === shelf.id ? null : t))
@@ -132,8 +143,12 @@ export function ShelfList() {
     e.preventDefault()
     setDropTarget(null)
     if (!isBookDrag(e)) return
+    // The whole gate again, not just the MIME test: a `drop` can arrive without
+    // an accepted `dragover` on some paths, and the open shelf's refusal must
+    // hold in the handler too (part-3b review, F3)
+    if (!canAcceptDrop(e, shelfId)) return
     const ids = dragPayload()
-    if (!ids?.length || !online) return
+    if (!ids?.length) return
     // The id, re-looked-up: `shelves:changed` can land between the ring
     // appearing and the drop, and a captured object would be the old shelf
     // (Review Focus 3)
@@ -145,13 +160,15 @@ export function ShelfList() {
   /**
    * A drop on a create control (`+`, or the empty-state row) opens the name
    * field with the dragged books held in `pending`, not in the drag's slot: the
-   * slot's lifetime is the drag and the field outlives it (S4). The same gate as
-   * the rows — a foreign drag is refused, and (as measured) a refusal's
-   * `dropEffect = 'none'` means the browser delivers no `drop` at all.
+   * slot's lifetime is the drag and the field outlives it (S4). Same shape as
+   * the rows: a foreign drag falls through untouched (F1), and an
+   * ours-but-refused one — nothing carried, or the share down — takes
+   * `dropEffect = 'none'`, which (as measured) means no `drop` is delivered.
    */
   const onCreateDragOver = (e: React.DragEvent) => {
     if (!e.dataTransfer) return
-    if (!isBookDrag(e) || !dragPayload()?.length || !online) {
+    if (!isBookDrag(e)) return
+    if (!dragPayload()?.length || !online) {
       e.dataTransfer.dropEffect = 'none'
       setDropTarget((t) => (t === 'create' ? null : t))
       return
