@@ -628,6 +628,23 @@ describe('shelf adoption beside the catalog’s (bookshelves D4)', () => {
     expect(events).toContain('shelvesChanged')
   })
 
+  it('applyCatalog adopts shelves.json too, so choosing a different library folder does not keep the old one’s shelves (F1)', async () => {
+    await writeCatalog(root, [makeBook('a')])
+    await writeShelvesFile(root, shelvesFile(['a']))
+    await librarySync.applyCatalog(root)
+    expect(shelves.list()).toEqual([{ id: 's1', name: 'To Read', kind: 'manual', count: 1 }])
+
+    const root2 = mkdtempSync(join(tmpdir(), 'musaeum-sync-2-'))
+    try {
+      await writeCatalog(root2, [makeBook('a')])
+      await nas.setLibraryRoot(root2)
+      await librarySync.applyCatalog(root2)
+      expect(shelves.list()).toEqual([])
+    } finally {
+      rmSync(root2, { recursive: true, force: true })
+    }
+  })
+
   it('leaves shelves.json alone on Rebuild Catalog — it neither reads nor writes it', async () => {
     await fs.mkdir(join(root, 'books'), { recursive: true })
     await writeShelvesFile(root, shelvesFile([]))

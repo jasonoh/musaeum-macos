@@ -153,12 +153,22 @@ function preserveLocalReadingState(incoming: Book[]): Book[] {
   return merged
 }
 
-/** Adopt the catalog at root as the local cache. Returns the book count. */
+/**
+ * Adopt the catalog at root as the local cache. Returns the book count.
+ *
+ * Also adopts `shelves.json` (bookshelves D4): this is the picker's "Use This
+ * Library" path, and it adds `root` to `handledRoots` before returning, so
+ * `syncOnConnect` treats this root as already handled and never runs again
+ * this session — without adopting shelves here, choosing a library with no
+ * shelves.json (or a different one) would leave the previous library's
+ * shelves in the cache until a Reload or a relaunch.
+ */
 export async function applyCatalog(root: string): Promise<number> {
   const cat = await catalog.readCatalog(root)
   if (!cat) throw new Error('No readable catalog.json at the library root')
   adopt(cat.books)
   handledRoots.add(root)
+  await shelves.adopt(root)
   return cat.books.length
 }
 
