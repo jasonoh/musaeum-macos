@@ -33,7 +33,7 @@ interface ShelvesState {
   invalidate(): void
 }
 
-export const useShelvesStore = create<ShelvesState>()((set) => ({
+export const useShelvesStore = create<ShelvesState>()((set, get) => ({
   shelves: [],
   revision: 0,
   byBook: {},
@@ -53,9 +53,15 @@ export const useShelvesStore = create<ShelvesState>()((set) => ({
   },
 
   async loadForBook(bookId) {
+    // The revision is captured *before* the read, not read after it: a
+    // `shelves:changed` that lands while this call is in flight has already
+    // cleared `byBook` and re-asked, and committing this answer afterwards would
+    // put a pre-change membership back under the key and leave it there — the
+    // consumer that re-asked has no reason to ask a second time.
+    const at = get().revision
     try {
       const shelves = await window.Musaeum.shelves.forBook(bookId)
-      set((s) => ({ byBook: { ...s.byBook, [bookId]: shelves } }))
+      set((s) => (s.revision === at ? { byBook: { ...s.byBook, [bookId]: shelves } } : s))
     } catch (err) {
       reportShelfFailure(err)
     }

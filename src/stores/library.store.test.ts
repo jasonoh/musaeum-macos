@@ -181,3 +181,60 @@ describe('what outlives the session (note 1)', () => {
     expect(restoredSort('title')).toBeNull()
   })
 })
+
+/**
+ * `load()` is the store's only reader, and this slice gave it a new way to be
+ * asked twice at once: two sidebar clicks issue two scoped reads, and the SQL
+ * they run is not the same cost, so the older answer can arrive last. Without a
+ * guard the grid would show one shelf's rows while `activeShelfId` names
+ * another — nothing would error, and the sort control, the placeholder and the
+ * sidebar highlight would all be describing a different shelf than the books.
+ */
+describe('a read that is overtaken', () => {
+  /** One resolver per `getBooks` call, so the case decides which answer lands. */
+  function stubDeferredLibrary(): Array<(books: Book[]) => void> {
+    const resolvers: Array<(books: Book[]) => void> = []
+    vi.stubGlobal('window', {
+      Musaeum: {
+        library: {
+          getBooks: () => new Promise<Book[]>((resolve) => resolvers.push(resolve)),
+          searchBooks: () => Promise.resolve([] as Book[]),
+          getFacets: () => Promise.resolve(NO_FACETS)
+        }
+      }
+    })
+    return resolvers
+  }
+
+  /** Only `id` is read here; the rest of `Book` is not this case's subject. */
+  const book = (id: string) => ({ id, title: id }) as Book
+  const ids = () => useLibraryStore.getState().books.map((b) => b.id)
+
+  it('drops the older answer rather than applying it over the newer one', async () => {
+    const resolvers = stubDeferredLibrary()
+    useLibraryStore.setState({ activeShelfId: 'a' })
+    const first = useLibraryStore.getState().load()
+    useLibraryStore.setState({ activeShelfId: 'b' })
+    const second = useLibraryStore.getState().load()
+
+    // the newer read answers first …
+    resolvers[1]([book('b1')])
+    await second
+    expect(ids()).toEqual(['b1'])
+
+    // … and the older one lands afterwards, which must change nothing
+    resolvers[0]([book('a1')])
+    await first
+    expect(ids()).toEqual(['b1'])
+    // The overtaken read is not allowed to clear the winner's loading flag either
+    expect(useLibraryStore.getState().loading).toBe(false)
+  })
+
+  it('still commits a read nothing overtook', async () => {
+    const resolvers = stubDeferredLibrary()
+    const load = useLibraryStore.getState().load()
+    resolvers[0]([book('only')])
+    await load
+    expect(ids()).toEqual(['only'])
+  })
+})

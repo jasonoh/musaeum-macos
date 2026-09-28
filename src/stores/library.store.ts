@@ -13,6 +13,7 @@ import type {
 } from '@shared/book.types'
 import { isBookSort } from '@shared/book.types'
 import { applyRebuildProgress, settleCatalogSync, startCatalogSync } from '@/lib/catalog-sync'
+import { resultSetKey } from '@/lib/resultSetIdentity'
 import type { BulkHydrateProgress } from '@shared/metadata.types'
 
 export type FacetKind = 'authors' | 'series' | 'tags' | 'formats' | 'readStatus'
@@ -83,6 +84,24 @@ let settledTimer: ReturnType<typeof setTimeout> | null = null
 
 /** D8's default inside a shelf; also what its sort control offers first. */
 const SHELF_ADDED_DESC: BookSort = { field: 'shelf_added', direction: 'desc' }
+
+/**
+ * The identity of a read, in `resultSetKey`'s own terms.
+ *
+ * `load()` uses this to answer "is the thing I was asked for still the thing the
+ * store wants?" — so "what a read reads" has one definition rather than two, and
+ * it is the same one the views use to decide whether their result set changed.
+ */
+function readIdentity(
+  s: Pick<LibraryState, 'query' | 'filters' | 'sort' | 'activeShelfId'>
+): string {
+  return resultSetKey({
+    query: s.query,
+    filters: s.filters,
+    sort: s.sort,
+    shelfId: s.activeShelfId
+  })
+}
 
 /**
  * What outlives the session: the library's own sort, and nothing else.
@@ -168,6 +187,12 @@ export const useLibraryStore = create<LibraryState>()(
 
         async load() {
           const { query, filters, sort, activeShelfId } = get()
+          // The identity of *this* read, so a slower earlier one cannot land on
+          // top of a later one. Two shelf switches in quick succession issue two
+          // scoped reads and the SQL they run is not the same cost, so the older
+          // answer can arrive last — which would leave the view showing one
+          // shelf's rows while `activeShelfId` names another.
+          const at = readIdentity({ query, filters, sort, activeShelfId })
           set({ loading: true })
           try {
             // The scope travels on the read, not in `filters` (R4): it is not
@@ -183,10 +208,14 @@ export const useLibraryStore = create<LibraryState>()(
                   ...(activeShelfId ? { shelfId: activeShelfId } : {})
                 })
             const facets = await window.Musaeum.library.getFacets(scope)
+            // A scope, sort, query or filter that moved while this read was in
+            // flight has issued a read of its own; that one owns the result set
+            // and the loading flag, and this answer is stale
+            if (readIdentity(get()) !== at) return
             set({ books, facets, loading: false })
           } catch (err) {
             console.error('library load failed:', err)
-            set({ loading: false })
+            if (readIdentity(get()) === at) set({ loading: false })
           }
         },
 

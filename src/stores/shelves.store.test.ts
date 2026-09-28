@@ -77,6 +77,30 @@ describe('invalidate (AC16, AC23)', () => {
     useShelvesStore.getState().invalidate()
     expect(useShelvesStore.getState().shelves).toEqual([READING])
   })
+
+  it('drops a forBook answer that was already in flight when invalidate() ran', async () => {
+    /** Arrives as an array, not a `let`, so the case can resolve it later. */
+    const answers: Array<(shelves: ShelfSummary[]) => void> = []
+    stubShelves({
+      list: async () => [READING],
+      forBook: () => new Promise<ShelfSummary[]>((resolve) => answers.push(resolve))
+    })
+    const inFlight = useShelvesStore.getState().loadForBook('b1')
+    // A `shelves:changed` has landed: the cache is dropped and the consumer
+    // re-asks on the new revision
+    useShelvesStore.getState().invalidate()
+    answers[0]([SCIFI])
+    await inFlight
+    // Committing it now would put a pre-change membership back under the key and
+    // leave it there — the consumer that re-asked has no reason to ask again
+    expect(useShelvesStore.getState().byBook).toEqual({})
+  })
+
+  it('still commits a forBook answer nothing overtook', async () => {
+    stubShelves({ list: async () => [READING], forBook: async () => [SCIFI] })
+    await useShelvesStore.getState().loadForBook('b1')
+    expect(useShelvesStore.getState().byBook.b1).toEqual([SCIFI])
+  })
 })
 
 describe('shelfById', () => {
