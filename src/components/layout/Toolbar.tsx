@@ -30,6 +30,16 @@ const SORT_OPTIONS: BookSort[] = [
 const key = (s: BookSort) => `${s.field}:${s.direction}`
 
 /**
+ * *Date Added to Shelf* — D8's default inside a shelf, and meaningless outside
+ * one: at library level there is no shelf to have been added to. So it is
+ * offered only while a shelf is open, where it is also first.
+ */
+const SHELF_SORT_OPTIONS: BookSort[] = [
+  { field: 'shelf_added', direction: 'desc' },
+  { field: 'shelf_added', direction: 'asc' }
+]
+
+/**
  * Add Books — the app's on-ramp. It offers both ways in: the native picker, and
  * the Calibre wizard, which stays reachable after first run because its PDF
  * top-up is a job you run again (design D4/D5).
@@ -126,13 +136,13 @@ export function Toolbar() {
   const setViewMode = useUIStore((s) => s.setViewMode)
   const sort = useLibraryStore((s) => s.sort)
   const setSort = useLibraryStore((s) => s.setSort)
+  const activeShelfId = useLibraryStore((s) => s.activeShelfId)
 
   const sortValue = key(sort)
+  const offered = activeShelfId ? [...SHELF_SORT_OPTIONS, ...SORT_OPTIONS] : SORT_OPTIONS
   // A list-view header can select a combination this list doesn't carry (e.g.
   // Author Z–A); append it so the select never falls back to a wrong option
-  const options = SORT_OPTIONS.some((o) => key(o) === sortValue)
-    ? SORT_OPTIONS
-    : [...SORT_OPTIONS, sort]
+  const options = offered.some((o) => key(o) === sortValue) ? offered : [...offered, sort]
 
   return (
     <header

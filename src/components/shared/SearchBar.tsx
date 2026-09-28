@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
+import { shelfById, useShelvesStore } from '@/stores/shelves.store'
 import { CloseIcon, SearchIcon } from './icons'
 
 export function SearchBar() {
   const setQuery = useLibraryStore((s) => s.setQuery)
+  const activeShelfId = useLibraryStore((s) => s.activeShelfId)
+  // The name is looked up in the list rather than kept beside the id (R3), so a
+  // rename — here, from the phone, by an adoption — follows without a second
+  // write path. Empty until the first list lands, which is why the stock
+  // sentence is the fallback rather than a substitute.
+  const shelfName = useShelvesStore((s) => shelfById(s, activeShelfId)?.name ?? null)
   const [value, setValue] = useState('')
   const timer = useRef<ReturnType<typeof setTimeout>>()
 
@@ -32,7 +39,7 @@ export function SearchBar() {
         type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Search titles, authors, series…"
+        placeholder={shelfName ? `Search “${shelfName}”` : 'Search titles, authors, series…'}
         className="w-full rounded-lg border border-ink-700 bg-ink-850 py-1.5 pl-9 pr-8 text-sm text-parchment placeholder:text-parchment-faint focus:border-gold-500/60"
       />
       {value && (

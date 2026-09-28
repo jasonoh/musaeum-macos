@@ -84,3 +84,34 @@ describe('no element is added above either view (invariant 7)', () => {
     expect(LIST).toMatch(/ROW_HEIGHT/)
   })
 })
+
+const TOOLBAR = read('Toolbar.tsx')
+const SEARCH = readFileSync(
+  join(process.cwd(), 'src', 'components', 'shared', 'SearchBar.tsx'),
+  'utf8'
+)
+
+describe('the sort control (AC18)', () => {
+  it('offers Date Added to Shelf only while a shelf is open', () => {
+    expect(TOOLBAR).toMatch(/SHELF_SORT_OPTIONS/)
+    expect(TOOLBAR).toMatch(/activeShelfId \? \[\.\.\.SHELF_SORT_OPTIONS, \.\.\.SORT_OPTIONS\]/)
+  })
+
+  it('offers both directions of it, and nothing else new', () => {
+    expect(TOOLBAR).toMatch(/\{ field: 'shelf_added', direction: 'desc' \}/)
+    expect(TOOLBAR).toMatch(/\{ field: 'shelf_added', direction: 'asc' \}/)
+  })
+})
+
+describe('the placeholder (AC17)', () => {
+  it('names the open shelf, read from the list rather than stored', () => {
+    expect(SEARCH).toMatch(/shelfById\(/)
+    expect(SEARCH).toContain('Search \u201c')
+  })
+
+  it('falls back to the stock sentence rather than a substitute', () => {
+    // The list is empty for the first render after a cold start (R3), and a
+    // placeholder reading `Search “undefined”` would be worse than this
+    expect(SEARCH).toContain('Search titles, authors, series…')
+  })
+})
