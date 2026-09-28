@@ -4,7 +4,8 @@ import { resultSetChanged, resultSetKey, type ResultSetIdentity } from './result
 const BASE: ResultSetIdentity = {
   query: 'dune',
   filters: { authors: ['Herbert'], tags: ['sci-fi', 'classic'] },
-  sort: { field: 'title', direction: 'asc' }
+  sort: { field: 'title', direction: 'asc' },
+  shelfId: null
 }
 
 function withIdentity(patch: Partial<ResultSetIdentity>): ResultSetIdentity {
@@ -87,5 +88,31 @@ describe('resultSetKey', () => {
 
   it('ignores filters entirely while a query is active', () => {
     expect(resultSetKey(BASE)).toBe(resultSetKey(withIdentity({ filters: {} })))
+  })
+})
+
+describe('the open shelf is part of the result set', () => {
+  const SHELF = withIdentity({ shelfId: 'shelf-1' })
+
+  it('changes when a shelf opens, even with a query active', () => {
+    // Unlike the facet filters, the scope reaches the *search* too: `load()`
+    // passes it to `searchBooks` as well as `getBooks`, so this is a change in
+    // both branches and the search branch's `filters: null` does not cover it
+    expect(resultSetChanged(BASE, withIdentity({ shelfId: 'shelf-1' }))).toBe(true)
+    expect(resultSetChanged(withIdentity({ query: '' }), SHELF)).toBe(true)
+  })
+
+  it('changes when one shelf replaces another', () => {
+    // The rows differ, and the reader's place in the shelf they left means
+    // nothing in the one they arrived at
+    expect(resultSetChanged(SHELF, withIdentity({ shelfId: 'shelf-2' }))).toBe(true)
+  })
+
+  it('changes when the shelf is left', () => {
+    expect(resultSetChanged(SHELF, withIdentity({ shelfId: null }))).toBe(true)
+  })
+
+  it('does not change when the shelf does not', () => {
+    expect(resultSetChanged(SHELF, withIdentity({ shelfId: 'shelf-1' }))).toBe(false)
   })
 })

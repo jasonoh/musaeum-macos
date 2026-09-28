@@ -12,6 +12,12 @@ export interface ResultSetIdentity {
   query: string
   filters: BookFilters
   sort: BookSort
+  /**
+   * The open shelf, or null for the whole library (bookshelves D7). Part of the
+   * identity, and unlike the filters it applies whether or not a query is
+   * active — a shelf scopes the search too.
+   */
+  shelfId: string | null
 }
 
 /**
@@ -35,13 +41,18 @@ export interface ResultSetIdentity {
  * reader's place is thrown away for a control that visibly does nothing.
  * Filters therefore enter the key only when they are actually applied. If that
  * branch in `load()` ever changes, this is the second place to change.
+ *
+ * The open shelf is not a normalization but the store's other real behaviour:
+ * it scopes a search as well as a browse (`searchBooks(query, sort, scope)`),
+ * so it stays in the key in both branches.
  */
 export function resultSetKey(identity: ResultSetIdentity): string {
   const query = identity.query.trim()
   return JSON.stringify({
     query,
     filters: query ? null : normalizeFilters(identity.filters),
-    sort: { field: identity.sort.field, direction: identity.sort.direction }
+    sort: { field: identity.sort.field, direction: identity.sort.direction },
+    shelfId: identity.shelfId
   })
 }
 

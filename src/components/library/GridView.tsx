@@ -47,7 +47,7 @@ export function GridView() {
     storageConnected
   })
   const resultKey = useLibraryStore((s) =>
-    resultSetKey({ query: s.query, filters: s.filters, sort: s.sort })
+    resultSetKey({ query: s.query, filters: s.filters, sort: s.sort, shelfId: s.activeShelfId })
   )
   const bookIds = useMemo(() => books.map((b) => b.id), [books])
   const { ref, node, metrics } = useScrollMetrics<HTMLDivElement>()
