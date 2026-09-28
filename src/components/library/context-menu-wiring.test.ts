@@ -105,3 +105,21 @@ describe('the shelf entries (AC19)', () => {
     expect(MENU).not.toMatch(/copy\.deleteBlocked/)
   })
 })
+
+describe('the detail panel\u2019s shelves row (AC20)', () => {
+  const DETAIL = read('BookDetail.tsx')
+
+  it('lists the book\u2019s shelves from the store, re-asking on every change', () => {
+    expect(DETAIL).toMatch(/loadForBook\(/)
+    expect(DETAIL).toMatch(/revision/)
+  })
+
+  it('navigates on the chip and removes on the ×, with the shared Undo', () => {
+    expect(DETAIL).toMatch(/setActiveShelf\(/)
+    expect(DETAIL).toMatch(/removeFromShelf\(/)
+  })
+
+  it('says so when there are none', () => {
+    expect(DETAIL).toContain('Not on any shelf')
+  })
+})

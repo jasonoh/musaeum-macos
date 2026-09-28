@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReadStatus } from '@shared/book.types'
 import { readableFormat, seriesDisplay } from '@shared/book.types'
 import { sendErrorFor, sendStateFor, useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useReaderStore } from '@/stores/reader.store'
+import { useShelvesStore } from '@/stores/shelves.store'
 import { selectedBookId, useUIStore } from '@/stores/ui.store'
 import { BookCover } from './BookCard'
 import {
@@ -21,6 +22,7 @@ import {
   WarningIcon
 } from '@/components/shared/icons'
 import { refreshBookMetadata } from '@/lib/metadata-refresh'
+import { removeFromShelf } from '@/lib/shelf-membership'
 import { descriptionText } from '@/lib/description'
 import { notifyError } from '@/lib/notify'
 
@@ -49,10 +51,24 @@ export function BookDetail() {
   // Subscribed per book (a boolean selector), so the panel re-renders when
   // *this* book's refresh starts or ends and not on any other's
   const refreshing = useUIStore((s) => Boolean(bookId && s.refreshingBooks[bookId]))
+  const setActiveShelf = useLibraryStore((s) => s.setActiveShelf)
+  const revision = useShelvesStore((s) => s.revision)
+  const byBook = useShelvesStore((s) => s.byBook)
+  const loadForBook = useShelvesStore((s) => s.loadForBook)
   const [busy, setBusy] = useState<string | null>(null)
 
   const book = useMemo(() => books.find((b) => b.id === bookId) ?? null, [books, bookId])
+
+  // Membership is per book and cached in the shelves store; `revision` moves
+  // whenever main says it moved, which is what makes a REST toggle on the phone
+  // show up here without a reload (AC23)
+  useEffect(() => {
+    if (bookId) void loadForBook(bookId)
+  }, [bookId, revision, loadForBook])
+
   if (!book) return null
+
+  const bookShelves = byBook[book.id] ?? []
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(label)
@@ -193,6 +209,37 @@ export function BookDetail() {
             ))}
           </div>
         )}
+
+        {/* Shelves (D9, AC20). Chips rather than a list, because a book is on
+            several; the same chip tokens as the tags above, and a button rather
+            than a span because each one goes somewhere. */}
+        <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+          {bookShelves.length === 0 ? (
+            <span className="text-[12px] text-parchment-faint">Not on any shelf</span>
+          ) : (
+            bookShelves.map((shelf) => (
+              <span
+                key={shelf.id}
+                className="flex items-center gap-1 rounded-full bg-ink-800 px-2 py-0.5 text-[11px] text-parchment-faint"
+              >
+                <button
+                  onClick={() => setActiveShelf(shelf.id)}
+                  className="max-w-[10rem] truncate transition-colors hover:text-gold-300"
+                >
+                  {shelf.name}
+                </button>
+                <button
+                  aria-label={`Remove from ${shelf.name}`}
+                  title="Remove from shelf"
+                  onClick={() => void removeFromShelf(shelf, [book.id])}
+                  className="transition-colors hover:text-danger-400"
+                >
+                  <CloseIcon className="h-3 w-3" />
+                </button>
+              </span>
+            ))
+          )}
+        </div>
 
         <dl className="mt-5 space-y-1 border-t border-ink-800 pt-4 text-[12px]">
           {book.publisher && <Meta label="Publisher" value={book.publisher} />}
