@@ -23,9 +23,14 @@ import type { BookFilters } from '@shared/book.types'
  * question the six write-gating components ask, `state === 'connected'` — rather
  * than a comparison against copy: `src/lib/storage-copy-scan.test.ts` fails the
  * build if a renderer restates any sentence the composer in main owns.
+ *
+ * The fifth case, added with bookshelves slice 2: an empty shelf, which is not
+ * an empty library and whose copy names two actions — so it shares the fourth
+ * case's gate, and exists because the sidebar can now put the user somewhere the
+ * library is not.
  */
 export type LibraryViewState =
-  'loading' | 'empty-library' | 'no-matches' | 'library-unavailable' | 'books'
+  'loading' | 'empty-library' | 'empty-shelf' | 'no-matches' | 'library-unavailable' | 'books'
 
 /**
  * Filters that are actually set. `sort` is not one — it orders the result rather
@@ -59,6 +64,12 @@ export function libraryViewState(input: {
    * the old unconditional promise.
    */
   storageConnected: boolean
+  /**
+   * The open shelf's id, or null for the whole library (bookshelves D7).
+   * Required, like `storageConnected`: a scope is not a detail a second view can
+   * silently drop.
+   */
+  shelfId: string | null
 }): LibraryViewState {
   // A reload keeps the previous result set on screen (`load` replaces `books`
   // only when the answer arrives), so a non-empty result always wins — the
@@ -76,5 +87,9 @@ export function libraryViewState(input: {
   // this pane may not make its promise on a guess — the same reason the loading
   // branch above renders nothing rather than the first-run copy
   if (!input.storageConnected) return 'library-unavailable'
-  return 'empty-library'
+  // An empty shelf is not an empty library, and the promise it makes is the
+  // shelf's own — which is why it sits *below* the storage gate rather than
+  // above it (R5): "drag books here" is a write, and with the share gone the
+  // banner's sentence is the honest one.
+  return input.shelfId ? 'empty-shelf' : 'empty-library'
 }

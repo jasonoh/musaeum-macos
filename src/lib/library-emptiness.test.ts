@@ -13,6 +13,7 @@ function view(over: Partial<Parameters<typeof libraryViewState>[0]> = {}) {
     // Connected unless a case says otherwise: every case below is about what the
     // pane says about the *library*, and the storage half has its own cases
     storageConnected: true,
+    shelfId: null,
     ...over
   })
 }
@@ -95,6 +96,33 @@ describe('libraryViewState — the storage half', () => {
   it('prefers loading over unavailable while the first load is in flight', () => {
     // Both render nothing; the state is what the next reader reads
     expect(view({ storageConnected: false, loading: true })).toBe('loading')
+  })
+})
+
+describe('an empty shelf (AC17)', () => {
+  it('is its own state, not an empty library', () => {
+    expect(view({ shelfId: 's1' })).toBe('empty-shelf')
+  })
+
+  it('loses to a query or a filter that matched nothing on it', () => {
+    expect(view({ query: 'dune', shelfId: 's1' })).toBe('no-matches')
+    expect(view({ filters: { tags: ['epic'] }, shelfId: 's1' })).toBe('no-matches')
+  })
+
+  it('renders nothing when the library cannot take a write (R5)', () => {
+    // The shelf's own copy is a write instruction ("drag books here"), so it
+    // takes the same gate the first-run pane takes — the banner above carries
+    // the sentence and the recovery instead
+    expect(view({ shelfId: 's1', storageConnected: false })).toBe('library-unavailable')
+  })
+
+  it('loses to books and to loading, like every other state', () => {
+    expect(view({ shelfId: 's1', resultCount: 3 })).toBe('books')
+    expect(view({ shelfId: 's1', loading: true })).toBe('loading')
+  })
+
+  it('leaves the library\u2019s own states alone', () => {
+    expect(view({ shelfId: null })).toBe('empty-library')
   })
 })
 

@@ -244,12 +244,14 @@ export function ListView() {
   // is a promise that a book dropped or picked here will land, and only
   // 'connected' keeps it (see `library-emptiness.ts`)
   const storageConnected = useNASStore((s) => s.status?.state === 'connected')
+  const shelfId = useLibraryStore((s) => s.activeShelfId)
   const view = libraryViewState({
     loading,
     query,
     filters,
     resultCount: books.length,
-    storageConnected
+    storageConnected,
+    shelfId
   })
   const resultKey = useLibraryStore((s) =>
     resultSetKey({ query: s.query, filters: s.filters, sort: s.sort, shelfId: s.activeShelfId })

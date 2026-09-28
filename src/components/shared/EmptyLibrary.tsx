@@ -23,6 +23,12 @@ import type { LibraryViewState } from '@/lib/library-emptiness'
  * sentence for that state belongs to the composer in the main process and the
  * banner above this pane is already drawing it, recovery and all; restating it
  * here is the mistake `src/lib/storage-copy-scan.test.ts` fails the build on.
+ *
+ * 'empty-shelf' takes the first-run block's slot and styling and none of its
+ * controls: nothing here offers Import or Migrate, because those fill the
+ * library and not the shelf. What it does offer is a sentence the owner chose
+ * (D9), whose two affordances arrive with slice 3 and with a shelf that has
+ * books.
  */
 export function EmptyLibrary({ state, query }: { state: LibraryViewState; query: string }) {
   const openModal = useUIStore((s) => s.openModal)
@@ -39,6 +45,15 @@ export function EmptyLibrary({ state, query }: { state: LibraryViewState; query:
           <p className="max-w-xs text-[12px]">
             Clear the search or the filters to see the library again
           </p>
+        </>
+      ) : state === 'empty-shelf' ? (
+        <>
+          <p className="font-display text-lg text-parchment-dim">This shelf is empty</p>
+          {/* D9's sentence, word for word. In slice 2 neither action it names
+              can be performed from this pane — drag arrives in slice 3, and the
+              menu path needs a card to right-click — which is recorded as an
+              open copy question in the plan, not patched over here. */}
+          <p className="max-w-sm text-sm">Drag books here, or use Add to Shelf.</p>
         </>
       ) : (
         <>
