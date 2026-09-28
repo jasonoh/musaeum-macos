@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
+import { useShelvesStore } from '@/stores/shelves.store'
 import { useUIStore } from '@/stores/ui.store'
 import { describeBulkHydrate } from '@/lib/metadata-feedback'
 
@@ -10,6 +11,9 @@ export function useLibrary(): void {
   const removeImportJob = useLibraryStore((s) => s.removeImportJob)
   const setCatalogRebuildProgress = useLibraryStore((s) => s.setCatalogRebuildProgress)
   const setBulkHydrate = useLibraryStore((s) => s.setBulkHydrate)
+  const reconcileScope = useLibraryStore((s) => s.reconcileScope)
+  const loadShelves = useShelvesStore((s) => s.load)
+  const invalidateShelves = useShelvesStore((s) => s.invalidate)
   const setConflictCount = useUIStore((s) => s.setConflictCount)
   const notify = useUIStore((s) => s.notify)
   const books = useLibraryStore((s) => s.books)
@@ -25,6 +29,10 @@ export function useLibrary(): void {
 
   useEffect(() => {
     void load()
+    // The sidebar draws this list, so it is read once here rather than from
+    // `ShelfList`: a component that fetched it would be a second path into the
+    // same store, and the first paint would be empty until it ran
+    void loadShelves()
     void window.Musaeum.metadata
       .getConflictQueue()
       .then((queue) => setConflictCount(queue.length))
@@ -34,6 +42,27 @@ export function useLibrary(): void {
       window.Musaeum.on.libraryChanged(() => void load()),
       window.Musaeum.on.conflictQueueUpdated((count) => setConflictCount(count)),
       window.Musaeum.on.catalogRebuildProgress((p) => setCatalogRebuildProgress(p)),
+      /**
+       * One shelf signal, one path (D9, slice 1's second handoff note). The list
+       * is re-read because the sidebar draws it; every cached per-book answer is
+       * dropped because membership just moved; the open shelf's own rows are
+       * re-read — nothing outside a shelf changes, and `libraryChanged` (which
+       * re-reads unconditionally) is not this event; and a scope whose shelf has
+       * gone clears itself, which is the one thing standing between a delete on
+       * another Mac and a view that answers nothing and refuses every write.
+       *
+       * The reconcile waits for the read rather than running beside it: the list
+       * in the store at this moment is the one from the *previous* change, and
+       * reconciling against it would clear a scope whose shelf was created a
+       * moment ago.
+       */
+      window.Musaeum.shelves.onChanged(() => {
+        invalidateShelves()
+        void loadShelves().then(() => {
+          reconcileScope(useShelvesStore.getState().shelves.map((s) => s.id))
+          if (useLibraryStore.getState().activeShelfId) void load()
+        })
+      }),
       window.Musaeum.on.bulkHydrateProgress((p) => {
         setBulkHydrate(p.running ? p : null)
         // The status bar counter just disappears when the job ends, which is
@@ -55,6 +84,9 @@ export function useLibrary(): void {
     return () => unsubs.forEach((u) => u())
   }, [
     load,
+    loadShelves,
+    invalidateShelves,
+    reconcileScope,
     upsertImportJob,
     removeImportJob,
     setCatalogRebuildProgress,
