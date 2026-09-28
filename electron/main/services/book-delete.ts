@@ -56,10 +56,14 @@ async function removeFolder(dir: string, id: string): Promise<void> {
 /**
  * Take deleted books off every shelf — one shelves.json write for the batch,
  * never one per book (bookshelves D5). Logged and swallowed (invariant 12): the
- * book is already gone, and a stale member is left out of the cache by adoption
- * and dropped by the next write that touches its shelf. The cache already lost
- * the membership with the row (`db.deleteBook`), so the renderer is told even
- * though the file could not be.
+ * book is already gone either way. A member a failed prune could not remove
+ * stays in shelves.json for good — no later write sweeps a shelf's existing
+ * membership, because D4's own rule is that a member whose book the catalog
+ * lacks is kept, not dropped (`docs/invariants/shelves.md`, Deletion). The
+ * cache already lost the membership with the row (`db.deleteBook`), so the
+ * renderer is told even though the file could not be, and the stray member
+ * stays invisible there — `replaceAllShelves` only ever inserts a membership
+ * for a book the cache currently holds.
  */
 async function pruneFromShelves(ids: string[]): Promise<void> {
   try {
