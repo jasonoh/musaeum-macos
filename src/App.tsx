@@ -12,6 +12,7 @@ import { DeleteSelectionDialog } from '@/components/library/DeleteSelectionDialo
 import { ImportOverlay } from '@/components/library/ImportOverlay'
 import { RemoveFromDeviceDialog } from '@/components/library/RemoveFromDeviceDialog'
 import { ShelfPicker } from '@/components/library/ShelfPicker'
+import { ShelfRemoveDialog } from '@/components/library/ShelfRemoveDialog'
 import { SelectionPanel } from '@/components/library/SelectionPanel'
 import { ConflictQueue } from '@/components/metadata/ConflictQueue'
 import { MigrationWizard } from '@/components/migration/MigrationWizard'
@@ -73,6 +74,7 @@ export default function App() {
       {coverPickerBookId && <CoverPicker key={coverPickerBookId} />}
       <RemoveFromDeviceDialog />
       <ShelfPicker />
+      <ShelfRemoveDialog />
       <ReaderView />
 
       {modal === 'conflicts' && <ConflictQueue />}

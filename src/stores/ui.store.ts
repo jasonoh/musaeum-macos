@@ -107,6 +107,14 @@ interface UIState {
    */
   shelfPicker: { bookIds: string[] } | null
   /**
+   * What the shelf's own remove dialog is open for: the shelf, and the books the
+   * trash entry point was pressed for (D9). Set by the two trash actions below
+   * *only* while a shelf is open; its second button hands over to
+   * `deletingBookId`/`deletingSelection`, which stay the only place anything is
+   * deleted.
+   */
+  shelfRemove: { shelfId: string; bookIds: string[] } | null
+  /**
    * Latest word from the first-launch Python bootstrap, or null once it has
    * finished cleanly. A failure is kept so the status bar can keep saying why
    * metadata features are unavailable.
@@ -143,6 +151,10 @@ interface UIState {
   requestDeviceRemoval(target: DeviceRemovalTarget | null): void
   /** Books the *Add to Shelf…* picker is open for, or null. */
   requestShelfPicker(target: { bookIds: string[] } | null): void
+  /** The shelf's own remove dialog, or null to close it. */
+  requestShelfRemove(target: { shelfId: string; bookIds: string[] } | null): void
+  /** The remove dialog's second answer: the library delete, as it always was. */
+  requestLibraryDelete(): void
   setPythonEnv(progress: PythonEnvProgress | null): void
   /** Show a transient report; returns its id for callers that dismiss early. */
   notify(input: NotifyInput): number
@@ -194,6 +206,7 @@ export const useUIStore = create<UIState>()(
       coverPickerBookId: null,
       removingFromDevice: null,
       shelfPicker: null,
+      shelfRemove: null,
       pythonEnv: null,
       toasts: [],
       refreshingBooks: {},
@@ -221,9 +234,32 @@ export const useUIStore = create<UIState>()(
       // scope from the click instead (`contextMenuScope`).
       openContextMenu: (contextMenu) => set({ contextMenu }),
       closeContextMenu: () => set({ contextMenu: null }),
-      // Opening any dialog always dismisses the menu that launched it
-      requestDelete: (deletingBookId) => set({ deletingBookId, contextMenu: null }),
-      requestSelectionDelete: (deletingSelection) => set({ deletingSelection, contextMenu: null }),
+      // Opening any dialog always dismisses the menu that launched it.
+      //
+      // The trash entry points, shelf-aware (D9, AC21): with no shelf open these
+      // are the two lines they have always been; with one open they ask the
+      // question the user actually meant first — *off the shelf*, or *out of the
+      // library* — and the remove dialog's second answer hands over to the two
+      // flags below, so `deletingBookId`/`deletingSelection` remain the only
+      // road to a deletion. The cross-store read is the same one-way
+      // `bookOrder()` already makes from here.
+      requestDelete: (bookId) => {
+        const shelfId = useLibraryStore.getState().activeShelfId
+        if (bookId !== null && shelfId) {
+          set({ shelfRemove: { shelfId, bookIds: [bookId] }, contextMenu: null })
+          return
+        }
+        set({ deletingBookId: bookId, contextMenu: null })
+      },
+      requestSelectionDelete: (open) => {
+        const shelfId = useLibraryStore.getState().activeShelfId
+        const bookIds = [...get().selection.ids]
+        if (open && shelfId && bookIds.length > 0) {
+          set({ shelfRemove: { shelfId, bookIds }, contextMenu: null })
+          return
+        }
+        set({ deletingSelection: open, contextMenu: null })
+      },
       requestEdit: (editingBookId) => set({ editingBookId, contextMenu: null }),
       // Both entry points (the detail panel's cover, the context menu) open the
       // one dialog, so the menu has to go the way every other dialog's does
@@ -231,6 +267,17 @@ export const useUIStore = create<UIState>()(
       requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null }),
       // Same rule as every other dialog: the menu that opened it goes
       requestShelfPicker: (shelfPicker) => set({ shelfPicker, contextMenu: null }),
+      requestShelfRemove: (shelfRemove) => set({ shelfRemove }),
+      requestLibraryDelete: () => {
+        const { shelfRemove } = get()
+        if (!shelfRemove) return
+        const single = shelfRemove.bookIds.length === 1
+        set({
+          shelfRemove: null,
+          deletingBookId: single ? shelfRemove.bookIds[0] : null,
+          deletingSelection: !single
+        })
+      },
       setPythonEnv: (pythonEnv) => set({ pythonEnv }),
 
       notify: (input) => {

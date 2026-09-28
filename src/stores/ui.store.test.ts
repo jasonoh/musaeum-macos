@@ -1,7 +1,8 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { persistedUIState, useUIStore } from './ui.store'
+import { useLibraryStore } from './library.store'
 import { EMPTY_SELECTION, applyClick, selectedId, type Selection } from '@/lib/selection'
 
 /**
@@ -114,5 +115,76 @@ describe('persistedUIState', () => {
     // itself on the next launch
     expect(Object.keys(persisted).sort()).toEqual(['viewMode'])
     expect(persisted.viewMode).toBe('list')
+  })
+})
+
+/**
+ * AC21's routing half. The trash entry points are shelf-aware, and the
+ * hand-over to the existing delete dialogs is the thing that must not drift:
+ * `deletingBookId`/`deletingSelection` stay the only road to a deletion.
+ *
+ * No `window` stub is needed — the routing is pure state, and the first IPC
+ * happens when a dialog's own confirm button is pressed, which is not this
+ * test's subject. That is also why this half of AC21 is decidable at all.
+ */
+describe('the trash entry points ask the shelf first (AC21)', () => {
+  afterEach(() => {
+    useLibraryStore.setState({ activeShelfId: null })
+    useUIStore.setState({
+      shelfRemove: null,
+      deletingBookId: null,
+      deletingSelection: false,
+      selection: EMPTY_SELECTION
+    })
+  })
+
+  it('with no shelf open, opens exactly the dialog it always did', () => {
+    useUIStore.getState().requestDelete('b1')
+    expect(useUIStore.getState().deletingBookId).toBe('b1')
+    expect(useUIStore.getState().shelfRemove).toBeNull()
+
+    useUIStore.getState().requestSelectionDelete(true)
+    expect(useUIStore.getState().deletingSelection).toBe(true)
+  })
+
+  it('with a shelf open, opens the shelf\u2019s dialog for one book', () => {
+    useLibraryStore.setState({ activeShelfId: 's1' })
+    useUIStore.getState().requestDelete('b1')
+    expect(useUIStore.getState().shelfRemove).toEqual({ shelfId: 's1', bookIds: ['b1'] })
+    // Nothing is deleted until the second answer is given
+    expect(useUIStore.getState().deletingBookId).toBeNull()
+  })
+
+  it('with a shelf open, carries the whole selection for the bulk entry point', () => {
+    useLibraryStore.setState({ activeShelfId: 's1' })
+    useUIStore.setState({ selection: { ids: new Set(['a', 'b']), anchor: null, cursor: null } })
+    useUIStore.getState().requestSelectionDelete(true)
+    expect(useUIStore.getState().shelfRemove).toEqual({ shelfId: 's1', bookIds: ['a', 'b'] })
+  })
+
+  it('hands over to the dialog that has always owned deletion (D9)', () => {
+    useUIStore.setState({ shelfRemove: { shelfId: 's1', bookIds: ['b1'] } })
+    useUIStore.getState().requestLibraryDelete()
+    expect(useUIStore.getState().shelfRemove).toBeNull()
+    expect(useUIStore.getState().deletingBookId).toBe('b1')
+
+    useUIStore.setState({ shelfRemove: { shelfId: 's1', bookIds: ['a', 'b'] } })
+    useUIStore.getState().requestLibraryDelete()
+    expect(useUIStore.getState().deletingSelection).toBe(true)
+  })
+
+  it('cancelling closes the shelf dialog and changes nothing else', () => {
+    useUIStore.setState({ shelfRemove: { shelfId: 's1', bookIds: ['b1'] } })
+    useUIStore.getState().requestShelfRemove(null)
+    expect(useUIStore.getState().shelfRemove).toBeNull()
+    expect(useUIStore.getState().deletingBookId).toBeNull()
+  })
+
+  it('still opens the library dialog for a bulk delete with no shelf open', () => {
+    // The other half of the pair: a selection of zero is not a bulk delete, and
+    // a shelf with nothing selected must not divert either
+    useUIStore.getState().requestSelectionDelete(true)
+    expect(useUIStore.getState().deletingSelection).toBe(true)
+    expect(useUIStore.getState().shelfRemove).toBeNull()
   })
 })
