@@ -60,16 +60,30 @@ describe('the list', () => {
 })
 
 describe('invalidate (AC16, AC23)', () => {
-  it('bumps the revision and drops every cached answer', async () => {
+  it('bumps the revision, and keeps the answers it already has', async () => {
     stubShelves({ list: async () => [READING], forBook: async () => [SCIFI] })
     await useShelvesStore.getState().loadForBook('b1')
-    expect(useShelvesStore.getState().byBook.b1).toEqual([SCIFI])
     useShelvesStore.getState().invalidate()
     const s = useShelvesStore.getState()
-    // The revision is what a consumer re-asks on: deleting the key alone would
-    // not re-run an effect that reads `byBook[id]`
+    // The revision is what a consumer re-asks on — that is the whole mechanism,
+    // and deleting the key alone would not re-run an effect that reads
+    // `byBook[id]`
     expect(s.revision).toBe(1)
-    expect(s.byBook).toEqual({})
+    // …and the answer already in hand is *kept* until the re-ask replaces it.
+    // Emptying it here painted "Not on any shelf" on a book that is on a shelf,
+    // for one round trip, on every shelf change anywhere in the app
+    expect(s.byBook.b1).toEqual([SCIFI])
+  })
+
+  it('is replaced by the next answer, so nothing is kept past its change', async () => {
+    stubShelves({ list: async () => [READING], forBook: async () => [SCIFI] })
+    await useShelvesStore.getState().loadForBook('b1')
+    useShelvesStore.getState().invalidate()
+    stubShelves({ list: async () => [READING], forBook: async () => [] })
+    await useShelvesStore.getState().loadForBook('b1')
+    // Kept-then-replaced, not kept: the cache cannot outlive the change it was
+    // invalidated by
+    expect(useShelvesStore.getState().byBook.b1).toEqual([])
   })
 
   it('leaves the list alone — only membership is cached per book', () => {

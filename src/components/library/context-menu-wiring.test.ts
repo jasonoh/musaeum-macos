@@ -26,11 +26,17 @@ const read = (file: string): string =>
 
 /** The body of a view's `onContextMenu` — what a right-click actually runs. */
 function contextMenuHandler(source: string): string {
-  const start = source.indexOf('onContextMenu={(e) => {')
+  // Comments are removed *before* the slice, not after: a comment inside a
+  // handler can name a selection call (a spurious failure of the assertions
+  // below), and one containing `}}` would end the slice early and hide a real
+  // one. The slice still ends at the first `}}`, so a handler whose body nests
+  // an object literal that early is not covered by this walk.
+  const bare = source.replace(/\/\*[\s\S]*?\*\//g, '')
+  const start = bare.indexOf('onContextMenu={(e) => {')
   expect(start, 'the view must handle a right-click').toBeGreaterThan(-1)
-  const end = source.indexOf('}}', start)
+  const end = bare.indexOf('}}', start)
   expect(end, 'the handler must be an arrow body').toBeGreaterThan(start)
-  return source.slice(start, end)
+  return bare.slice(start, end)
 }
 
 const VIEWS: [string, string][] = [
@@ -111,7 +117,10 @@ describe('the detail panel\u2019s shelves row (AC20)', () => {
 
   it('lists the book\u2019s shelves from the store, re-asking on every change', () => {
     expect(DETAIL).toMatch(/loadForBook\(/)
-    expect(DETAIL).toMatch(/revision/)
+    // The deps array, not the bare name: `revision` is also a local `const` near
+    // the top of the file, so matching the name alone passes with the effect
+    // that makes it matter stripped of its dependency
+    expect(DETAIL).toMatch(/\[bookId, revision, loadForBook\]/)
   })
 
   it('navigates on the chip and removes on the ×, with the shared Undo', () => {

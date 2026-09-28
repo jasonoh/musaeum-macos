@@ -22,8 +22,13 @@ describe('shelves:changed (AC23)', () => {
   })
 
   it('is inside the same subscription list as the other main-process events', () => {
-    const list = SOURCE.slice(SOURCE.indexOf('const unsubs = ['))
+    // Bounded by the array literal itself — from its declaration to the cleanup
+    // it precedes — so a second `useEffect` mentioning the call later cannot
+    // satisfy this, which an open-ended slice would allow
+    const start = SOURCE.indexOf('const unsubs = [')
+    const list = SOURCE.slice(start, SOURCE.indexOf('return () =>', start))
     expect(list).toContain('shelves.onChanged')
+    expect(list).toContain('window.Musaeum.on.libraryChanged')
     // A second listener would be a second reload path — and the first place a
     // change would be applied twice
     expect(SOURCE.match(/onChanged\(/g)?.length).toBe(1)

@@ -24,7 +24,11 @@ interface ShelvesState {
   shelves: ShelfSummary[]
   /** Bumped by every `invalidate()`; a consumer re-asks on a change of it. */
   revision: number
-  /** `forBook` answers, keyed by book id. Emptied by every `invalidate()`. */
+  /**
+   * `forBook` answers, keyed by book id. **Kept across an `invalidate()`**: the
+   * revision is the re-ask trigger, and each answer replaces its own key. See
+   * `invalidate` for why emptying this first is the wrong move.
+   */
   byBook: Record<string, ShelfSummary[]>
 
   load(): Promise<void>
@@ -68,7 +72,14 @@ export const useShelvesStore = create<ShelvesState>()((set, get) => ({
   },
 
   invalidate() {
-    set((s) => ({ revision: s.revision + 1, byBook: {} }))
+    // The revision *is* the invalidation: every consumer re-asks on it, and each
+    // answer replaces its own key. Emptying `byBook` here instead would blank the
+    // detail panel's chips and the picker's ticks for the round trip it takes the
+    // new answer to land — a flash of "Not on any shelf" on a book that is on
+    // three of them, on every shelf change anywhere in the app. Stale for a round
+    // trip beats wrong on screen, and the replaced-not-emptied contract is what
+    // keeps the cache from outliving the change.
+    set((s) => ({ revision: s.revision + 1 }))
   }
 }))
 

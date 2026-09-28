@@ -243,9 +243,11 @@ export function BookContextMenu() {
             onClick={() => {
               closeContextMenu()
               const shelf = useShelvesStore.getState().shelves.find((s) => s.id === activeShelfId)
-              // This branch *is* the single-book scope — the file resolves the
-              // scope once, with `contextMenuScope`, and the selection scope
-              // returned above — so the payload is the book alone
+              // No else on purpose: this item is rendered only while a shelf is
+              // open *and* its name resolved from this same list, so a shelf that
+              // has gone by the time of the click has no membership to remove —
+              // there is nothing to report, and inventing a sentence for it would
+              // be a renderer restating copy main owns (storage-copy-scan)
               if (shelf) void removeFromShelf(shelf, [book.id])
             }}
           />

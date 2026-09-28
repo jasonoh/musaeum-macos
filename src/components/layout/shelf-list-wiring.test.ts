@@ -26,7 +26,11 @@ describe('the shelf section (AC16)', () => {
   it('creates and renames through the one inline field', () => {
     expect(SOURCE).toMatch(/shelves\.create\(/)
     expect(SOURCE).toMatch(/shelves\.rename\(/)
-    expect(SOURCE).toMatch(/editing\.mode === 'create'/)
+    // Two expressions, deliberately: the `if` in `commit` and the render check
+    // are different lines, and asserting only the first passes with the field
+    // itself removed from the tree
+    expect(SOURCE).toMatch(/if \(editing\.mode === 'create'\)/)
+    expect(SOURCE).toMatch(/\{editing\?\.mode === 'create' && \(/)
   })
 
   it('names the shelf and its count before it is deleted (D9, AC16)', () => {
@@ -65,23 +69,45 @@ const LIST = readFileSync(
   join(process.cwd(), 'src', 'components', 'library', 'ListView.tsx'),
   'utf8'
 )
+const CARD = readFileSync(
+  join(process.cwd(), 'src', 'components', 'library', 'BookCard.tsx'),
+  'utf8'
+)
 
-describe('no element is added above either view (invariant 7)', () => {
+/** The literal a numeric constant is declared with, so a drift fails a test. */
+const declared = (source: string, name: string): string | undefined =>
+  source.match(new RegExp(`^(?:export )?const ${name} = (\\d+)$`, 'm'))?.[1]
+
+describe('no element is added above either view, and no geometry moves (invariant 7)', () => {
   it('leaves the toolbar row exactly as it was: toolbar, banner, view', () => {
     // A view header naming the open shelf was designed and rejected for this
     // reason; the shelf is named in the sidebar row and the search field's
-    // placeholder instead
+    // placeholder instead.
+    //
+    // Every element between the two is *named* rather than counted: a count
+    // would also read 2 with a lowercase element added there, which is the
+    // assertion's whole job.
     const main = APP.indexOf('<main')
     const between = APP.slice(APP.lastIndexOf('<Toolbar', main), main)
-    expect(between.match(/<[A-Z]/g)?.length).toBe(2) // Toolbar, NASStatusBanner
+    expect(between.match(/<[A-Za-z][A-Za-z0-9.]*/g)).toEqual(['<Toolbar', '<NASStatusBanner'])
   })
 
-  it('leaves the two views\u2019 geometry constants and cells alone', () => {
-    // The constants are computed, not measured (library-views.md); they are the
-    // thing this slice must not touch, and the cells that carry them are
-    // asserted by their own block-level shape rather than here
+  it('pins the three constants the views compute their geometry from', () => {
+    // `library-views.md`'s rule is that these must match real DOM geometry, and
+    // there is no DOM harness here to measure it, so what this pins is that a
+    // *change* to one is deliberate and arrives as a failing test rather than as
+    // silent scroll jank. The measurement itself stays the doc's, made by hand
+    // (a 37px list pitch is a 36px `<tr>` plus its collapsed border), and the
+    // cells that carry the constants are held by the diff review, not here.
+    expect(declared(LIST, 'ROW_HEIGHT')).toBe('37')
+    expect(declared(CARD, 'CARD_META_HEIGHT')).toBe('68')
+    expect(declared(CARD, 'CARD_META_MARGIN')).toBe('8')
+  })
+
+  it('leaves the expressions that consume them intact', () => {
     expect(GRID).toMatch(/cardWidth \* 1\.5 \+ CARD_META_MARGIN \+ CARD_META_HEIGHT/)
-    expect(LIST).toMatch(/ROW_HEIGHT/)
+    expect(LIST).toMatch(/height: ROW_HEIGHT - 1/)
+    expect(CARD).toMatch(/height: CARD_META_HEIGHT, marginTop: CARD_META_MARGIN/)
   })
 })
 
@@ -113,5 +139,49 @@ describe('the placeholder (AC17)', () => {
     // The list is empty for the first render after a cold start (R3), and a
     // placeholder reading `Search “undefined”` would be worse than this
     expect(SEARCH).toContain('Search titles, authors, series…')
+  })
+})
+
+const SIDEBAR = read('Sidebar.tsx')
+
+/**
+ * Source with block comments removed. A comment *naming* a pattern is not the
+ * pattern: this test's own explanatory comment mentions `role="button"`, and
+ * matching it is how a walk fails spuriously. Line comments are left alone —
+ * stripping `//` would also cut `musaeum://`, which weakens a negative assertion
+ * rather than strengthening it.
+ */
+const bare = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, '')
+
+describe('the Library row is navigation (AC17)', () => {
+  it('leaves the open shelf through setActiveShelf(null), the one way out', () => {
+    // A later slice adding a second way to leave a shelf (a shortcut, a view
+    // header) must call this rather than clear `activeShelfId` itself, or the
+    // library sort is not restored — the plan's own slice-3 handoff note
+    expect(bare(SIDEBAR)).toMatch(/setActiveShelf\(null\)/)
+    expect(bare(SIDEBAR)).not.toMatch(/activeShelfId: null/)
+  })
+
+  it('nests no control inside another', () => {
+    // The plan's snippet nested the reload `<button>` inside the Library
+    // `<button>`, which HTML forbids; the `role="button"` div that replaced it
+    // was valid but left a control inside a control, announced as a button
+    // containing a button, with two tab stops. Two sibling buttons in a layout
+    // wrapper is the shape with neither problem — and no manual tab stop,
+    // because a real button brings its own.
+    expect(bare(SIDEBAR)).not.toMatch(/role="button"/)
+    expect(bare(SIDEBAR)).not.toMatch(/tabIndex=\{0\}/)
+  })
+
+  it('carries the count only while the library is what is loaded', () => {
+    // The number is `books.length` — the *current read's* — so inside a shelf it
+    // is the shelf's count beside the word "Library" (measured live: an empty
+    // shelf made the row read "Library 0"). The shelf's own count is on its row,
+    // from main.
+    expect(bare(SIDEBAR)).toMatch(/\{activeShelfId === null && \(/)
+  })
+
+  it('mounts the shelf section in the same column', () => {
+    expect(SIDEBAR).toMatch(/<ShelfList \/>/)
   })
 })

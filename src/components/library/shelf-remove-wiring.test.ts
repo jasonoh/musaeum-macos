@@ -24,10 +24,15 @@ describe('every trash entry point (AC21)', () => {
   it.each(ENTRY_POINTS)('%s goes through the store action, not a dialog of its own', (file) => {
     const source = read(file)
     expect(source).toMatch(/requestDelete\(|requestSelectionDelete\(/)
-    // The dialogs' own flags are the store's: a component that set one directly
-    // would bypass the shelf question
-    expect(source).not.toMatch(/deletingBookId\s*[:=]/)
-    expect(source).not.toMatch(/deletingSelection\s*[:=]/)
+    // The dialogs' own flags are the store's: a component that *set* one
+    // directly would bypass the shelf question. Assignment-shaped on purpose —
+    // it catches `deletingBookId: x` and the `{ deletingBookId }` shorthand
+    // inside a setter, while the legitimate *read* (`const deletingBookId =
+    // useUIStore(...)`, which is how `App.tsx` renders the dialog) is not a
+    // false positive. `App.tsx` is therefore excluded from ENTRY_POINTS because
+    // it only reads them, not because this guard would misfire on it.
+    expect(source).not.toMatch(/set(?:State)?\(\{[^}]*\bdeletingBookId\b/)
+    expect(source).not.toMatch(/set(?:State)?\(\{[^}]*\bdeletingSelection\b/)
   })
 
   it('asks the shelf, and only from inside a shelf', () => {

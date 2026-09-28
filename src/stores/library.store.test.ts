@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Book, BookSort, LibraryFacets } from '@shared/book.types'
 import { persistedLibraryState, restoredSort, useLibraryStore } from './library.store'
@@ -236,5 +238,22 @@ describe('a read that is overtaken', () => {
     resolvers[0]([book('only')])
     await load
     expect(ids()).toEqual(['only'])
+  })
+})
+
+describe('the persisted sort, as wired', () => {
+  it('is the function the store actually persists through', () => {
+    // The same walk `ui.store.test.ts` makes for `persistedUIState`, and for the
+    // same reason: the cases above decide the rule's *output*, so an inline
+    // whole-state `partialize` written at the option would leave every one of
+    // them green. `.persist` itself is unreachable here — there is no
+    // `localStorage` in this environment, so `getOptions()` throws (measured for
+    // the ui store, which is why its walk exists).
+    const source = readFileSync(join(process.cwd(), 'src', 'stores', 'library.store.ts'), 'utf8')
+    expect(source).toMatch(/partialize:\s*persistedLibraryState\b/)
+    // …and `merge` must read what `partialize` wrote: one key, `sort`, put
+    // through the same refusal
+    expect(source).toMatch(/name: 'musaeum\.library'/)
+    expect(source).toMatch(/restoredSort\(sort\)/)
   })
 })

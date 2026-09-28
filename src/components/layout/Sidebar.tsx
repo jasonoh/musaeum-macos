@@ -68,30 +68,27 @@ export function Sidebar() {
               (D9). The highlight is the same pair the shelf rows use, which is
               what makes "where am I" one glance rather than two rules.
 
-              A `role="button"` div rather than a button element, because the
-              row's reload control is a real button and HTML forbids one button
-              inside another: the row stays one target, the reload icon keeps
-              its own handler (and stops its click reaching here, so reloading
-              does not also navigate), and nothing about the geometry or the
-              highlight moves. */}
+              The row is a layout wrapper holding two *sibling* buttons — the
+              name, which navigates, and the reload icon, which does not. The
+              plan's snippet nested the second inside the first, which HTML
+              forbids; the `role="button"` div that replaced it was valid but
+              left a control inside a control with two tab stops. Siblings have
+              neither problem, and the highlight stays on the wrapper so the row
+              still reads as one target. Enter and Space are the buttons' own. */}
           <div
-            role="button"
-            tabIndex={0}
-            aria-pressed={libraryActive}
-            onClick={() => setActiveShelf(null)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                setActiveShelf(null)
-              }
-            }}
-            className={`flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] ${
+            className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] ${
               libraryActive
                 ? 'bg-ink-800 font-medium text-parchment'
                 : 'text-parchment-dim hover:bg-ink-800 hover:text-parchment'
             }`}
           >
-            Library
+            <button
+              onClick={() => setActiveShelf(null)}
+              aria-current={libraryActive ? 'page' : undefined}
+              className="flex-1 text-left"
+            >
+              Library
+            </button>
             {/* Reload Library (also ⌘R): re-reads the shared catalog, which is
                 how books added on another machine or from the phone arrive
                 here without a restart. It spins for any running job — a
@@ -109,9 +106,16 @@ export function Sidebar() {
             >
               <RefreshIcon className={`h-3.5 w-3.5 ${syncRunning ? 'animate-spin' : ''}`} />
             </button>
-            <span className="ml-auto text-[11px] tabular-nums text-parchment-faint">
-              {bookCount}
-            </span>
+            {/* The count is the *current read's*, so it belongs on this row only
+                while the library is what is loaded. Inside a shelf that same
+                number is the shelf's, sitting beside the word "Library" —
+                measured live, an empty shelf made this row read "Library 0".
+                Each shelf carries its own count on its own row, from main. */}
+            {activeShelfId === null && (
+              <span className="ml-auto text-[11px] tabular-nums text-parchment-faint">
+                {bookCount}
+              </span>
+            )}
           </div>
 
           {conflictCount > 0 && (
