@@ -27,8 +27,8 @@ import type { LibraryViewState } from '@/lib/library-emptiness'
  * 'empty-shelf' takes the first-run block's slot and styling and none of its
  * controls: nothing here offers Import or Migrate, because those fill the
  * library and not the shelf. What it does offer is a sentence the owner chose
- * (D9), whose two affordances arrive with slice 3 and with a shelf that has
- * books.
+ * (D9), whose two affordances both work now — drag onto the sidebar row (slice
+ * 3), and the right-click menu, which needs a card a shelf with books has.
  */
 export function EmptyLibrary({ state, query }: { state: LibraryViewState; query: string }) {
   const openModal = useUIStore((s) => s.openModal)
@@ -49,14 +49,14 @@ export function EmptyLibrary({ state, query }: { state: LibraryViewState; query:
       ) : state === 'empty-shelf' ? (
         <>
           <p className="font-display text-lg text-parchment-dim">This shelf is empty</p>
-          {/* D9's sentence named two actions, and in slice 2 this pane can
-              perform neither: drag arrives in slice 3, and *Add to Shelf* is a
-              right-click on a card, of which an empty shelf has none. So the
-              copy names the route that works today — Library, then right-click —
-              rather than a promise the pane cannot keep. Slice 3 restores the
-              drag half. */}
+          {/* D9's sentence named two actions; slice 2 could perform neither, so
+              it named the one route that worked then — Library, then
+              right-click. Slice 3 landed the other: the sidebar row is a drop
+              target, so the sentence names both, drag first because the drag is
+              this pane's nearest route — the row is on screen beside it. */}
           <p className="max-w-sm text-sm">
-            Add books from the library — right-click a book, then Add to Shelf…
+            Add books from the library — drag them onto this shelf in the sidebar, or right-click a
+            book.
           </p>
         </>
       ) : (

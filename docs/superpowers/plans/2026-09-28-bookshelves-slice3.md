@@ -1021,3 +1021,51 @@ Stated plainly, because this plan's first task exists to settle them and a reade
 - Slice 4 sends `bookIds`, and while a shelf is open the natural source is the scope's loaded rows (`useLibraryStore.getState().books.map((b) => b.id)`), not the shelf's membership in SQL — the one place the two differ is a book on the shelf whose file is missing, which is in `books` but not in `count`.
 - If slice 4 ever wants "say it again" from the failure reporter, that is a new decision, not a `Set.delete`.
 - The send's own bug surface is `device.store.sendBooksToDevice`, which already skips books on the device and enqueues into the serial queue; nothing in slice 3 touched it.
+
+---
+
+## Built — slice 3
+
+Landed 2026-09-28, `src/` and docs only, in six commits before this record:
+
+| Commit | What |
+| --- | --- |
+| `a430157` | Task 2 — `src/lib/book-drag.ts` (mime, slot, `dragScope`, `isImportDrag`), the hook's predicate swap, the unit cases |
+| `e64bfe4` | Task 3 — the sources (`BookCard`'s box, `ListView`'s `<tr>`), the drag image, `useBookDrag` mounted once, the library walk |
+| `3d52159` | the part-3a review's walk fixes — `useBookDrag.test.ts`, `bare()` in the library walk |
+| `2001564` | Task 4 — the shelf rows accept a drop (ring, refusal, the MIME gate) |
+| `d561faf` | Task 5 — **+** and the empty-state row create with the dragged books |
+| (this commit) | Task 6 — the rules, the copy, the status lines, and this record |
+
+**Real counts, as measured.** `git diff --stat 4ea2e5f..HEAD` before this record: **12 files, +578 / −29** — 7 code files and 5 test files; this docs commit adds `EmptyLibrary.tsx` as the eighth code file and the markdown. The plan's tables named 9 files across the two parts (tests included); the real slice is 8 code files and 5 test files, one test file the review's rather than the plan's. Suite: baseline **84 files / 1820 passed / 2 skipped**; Task 2 predicted 85/1829 and measured **85/1830** (the plan's arithmetic missed its own hook-walk case); Task 3 predicted 86/1833 and measured **86/1833**; the review-fix commit added `useBookDrag.test.ts` (+3 cases, +1 file); Task 4 replaced slice 2's placeholder case with four and added a fifth for the MIME gate; Task 5 added two; final **87 files / 1842 passed / 2 skipped**.
+
+### Task 1's four answers, as measured
+
+1. **Does `dragstart` fire from `BookCard`'s outer box and from a `<tr>`?** Yes, both — with `draggable` set from the probe, presses over the inner button/cells route to the draggable ancestor. S1's shape holds, and Task 3's live pass confirmed it again once the app's own code set the attribute.
+2. **Does the offscreen fan paint on the first drag?** **Not measurable from this session.** `Page.captureScreenshot` is blind to drag images in both native mode and with `Input.setInterceptDrags` (the window server draws them), and OS-level `screencapture` is permission-denied (no Screen Recording grant for the shell). Indirect evidence: the fan's `<img>`s are synchronously `complete = true` (memory-cache hits) at `dragstart`. Decision: **Body A (the fan) ships**, with `decoding = 'sync'` as a timing amplifier and Body B (the source's own cover, already laid out, so no first-frame question) as the retained fallback branch for a no-cover drag.
+3. **Does a driven drop land on a shelf row, and what does `getData` say?** Yes: `dragenter → dragover → drop` in order; `getData` = **empty in every `dragover`, full in `drop`**; the import overlay never rose; `dragend` fires a beat after the drop.
+4. **Does the drop survive the source unmounting mid-drag?** Yes — the source `<tr>` was `isConnected: false` with `scrollTop` at 2600 and the drop still landed with the payload readable.
+
+### Divergences from this plan, each measured or justified
+
+- **The drag image's colours are the palette's tokens** (`rgb(var(--ink-900) / 0.92)`, `rgb(var(--gold-400))`), not the plan's literals — the plan's hexes were wrong against `src/index.css` (`ink-900` is `20 17 13`, not `20 17 14`; `gold-400` is `212 162 78`, not `212 171 88`), and the node rides `document.body` while the theme writes its properties onto the document root, so the tokens resolve and survive a stored theme where literals would not. `img.decoding = 'sync'` was added beside it.
+- **`bare()` is applied in both new walks** — the Global Constraint required it; the Task 4/5 case snippets did not show it. `book-drag-wiring.test.ts` also grew a `bare` (its third case now checks both files for `setDragImage`/`dragImage`, not one spelling in one file).
+- **Task 4's `dragBlock` slice was fixed**: `SOURCE.indexOf('return (')` finds the menu effect's cleanup `return () => {` *before* `canAcceptDrop`, so the plan's case as written slices empty and can never pass; the case now ends the slice at the next `return (` after the handler.
+- **The part-3a review's S1 finding landed in Task 4**: `canAcceptDrop` and `onRowDrop` both gate on the event's own types (`isBookDrag`), because the window's unconditional `dragover` `preventDefault` (`useDragDrop`, for file imports) means a refused target cannot rely on "no accepted `dragover`, no drop" alone — and the slot can hold stale ids after a drag the window never saw end (Escape or a release over another app, the source already unmounted). The live pass then measured that `dropEffect = 'none'` *does* suppress the `drop` event entirely — so the gate is defense-in-depth, and this record says so rather than claiming the leak it prevents was observed.
+- **`onClick={() => startCreate()}`, not the plan's `onClick={startCreate}`** — the latter hands the click's MouseEvent into `startCreate(ids)`, which would have ridden into `shelves.create` as `bookIds`. `startRename` also clears `pending`, since starting a rename abandons the create field and S4's rule applies to an abandoned field.
+- **The empty-state copy landed in Task 6, not Task 4** — the plan's *Copy decisions* says Task 4 while both file lists say Task 6; the file list won.
+- **The plan's Task-2 case pins the MIME literal** (`expect(BOOK_DRAG_MIME).toBe('application/x-musaeum-books')`) while the Global Constraint says no second literal anywhere including tests. The pin stays — it freezes the wire value, and the constraint's intent is no second *source of truth* — and this line is the amendment, so the two do not silently disagree.
+- The part-3a review's nits N1 (the "only `'Files'` check" sentence is scoped to the overlay path — `AppearanceSection.tsx` has its own inline check for the theme drop highlight, untouched and harmless) and N5 (the fan's thumbs are memory-cache hits only for covers the grid has painted) are recorded there rather than fixed.
+
+### What the live checks measured
+
+Run against the built app over CDP, on the dev library — 7121 books, one shelf, `philosophy` — with state restored after each pass (`philosophy` back to 0 books; the test shelf deleted; the scroll put back):
+
+- **Task 3**: a drag from a card (`DIV`) and from a list row (`TR`) starts with `types = [application/x-musaeum-books, text/plain]` and the app's own payload; the import overlay never rises at any point; no exceptions.
+- **Task 4**: the ring appears on hover and clears on leave; a real drop adds and toasts *Added 1 to philosophy* with the row's count 0 → 1; a **synthetic foreign `dragover` mid-drag, with a full slot, does not ring** the row, and the real drag still lands afterwards; a synthetic foreign `dragover` + `drop` at rest adds nothing and toasts nothing; over the **open** shelf: ring false, effect `none`, **no `drop` event at all**, no toast, count unchanged; a release elsewhere does nothing.
+- **Task 5**: a two-book selection dropped on **+** opens the name field focused, Enter creates the shelf with **count 2** and the row reads `2`; the AC27 case — a two-book drag from a selected card, `scrollTop` 2600 mid-drag, source detached — lands the drop and toasts *Added 2 to philosophy*, count 2.
+- **Not exercised live, stated as such**: the offline refusal (AC28 — would mean taking the owner's share down; decided by the walk and the code path, which `assertOnline` gates upstream too), the empty-state row (needs a library with no shelves at all), and Escape-cancel (Task 1's instrument cannot drive it; the window clear's gap is closed by the MIME gate instead).
+
+### The instrument, for the next session
+
+Press, then move — Blink starts the drag after a small threshold, not on press. `Input.dispatchMouseEvent` drives it; renders land a beat late (poll, ~250ms). `Page.captureScreenshot` and OS screenshots cannot see drag images. `Input.setInterceptDrags` *suppresses* the page's own drag events — useful to confirm the data-store split, not to watch a real drag. A drag target's ring class reflects the **last** drag event over it: a coarse synthetic jump can end with the transition batch's `dragleave` (ring reads off while the drop still works), so read after a small nudge, and treat one "off" reading as the instrument, not the app. The drop event arrives only when the last `dragover`'s effective `dropEffect` is not `none` — a refused target gets `dragend` and no `drop`. Fresh port per run, kill by `lsof -ti :<port>` (a stale instance answers from the old bundle).
