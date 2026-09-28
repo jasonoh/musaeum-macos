@@ -11,6 +11,7 @@ import { DeleteBookDialog } from '@/components/library/DeleteBookDialog'
 import { DeleteSelectionDialog } from '@/components/library/DeleteSelectionDialog'
 import { ImportOverlay } from '@/components/library/ImportOverlay'
 import { RemoveFromDeviceDialog } from '@/components/library/RemoveFromDeviceDialog'
+import { ShelfPicker } from '@/components/library/ShelfPicker'
 import { SelectionPanel } from '@/components/library/SelectionPanel'
 import { ConflictQueue } from '@/components/metadata/ConflictQueue'
 import { MigrationWizard } from '@/components/migration/MigrationWizard'
@@ -71,6 +72,7 @@ export default function App() {
           so a switch of book cannot leave the previous book's tiles on screen */}
       {coverPickerBookId && <CoverPicker key={coverPickerBookId} />}
       <RemoveFromDeviceDialog />
+      <ShelfPicker />
       <ReaderView />
 
       {modal === 'conflicts' && <ConflictQueue />}

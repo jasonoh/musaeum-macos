@@ -100,6 +100,13 @@ interface UIState {
   /** Book + device whose "remove from device" confirmation is open. */
   removingFromDevice: DeviceRemovalTarget | null
   /**
+   * Books the *Add to Shelf…* picker is open for — the scope of the click or of
+   * the selection. A list rather than a single id because the picker is the same
+   * dialog for one book and for twelve: what changes is which shelves are
+   * ticked, and only a single book is ever ticked (D9).
+   */
+  shelfPicker: { bookIds: string[] } | null
+  /**
    * Latest word from the first-launch Python bootstrap, or null once it has
    * finished cleanly. A failure is kept so the status bar can keep saying why
    * metadata features are unavailable.
@@ -134,6 +141,8 @@ interface UIState {
   requestEdit(bookId: string | null): void
   requestCoverPicker(bookId: string | null): void
   requestDeviceRemoval(target: DeviceRemovalTarget | null): void
+  /** Books the *Add to Shelf…* picker is open for, or null. */
+  requestShelfPicker(target: { bookIds: string[] } | null): void
   setPythonEnv(progress: PythonEnvProgress | null): void
   /** Show a transient report; returns its id for callers that dismiss early. */
   notify(input: NotifyInput): number
@@ -184,6 +193,7 @@ export const useUIStore = create<UIState>()(
       editingBookId: null,
       coverPickerBookId: null,
       removingFromDevice: null,
+      shelfPicker: null,
       pythonEnv: null,
       toasts: [],
       refreshingBooks: {},
@@ -219,6 +229,8 @@ export const useUIStore = create<UIState>()(
       // one dialog, so the menu has to go the way every other dialog's does
       requestCoverPicker: (coverPickerBookId) => set({ coverPickerBookId, contextMenu: null }),
       requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null }),
+      // Same rule as every other dialog: the menu that opened it goes
+      requestShelfPicker: (shelfPicker) => set({ shelfPicker, contextMenu: null }),
       setPythonEnv: (pythonEnv) => set({ pythonEnv }),
 
       notify: (input) => {
