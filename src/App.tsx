@@ -21,6 +21,7 @@ import { SettingsModal } from '@/components/settings/SettingsModal'
 import { NASStatusBanner } from '@/components/shared/NASStatusBanner'
 import { Toasts } from '@/components/shared/Toasts'
 import { useAi } from '@/hooks/useAi'
+import { useBookDrag } from '@/hooks/useBookDrag'
 import { useDevice } from '@/hooks/useDevice'
 import { useDragDrop } from '@/hooks/useDragDrop'
 import { useLibrary } from '@/hooks/useLibrary'
@@ -36,6 +37,7 @@ export default function App() {
   useDevice()
   useAi()
   useDragDrop()
+  useBookDrag()
   useMenuCommands()
   usePythonEnv()
   useTheme()

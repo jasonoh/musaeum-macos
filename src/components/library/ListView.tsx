@@ -8,6 +8,7 @@ import { selectionCount, useUIStore } from '@/stores/ui.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
 import { rowWindow, useResetScrollOnResultChange, useScrollMetrics } from '@/hooks/useVirtualRows'
 import { resultSetKey } from '@/lib/resultSetIdentity'
+import { clearDragPayload, startBookDrag } from '@/lib/book-drag'
 import { libraryViewState } from '@/lib/library-emptiness'
 import { EmptyLibrary } from '@/components/shared/EmptyLibrary'
 import { CheckIcon, SortArrowIcon, StarIcon } from '@/components/shared/icons'
@@ -61,6 +62,9 @@ function Row({ book }: { book: Book }) {
 
   return (
     <tr
+      draggable
+      onDragStart={(e) => startBookDrag(e, book.id, useUIStore.getState().selection)}
+      onDragEnd={clearDragPayload}
       onClick={(e) => select(book.id, modifiersFrom(e))}
       // Same gesture as the grid: single click selects, double click reads
       onDoubleClick={() => useReaderStore.getState().openBook(book)}

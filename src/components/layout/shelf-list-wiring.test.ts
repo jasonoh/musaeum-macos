@@ -74,16 +74,18 @@ describe('the shelf section (AC16)', () => {
 
   it('promises only actions that work, and offers them as controls', () => {
     // The spec's empty state read "Drag books here to start a shelf", and D9's
-    // pane named drag too. Drag is slice 3 and the card sets
-    // `draggable={false}`, so shipping either sentence ships a false affordance
-    // — the one thing a reader tries first, fails at, and reads as a broken app.
-    // No renderer copy may promise drag until drag exists.
+    // pane named drag too. The sentence was cut when it named an action that
+    // did not exist yet, and it does not come back now that drag *does* exist:
+    // its "here" was never the pane — the drop target is the sidebar row — so
+    // the copy rule stands on its own. No renderer copy may say it.
     const empty = readSrc('components', 'shared', 'EmptyLibrary.tsx')
     for (const source of [SOURCE, empty]) expect(bare(source)).not.toMatch(/Drag books here/i)
-    // …and the fact that makes those sentences false, pinned here so the two
-    // cannot drift apart: should this ever read `true`, that guard is obsolete
+    // The cover <img> stays non-draggable now that the card itself is draggable
+    // (slice 3): a draggable image inside the card would start the browser's
+    // own image drag from inside ours, where the card box is what should be
+    // picked up (D9)
     const card = readSrc('components', 'library', 'BookCard.tsx')
-    expect(bare(card)).toMatch(/draggable=\{false\}/)
+    expect(bare(card)).toMatch(/<img[\s\S]{0,200}?draggable=\{false\}/)
     // The empty state is a control, not an instruction: with no shelves the
     // first thing a reader does is press the action rather than be told of one
     expect(bare(SOURCE)).toMatch(/>\s*New shelf\s*</)

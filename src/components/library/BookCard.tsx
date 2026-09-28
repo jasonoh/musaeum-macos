@@ -3,6 +3,7 @@ import type { Book } from '@shared/book.types'
 import { orderedFormats, primaryFormat, seriesDisplay } from '@shared/book.types'
 import { modifiersFrom } from '@/lib/selection'
 import { coverUrl } from '@/lib/cover-url'
+import { clearDragPayload, startBookDrag } from '@/lib/book-drag'
 import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
@@ -91,6 +92,17 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
   return (
     <div
       className="group relative"
+      // The drag lives on this box rather than on the button inside it: the
+      // button is the card's click target (select, open) and a `draggable`
+      // button competes with its own click in Chromium, where the outer box
+      // covers the same artwork plus the meta lines (S1). Measured by Task 1's
+      // spike, not assumed.
+      draggable
+      onDragStart={(e) => startBookDrag(e, book.id, useUIStore.getState().selection)}
+      // Clearing on the source is not enough — a virtualized card can unmount
+      // mid-drag — but this is where a *cancelled* drag ends, and the payload
+      // must not outlive it (Review Focus 1)
+      onDragEnd={clearDragPayload}
       onContextMenu={(e) => {
         e.preventDefault()
         // The menu only: a right-click never selects, or it would open the
@@ -157,9 +169,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
                 className="rounded-[3px] bg-scrim/70 px-1 py-px text-[10px] font-semibold uppercase leading-[14px] tracking-wider text-parchment-dim shadow backdrop-blur-sm transition-colors group-hover:text-parchment"
               >
                 {format}
-                {extraFormats > 0 && (
-                  <span className="text-parchment-faint"> +{extraFormats}</span>
-                )}
+                {extraFormats > 0 && <span className="text-parchment-faint"> +{extraFormats}</span>}
               </div>
             )}
           </div>
