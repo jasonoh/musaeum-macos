@@ -1448,3 +1448,53 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - **`shelves` on the book model is the one deliberate exception to that repo's strict decoding**: an older Mac omits the member, so it must read as `[]` when absent (`StrictObject` throws on a missing key). The annex records it as the exception it is.
 - The writes are **idempotent**, so a `ReportQueue`-style replay is safe (D11); whether v1 queues or refuses is the annex's decision, recorded there.
 - `count` is the cache's membership; a shelf member whose file is missing counts nowhere, and the phone should not invent a second count.
+
+---
+
+## Built — slice 5
+
+Landed 2026-09-28, main process + the contract artifacts + docs, in nine commits before this record:
+
+| Commit | What |
+| --- | --- |
+| `353d124` | the plan itself, executed in the session that wrote it |
+| `d009b07` | Task 1 — the cache reads (`shelfExists`, `shelfIdsForBooks`, `listShelvesWithUpdatedAt`) and their cases |
+| `6527734` | Task 2 — the `shelf` parameter, `parseSort(params, hasShelf)`, the Date-Added-to-Shelf default |
+| `966969e` | Task 3 — the `shelves` member on every book payload, the shelf list's shape, the document's blocks (incl. `payload=shelves`), and `rest.ts`'s four call sites |
+| `5a90d18` | Task 4 — `GET /api/shelves`, the scope on both read routes, the member filled at every call site, the read surface's prose, the socket cases |
+| `3f3ef69` | Task 5 — `matchShelfMembershipPath` and `isShelfGone` |
+| `d234368` | Task 6 — the membership `PUT`/`DELETE`, `membershipPayload`, the writes' document prose, their socket cases |
+| `ebc59df` | Task 7 — the smoke script's shelf section |
+| `e8a5fd9` | the live run's own find: the smoke script read the shelf count after later requests had clobbered the body, so its scoped-total check always compared against 0 |
+| (this commit) | Task 8 — the rules in `shelves.md`, the status lines, this record, and the iOS decode run |
+
+**Real counts, as measured.** `git diff --stat 7bfa5ba..HEAD` before this record: **14 files, +2646 / −85** — six code files (`services/db`, `services/shelves`, `services/api/routes`, `services/api/query`, `services/api/shape`, `api/rest`), five test files, `scripts/api-smoke.sh`, the plan, and the contract document. Suite, task by task: baseline **87 files / 1843 passed / 2 skipped**; Task 1 → **1846**; Task 2 → **1851**; Task 3 → **1856**; Task 4 → **1864**; Task 5 → **1875**; Task 6 → **1884**; the shell-only commits move no case count. **Final: 87 files / 1884 passed / 2 skipped** (+41 cases), with `typecheck` and `lint` clean at every commit.
+
+### The live run, as measured
+
+An isolated scratch profile (the path above; scratch is pruned when idle, so it is described rather than committed) — hand-configured (`library_root`, `rest_api_port` 8791, a fresh token) — with two seed EPUBs **built by the throwaway instrument with embedded jackets**, uploaded through the app's own `POST /api/books`, and one **hand-authored `shelves.json`** (the canonical format; exactly what another Mac's write looks like) adopted on connect.
+
+- **The smoke script: 92 passed, 0 failed, exit 0.** The shelf section green end to end: the list, the scope (the scoped `total` equalling the shelf's own `count`; every page book declaring the shelf), the default order matching explicit `sort=shelf_added&dir=desc`, facets scoped, the membership pair (PUT → detail read-back → PUT again → DELETE → DELETE again, all 200 and idempotent), the 404s (unknown shelf, unknown book, a `GET` of the membership path) and the 400s (a present-but-empty `shelf`, `sort=shelf_added` without a shelf), and `HEAD /api/shelves` 200 with no body. The pair **restored the shelf** it borrowed (post-run count 2; the file's members unchanged).
+- **What the first live pass found — and it is the reason the run exists.** Against a shelf-less, coverless profile it read **72 passed / 1 failed**, and the one failure was not the server: the smoke script's own `SHELF_COUNT` was read from `$BODY` *after* later requests had overwritten it, so the scoped-total check compared a real total against 0 (`expected 0, got 2`). Fixed in `e8a5fd9`; the second pass is the 92/0 above.
+- **Not exercised live, stated as such:** the offline 503 on a shelf write (it needs the share taken down; the socket case decides it), an unreadable `shelves.json` over REST (the socket case decides it), and the Mac sidebar repainting after a phone write (the `shelves:changed` socket case decides the broadcast; no UI frame was taken).
+- **The instrument, for the next session.** The dev app's shelf adoption fires on the NAS manager's `connected` status (`index.ts:246`) and can land *seconds to tens of seconds after* the REST server is up — poll `/api/shelves` for the state, never assume it. A foreground timeout above the 600 s cap is auto-promoted to a background process and the script's stdout goes with it, so **write run output to a file**. `pkill -9` is the stop that works for `npm run dev`'s tree (a plain SIGTERM leaves the Electron process alive); its pattern is `musaeum/node_modules/electron`. And the dev profile's own REST server (8788) may be up at any time — the scratch profile used **8791** so the two never meet.
+
+### Divergences from this plan, each measured or justified
+
+- **Task 3 absorbed `api/rest.ts`'s four call sites**, because S1's required parameter makes every caller a `typecheck` failure in the same commit — and a placeholder `[]` would have shipped a lie for one commit. For the same reason the document's `### GET /api/shelves` section landed in Task 3 and not Task 4: its `payload=shelves` block cannot ship without the shaper (the parity case forces the pair), and a block without its route's prose is a document that does not say where a payload comes from.
+- **The membership answer is wrapped, per D10, and got its own golden.** The socket cases found the handler sending a **bare book** where D10 says `200 { "book": … }` (`Cannot read properties of undefined (reading 'id')`); the fix added `membershipPayload` to the shaper and a `payload=membership` block to the document (AC30 asks for blocks on both writes), so all three writes answer through one `book` member — `{applied, book}`, `{book, duplicate}`, `{book}`.
+- **Task 4's library arm had to put `limit`/`offset` back explicitly** — the patch that introduced the batch read dropped them from the payload call, and `typecheck` caught it before the suite ran. Recorded because the same patch shape (spread a page, add a field) is what a later hand will repeat.
+- **Task 4's `shape.test.ts` route-names edit rode in Task 6**, since the membership path enters the document with the writes' prose.
+- **Two runtime slips worth naming rather than burying.** A scripted in-session edit ran with cwd = the scratch dir and wrote to a copy, not the repo — every file edit in this slice is recorded with absolute paths from that point on. And two edits to the same test file left a duplicate `ManualShelfEntry` import that only `typecheck` (not a vitest run) caught; every task's real gate is `typecheck && lint && npm test`, and the runs that skipped `typecheck` are the ones that let it through for a while.
+- **CLAUDE.md's route count is stale, and the edit is blocked.** The brief's iOS bullet still reads *"six read routes and two writes"*; updating it means writing an agent-instruction file, which is approval-gated — the prompt timed out without an answer and the write was not retried (silence is not consent). The one-line replacement is `seven read routes and four writes (the reading report, a book upload, and the shelf membership's PUT/DELETE)`; it wants the owner's approval or the next session's, and it is left **out of context rather than guessed at**.
+
+### Schedule, and what this unblocks
+
+### AC32's second half — the v1 phone's vendored fixtures
+
+Run in `musaeum-ios` after re-vendoring, as the criterion asks (2026-09-28): `scripts/vendor-contract-fixtures.sh` re-extracted **9 payloads** — four existing fixtures gained the additive `shelves` member (`book.json`, `library.json`, `import.json`, `reading.json`), two are new (`shelves.json`, `membership.json`) — and the suite then read **191 cases across 24 suites, 0 failures**, the same total as its own baseline, so nothing the phone already decoded stopped decoding.
+
+**One finding, and it was not shelves.** The re-vendor also refreshed `health.json`, whose `version` had been `0.1.0` in the fixtures while the document has said `0.5.0` (the app's own version, which moved after the fixtures were last vendored) — the client's `testHealthDecodes` asserted the stale literal, and it was the only red line in the first run. Fixed by asserting the document's own value: the client's half of a re-vendor, not a contract change. **The gates' device had moved too:** the iOS brief's `DE0B5601-…` (iPhone 17 Pro / iOS 26.1) no longer exists — that runtime is gone from this machine — and the run takes `39D29C73-…` (iPhone 18 Pro / iOS 27.0), the id the repo's own history names. Both are carried into the phone slice's annex rather than left for the next session to rediscover.
+
+**Slice 4 (*Send to ‹device›*) remains open and desktop-only** — it was not on the phone's path, and this slice took neither its file nor its menu item. **Slice 6 (the phone) is now unblocked**: its annex is written in `musaeum-ios/docs/plans/`, against this document, with the handoff notes below. The reviewer for part 5a was dispatched report-only against `7bfa5ba..5a90d18`, and part 5b's follows this record; their findings are disposed of in an amendment to this section, the way slice 3's record disposes of its reviews' — not assumed away.
+
