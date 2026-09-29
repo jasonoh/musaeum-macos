@@ -472,6 +472,10 @@ check 'GET /api/shelves answers 200' 200 "$code"
 check 'the payload carries a shelves array' 'array' "$(jq -r '.shelves | type' "$BODY")"
 
 SHELF_ID="$(jq -r '.shelves[0].id // empty' "$BODY")"
+# Read the count HERE, while $BODY still holds the shelf list: every request
+# below overwrites it, and a count read after them was measured answering 0
+# for a shelf holding two books (the live run of 2026-09-28).
+SHELF_COUNT="$(as_number "$(jq -r '.shelves[0].count // 0' "$BODY")")"
 
 code=$(request '/api/library?shelf=no-such-shelf')
 check 'scoping by an unknown shelf answers 404' 404 "$code"
@@ -490,8 +494,6 @@ check 'the HEAD downloads no body' 0 "${HEAD_RESULT##* }"
 if [ -z "$SHELF_ID" ]; then
   note 'the profile holds no shelf — the scoped read and the membership pair were not exercised'
 else
-  SHELF_COUNT="$(as_number "$(jq -r --arg id "$SHELF_ID" '.shelves[] | select(.id == $id) | .count' "$BODY")")"
-
   code=$(request "/api/library?shelf=$SHELF_ID&limit=5")
   check 'GET /api/library?shelf={id} answers 200' 200 "$code"
   check 'the scoped total equals the count /api/shelves reports' "$SHELF_COUNT" \
