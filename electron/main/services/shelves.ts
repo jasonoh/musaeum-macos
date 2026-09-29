@@ -44,6 +44,16 @@ class ShelfGoneError extends Error {
   }
 }
 
+/**
+ * Whether a mutation refused because its shelf was gone from the re-read file
+ * (`SHELF_GONE`) — the REST surface's 404 (bookshelves D10, S3). A predicate
+ * rather than the exported class: the class stays private and the wire's mapping
+ * stays one call.
+ */
+export function isShelfGone(err: unknown): boolean {
+  return err instanceof ShelfGoneError
+}
+
 /** What applying a change to the file produced: its answer, and whether there is anything to write. */
 interface Applied<T> {
   result: T

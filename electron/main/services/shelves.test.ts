@@ -372,3 +372,16 @@ describe('adopt (bookshelves D4)', () => {
     expect(error).toHaveBeenCalled()
   })
 })
+
+describe('the gone-shelf predicate the REST surface reads (slice 5)', () => {
+  it('recognises the writer own refusal, and nothing else', async () => {
+    const shelf = await shelves.create('To Read')
+    await shelves.deleteShelf(shelf.id)
+
+    const err: unknown = await shelves.addBooks(shelf.id, ['a']).catch((e: unknown) => e)
+    expect((err as Error).message).toBe(shelves.SHELF_GONE)
+    expect(shelves.isShelfGone(err)).toBe(true)
+    expect(shelves.isShelfGone(new Error('something else'))).toBe(false)
+    expect(shelves.isShelfGone('not an error')).toBe(false)
+  })
+})

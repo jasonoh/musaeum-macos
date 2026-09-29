@@ -96,6 +96,39 @@ export function matchBookPath(pathname: string): BookPath | null {
   return id ? { id, resource } : null
 }
 
+/** Only `/api/shelves/`-prefixed paths reach the membership matcher below. */
+export const SHELVES_PREFIX = '/api/shelves/'
+
+export interface ShelfBookPath {
+  shelfId: string
+  bookId: string
+}
+
+/**
+ * `/api/shelves/{shelfId}/books/{bookId}` — the membership write (bookshelves
+ * D10), and the API's first `DELETE`.
+ *
+ * **Only `/api/shelves/`-prefixed paths reach here**, and only the one shape: a
+ * shelf segment, the literal `books`, and a book segment — nothing before,
+ * between or after. Matched on the **pathname only** (the path takes no
+ * parameters, so a query is nobody's business here) and deliberately not on the
+ * method: matching says what a client aimed at, and the router answers a known
+ * path behind a method it does not take with the same uniform 404 as a path
+ * that is nothing at all (D11).
+ */
+export function matchShelfMembershipPath(pathname: string): ShelfBookPath | null {
+  if (!pathname.startsWith(SHELVES_PREFIX)) return null
+
+  const [shelfSegment, books, bookSegment, ...rest] = pathname
+    .slice(SHELVES_PREFIX.length)
+    .split('/')
+  if (rest.length || books !== 'books' || !shelfSegment || !bookSegment) return null
+
+  const shelfId = decodeSegment(shelfSegment)
+  const bookId = decodeSegment(bookSegment)
+  return shelfId && bookId ? { shelfId, bookId } : null
+}
+
 /**
  * The statuses `resolveCoverFile` can refuse with, read off its own result
  * rather than re-typed — see the note above.

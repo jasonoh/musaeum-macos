@@ -3,7 +3,7 @@ import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { API_ERRORS, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from './shape'
 import { intParam, listParam, parseLibraryQuery, parseShelfParam, parseSort } from './query'
-import { isBooksCollection, matchBookPath, refusalError } from './routes'
+import { isBooksCollection, matchBookPath, matchShelfMembershipPath, refusalError } from './routes'
 
 /**
  * The moved functions' socketless cases (slice 1c's split, D2).
@@ -342,6 +342,41 @@ describe('matchBookPath — which book route a path is', () => {
     // segments, so it is not one of the four shapes and matches nothing at all.
     expect(matchBookPath('/api/books/..')?.id).toBe('..')
     expect(matchBookPath('/api/books/../../etc/passwd')).toBeNull()
+  })
+})
+
+describe('matchShelfMembershipPath — the membership write (bookshelves D10)', () => {
+  it('names both ids for the one shape it answers', () => {
+    expect(matchShelfMembershipPath('/api/shelves/abc/books/def')).toEqual({
+      shelfId: 'abc',
+      bookId: 'def'
+    })
+  })
+
+  it('decodes both segments, so an id with a space or a slash is still an id', () => {
+    expect(matchShelfMembershipPath('/api/shelves/a%20b/books/c%2Fd')).toEqual({
+      shelfId: 'a b',
+      bookId: 'c/d'
+    })
+  })
+
+  it.each([
+    '/api/shelves',
+    '/api/shelves/',
+    '/api/shelves/abc',
+    '/api/shelves/abc/books',
+    '/api/shelves/abc/books/def/extra',
+    '/api/shelves/abc/shelf/def',
+    '/api/books/abc'
+  ])('answers null for a path that is not the membership shape (%s)', (pathname) => {
+    expect(matchShelfMembershipPath(pathname)).toBeNull()
+  })
+
+  it('answers null for a malformed escape rather than throwing', () => {
+    // The book matcher's own rule: an id that cannot be decoded is simply not
+    // this route's path, and the router answers 404 uniformly (D11)
+    expect(matchShelfMembershipPath('/api/shelves/%E0%A4%A/books/b')).toBeNull()
+    expect(matchShelfMembershipPath('/api/shelves/a/books/%')).toBeNull()
   })
 })
 
