@@ -432,10 +432,18 @@ describe('the moved modules are decidable without a socket (D2)', () => {
         join(process.cwd(), 'electron', 'main', 'services', 'api', name),
         'utf8'
       )
-      const imports = source.split('\n').filter((line) => line.startsWith('import '))
+      // **Every specifier, wherever it sits.** A line-based scan (`lines that
+      // start with 'import '`) cannot see a specifier on a wrapped line, which
+      // is exactly the hole this case exists to close — part 5a's report-only
+      // review measured it as a real gap in the evidence even though today's
+      // files pass it.
+      const specifiers = [
+        ...source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g),
+        ...source.matchAll(/^\s*import\s+['"]([^'"]+)['"]/gm)
+      ].map((match) => match[1])
 
-      expect(imports.join('\n')).not.toMatch(/node:fs|node:http|nas-manager|\.\.\/db/)
-      expect(imports.some((line) => line.includes("'electron'"))).toBe(false)
+      expect(specifiers.join('\n')).not.toMatch(/node:fs|node:http|nas-manager|\.\.\/db/)
+      expect(specifiers).not.toContain('electron')
       expect(source).not.toMatch(/require\(/)
     }
   })
