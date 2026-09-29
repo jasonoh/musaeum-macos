@@ -7,7 +7,13 @@ import { checkBearer, logRejectedAttempt } from '../services/api/auth'
 import { resolveBindAddress, type InterfaceMap } from '../services/api/bind'
 import { parseLibraryQuery, parseShelfParam } from '../services/api/query'
 import { applyReadingReport, parseReadingReport } from '../services/api/reading'
-import { isBooksCollection, matchBookPath, refusalError } from '../services/api/routes'
+import {
+  isBooksCollection,
+  matchBookPath,
+  matchShelfMembershipPath,
+  refusalError,
+  type ShelfBookPath
+} from '../services/api/routes'
 import {
   bookPayload,
   errorPayload,
@@ -15,6 +21,7 @@ import {
   healthPayload,
   importPayload,
   libraryPayload,
+  membershipPayload,
   readingPayload,
   shelvesPayload,
   type ApiError
@@ -27,6 +34,7 @@ import {
   bookContentType
 } from '../services/book-bytes'
 import {
+  bookExists,
   countBooks,
   getBook,
   getBooksPage,
@@ -37,6 +45,7 @@ import {
   shelfIdsForBooks
 } from '../services/db'
 import * as nas from '../services/nas-manager'
+import { addBooks, isShelfGone, removeBooks } from '../services/shelves'
 import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/settings'
 
 /**
@@ -542,6 +551,78 @@ async function handleReadingReport(
 }
 
 // ---------------------------------------------------------------------------
+// The third and fourth writes: the shelf membership toggle (bookshelves D10)
+// ---------------------------------------------------------------------------
+
+/**
+ * `PUT|DELETE /api/shelves/{shelfId}/books/{bookId}` — the membership toggle
+ * (bookshelves D10).
+ *
+ * **Idempotent by the service's own rules, not by a check here:** an add of an
+ * existing member keeps its `added_at` and writes nothing (`Applied.changed`),
+ * and a remove of a non-member is the same no-op — both answer 200, and both are
+ * why a queued or replayed toggle is safe.
+ *
+ * **The answer is the book read back after the write** (S8), in the detail
+ * shape: the write and the read that follows it are one round trip, exactly as
+ * the reading report's answer is.
+ *
+ * The order is S10's: the share (503, `Retry-After: 5`) before the resources
+ * (404) — the cover and file routes' own order, kept because the client's retry
+ * decision does not depend on whether the shelf exists. The existence checks run
+ * on the **cache**, before anything is attempted, because the service skips
+ * unknown book ids silently (it must — the Mac's own callers rely on that) and
+ * would otherwise answer 200 for a book that is not there (S3).
+ */
+async function handleShelfMembership(
+  req: IncomingMessage,
+  res: ServerResponse,
+  path: ShelfBookPath,
+  add: boolean
+): Promise<void> {
+  if (!nas.isOnline()) {
+    sendUnavailable(res, 'offline')
+    return
+  }
+
+  if (!shelfExists(path.shelfId) || !bookExists(path.bookId)) {
+    sendJson(res, 404, errorPayload('notFound'))
+    return
+  }
+
+  try {
+    if (add) await addBooks(path.shelfId, [path.bookId])
+    else await removeBooks(path.shelfId, [path.bookId])
+  } catch (err) {
+    if (isShelfGone(err)) {
+      // Deleted between the check above and the mutation's own re-read of the
+      // file (D3's *That shelf no longer exists*) — the same 404, from the
+      // writer's own answer (S3)
+      sendJson(res, 404, errorPayload('notFound'))
+      return
+    }
+    // An unreadable `shelves.json` lands here (S2): refused, never overwritten
+    // (D3), with the service's own sentence in the log where a person can read
+    // it — the wire gets the fixed word, as the upload's `internal` does
+    console.warn(`[rest] ${req.method} ${req.url} — shelf write failed: ${describeError(err)}`)
+    sendJson(res, 500, errorPayload('internal'))
+    return
+  }
+
+  const book = getBook(path.bookId)
+  if (!book) {
+    // Unreachable by construction — the id was checked above and nothing in this
+    // path deletes a book — so it is answered as this module's own failure
+    // rather than asserted away (invariant 12), the upload handler's own shape
+    console.warn('[rest] shelf write answered for a book the cache does not hold')
+    sendJson(res, 500, errorPayload('internal'))
+    return
+  }
+
+  sendJson(res, 200, membershipPayload({ book, shelves: shelfIdsFor(book.id) }))
+}
+
+// ---------------------------------------------------------------------------
 // The second write: a book arriving as bytes (D1, D5, D6)
 // ---------------------------------------------------------------------------
 
@@ -817,6 +898,17 @@ async function handleRequest(
     // behind a method the route does not answer.
     if (req.method === 'POST' && isBooksCollection(url.pathname)) {
       await handleUpload(req, res, url, deps)
+      return
+    }
+
+    // **The third and fourth writes** (bookshelves D10): the membership toggle,
+    // and the API's first `DELETE`. The path matches; the method decides — and
+    // anything but PUT or DELETE falls through to the uniform 404 below, because
+    // a known path behind a method it does not answer is not distinguished from
+    // no path at all (D11).
+    const membership = matchShelfMembershipPath(url.pathname)
+    if (membership && (req.method === 'PUT' || req.method === 'DELETE')) {
+      await handleShelfMembership(req, res, membership, req.method === 'PUT')
       return
     }
 

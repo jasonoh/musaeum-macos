@@ -22,13 +22,15 @@ The check runs before routing, so an unauthenticated request reaches no route lo
 
 ## Methods
 
-**Every read route answers `GET`; two routes are writes.** The five JSON routes — `/api/health`, `/api/library`, `/api/library/facets`, `/api/shelves` and `/api/books/{id}` — also answer **`HEAD`**, which answers the same status and the same headers with an empty body (the usable part of a `HEAD` probe is `Content-Length` and the status). This is stated rather than implied because slice 1a's health route matched `GET` only, so `HEAD /api/health` answered **404** where a connect check belongs — and `URLSession` probes with `HEAD`. A client may use either method on those five routes.
+**Every read route answers `GET`; four routes are writes.** The five JSON routes — `/api/health`, `/api/library`, `/api/library/facets`, `/api/shelves` and `/api/books/{id}` — also answer **`HEAD`**, which answers the same status and the same headers with an empty body (the usable part of a `HEAD` probe is `Content-Length` and the status). This is stated rather than implied because slice 1a's health route matched `GET` only, so `HEAD /api/health` answered **404** where a connect check belongs — and `URLSession` probes with `HEAD`. A client may use either method on those five routes.
 
 The two byte routes are **GET-only**: `/api/books/{id}/cover` and `/api/books/{id}/file` answer 404 to a `HEAD`, deliberately (D15 — the length of a book arrives on the first response of a `GET` anyway, so a probe would cost a `stat` on the share to learn nothing new).
 
-`PUT /api/books/{id}/reading` is the **first of the two writes**, and the exception on both counts: it is **PUT-only**, takes a JSON body, and answers 404 to a `GET`, a `HEAD` or any other method on that path.
+`PUT /api/books/{id}/reading` is the **first of the four writes**, and the exception on both counts: it is **PUT-only**, takes a JSON body, and answers 404 to a `GET`, a `HEAD` or any other method on that path.
 
 `POST /api/books` is the **second write**, and the exception in the other direction: it is **POST-only**, takes the book's own bytes as its body, and answers 404 to a `GET`, a `HEAD` or any other method on that path. `HEAD` is deliberately **not** added to the allowlist here (S6) — a probe of a route that needs a body would learn nothing the status does not already say, and leaving it out keeps the rule above at one sentence.
+
+`PUT` and `DELETE` on `/api/shelves/{id}/books/{bookId}` are the **third and fourth writes**, and the API's **first `DELETE`**: they take **no body**, and the path answers 404 to a `GET`, a `HEAD` and every other method. Each is **idempotent** — a book already on the shelf keeps the place it has, and removing one that was never on it is a success — because the shelf file's own rules are (D3 of the bookshelves design). The answer is **`{ "book": … }`** — the book as it stands after the write, in the detail shape — so a toggle and its confirmation are one round trip.
 
 Every other method, and every path that is not one of the routes below, answers **404 with `{"error":"not found"}`** — uniformly, and without telling a client whether a _known_ path was behind the wrong method.
 
@@ -42,6 +44,8 @@ Base URL: `http://<tailnet-address>:<port>`. Every response is JSON except the t
 | `GET /api/library`                           | one page of the library, or of a search                                     | 200, 400, 401, 500                     |
 | `GET /api/library/facets`                    | the filter counts                                                           | 200, 401, 500                          |
 | `GET /api/shelves`                           | the shelves, alphabetically                                                 | 200, 401, 500                          |
+| `PUT /api/shelves/{id}/books/{bookId}`       | the book, after adding it to the shelf                                      | 200, 401, 404, 500, 503                |
+| `DELETE /api/shelves/{id}/books/{bookId}`    | the book, after removing it                                                 | 200, 401, 404, 500, 503                |
 | `GET /api/books/{id}`                        | one book                                                                    | 200, 401, 404, 500                     |
 | `GET /api/books/{id}/cover?size=thumb\|full` | `image/jpeg`                                                                | 200, 206, 400, 401, 404, 416, 500, 503 |
 | `GET /api/books/{id}/file?format=epub`       | the book's bytes                                                            | 200, 206, 400, 401, 404, 416, 500, 503 |
@@ -202,6 +206,59 @@ Every shelf, alphabetically (case-insensitively), each with the count of books t
 | `updatedAt` | The shelf file's `updated_at`: the last write that changed the shelf (a no-op write does not move it). |
 
 Answers **200 from the cache while the library is offline**, like every other JSON read.
+
+### `PUT` and `DELETE /api/shelves/{id}/books/{bookId}`
+
+**The membership toggle** (bookshelves D10). `PUT` puts the book on the shelf; `DELETE` takes it off. Neither takes a body, and both answer **`{ "book": … }`** — the book as it stands after the write, the same payload `GET /api/books/{id}` answers, `shelves` member included — so a client that has just toggled a checkbox holds its refreshed row.
+
+```json payload=membership
+{
+  "book": {
+    "id": "6f1a1f2e-3c4d-4e5f-8a9b-0c1d2e3f4a5b",
+    "title": "Leviathan Wakes",
+    "author": "James S. A. Corey",
+    "publisher": "Orbit",
+    "publishedDate": "2011-06-15",
+    "language": "en",
+    "description": "Humanity has colonized the solar system — and the protomolecule is loose.",
+    "isbn10": "0316123266",
+    "isbn13": "9780316123265",
+    "goodreadsId": "8855321",
+    "openlibraryId": "OL25167455W",
+    "seriesName": "The Expanse",
+    "seriesIndex": 1,
+    "seriesTotal": 9,
+    "tags": ["space opera", "science fiction"],
+    "rating": 5,
+    "dateAdded": "2026-08-13T18:04:21.000Z",
+    "lastModified": "2026-09-21T09:12:00.000Z",
+    "formats": ["epub", "mobi"],
+    "fileSizeBytes": 4731892,
+    "cover": {
+      "thumb": true,
+      "full": true,
+      "version": "2026-09-21T09:12:00.000Z"
+    },
+    "reading": {
+      "status": "reading",
+      "percent": 0.42,
+      "updatedAt": "2026-09-21T09:12:00.000Z"
+    },
+    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
+  }
+}
+```
+
+Both are **idempotent**: putting a book on a shelf it is already on keeps its original place (an existing member's `added_at` is never re-stamped), removing one that is not on the shelf succeeds, and neither writes anything to the share. That, and the two ids in the path, is what makes a queued or replayed toggle safe.
+
+| Answer | When |
+| ------ | ---- |
+| **200** | The membership stands as asked, and the body is the book, wrapped as `{ "book": … }`. |
+| **404** | An unknown shelf, an unknown book, or any method but `PUT` and `DELETE` on the path. Uniform and reason-free (D11). |
+| **500** | A handler failed — **or the shelf file cannot be read**: a `shelves.json` that does not parse (or carries an unknown `version`) refuses every shelf write rather than being overwritten, and the reason is in the Mac's log (bookshelves D3). The file is left exactly as it was. |
+| **503** | The share is not mounted: `{\"error\":\"library offline\"}` with `Retry-After: 5`, **refused before anything is written** — the shelf service's own `assertOnline` (D3). |
+
+The write goes through `electron/main/services/shelves.ts` — the same single writer the Mac's own sidebar, menus and drag targets use — so a phone's toggle lands in `shelves.json` atomically, updates the Mac's sidebar through `shelves:changed`, and is repaired by the next adoption if a crash falls between the file and the cache.
 
 ### `GET /api/books/{id}`
 
@@ -480,6 +537,8 @@ The server is never a dependency of the app, and the client should expect all of
 | The share is not mounted (`library: "offline"`)           | `/api/library`, `/api/library/facets`, `/api/shelves` and `/api/books/{id}` still answer **200** from the cache. Both byte routes answer **503** with `Retry-After: 5`, and so does `POST /api/books` — which refuses **before it accepts a byte** of the body. The app re-checks the share on its own reconnect backoff, whose first step is 5 s.                                         |
 | No library configured                                     | The same 503 on the byte routes and on the upload; the cache routes answer 200 with whatever they hold.                                                                                                                                                                                                    |
 | A shelf-scoped read for an unknown shelf                  | **404** — the uniform refusal, answered from the cache whether the share is mounted or not.                                                                                                                                                                                                                 |
+| A shelf write while the share is not mounted              | **503** `library offline` with `Retry-After: 5` — refused before anything is written, like every shelf mutation (D3's `assertOnline`).                                                                                                                                                                      |
+| `shelves.json` cannot be read                             | The shelf writes answer **500** with the reason in the Mac's log; the file is never overwritten and the cache keeps the last good view (D3).                                                                                                                                                                 |
 | A book's bytes are gone, a cover is gone                  | **404** — the same answer as an unknown book, so a client cannot map what this machine holds.                                                                                                                                                                                                                                                                              |
 | Too many transfers in flight                              | **503** with `Retry-After: 1` and `{"error":"busy"}`. An upload contends for the same budget and is answered the same way — it takes a slot while its body is read.                                                                                                                                                                                                        |
 | The share drops mid-transfer                              | The read fails: the connection is closed after the status has already been sent, and the client resumes with a `Range` request. If the read _stalls_ instead — a mount that stops answering without failing — nothing is notified and the request waits on the kernel; the client's timeout is what ends it, and new transfers still start while fewer than two are stuck. |
@@ -500,16 +559,16 @@ Every refusal is JSON with one member:
 | ------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 400    | `bad request`           | The request this route received cannot be made sense of: a malformed `limit`/`offset`/`minRating`, an unknown `sort`/`dir`, an unknown `formats`/`readStatus` value, an empty `shelf`, a `sort=shelf_added` with no `shelf` to order by, no `format`, a `size` that is neither `thumb` nor `full`, or a progress report whose body this route cannot read; or, on the upload, no `format`, a `format` this API does not store, no `filename`, a `filename` with no usable stem, an empty body, or a body that stopped arriving |
 | 401    | `unauthorized`          | No credential, or the wrong one. Carries `WWW-Authenticate: Bearer`.                                                                                                                                                                                                                                                                                                                                                                                       |
-| 404    | `not found`             | An unknown path, a known path behind a method it does not answer (including any method but `POST` on `/api/books`), an unknown shelf, an unknown book (including an unknown book id on the reading route), an unknown format, a format the book does not hold, a cover the book does not have, or a file that is gone.                                                                                                                                                       |
+| 404    | `not found`             | An unknown path, a known path behind a method it does not answer (including any method but `POST` on `/api/books`, and any method but `PUT` or `DELETE` on `/api/shelves/{id}/books/{bookId}`), an unknown shelf, an unknown book (including an unknown book id on the reading route), an unknown format, a format the book does not hold, a cover the book does not have, or a file that is gone.                                                                                                                                                       |
 | 413    | `content too large`     | An upload's body past the 1 GiB it may carry. Answered **at the breach, while the client is still sending**, and the client must read the response rather than assume a reset — see `POST /api/books`.                                                                                                                                                                                                                                                     |
 | 416    | `range not satisfiable` | A `Range` this file cannot satisfy — including a malformed one. Carries `Content-Range: bytes */<length>`.                                                                                                                                                                                                                                                                                                                                                 |
-| 500    | `internal`              | A handler failed. The server keeps serving.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 500    | `internal`              | A handler failed — including a shelf write against a `shelves.json` that cannot be read, which is refused rather than overwritten, with the reason in the Mac's log. The server keeps serving.                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 503    | `busy`                  | Too many byte transfers in flight. Carries `Retry-After: 1`.                                                                                                                                                                                                                                                                                                                                                                                               |
 | 503    | `library offline`       | The library share is not mounted, so there are no bytes to serve. Carries `Retry-After: 5`.                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Not in this version
 
-`PUT /api/books/{id}/reading` **is** in this version (above), and **corrected 2026-09-23: it is no longer the only write.** This paragraph used to read that the progress report was _the one write this API grows_ and that nothing else writes. `POST /api/books` — a phone sending a book back to the library (`docs/superpowers/specs/2026-09-23-phone-upload-design.md`) — is a second one, and it is a **create** rather than an edit: there is no row to lock and no override to mark, which is why it did not have to disturb anything else in the contract. Everything the old sentence named is still absent by decision: metadata edits, read-status marks, deletions and device sends, and a v1 client needs none of them.
+`PUT /api/books/{id}/reading` **is** in this version (above), and **corrected 2026-09-23: it is no longer the only write.** This paragraph used to read that the progress report was _the one write this API grows_ and that nothing else writes. `POST /api/books` — a phone sending a book back to the library (`docs/superpowers/specs/2026-09-23-phone-upload-design.md`) — is a second one, and it is a **create** rather than an edit: there is no row to lock and no override to mark, which is why it did not have to disturb anything else in the contract. Everything the old sentence named is still absent by decision: metadata edits, read-status marks, deletions and device sends, and a v1 client needs none of them. **Shelf create, rename and delete are not on the wire either, and are not planned** — the phone browses shelves and toggles membership (bookshelves D10/D11); smart shelves do not exist yet, and the file format's `kind` is where a later build would put them.
 
 ## What is deliberately not on the wire
 

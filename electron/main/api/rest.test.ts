@@ -5,13 +5,16 @@ import { connect, type AddressInfo } from 'node:net'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { BookSort } from '@shared/book.types'
+import type { ManualShelfEntry } from '@shared/shelf.types'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { type InterfaceMap } from '../services/api/bind'
 import * as db from '../services/db'
+import { subscribe } from '../services/events'
 import * as nas from '../services/nas-manager'
 import * as shelves from '../services/shelves'
+import { readShelvesFile } from '../services/shelves-file'
 import {
   DEFAULT_REST_API_PORT,
   REST_API_CONFIG_KEYS,
@@ -1125,6 +1128,158 @@ describe('the shelf reads', () => {
     expect((await get('/api/shelves')).status).toBe(200)
     expect((await get(`/api/library?shelf=${shelfId}`)).status).toBe(200)
     expect((await get(`/api/library/facets?shelf=${shelfId}`)).status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The shelf membership writes (bookshelves D10, AC31)
+// ---------------------------------------------------------------------------
+
+describe('the shelf membership writes', () => {
+  let server: Server
+  let base: string
+  let root: string
+  let shelfId: string
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'musaeum-rest-membership-'))
+    await nas.setLibraryRoot(root)
+    vi.mocked(nas.isOnline).mockReturnValue(true)
+
+    seedLibrary()
+    shelfId = (await shelves.create('To Read', ['lib-1'])).id
+
+    server = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  const auth = { authorization: `Bearer ${TOKEN}` }
+  const path = (bookId: string) => `/api/shelves/${shelfId}/books/${bookId}`
+  const put = (bookId: string) => fetch(`${base}${path(bookId)}`, { method: 'PUT', headers: auth })
+  const del = (bookId: string) =>
+    fetch(`${base}${path(bookId)}`, { method: 'DELETE', headers: auth })
+
+  /** The shelf as the canonical file holds it now. */
+  async function shelfOnDisk(): Promise<ManualShelfEntry | undefined> {
+    const read = await readShelvesFile(root)
+    if (read.state !== 'ok') return undefined
+    return read.file.shelves.find(
+      (s): s is ManualShelfEntry => s.kind === 'manual' && s.id === shelfId
+    )
+  }
+
+  it('adds on PUT, and answers the book as it stands after the write (AC31, S8)', async () => {
+    const res = await put('lib-2')
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    const { book } = (await res.json()) as { book: { id: string; shelves: string[] } }
+    expect(book.id).toBe('lib-2')
+    expect(book.shelves).toContain(shelfId)
+    // The write and the read that follows it are one round trip: the answer is
+    // the detail payload
+    expect(book).toEqual(await (await fetch(`${base}/api/books/lib-2`, { headers: auth })).json())
+
+    // And it reached the canonical file, not only the cache
+    expect((await shelfOnDisk())?.books.map((m) => m.id)).toContain('lib-2')
+  })
+
+  it('is idempotent: a second PUT answers 200 and keeps the first added_at (AC31)', async () => {
+    await put('lib-2')
+    const first = (await shelfOnDisk())?.books.find((m) => m.id === 'lib-2')?.added_at
+
+    const again = await put('lib-2')
+
+    expect(again.status).toBe(200)
+    expect((await again.json()) as object).toMatchObject({ book: { shelves: [shelfId] } })
+    expect(first).toBeTruthy()
+    expect((await shelfOnDisk())?.books.find((m) => m.id === 'lib-2')?.added_at).toBe(first)
+  })
+
+  it('removes on DELETE, and a DELETE of a non-member is a success too (AC31)', async () => {
+    // lib-1 is on the shelf from the setup
+    const res = await del('lib-1')
+
+    expect(res.status).toBe(200)
+    const { book } = (await res.json()) as { book: { id: string; shelves: string[] } }
+    expect(book.id).toBe('lib-1')
+    expect(book.shelves).toEqual([])
+    expect((await shelfOnDisk())?.books.map((m) => m.id)).not.toContain('lib-1')
+
+    const again = await del('lib-1')
+    expect(again.status).toBe(200)
+    expect((await again.json()) as object).toMatchObject({ book: { shelves: [] } })
+  })
+
+  it('answers 404 for an unknown shelf and an unknown book, and writes nothing', async () => {
+    const unknownShelf = await fetch(`${base}/api/shelves/no-such-shelf/books/lib-2`, {
+      method: 'PUT',
+      headers: auth
+    })
+    expect(unknownShelf.status).toBe(404)
+    expect(await unknownShelf.json()).toEqual({ error: 'not found' })
+
+    const unknownBook = await put('not-a-book')
+    expect(unknownBook.status).toBe(404)
+    expect(await unknownBook.json()).toEqual({ error: 'not found' })
+
+    // Neither attempt changed the shelf
+    expect((await shelfOnDisk())?.books.map((m) => m.id)).toEqual(['lib-1'])
+  })
+
+  it('answers 503 library offline before anything is attempted (AC31, S10)', async () => {
+    vi.mocked(nas.isOnline).mockReturnValue(false)
+
+    const res = await put('lib-2')
+
+    expect(res.status).toBe(503)
+    expect(res.headers.get('retry-after')).toBe('5')
+    expect(await res.json()).toEqual({ error: 'library offline' })
+    // Refused before the service ran: the file holds exactly what it held
+    expect((await shelfOnDisk())?.books.map((m) => m.id)).toEqual(['lib-1'])
+  })
+
+  it('answers 404 to every method but PUT and DELETE on the path (S9)', async () => {
+    for (const method of ['GET', 'HEAD', 'POST', 'PATCH']) {
+      const res = await fetch(`${base}${path('lib-2')}`, { method, headers: auth })
+      expect(res.status).toBe(404)
+    }
+    expect((await shelfOnDisk())?.books.map((m) => m.id)).toEqual(['lib-1'])
+  })
+
+  it('answers 500 and never overwrites a shelves.json that cannot be read (S2)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const before = 'not json at all'
+      writeFileSync(join(root, 'shelves.json'), before, 'utf8')
+
+      const res = await put('lib-2')
+
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: 'internal' })
+      expect(readFileSync(join(root, 'shelves.json'), 'utf8')).toBe(before)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('broadcasts shelvesChanged, so the Mac sidebar follows a phone write (D10)', async () => {
+    const heard: string[] = []
+    const unsubscribe = subscribe((event) => {
+      if (event === 'shelvesChanged') heard.push(event)
+    })
+    try {
+      await put('lib-2')
+      expect(heard).toContain('shelvesChanged')
+    } finally {
+      unsubscribe()
+    }
   })
 })
 

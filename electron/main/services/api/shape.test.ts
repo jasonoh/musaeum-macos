@@ -15,6 +15,7 @@ import {
   healthPayload,
   importPayload,
   libraryPayload,
+  membershipPayload,
   readingPayload,
   shelvesPayload
 } from './shape'
@@ -134,6 +135,8 @@ const PAYLOADS: Record<string, unknown> = {
   shelves: shelvesPayload([
     { id: SHELF_ID, name: 'To Read', kind: 'manual', count: 3, updatedAt: TOUCHED }
   ]),
+  // The membership write's answer — the book, wrapped like every other write's
+  membership: membershipPayload({ book: GOLDEN, shelves: SHELVES }),
   // Slice 1c's answer: the one write's payload. Its `book` member is the same
   // `bookPayload`, so the goldens prove the two routes describe a book alike.
   reading: readingPayload({ applied: true, book: GOLDEN, shelves: SHELVES }),
@@ -205,6 +208,9 @@ describe('the contract document and the goldens (AC19)', () => {
     // *prefix* of every other book path, so `toContain` would find it in them and
     // the loop above would pass without the document naming it at all.
     expect(DOC).toContain('POST /api/books?format=')
+    // Slice 5's membership writes, asserted in the method+path form for the same
+    // reason: the read route's own path is a prefix of it
+    expect(DOC).toContain('/api/shelves/{id}/books/{bookId}')
   })
 
   it('names every refusal word, every media type and the page bounds', () => {
@@ -381,11 +387,15 @@ describe('the shelves member, on every book payload (bookshelves D10)', () => {
     expect(page.books[1].shelves).toEqual([])
   })
 
-  it('is on the reading answer and the import answer too — four routes, one shape', () => {
+  it('is on every write answer too — reading, import and the membership toggle', () => {
     expect(readingPayload({ applied: false, book: GOLDEN, shelves: SHELVES }).book.shelves).toEqual(
       SHELVES
     )
     expect(importPayload({ book: GOLDEN, duplicate: null, shelves: [] }).book.shelves).toEqual([])
+    expect(membershipPayload({ book: GOLDEN, shelves: SHELVES }).book.shelves).toEqual(SHELVES)
+    // The membership answer's container is `{book}` and nothing else — the same
+    // member the other two writes carry the book in
+    expect(Object.keys(membershipPayload({ book: GOLDEN, shelves: [] }))).toEqual(['book'])
   })
 })
 

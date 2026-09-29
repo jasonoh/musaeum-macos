@@ -432,3 +432,22 @@ export function shelvesPayload(rows: ShelfRowInput[]): ShelvesPayload {
     }))
   }
 }
+
+// ---------------------------------------------------------------------------
+// The membership write's answer (bookshelves D10)
+// ---------------------------------------------------------------------------
+
+export interface MembershipPayload {
+  book: WireBook
+}
+
+/**
+ * The answer to `PUT`/`DELETE /api/shelves/{id}/books/{bookId}`: the book as it
+ * stands now, **wrapped in a `book` member** — D10's own shape (`200 {"book": …}`)
+ * and the same member every other write's answer carries (`readingPayload`'s
+ * `{applied, book}`, `importPayload`'s `{book, duplicate}`), so a client reads
+ * the book of a write one way whatever the write was.
+ */
+export function membershipPayload(input: { book: Book; shelves: string[] }): MembershipPayload {
+  return { book: bookPayload(input.book, input.shelves) }
+}
