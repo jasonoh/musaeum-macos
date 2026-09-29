@@ -828,20 +828,71 @@ function toShelfSummary(r: ShelfSummaryRow): ShelfSummary {
 }
 
 /**
+ * Every shelf, alphabetically and case-insensitively, then by id (D6), with the
+ * shelf's own clock — what `GET /api/shelves` carries (bookshelves D10).
+ *
+ * `ShelfSummary` (the preload shape) deliberately has no clock: this is the same
+ * query one reader wider, and `listShelves` is its projection, so the two cannot
+ * order or count differently.
+ */
+export function listShelvesWithUpdatedAt(): (ShelfSummary & { updatedAt: string })[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT s.id, s.name, s.updated_at AS updatedAt, COUNT(sb.book_id) AS count
+         FROM shelves s LEFT JOIN shelf_books sb ON sb.shelf_id = s.id
+        GROUP BY s.id
+        ORDER BY s.name COLLATE NOCASE, s.id`
+    )
+    .all() as { id: string; name: string; updatedAt: string; count: number }[]
+  return rows.map((row) => ({ ...toShelfSummary(row), updatedAt: row.updatedAt }))
+}
+
+/**
  * Every shelf, alphabetically and case-insensitively, then by id (D6). The count
  * is the cache's membership, which holds only books the library has —
  * `replaceAllShelves`, `deleteBook` and `replaceAllBooks` all keep it that way.
  */
 export function listShelves(): ShelfSummary[] {
+  return listShelvesWithUpdatedAt().map(({ id, name, count }) => ({
+    id,
+    name,
+    kind: 'manual',
+    count
+  }))
+}
+
+/** Whether the cache holds this shelf — the 404 check the REST surface reads (D10). */
+export function shelfExists(id: string): boolean {
+  return getDb().prepare('SELECT 1 FROM shelves WHERE id = ?').get(id) !== undefined
+}
+
+/**
+ * Shelf ids per book id — **one query whatever the count** (bookshelves D10: the
+ * page read fills the wire's `shelves` member from a single batched `IN`). A book
+ * on nothing is absent from the map rather than mapped to `[]`; the reader pads.
+ *
+ * Ordered like `listShelves` — name `COLLATE NOCASE`, then shelf id — and the
+ * loop preserves that order within each book, so a phone's chips and its shelf
+ * picker cannot disagree about which shelf comes first.
+ */
+export function shelfIdsForBooks(bookIds: string[]): Map<string, string[]> {
+  const found = new Map<string, string[]>()
+  if (!bookIds.length) return found
+  const placeholders = bookIds.map(() => '?').join(',')
   const rows = getDb()
     .prepare(
-      `SELECT s.id, s.name, COUNT(sb.book_id) AS count
-         FROM shelves s LEFT JOIN shelf_books sb ON sb.shelf_id = s.id
-        GROUP BY s.id
+      `SELECT m.book_id AS bookId, m.shelf_id AS shelfId
+         FROM shelf_books m JOIN shelves s ON s.id = m.shelf_id
+        WHERE m.book_id IN (${placeholders})
         ORDER BY s.name COLLATE NOCASE, s.id`
     )
-    .all() as ShelfSummaryRow[]
-  return rows.map(toShelfSummary)
+    .all(...bookIds) as { bookId: string; shelfId: string }[]
+  for (const row of rows) {
+    const list = found.get(row.bookId)
+    if (list) list.push(row.shelfId)
+    else found.set(row.bookId, [row.shelfId])
+  }
+  return found
 }
 
 /** The shelves one book is on, in `listShelves`'s order. */

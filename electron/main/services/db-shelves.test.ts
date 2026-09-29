@@ -15,10 +15,13 @@ import {
   getFacets,
   insertBook,
   listShelves,
+  listShelvesWithUpdatedAt,
   replaceAllBooks,
   replaceAllShelves,
   searchBooks,
   searchBooksPage,
+  shelfExists,
+  shelfIdsForBooks,
   shelvesForBook
 } from './db'
 
@@ -280,5 +283,60 @@ describe('a shelf as a scope on every library read (bookshelves D7, D8)', () => 
     )
     expect(ids(page.books)).toEqual(['d'])
     expect(page.total).toBe(2)
+  })
+})
+
+describe('the reads the REST surface answers from (slice 5)', () => {
+  it('shelfExists answers for the cache, and is false for a shelf out of it', () => {
+    seed()
+    expect(shelfExists('s1')).toBe(true)
+    expect(shelfExists('s2')).toBe(true)
+    // The smart shelf is in the file and out of the cache (D1) — not a shelf
+    // this surface can be asked about, which is why the check reads the cache
+    expect(shelfExists('s3')).toBe(false)
+    expect(shelfExists('gone')).toBe(false)
+  })
+
+  it('shelfIdsForBooks answers every book in one call, in listShelves order', () => {
+    insertBook(makeBook('a'))
+    insertBook(makeBook('b'))
+    insertBook(makeBook('c'))
+    replaceAllShelves(
+      file([
+        manualShelf('s2', 'alpha', [['a', T(1)]]),
+        manualShelf('s1', 'To Read', [
+          ['a', T(2)],
+          ['b', T(2)]
+        ])
+      ])
+    )
+
+    const found = shelfIdsForBooks(['a', 'b', 'c'])
+    // The order is `listShelves`'s own — name COLLATE NOCASE, then id — so the
+    // wire's array and the sidebar cannot disagree about which shelf comes first
+    expect(found.get('a')).toEqual(['s2', 's1'])
+    expect(found.get('b')).toEqual(['s1'])
+    // A book on nothing is absent from the map rather than mapped to `[]`; the
+    // reader pads, and one blank key set would otherwise have to exist for every
+    // book in the library
+    expect(found.has('c')).toBe(false)
+    expect(shelfIdsForBooks([])).toEqual(new Map())
+  })
+
+  it('listShelvesWithUpdatedAt carries the file own clock, and agrees with listShelves', () => {
+    seed()
+    expect(listShelvesWithUpdatedAt()).toEqual([
+      { id: 's2', name: 'alpha', kind: 'manual', count: 1, updatedAt: T(1) },
+      { id: 's1', name: 'To Read', kind: 'manual', count: 3, updatedAt: T(1) }
+    ])
+
+    // The clock is the shelf row's own, not the query's
+    replaceAllShelves(file([{ ...manualShelf('s1', 'To Read', [['b', T(2)]]), updated_at: T(9) }]))
+    expect(listShelvesWithUpdatedAt()).toEqual([
+      { id: 's1', name: 'To Read', kind: 'manual', count: 1, updatedAt: T(9) }
+    ])
+    // One SQL statement, two readers: the summary is a projection of this one,
+    // so the two cannot order or count differently
+    expect(listShelves()).toEqual([{ id: 's1', name: 'To Read', kind: 'manual', count: 1 }])
   })
 })
