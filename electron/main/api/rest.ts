@@ -5,7 +5,7 @@ import { networkInterfaces } from 'node:os'
 import { pipeline } from 'node:stream/promises'
 import { checkBearer, logRejectedAttempt } from '../services/api/auth'
 import { resolveBindAddress, type InterfaceMap } from '../services/api/bind'
-import { parseLibraryQuery } from '../services/api/query'
+import { parseLibraryQuery, parseShelfParam } from '../services/api/query'
 import { applyReadingReport, parseReadingReport } from '../services/api/reading'
 import { isBooksCollection, matchBookPath, refusalError } from '../services/api/routes'
 import {
@@ -16,6 +16,7 @@ import {
   importPayload,
   libraryPayload,
   readingPayload,
+  shelvesPayload,
   type ApiError
 } from '../services/api/shape'
 import { receiveUpload, type UploadOptions, type UploadRefusal } from '../services/api/upload'
@@ -30,7 +31,9 @@ import {
   getBook,
   getBooksPage,
   getFacets,
+  listShelvesWithUpdatedAt,
   searchBooksPage,
+  shelfExists,
   shelfIdsForBooks
 } from '../services/db'
 import * as nas from '../services/nas-manager'
@@ -77,7 +80,7 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  *
  * **Route by route (docs/rest-api.md is the contract; this is the wiring):**
  * `GET /api/health`, `GET /api/library`, `GET /api/library/facets`,
- * `GET /api/books/{id}`, `GET /api/books/{id}/cover`,
+ * `GET /api/shelves`, `GET /api/books/{id}`, `GET /api/books/{id}/cover`,
  * `GET /api/books/{id}/file`, `PUT /api/books/{id}/reading` — slice 1c's, which
  * reads a JSON body — and `POST /api/books`, which takes a book's bytes as its
  * body and is the API's second write (the phone-upload design, D1).
@@ -100,6 +103,7 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
 const HEALTH_ROUTE = '/api/health'
 const LIBRARY_ROUTE = '/api/library'
 const FACETS_ROUTE = '/api/library/facets'
+const SHELVES_ROUTE = '/api/shelves'
 
 /** One book's shelf ids, through the same batched read the page uses (bookshelves D10, S7). */
 function shelfIdsFor(bookId: string): string[] {
@@ -748,6 +752,13 @@ async function handleRequest(
         return
       }
       const { filters, query, limit, offset } = parsed.query
+      // An unknown shelf is a 404, answered from the cache before any query runs
+      // (bookshelves D10): the same answer whether the share is mounted or not,
+      // because this route never touches it.
+      if (filters.shelfId && !shelfExists(filters.shelfId)) {
+        sendJson(res, 404, errorPayload('notFound'))
+        return
+      }
       // A search is the app's own FTS path with the page appended; a list is
       // `getBooks`'s query with the page appended. Neither touches the share:
       // this route answers from the cache whatever the NAS is doing (D9/D11).
@@ -769,10 +780,32 @@ async function handleRequest(
     }
 
     if (json && url.pathname === FACETS_ROUTE) {
-      // Computed once over the whole library, deliberately not narrowed by the
+      const shelf = parseShelfParam(url.searchParams)
+      if (!shelf.ok) {
+        sendJson(res, 400, errorPayload('badRequest'))
+        return
+      }
+      if (shelf.shelfId && !shelfExists(shelf.shelfId)) {
+        sendJson(res, 404, errorPayload('notFound'))
+        return
+      }
+      // Computed once over the whole library — or over one shelf, when `shelf`
+      // is given (bookshelves D7/D10) — and deliberately not narrowed by the
       // list route's filters: a facet count that followed the current filter
       // would tell a client nothing about what it could filter *to*.
-      sendJson(res, 200, facetsPayload(getFacets()))
+      sendJson(
+        res,
+        200,
+        facetsPayload(getFacets(shelf.shelfId ? { shelfId: shelf.shelfId } : undefined))
+      )
+      return
+    }
+
+    if (json && url.pathname === SHELVES_ROUTE) {
+      // The cache's own answer — 200 while the share is offline, like every
+      // other JSON read (bookshelves D10). `count` counts only members the
+      // library holds (D6), and `updatedAt` is the shelf file's own clock.
+      sendJson(res, 200, shelvesPayload(listShelvesWithUpdatedAt()))
       return
     }
 

@@ -192,6 +192,7 @@ describe('the contract document and the goldens (AC19)', () => {
       '/api/health',
       '/api/library',
       '/api/library/facets',
+      '/api/shelves',
       '/api/books/{id}',
       '/api/books/{id}/cover',
       '/api/books/{id}/file',

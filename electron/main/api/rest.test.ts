@@ -11,6 +11,7 @@ import { makeBook } from '../../../test/helpers/book'
 import { type InterfaceMap } from '../services/api/bind'
 import * as db from '../services/db'
 import * as nas from '../services/nas-manager'
+import * as shelves from '../services/shelves'
 import {
   DEFAULT_REST_API_PORT,
   REST_API_CONFIG_KEYS,
@@ -996,6 +997,134 @@ describe('the library route', () => {
     expect((await get('/api/library/facets')).status).toBe(200)
     expect((await get('/api/books/lib-1')).status).toBe(200)
     expect((await get('/api/health')).status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The shelf reads: the list, the scope, and the member (bookshelves D10, AC30)
+// ---------------------------------------------------------------------------
+
+describe('the shelf reads', () => {
+  let server: Server
+  let base: string
+  let root: string
+  let shelfId: string
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'musaeum-rest-shelves-'))
+    await nas.setLibraryRoot(root) // a temp dir that exists → the share is 'connected'
+    vi.mocked(nas.isOnline).mockReturnValue(true)
+
+    seedLibrary()
+    // The real service, not a hand-written file: the case's shelf is the one
+    // every other path in the app would see
+    shelfId = (await shelves.create('To Read', ['lib-1', 'lib-3'])).id
+
+    server = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  const auth = { authorization: `Bearer ${TOKEN}` }
+  const get = (path: string) => fetch(`${base}${path}`, { headers: auth })
+
+  it('answers the shelf list, alphabetically, with the count and the shelf own clock', async () => {
+    const res = await get('/api/shelves')
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    const body = (await res.json()) as { shelves: unknown[] }
+    // The payload is the db read, shaped — never a count computed here
+    expect(body.shelves).toEqual(db.listShelvesWithUpdatedAt())
+    expect(body.shelves).toHaveLength(1)
+  })
+
+  it('answers HEAD on /api/shelves with the headers and no body (the method policy)', async () => {
+    const probe = await fetch(`${base}/api/shelves`, { method: 'HEAD', headers: auth })
+
+    expect(probe.status).toBe(200)
+    expect(probe.headers.get('content-type')).toBe('application/json; charset=utf-8')
+    expect(await probe.text()).toBe('')
+  })
+
+  it('scopes the page, its total, its default order and its search (AC30)', async () => {
+    type Page = { books: { id: string }[]; total: number }
+
+    const scoped = await get(`/api/library?shelf=${shelfId}`)
+    expect(scoped.status).toBe(200)
+    const page = (await scoped.json()) as Page
+    expect(page.total).toBe(2)
+    expect(page.books.map((b) => b.id).sort()).toEqual(['lib-1', 'lib-3'])
+
+    // The default order inside a shelf is Date Added to Shelf, descending —
+    // compared against the same query with that sort named, not re-derived here
+    const named = (await (
+      await get(`/api/library?shelf=${shelfId}&sort=shelf_added&dir=desc`)
+    ).json()) as Page
+    expect(page.books.map((b) => b.id)).toEqual(named.books.map((b) => b.id))
+
+    // A search inside the shelf searches the shelf: Charlie is on it, Bravo is not
+    const inside = (await (await get(`/api/library?shelf=${shelfId}&q=Charlie`)).json()) as Page
+    expect(inside.total).toBe(1)
+    expect(inside.books.map((b) => b.id)).toEqual(['lib-3'])
+    const outside = (await (await get(`/api/library?shelf=${shelfId}&q=Bravo`)).json()) as Page
+    expect(outside.total).toBe(0)
+  })
+
+  it('carries the member on the page and the detail, and [] on a book no shelf holds', async () => {
+    const page = (await (await get(`/api/library?shelf=${shelfId}`)).json()) as {
+      books: { id: string; shelves: string[] }[]
+    }
+    expect(page.books.every((b) => b.shelves.includes(shelfId))).toBe(true)
+
+    const detail = (await (await get('/api/books/lib-1')).json()) as { shelves: string[] }
+    expect(detail.shelves).toEqual([shelfId])
+
+    const unshelved = (await (await get('/api/books/lib-2')).json()) as { shelves: string[] }
+    expect(unshelved.shelves).toEqual([])
+  })
+
+  it('scopes the facets through the same builder the page uses', async () => {
+    const res = await get(`/api/library/facets?shelf=${shelfId}`)
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(db.getFacets({ shelfId }))
+  })
+
+  it('answers 404 for an unknown shelf on both scoped routes, and never a 200', async () => {
+    for (const path of [
+      '/api/library?shelf=no-such-shelf',
+      '/api/library/facets?shelf=no-such-shelf'
+    ]) {
+      const res = await get(path)
+      expect(res.status).toBe(404)
+      expect(await res.json()).toEqual({ error: 'not found' })
+    }
+  })
+
+  it('answers 400 for an empty shelf and for shelf_added with no shelf to order by (S4, S5)', async () => {
+    for (const path of [
+      '/api/library?shelf=',
+      '/api/library/facets?shelf=',
+      '/api/library?sort=shelf_added'
+    ]) {
+      const res = await get(path)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'bad request' })
+    }
+  })
+
+  it('answers the reads from the cache while the share is unmounted (D10)', async () => {
+    vi.mocked(nas.isOnline).mockReturnValue(false)
+
+    expect((await get('/api/shelves')).status).toBe(200)
+    expect((await get(`/api/library?shelf=${shelfId}`)).status).toBe(200)
+    expect((await get(`/api/library/facets?shelf=${shelfId}`)).status).toBe(200)
   })
 })
 
