@@ -114,7 +114,8 @@ One page of the library, or of a search when `q` is present.
         "status": "reading",
         "percent": 0.42,
         "updatedAt": "2026-09-21T09:12:00.000Z"
-      }
+      },
+      "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
     }
   ],
   "total": 1,
@@ -172,6 +173,34 @@ The filter sidebar's counts, computed over the whole library in one pass.
 
 Each array holds `{ value, count }` pairs, ordered by count descending. These counts are **not** narrowed by the list route's filters: they answer "what is in the library", not "what is in the current page", so a client can show what it may filter _to_. A value is `null`-free — an authorless book is simply absent from `authors`.
 
+### `GET /api/shelves`
+
+Every shelf, alphabetically (case-insensitively), each with the count of books the library holds for it and the shelf file's own clock. **Names are here and nowhere else** — a book payload carries shelf ids, so a rename changes this response and no book.
+
+```json payload=shelves
+{
+  "shelves": [
+    {
+      "id": "b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901",
+      "name": "To Read",
+      "kind": "manual",
+      "count": 3,
+      "updatedAt": "2026-09-21T09:12:00.000Z"
+    }
+  ]
+}
+```
+
+| Field       | Meaning                                                    |
+| ----------- | ---------------------------------------------------------- |
+| `id`        | The shelf's id — opaque, and what the scoped library route and both membership writes take. |
+| `name`      | As the Mac's sidebar shows it.                             |
+| `kind`      | `manual` for every shelf this build creates; a shelf of a kind this build does not know is not on the wire at all. |
+| `count`     | Books on the shelf **that the library holds** (D6 of the design) — a member whose file is missing everywhere is counted nowhere. |
+| `updatedAt` | The shelf file's `updated_at`: the last write that changed the shelf (a no-op write does not move it). |
+
+Answers **200 from the cache while the library is offline**, like every other JSON read.
+
 ### `GET /api/books/{id}`
 
 One book, in the same shape as a member of `books` above (the `payload=book` golden). `404` for an id the cache does not hold (`{"error":"not found"}`).
@@ -207,7 +236,8 @@ One book, in the same shape as a member of `books` above (the `payload=book` gol
     "status": "reading",
     "percent": 0.42,
     "updatedAt": "2026-09-21T09:12:00.000Z"
-  }
+  },
+  "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
 }
 ```
 
@@ -302,7 +332,8 @@ The body is read by its own field list: an unknown member is ignored, and a `pos
       "status": "reading",
       "percent": 0.42,
       "updatedAt": "2026-09-21T09:12:00.000Z"
-    }
+    },
+    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
   }
 }
 ```
@@ -384,7 +415,8 @@ The body is **the book's own bytes** — not JSON, and not `multipart/form-data`
       "status": "reading",
       "percent": 0.42,
       "updatedAt": "2026-09-21T09:12:00.000Z"
-    }
+    },
+    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
   },
   "duplicate": {
     "existingBookId": "a1b2c3d4-0000-4000-8000-000000000001",

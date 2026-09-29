@@ -25,7 +25,14 @@ import {
   resolveCoverFile,
   bookContentType
 } from '../services/book-bytes'
-import { countBooks, getBook, getBooksPage, getFacets, searchBooksPage } from '../services/db'
+import {
+  countBooks,
+  getBook,
+  getBooksPage,
+  getFacets,
+  searchBooksPage,
+  shelfIdsForBooks
+} from '../services/db'
 import * as nas from '../services/nas-manager'
 import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/settings'
 
@@ -93,6 +100,11 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
 const HEALTH_ROUTE = '/api/health'
 const LIBRARY_ROUTE = '/api/library'
 const FACETS_ROUTE = '/api/library/facets'
+
+/** One book's shelf ids, through the same batched read the page uses (bookshelves D10, S7). */
+function shelfIdsFor(bookId: string): string[] {
+  return shelfIdsForBooks([bookId]).get(bookId) ?? []
+}
 
 export type RestApiState = 'disabled' | 'starting' | 'listening' | 'failed'
 
@@ -514,7 +526,15 @@ async function handleReadingReport(
     return
   }
 
-  sendJson(res, 200, readingPayload({ applied: outcome.applied, book: outcome.book }))
+  sendJson(
+    res,
+    200,
+    readingPayload({
+      applied: outcome.applied,
+      book: outcome.book,
+      shelves: shelfIdsFor(outcome.book.id)
+    })
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -642,7 +662,15 @@ async function handleUpload(
       return
     }
 
-    sendJson(res, 201, importPayload({ book, duplicate: outcome.result.duplicate ?? null }))
+    sendJson(
+      res,
+      201,
+      importPayload({
+        book,
+        duplicate: outcome.result.duplicate ?? null,
+        shelves: shelfIdsFor(book.id)
+      })
+    )
   } finally {
     deps.gate.release()
   }
@@ -726,7 +754,17 @@ async function handleRequest(
       const page = query
         ? searchBooksPage(query, { limit, offset }, filters)
         : getBooksPage(filters, { limit, offset })
-      sendJson(res, 200, libraryPayload({ books: page.books, total: page.total, limit, offset }))
+      sendJson(
+        res,
+        200,
+        libraryPayload({
+          ...page,
+          limit,
+          offset,
+          // One batched read over the page's ids — never one query per book
+          shelves: shelfIdsForBooks(page.books.map((book) => book.id))
+        })
+      )
       return
     }
 
@@ -765,7 +803,7 @@ async function handleRequest(
           sendJson(res, 404, errorPayload('notFound'))
           return
         }
-        sendJson(res, 200, bookPayload(found))
+        sendJson(res, 200, bookPayload(found, shelfIdsFor(found.id)))
         return
       }
 

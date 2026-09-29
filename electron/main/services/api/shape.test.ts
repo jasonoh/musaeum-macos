@@ -15,7 +15,8 @@ import {
   healthPayload,
   importPayload,
   libraryPayload,
-  readingPayload
+  readingPayload,
+  shelvesPayload
 } from './shape'
 
 /**
@@ -102,11 +103,25 @@ const DUPLICATE = {
 const APP_VERSION = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'))
   .version as string
 
+/**
+ * The shelf the goldens' book is on — **one id, on both sides of the pair**: the
+ * document's blocks carry it, and the shaper is called with it, so a member the
+ * two disagree about is exactly the drift AC19 exists to catch.
+ */
+const SHELF_ID = 'b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901'
+const SHELVES = [SHELF_ID]
+
 /** The payloads the document must describe. Built by the shaper, never by hand. */
 const PAYLOADS: Record<string, unknown> = {
   health: healthPayload({ version: APP_VERSION, books: 7100, online: true }),
-  book: bookPayload(GOLDEN),
-  library: libraryPayload({ books: [GOLDEN], total: 1, limit: DEFAULT_PAGE_LIMIT, offset: 0 }),
+  book: bookPayload(GOLDEN, SHELVES),
+  library: libraryPayload({
+    books: [GOLDEN],
+    total: 1,
+    limit: DEFAULT_PAGE_LIMIT,
+    offset: 0,
+    shelves: new Map([[ID, SHELVES]])
+  }),
   facets: facetsPayload({
     authors: [{ value: 'James S. A. Corey', count: 9 }],
     series: [{ value: 'The Expanse', count: 9 }],
@@ -114,15 +129,20 @@ const PAYLOADS: Record<string, unknown> = {
     formats: [{ value: 'epub', count: 5324 }],
     readStatus: [{ value: 'reading', count: 1 }]
   }),
+  // Slice 5's payload: the shelf list. Its `count` and the book member's
+  // membership tell one story, so the example is self-consistent.
+  shelves: shelvesPayload([
+    { id: SHELF_ID, name: 'To Read', kind: 'manual', count: 3, updatedAt: TOUCHED }
+  ]),
   // Slice 1c's answer: the one write's payload. Its `book` member is the same
   // `bookPayload`, so the goldens prove the two routes describe a book alike.
-  reading: readingPayload({ applied: true, book: GOLDEN }),
+  reading: readingPayload({ applied: true, book: GOLDEN, shelves: SHELVES }),
   // Slice 2's answer: the second write, whose `book` member is that same shaper
   // again — three routes, one book shape. The document's block carries a
   // *non-null* `duplicate` so every member of the collision reaches the contract
   // a client is written against; `null` is the ordinary case and the case below
   // decides it.
-  import: importPayload({ book: GOLDEN, duplicate: DUPLICATE }),
+  import: importPayload({ book: GOLDEN, duplicate: DUPLICATE, shelves: SHELVES }),
   error: errorPayload('notFound')
 }
 
@@ -221,43 +241,48 @@ describe('the health payload', () => {
 
 describe('the reading payload — the answer to the one write (AC19)', () => {
   it('carries a boolean and the book itself, never a bare status', () => {
-    const applied = readingPayload({ applied: true, book: GOLDEN })
-    const refused = readingPayload({ applied: false, book: GOLDEN })
+    const applied = readingPayload({ applied: true, book: GOLDEN, shelves: [] })
+    const refused = readingPayload({ applied: false, book: GOLDEN, shelves: [] })
 
     expect(applied.applied).toBe(true)
     expect(refused.applied).toBe(false)
     // The book is the same shaper the detail route answers with, so the write
     // and the read that follows it cannot describe one book two ways
-    expect(applied.book).toEqual(bookPayload(GOLDEN))
+    expect(applied.book).toEqual(bookPayload(GOLDEN, []))
   })
 
   it('keeps the same field list for a refusal, so decoding is unconditional', () => {
     // D6: a refused report answers the *current* state with `applied: false` —
     // the same members with different values, which is what lets a client read
     // the answer before it knows whether the write happened
-    expect(keyPaths(readingPayload({ applied: false, book: GOLDEN })).sort()).toEqual(
-      keyPaths(readingPayload({ applied: true, book: GOLDEN })).sort()
-    )
+    // …and the field list does not depend on the member's *value* either: an
+    // empty array and a full one shape the same payload
+    const refused = readingPayload({ applied: false, book: GOLDEN, shelves: SHELVES })
+    const applied = readingPayload({ applied: true, book: GOLDEN, shelves: [] })
+    expect(keyPaths(refused).sort()).toEqual(keyPaths(applied).sort())
   })
 })
 
 describe('the import payload — the answer to the second write (D6)', () => {
   it('carries the book and the collision, and nothing else', () => {
-    const payload = importPayload({ book: GOLDEN, duplicate: DUPLICATE })
+    const payload = importPayload({ book: GOLDEN, duplicate: DUPLICATE, shelves: SHELVES })
 
     // The container, whole: "a `book` and a `duplicate`" asserted member by
     // member would pass while a third key was written beside them
     expect(Object.keys(payload).sort()).toEqual(['book', 'duplicate'])
-    // The book is the same shaper the detail route answers with (three routes,
+    // The book is the same shaper the detail route answers with (four routes,
     // one book shape), and the collision crosses field for field
-    expect(payload.book).toEqual(bookPayload(GOLDEN))
+    expect(payload.book).toEqual(bookPayload(GOLDEN, SHELVES))
     expect(payload.duplicate).toEqual(DUPLICATE)
   })
 
   it('carries a null collision when the import found none — the ordinary case', () => {
-    const payload = importPayload({ book: GOLDEN, duplicate: null })
+    // A book that arrived a moment ago is on no shelf; the member is still
+    // present, because the field list is the contract
+    const payload = importPayload({ book: GOLDEN, duplicate: null, shelves: [] })
 
     expect(payload.duplicate).toBeNull()
+    expect(payload.book.shelves).toEqual([])
   })
 })
 
@@ -299,7 +324,7 @@ describe('what the wire does not carry (D10)', () => {
       version: TOUCHED
     })
 
-    const noCover = bookPayload({ ...makeBook('bare'), lastModified: null })
+    const noCover = bookPayload({ ...makeBook('bare'), lastModified: null }, [])
     expect(noCover.cover).toEqual({ thumb: false, full: false, version: null })
   })
 
@@ -307,7 +332,7 @@ describe('what the wire does not carry (D10)', () => {
     // A field present only on some books is the shape a client reads as
     // undefined and crashes on; the field list is the contract, so it is
     // identical for an empty row.
-    const empty = bookPayload(makeBook('empty'))
+    const empty = bookPayload(makeBook('empty'), [])
     expect(keyPaths(empty).sort()).toEqual(keyPaths(PAYLOADS.book).sort())
     // …and the never-opened distinction survives as nulls rather than as zeros
     expect(empty.reading).toEqual({ status: 'unread', percent: null, updatedAt: null })
@@ -330,5 +355,49 @@ describe('the read path does not touch the NAS (AC16)', () => {
       "import type { Book, DuplicateContext, LibraryFacets, ReadStatus } from '@shared/book.types'",
       "import { orderedFormats } from '@shared/book.types'"
     ])
+  })
+})
+
+describe('the shelves member, on every book payload (bookshelves D10)', () => {
+  it('is always present, [] on a book no shelf holds, with the same field list', () => {
+    const bare = bookPayload(makeBook('bare'), [])
+    expect(bare.shelves).toEqual([])
+    // A key that appears only sometimes is a client's crash: the field list is
+    // identical whether the book is on three shelves or none
+    expect(keyPaths(bare).sort()).toEqual(keyPaths(PAYLOADS.book).sort())
+  })
+
+  it('fills a page from one map, and [] for an id the map does not hold', () => {
+    const page = libraryPayload({
+      books: [GOLDEN, makeBook('other')],
+      total: 2,
+      limit: DEFAULT_PAGE_LIMIT,
+      offset: 0,
+      shelves: new Map([[ID, SHELVES]])
+    })
+
+    expect(page.books[0].shelves).toEqual(SHELVES)
+    expect(page.books[1].shelves).toEqual([])
+  })
+
+  it('is on the reading answer and the import answer too — four routes, one shape', () => {
+    expect(readingPayload({ applied: false, book: GOLDEN, shelves: SHELVES }).book.shelves).toEqual(
+      SHELVES
+    )
+    expect(importPayload({ book: GOLDEN, duplicate: null, shelves: [] }).book.shelves).toEqual([])
+  })
+})
+
+describe('the shelves payload (slice 5)', () => {
+  it('carries the five members and nothing else', () => {
+    const row = {
+      id: SHELF_ID,
+      name: 'To Read',
+      kind: 'manual' as const,
+      count: 3,
+      updatedAt: TOUCHED
+    }
+    expect(shelvesPayload([row])).toEqual({ shelves: [row] })
+    expect(Object.keys(PAYLOADS.shelves as object)).toEqual(['shelves'])
   })
 })

@@ -185,6 +185,12 @@ export interface WireBook {
   fileSizeBytes: number | null
   cover: WireCover
   reading: WireReading
+  /**
+   * The ids of the shelves this book is on — always present, `[]` when none
+   * (bookshelves D10). Ids only: names come from `GET /api/shelves`, so a rename
+   * changes no book payload.
+   */
+  shelves: string[]
 }
 
 /**
@@ -196,8 +202,13 @@ export interface WireBook {
  * labelling a book or picking a file would otherwise be reading `formats[0]` —
  * the one thing invariant 3 forbids on this side of the wire, and the reason the
  * order is settled before it leaves.
+ *
+ * `shelves` is **required** (S1 of the slice-5 plan): the member is always on
+ * the payload, and a default would let a route forget to fill it — a book
+ * silently reading as shelfless, with the field list still correct, which is the
+ * one drift a shape cannot catch by its keys.
  */
-export function bookPayload(book: Book): WireBook {
+export function bookPayload(book: Book, shelves: string[]): WireBook {
   return {
     id: book.id,
     title: book.title,
@@ -228,7 +239,8 @@ export function bookPayload(book: Book): WireBook {
       status: book.readStatus,
       percent: book.readingState?.percent ?? null,
       updatedAt: book.readingState?.updatedAt ?? null
-    }
+    },
+    shelves
   }
 }
 
@@ -262,8 +274,12 @@ export interface ReadingPayload {
  * untouched, so a client's decoding is unconditional either way (D6: "the
  * current state").
  */
-export function readingPayload(input: { applied: boolean; book: Book }): ReadingPayload {
-  return { applied: input.applied, book: bookPayload(input.book) }
+export function readingPayload(input: {
+  applied: boolean
+  book: Book
+  shelves: string[]
+}): ReadingPayload {
+  return { applied: input.applied, book: bookPayload(input.book, input.shelves) }
 }
 
 // ---------------------------------------------------------------------------
@@ -297,8 +313,9 @@ export interface ImportPayload {
 export function importPayload(input: {
   book: Book
   duplicate: DuplicateContext | null
+  shelves: string[]
 }): ImportPayload {
-  return { book: bookPayload(input.book), duplicate: input.duplicate }
+  return { book: bookPayload(input.book, input.shelves), duplicate: input.duplicate }
 }
 
 // ---------------------------------------------------------------------------
@@ -324,9 +341,15 @@ export function libraryPayload(page: {
   total: number
   limit: number
   offset: number
+  /** Shelf ids per book id — one batched read over the page (bookshelves D10, S7). */
+  shelves: Map<string, string[]>
 }): LibraryPayload {
   return {
-    books: page.books.map(bookPayload),
+    // The arrow, not `page.books.map(bookPayload)`: `map`'s second argument is
+    // the index, and the member's parameter is the shelf ids — passing the index
+    // as shelves is the kind of thing a required parameter exists to make
+    // impossible
+    books: page.books.map((book) => bookPayload(book, page.shelves.get(book.id) ?? [])),
     total: page.total,
     limit: page.limit,
     offset: page.offset
@@ -358,5 +381,54 @@ export function facetsPayload(facets: LibraryFacets): FacetsPayload {
     tags: facets.tags,
     formats: facets.formats,
     readStatus: facets.readStatus
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The shelves — the phone's browse (bookshelves D10)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a shelf row needs from the cache. Structurally `listShelves`'s shape
+ * (`ShelfSummary`, `@shared/shelf.types`) plus the shelf file's own clock —
+ * declared here rather than imported so this module's import list, which its own
+ * case pins as the whole list, gains nothing for a type the compiler already
+ * checks at the call site.
+ */
+export interface ShelfRowInput {
+  id: string
+  name: string
+  kind: 'manual'
+  count: number
+  updatedAt: string
+}
+
+export interface WireShelf {
+  id: string
+  name: string
+  kind: 'manual'
+  count: number
+  updatedAt: string
+}
+
+export interface ShelvesPayload {
+  shelves: WireShelf[]
+}
+
+/**
+ * Every shelf, as the sidebar sees them — `count` counts only members the
+ * library holds (D6), and `updatedAt` is the shelf's own clock (`shelves.json`'s
+ * `updated_at`, `services/db.ts`'s `listShelvesWithUpdatedAt`). Names come from
+ * here, never from a book payload: a rename changes this response and no book.
+ */
+export function shelvesPayload(rows: ShelfRowInput[]): ShelvesPayload {
+  return {
+    shelves: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      kind: row.kind,
+      count: row.count,
+      updatedAt: row.updatedAt
+    }))
   }
 }
