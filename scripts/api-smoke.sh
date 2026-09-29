@@ -16,16 +16,20 @@
 # `zip -0` is how it stores `mimetype` the way the EPUB spec requires). Exit
 # status is non-zero if any check failed.
 #
-# **Two sections write — slice 1c's reading report and slice 2's upload — and
-# they are the only ones that do.** The reading report sends the fraction the
-# book already holds (0.42 for a book that has none), so re-running it reports
-# the same thing again rather than walking the book forward, and it never sends a
-# position. The upload **adds a book**, and it adds one per run: the book it
-# creates is named from the run's own clock, so two runs never collide and a
-# second run cannot be mistaken for a re-run. Because of both, point this script
-# at a **scratch profile** — with a library root you are willing to grow — rather
-# than the profile you read on: the old contract held that a smoke run changed
-# nothing, and that stopped being true when the first write shipped.
+# **Three sections write — slice 1c's reading report, slice 2's upload, and the
+# shelf membership pair — and they are the only ones that do.** The reading
+# report sends the fraction the book already holds (0.42 for a book that has
+# none), so re-running it reports the same thing again rather than walking the
+# book forward, and it never sends a position. The upload **adds a book**, and it
+# adds one per run: the book it creates is named from the run's own clock, so two
+# runs never collide and a second run cannot be mistaken for a re-run. The
+# membership pair puts **the run's own upload** on the first shelf and takes it
+# off again, so it restores the profile's shelf — and it is skipped, with a note
+# rather than a failure, when the profile holds no shelf or the upload is already
+# on one. Because of all of it, point this script at a **scratch profile** — with
+# a library root you are willing to grow — rather than the profile you read on:
+# the old contract held that a smoke run changed nothing, and that stopped being
+# true when the first write shipped.
 #
 # What it cannot decide, and why the suite has to: **the bytes it receives are
 # not hashed against the file on the share.** The wire deliberately does not
@@ -456,6 +460,93 @@ check 'a HEAD of the collection answers 404' 404 "$code"
 # decided on a socket with a small cap through the module's own seam in
 # `electron/main/api/upload.test.ts`; a smoke run can add nothing to that.
 note 'the 1 GiB cap is not exercised here — see the mid-flight 413 case in electron/main/api/upload.test.ts'
+
+# ---------------------------------------------------------------------------
+# The shelves (bookshelves slice 5): the scope, and the membership toggle
+# ---------------------------------------------------------------------------
+
+printf '\n--- shelves (bookshelves slice 5)\n'
+
+code=$(request /api/shelves)
+check 'GET /api/shelves answers 200' 200 "$code"
+check 'the payload carries a shelves array' 'array' "$(jq -r '.shelves | type' "$BODY")"
+
+SHELF_ID="$(jq -r '.shelves[0].id // empty' "$BODY")"
+
+code=$(request '/api/library?shelf=no-such-shelf')
+check 'scoping by an unknown shelf answers 404' 404 "$code"
+
+code=$(request '/api/library?sort=shelf_added')
+check 'sort=shelf_added without a shelf answers 400' 400 "$code"
+
+code=$(request '/api/library?shelf=')
+check 'a present-but-empty shelf answers 400' 400 "$code"
+
+HEAD_RESULT="$(curl -sS --head --max-time "$TIMEOUT" -D "$HEADERS" -o /dev/null \
+  -w '%{http_code} %{size_download}' "${AUTH[@]}" "$BASE/api/shelves" 2>/dev/null)"
+check 'HEAD /api/shelves answers 200' 200 "${HEAD_RESULT%% *}"
+check 'the HEAD downloads no body' 0 "${HEAD_RESULT##* }"
+
+if [ -z "$SHELF_ID" ]; then
+  note 'the profile holds no shelf — the scoped read and the membership pair were not exercised'
+else
+  SHELF_COUNT="$(as_number "$(jq -r --arg id "$SHELF_ID" '.shelves[] | select(.id == $id) | .count' "$BODY")")"
+
+  code=$(request "/api/library?shelf=$SHELF_ID&limit=5")
+  check 'GET /api/library?shelf={id} answers 200' 200 "$code"
+  check 'the scoped total equals the count /api/shelves reports' "$SHELF_COUNT" \
+    "$(as_number "$(jq -r '.total' "$BODY")")"
+  check 'every book on the page declares the shelf it was scoped to' 'yes' \
+    "$(jq -r --arg id "$SHELF_ID" 'if all(.books[]; (.shelves | index($id)) != null) then "yes" else "no" end' "$BODY")"
+
+  DEFAULT_ORDER="$(jq -c '[.books[].id]' "$BODY")"
+  request "/api/library?shelf=$SHELF_ID&limit=5&sort=shelf_added&dir=desc" >/dev/null
+  check 'the default order inside a shelf is Date Added to Shelf, descending' \
+    "$DEFAULT_ORDER" "$(jq -c '[.books[].id]' "$BODY")"
+
+  code=$(request "/api/library/facets?shelf=$SHELF_ID")
+  check 'GET /api/library/facets?shelf={id} answers 200' 200 "$code"
+
+  if [ -z "${UPLOAD_ID:-}" ]; then
+    note 'the run imported no book — the membership pair was not exercised'
+  else
+    request "/api/books/$UPLOAD_ID" >/dev/null
+    if [ "$(jq -r --arg id "$SHELF_ID" '.shelves | index($id) != null' "$BODY")" = true ]; then
+      note "the run's own upload is already on the first shelf — the membership pair was not exercised"
+    else
+      code=$(request "/api/shelves/$SHELF_ID/books/$UPLOAD_ID" -X PUT)
+      check 'PUT /api/shelves/{id}/books/{bookId} answers 200' 200 "$code"
+      check 'the answer carries the book with the shelf now on it' 'yes' \
+        "$(jq -r --arg id "$SHELF_ID" --arg bid "$UPLOAD_ID" 'if .book.id == $bid and ((.book.shelves | index($id)) != null) then "yes" else "no" end' "$BODY")"
+
+      code=$(request "/api/shelves/$SHELF_ID/books/$UPLOAD_ID" -X PUT)
+      check 'a second PUT answers 200 — the write is idempotent' 200 "$code"
+
+      code=$(request "/api/books/$UPLOAD_ID")
+      check 'the membership reads back on the detail route' 'yes' \
+        "$(jq -r --arg id "$SHELF_ID" 'if (.shelves | index($id)) != null then "yes" else "no" end' "$BODY")"
+
+      code=$(request "/api/shelves/$SHELF_ID/books/$UPLOAD_ID" -X DELETE)
+      check 'DELETE /api/shelves/{id}/books/{bookId} answers 200' 200 "$code"
+      check 'the answer carries the book with the shelf off it' 'yes' \
+        "$(jq -r --arg id "$SHELF_ID" --arg bid "$UPLOAD_ID" 'if .book.id == $bid and ((.book.shelves | index($id)) == null) then "yes" else "no" end' "$BODY")"
+
+      code=$(request "/api/shelves/$SHELF_ID/books/$UPLOAD_ID" -X DELETE)
+      check 'a DELETE of a non-member answers 200 — also idempotent' 200 "$code"
+    fi
+
+    code=$(request "/api/shelves/not-a-shelf/books/$UPLOAD_ID" -X PUT)
+    check 'a membership write for an unknown shelf answers 404' 404 "$code"
+
+    code=$(request "/api/shelves/$SHELF_ID/books/not-a-book" -X PUT)
+    check 'a membership write for an unknown book answers 404' 404 "$code"
+
+    code=$(request "/api/shelves/$SHELF_ID/books/not-a-book")
+    check 'a GET of the membership path answers 404' 404 "$code"
+  fi
+fi
+
+note 'the offline 503 on a shelf write is not exercised here — it needs the share taken down; its rules are decided over a socket in electron/main/api/rest.test.ts'
 
 printf '\n--- cover bytes\n'
 
