@@ -76,11 +76,21 @@ export function parseLibraryQuery(url: URL): ParsedLibraryQuery {
   if (minRating === null && params.get('minRating') !== null) return INVALID_QUERY
   if (minRating !== null) filters.minRating = minRating
 
-  const sort = parseSort(params)
-  if (!sort.ok) return INVALID_QUERY
-  if (sort.sort) filters.sort = sort.sort
+  const shelf = parseShelfParam(params)
+  if (!shelf.ok) return INVALID_QUERY
+  if (shelf.shelfId) filters.shelfId = shelf.shelfId
 
   const query = params.get('q')?.trim() ?? ''
+  const sort = parseSort(params, Boolean(filters.shelfId))
+  if (!sort.ok) return INVALID_QUERY
+  if (sort.sort) filters.sort = sort.sort
+  else if (filters.shelfId && !query) {
+    // With a shelf and neither a sort nor a search, the order is the Mac's own
+    // default inside a shelf: Date Added to Shelf, newest first (D8, D10). A
+    // search keeps FTS relevance, an ordering no field name can express.
+    filters.sort = { field: 'shelf_added', direction: 'desc' }
+  }
+
   return {
     ok: true,
     query: {
@@ -119,6 +129,24 @@ export function listParam(params: URLSearchParams, name: string): string[] | nul
 }
 
 /**
+ * The `shelf` parameter — one reader for both shelf-scoped routes (bookshelves
+ * D10), so the list and its facets cannot scope two ways.
+ *
+ * Absent is `null`; **present and empty is a 400** (S4): a `shelf=` a client
+ * meant to fill in is a request this surface cannot make sense of, and answering
+ * it with the whole library is the wrap-around the `?limit=` case deliberately
+ * keeps for numbers and this one does not.
+ */
+export type ParsedShelf = { ok: true; shelfId: string | null } | { ok: false }
+
+export function parseShelfParam(params: URLSearchParams): ParsedShelf {
+  const raw = params.get('shelf')
+  if (raw === null) return { ok: true, shelfId: null }
+  const shelfId = raw.trim()
+  return shelfId ? { ok: true, shelfId } : { ok: false }
+}
+
+/**
  * `sort` / `dir`, through the guard that exists for a sort from outside the type
  * system.
  *
@@ -133,20 +161,24 @@ export function listParam(params: URLSearchParams, name: string): string[] | nul
  * `defaultSortDirection`, the same rule the app's own sort control uses on a
  * first click — so a client asking for `sort=date_added` gets newest-first
  * rather than 1900-first.
+ *
+ * `hasShelf` is the caller's scope flag (bookshelves D10): `shelf_added` is a
+ * real sort on the Mac (D8) and on the wire only next to a `shelf` to order by,
+ * so without one it stays the unknown field it was before the type grew it — a
+ * 400, rather than a silent fallback to title order.
  */
 export function parseSort(
-  params: URLSearchParams
+  params: URLSearchParams,
+  hasShelf: boolean
 ): { ok: true; sort: BookSort | null } | { ok: false } {
   const field = params.get('sort')
   const direction = params.get('dir')
   if (field === null && direction === null) return { ok: true, sort: null }
 
   const candidate = { field: field ?? 'title', direction: direction ?? 'asc' }
-  // `shelf_added` is a real sort on the Mac (bookshelves D8) but means nothing
-  // without a shelf, and this surface has no `shelf` parameter until the
-  // bookshelves slice 5 — so until then it is exactly the unknown field it was
-  // before the type grew it. Slice 5 replaces this with "400 unless `shelf`".
-  if (!isBookSort(candidate) || candidate.field === 'shelf_added') return { ok: false }
+  if (!isBookSort(candidate) || (candidate.field === 'shelf_added' && !hasShelf)) {
+    return { ok: false }
+  }
 
   return {
     ok: true,

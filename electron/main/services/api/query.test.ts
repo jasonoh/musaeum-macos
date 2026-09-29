@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { API_ERRORS, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from './shape'
-import { intParam, listParam, parseLibraryQuery, parseSort } from './query'
+import { intParam, listParam, parseLibraryQuery, parseShelfParam, parseSort } from './query'
 import { isBooksCollection, matchBookPath, refusalError } from './routes'
 
 /**
@@ -133,31 +133,31 @@ describe('parseSort — the field/direction rule', () => {
   it('answers "no sort asked for" for neither parameter, which is not title order', () => {
     // A search with no `sort` keeps SQLite's FTS `rank` — an ordering no field
     // name can express — so null and `{field:'title'}` are different answers
-    expect(parseSort(url('/api/library').searchParams)).toEqual({ ok: true, sort: null })
+    expect(parseSort(url('/api/library').searchParams, false)).toEqual({ ok: true, sort: null })
   })
 
   it('defaults the field to title and, given only a field, takes its natural direction', () => {
-    expect(parseSort(url('/api/library?sort=author').searchParams)).toEqual({
+    expect(parseSort(url('/api/library?sort=author').searchParams, false)).toEqual({
       ok: true,
       sort: { field: 'author', direction: 'asc' }
     })
     // The same rule the app's own sort control uses on a first click
-    expect(parseSort(url('/api/library?sort=date_added').searchParams)).toEqual({
+    expect(parseSort(url('/api/library?sort=date_added').searchParams, false)).toEqual({
       ok: true,
       sort: { field: 'date_added', direction: 'desc' }
     })
-    expect(parseSort(url('/api/library?sort=rating').searchParams)).toEqual({
+    expect(parseSort(url('/api/library?sort=rating').searchParams, false)).toEqual({
       ok: true,
       sort: { field: 'rating', direction: 'desc' }
     })
   })
 
   it('reads an explicit direction, and a lone dir as a sort of titles', () => {
-    expect(parseSort(url('/api/library?sort=date_added&dir=asc').searchParams)).toEqual({
+    expect(parseSort(url('/api/library?sort=date_added&dir=asc').searchParams, false)).toEqual({
       ok: true,
       sort: { field: 'date_added', direction: 'asc' }
     })
-    expect(parseSort(url('/api/library?dir=desc').searchParams)).toEqual({
+    expect(parseSort(url('/api/library?dir=desc').searchParams, false)).toEqual({
       ok: true,
       sort: { field: 'title', direction: 'desc' }
     })
@@ -168,17 +168,91 @@ describe('parseSort — the field/direction rule', () => {
     (query) => {
       // Refused rather than ignored, and case-sensitively: `ASC` is not `asc`,
       // and a sort this surface cannot honour is not a sort it may invent
-      expect(parseSort(url(`/api/library?${query}`).searchParams)).toEqual({ ok: false })
+      expect(parseSort(url(`/api/library?${query}`).searchParams, false)).toEqual({ ok: false })
     }
   )
 
-  it('refuses shelf_added, which has no shelf to order by on this surface yet', () => {
-    // The type grew the field for the Mac (bookshelves D8); the wire has no
-    // `shelf` parameter until slice 5, so here it is still an unknown sort
-    expect(parseSort(url('/api/library?sort=shelf_added').searchParams)).toEqual({ ok: false })
-    expect(parseSort(url('/api/library?sort=shelf_added&dir=desc').searchParams)).toEqual({
+  it('refuses shelf_added without a shelf, and takes it with one (D10)', () => {
+    // The type grew the field for the Mac (bookshelves D8); on the wire it is a
+    // sort only next to a `shelf` parameter to scope by — what `hasShelf` says —
+    // and without one it stays the unknown field it was before the type grew it,
+    // refused with a 400 rather than answered with a silent title order
+    expect(parseSort(url('/api/library?sort=shelf_added').searchParams, false)).toEqual({
       ok: false
     })
+    expect(parseSort(url('/api/library?sort=shelf_added&dir=desc').searchParams, false)).toEqual({
+      ok: false
+    })
+    expect(parseSort(url('/api/library?sort=shelf_added').searchParams, true)).toEqual({
+      ok: true,
+      sort: { field: 'shelf_added', direction: 'desc' }
+    })
+    expect(parseSort(url('/api/library?sort=shelf_added&dir=asc').searchParams, true)).toEqual({
+      ok: true,
+      sort: { field: 'shelf_added', direction: 'asc' }
+    })
+  })
+})
+
+describe('the shelf parameter (bookshelves D10)', () => {
+  it('reads shelf into the filters, trimmed', () => {
+    expect(parseLibraryQuery(url('/api/library?shelf=to-read'))).toMatchObject({
+      ok: true,
+      query: { filters: { shelfId: 'to-read' } }
+    })
+    expect(parseLibraryQuery(url('/api/library?shelf=%20to-read%20'))).toMatchObject({
+      ok: true,
+      query: { filters: { shelfId: 'to-read' } }
+    })
+  })
+
+  it('refuses a present-but-empty shelf rather than defaulting it (S4)', () => {
+    // Present and wrong is refused, absent is absent — the `?minRating=` rule
+    expect(parseLibraryQuery(url('/api/library?shelf='))).toEqual({ ok: false })
+    expect(parseLibraryQuery(url('/api/library?shelf=%20'))).toEqual({ ok: false })
+    const absent = parseLibraryQuery(url('/api/library'))
+    expect(absent.ok && 'shelfId' in absent.query.filters).toBe(false)
+  })
+
+  it('takes Date Added to Shelf as the default order inside a shelf, and only there (S5)', () => {
+    expect(parseLibraryQuery(url('/api/library?shelf=to-read'))).toMatchObject({
+      ok: true,
+      query: {
+        filters: { shelfId: 'to-read', sort: { field: 'shelf_added', direction: 'desc' } }
+      }
+    })
+    // An explicit sort wins over the default…
+    expect(parseLibraryQuery(url('/api/library?shelf=x&sort=title'))).toMatchObject({
+      ok: true,
+      query: { filters: { sort: { field: 'title', direction: 'asc' } } }
+    })
+    // …and a search keeps FTS relevance: no sort key at all, so `searchRows`
+    // falls back to `rank`, exactly as a Mac search inside a shelf behaves
+    const search = parseLibraryQuery(url('/api/library?shelf=x&q=ursula'))
+    expect(search.ok && 'sort' in search.query.filters).toBe(false)
+    // The library without a shelf invents no sort either
+    const plain = parseLibraryQuery(url('/api/library'))
+    expect(plain.ok && 'sort' in plain.query.filters).toBe(false)
+  })
+
+  it('lets shelf_added through only when a shelf scoped the query', () => {
+    expect(parseLibraryQuery(url('/api/library?shelf=x&sort=shelf_added'))).toMatchObject({
+      ok: true,
+      query: { filters: { sort: { field: 'shelf_added', direction: 'desc' } } }
+    })
+    expect(parseLibraryQuery(url('/api/library?sort=shelf_added'))).toEqual({ ok: false })
+  })
+})
+
+describe('parseShelfParam — the scope, read once for both routes', () => {
+  it('answers the id, null when absent, and refuses empty (S4)', () => {
+    expect(parseShelfParam(url('/api/library').searchParams)).toEqual({ ok: true, shelfId: null })
+    expect(parseShelfParam(url('/api/library?shelf=%20to-read%20').searchParams)).toEqual({
+      ok: true,
+      shelfId: 'to-read'
+    })
+    expect(parseShelfParam(url('/api/library?shelf=').searchParams)).toEqual({ ok: false })
+    expect(parseShelfParam(url('/api/library?shelf=%20').searchParams)).toEqual({ ok: false })
   })
 })
 
