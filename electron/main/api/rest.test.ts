@@ -63,8 +63,14 @@ vi.mock('electron', async (importOriginal) => {
 
 vi.mock('../services/nas-manager', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/nas-manager')>()
-  // The only way to reach `library: 'online'` without a mounted share
-  return { ...actual, isOnline: vi.fn(() => false) }
+  // The only way to reach `library: 'online'` without a mounted share.
+  //
+  // `assertOnline` is **wrapped, not stubbed** (the `../services/db` mock's own
+  // idiom below): the real gate still answers every ordinary case, and one case
+  // can stage the window between this route's `isOnline` pre-check and the
+  // service's own gate — the share that drops in between — which is otherwise
+  // unreachable without a real share to unmount (part 5b's review, finding 4).
+  return { ...actual, isOnline: vi.fn(() => false), assertOnline: vi.fn(actual.assertOnline) }
 })
 
 vi.mock('../services/db', async (importOriginal) => {
@@ -1264,9 +1270,42 @@ describe('the shelf membership writes', () => {
       expect(res.status).toBe(500)
       expect(await res.json()).toEqual({ error: 'internal' })
       expect(readFileSync(join(root, 'shelves.json'), 'utf8')).toBe(before)
+      // **The service's own sentence reaches the log**, which is the other half
+      // of this route's claim — the wire gets the fixed word while the reason
+      // goes where a person can read it (`docs/invariants/shelves.md`). Part
+      // 5b's review flagged that this case silenced the warn without asserting
+      // it, so the claim was code-read rather than decided, until now.
+      const lines = warn.mock.calls.map((call) => String(call[0]))
+      expect(lines.some((line) => line.includes(shelves.SHELVES_UNREADABLE))).toBe(true)
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('answers 503, not 500, when the share drops between the check and the write (S10)', async () => {
+    // **The window this route cannot close** (part 5b's review, finding 4): the
+    // handler's pre-check sees a share, the service's own `assertOnline` does
+    // not. Nothing is written in that window either way; what differs is the
+    // answer, and the contract's for a share that cannot take a write is 503
+    // `library offline` with `Retry-After` — not this module's 500, which would
+    // tell a client to give up rather than to come back.
+    //
+    // Both stubs are halves of the **same fact** — the share went away between
+    // the two gates: `isOnline` answers `true` for the pre-check's own call and
+    // `false` after it (`beforeEach` has already seeded the shelf through this
+    // gate, so the first call here is the handler's), and the service's gate
+    // throws the way it would with the share gone.
+    vi.mocked(nas.isOnline).mockReturnValueOnce(true).mockReturnValue(false)
+    vi.mocked(nas.assertOnline).mockImplementationOnce(() => {
+      throw new Error('library offline')
+    })
+
+    const res = await put('lib-2')
+
+    expect(res.status).toBe(503)
+    expect(res.headers.get('retry-after')).toBe('5')
+    expect(await res.json()).toEqual({ error: 'library offline' })
+    expect((await shelfOnDisk())?.books.map((m) => m.id)).toEqual(['lib-1'])
   })
 
   it('broadcasts shelvesChanged, so the Mac sidebar follows a phone write (D10)', async () => {

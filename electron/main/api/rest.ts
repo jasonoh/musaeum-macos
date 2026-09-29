@@ -61,8 +61,9 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  * `services/api/shape.ts` (the contract's field names, and the numbers a page
  * may be), the library route's parameters are `services/api/query.ts` and the
  * book paths and refusal words are `services/api/routes.ts` (both pure over a
- * `URL` or a path), the one write's rules are `services/api/reading.ts` (which
- * is `services/reading-state.ts`'s `saveProgress` and nothing else), the
+ * `URL` or a path), the reading write's rules are `services/api/reading.ts` (which
+ * is `services/reading-state.ts`'s `saveProgress` and nothing else), the shelf
+ * writes' funnel is `services/shelves.ts` (its rules are D3's), the
  * queries are `services/db.ts` (one WHERE body, one `ORDER BY`, paging
  * appended), the path and range rules are `services/book-bytes.ts`, and the
  * bytes come from the NAS. What is left here is wiring — one routing switch, one
@@ -91,8 +92,9 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  * `GET /api/health`, `GET /api/library`, `GET /api/library/facets`,
  * `GET /api/shelves`, `GET /api/books/{id}`, `GET /api/books/{id}/cover`,
  * `GET /api/books/{id}/file`, `PUT /api/books/{id}/reading` — slice 1c's, which
- * reads a JSON body — and `POST /api/books`, which takes a book's bytes as its
- * body and is the API's second write (the phone-upload design, D1).
+ * reads a JSON body — `POST /api/books`, which takes a book's bytes as its body
+ * (the phone-upload design, D1), and the bookshelves slice's membership pair,
+ * `PUT`/`DELETE /api/shelves/{id}/books/{bookId}`, which send no body at all.
  *
  * **Never fatal (invariant 12, D11).** A bind failure is logged, recorded and
  * the app starts normally; a thrown handler answers 500; a failed read is 404, a
@@ -503,8 +505,8 @@ function readJsonBody(
 }
 
 /**
- * `PUT /api/books/{id}/reading` — the one write, and the only place in this
- * module that changes anything (D4).
+ * `PUT /api/books/{id}/reading` — the reading write, and the only place in this
+ * module that changes a book's reading state (D4).
  *
  * **The order is the contract's.** The body is validated before the book is
  * looked up, which is the same order the cover route validates `size` in and
@@ -601,6 +603,15 @@ async function handleShelfMembership(
       sendJson(res, 404, errorPayload('notFound'))
       return
     }
+    if (!nas.isOnline()) {
+      // **The share dropped between the check above and the service's own
+      // `assertOnline`** — a window this route cannot close. Nothing was
+      // written, and the contract's answer for a share that cannot take a write
+      // is the pre-check's own: 503 `library offline` with `Retry-After`, not
+      // this module's 500 (part 5b's review, finding 4; pinned by a case).
+      sendUnavailable(res, 'offline')
+      return
+    }
     // An unreadable `shelves.json` lands here (S2): refused, never overwritten
     // (D3), with the service's own sentence in the log where a person can read
     // it — the wire gets the fixed word, as the upload's `internal` does
@@ -682,8 +693,7 @@ function sendUploadRefusal(
 
 /**
  * `POST /api/books?format=<f>&filename=<n>` — a book arriving as bytes (D1).
- * The API's second write, and its first that *creates* a row rather than
- * editing one.
+ * The API's first write that *creates* a row rather than editing one.
  *
  * **Thin by construction (invariant 8).** Everything this route decides is the
  * table above and the seam below: the parameters, the share check, the body's
@@ -773,18 +783,19 @@ async function handleUpload(
  * that the route exists.
  *
  * **The method policy is stated rather than implied** (and written out in
- * `docs/rest-api.md`): every route except the one write is a `GET`, and the
- * four JSON routes also answer `HEAD`. `HEAD /api/health` answering 404 is what
+ * `docs/rest-api.md`): every read route is a `GET`, the four writes name their
+ * own methods, and the five JSON routes also answer `HEAD`. `HEAD /api/health` answering 404 is what
  * a `URLSession` probe would meet where a connect check belongs, and
  * `node:http` makes the fix free — it suppresses the body of a `HEAD` response
  * while keeping the headers, so no route has to know the method. The two byte
  * routes stay `GET`-only, which is D15's own decision: `HEAD` probing buys
- * nothing when the length arrives with the first response. `PUT
- * /api/books/{id}/reading` is the exception that has to name its method, and a
- * `GET` of that path is a known path behind a method it does not answer — 404
- * like any other (D11).
+ * nothing when the length arrives with the first response. The **writes** are
+ * the exceptions that have to name their methods — `PUT /api/books/{id}/reading`
+ * and slice 5's membership pair, each matched on its resource *and* its method —
+ * and a `GET` of one of those paths is a known path behind a method it does not
+ * answer — 404 like any other (D11).
  *
- * `POST /api/books` — slice 2's second write — is the second exception, and its
+ * `POST /api/books` — slice 2's upload — is the other exception, and its
  * policy is stated here for the same reason: it takes a **body of raw bytes**,
  * so a `HEAD` on it has nothing to answer with beyond a status (`GET
  * /api/books/{id}/file` is the same shape and the same answer), and it is
@@ -890,7 +901,7 @@ async function handleRequest(
       return
     }
 
-    // **The second write** (D1): the collection itself, matched on its method
+    // **The upload** (D1): the collection itself, matched on its method
     // and its pathname, with the book's bytes as the raw body. It sits with the
     // other early arms because the bare path never reaches `matchBookPath` — that
     // matcher's prefix carries a trailing slash — so a `GET`, a `HEAD` or a `PUT`
@@ -914,7 +925,7 @@ async function handleRequest(
 
     const book = matchBookPath(url.pathname)
     if (book) {
-      // **The one write** (D4), matched on its resource *and* its method: a
+      // **The reading write** (D4), matched on its resource *and* its method: a
       // `GET` of this path is a known path behind a method it does not answer,
       // so it falls through to the 404 below like any other (D11).
       if (req.method === 'PUT' && book.resource === 'reading') {
