@@ -150,7 +150,7 @@ describe('checkHealth', () => {
     setConfig('library_root', away)
     setConfig(LIBRARY_KIND_KEY, 'network')
     // **The share the user named.** Slice 2 removed the hostname this used to
-    // fall back on (reading 13: `smb://ohnas`, the owner's own server, compiled
+    // fall back on (reading 13: `smb://nas`, the owner's own server, compiled
     // into a shipped default), so the case configures one.
     setConfig('smb_url', 'smb://server/books')
     shim.root = away

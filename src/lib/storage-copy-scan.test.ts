@@ -143,7 +143,7 @@ describe('the storage copy lives in main, and names no server (D4, AC11–12)', 
     const retired = [
       `This permanently deletes the selected file from the ${ACRONYM}.`,
       `The library is offline. Reconnect to the ${ACRONYM} to make changes.`,
-      `${SCHEME}//ohnas`
+      `${SCHEME}//nas`
     ]
     for (const sample of retired) {
       expect([BARE_NAS.test(sample), SMB_URL.test(sample)], sample).toContain(true)
@@ -168,6 +168,6 @@ describe('the storage copy lives in main, and names no server (D4, AC11–12)', 
     expect(BARE_NAS.test(uncommented(`  // a ${ACRONYM} write is not cheap`))).toBe(false)
     expect(BARE_NAS.test(uncommented(`{/* Removal needs no ${ACRONYM} */}`))).toBe(false)
     expect(BARE_NAS.test(uncommented(`'from the ${ACRONYM}.'`))).toBe(true)
-    expect(SMB_URL.test(uncommented(`open -g '${SCHEME}//ohnas'`))).toBe(true)
+    expect(SMB_URL.test(uncommented(`open -g '${SCHEME}//nas'`))).toBe(true)
   })
 })

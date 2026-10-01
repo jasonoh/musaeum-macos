@@ -68,9 +68,9 @@ describe('checkBearer', () => {
 describe('logRejectedAttempt', () => {
   it('logs the client address and nothing else', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    logRejectedAttempt('100.125.135.108')
+    logRejectedAttempt('100.64.0.1')
     const logged = warn.mock.calls.flat().join(' ')
-    expect(logged).toContain('100.125.135.108')
+    expect(logged).toContain('100.64.0.1')
     // No credential of any kind — not the attempt, not the real token
     expect(logged).not.toContain(TOKEN)
     expect(logged).not.toMatch(/bearer/i)

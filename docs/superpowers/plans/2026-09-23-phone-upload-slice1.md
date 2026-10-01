@@ -30,18 +30,18 @@ Measured 2026-09-23, read-only, with a throwaway harness outside the repo (`~/.h
 
 | Path                                  | Payload     | Result                                                                              |
 | ------------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
-| this Mac's tailnet address `100.125.135.108` | 64 MiB      | 67.0 MiB/s cold, 148.3 MiB/s warm; 3,790 / 8,926 chunks; gap p50 0.03 ms, p99 5.3 ms, **max 80.3 ms** |
+| this Mac's tailnet address `100.64.0.1` | 64 MiB      | 67.0 MiB/s cold, 148.3 MiB/s warm; 3,790 / 8,926 chunks; gap p50 0.03 ms, p99 5.3 ms, **max 80.3 ms** |
 | this Mac's tailnet address            | 320 MiB ×2  | 157.3 / 139.5 MiB/s; gap p50 0.02 ms, p99 0.43 / 0.58 ms, **max 20.8 / 99.7 ms**     |
-| this Mac's LAN address `192.168.1.103` | 320 MiB     | 484.3 MiB/s, max gap 15.5 ms                                                         |
+| this Mac's LAN address `192.168.1.10` | 320 MiB     | 484.3 MiB/s, max gap 15.5 ms                                                         |
 | `speed.cloudflare.com/__up` (WAN)      | 64 MiB ×2   | **1.18 / 1.48 MB/s** — this Mac's *uplink*, i.e. the wrong direction, recorded for what it is |
 
 **What these numbers are, and what they are not.** All three local rows are **short-circuited**: 157 MiB/s and 484 MiB/s both exceed this Mac's 1 GbE ceiling, so neither traversal crossed a wire. They bound the *server side* — Node's HTTP reader plus the tailscale userspace stack plus a disk write — at ~140–160 MiB/s, and say the Mac is not the constraint. No controllable second tailnet host exists for a genuine push (the only other online Mac, `canismajoris`, refuses `:22` and every common port). So the phone's own path is **not** in this table, and the threshold is set with a margin rather than from it.
 
-**What the topology does settle.** `tailscale ping almach` (the iPhone): **direct**, `via 192.168.1.122:41641`, **138 ms** — the phone is on this LAN and not DERP-relayed, so a phone-to-Mac upload today is a LAN path over WireGuard, not a WAN one. The 138 ms RTT is radio latency, not a throughput bound.
+**What the topology does settle.** `tailscale ping iphone` (the iPhone): **direct**, `via 192.168.1.24:41641`, **138 ms** — the phone is on this LAN and not DERP-relayed, so a phone-to-Mac upload today is a LAN path over WireGuard, not a WAN one. The 138 ms RTT is radio latency, not a throughput bound.
 
 **The reading:** the observed worst inter-chunk gap on a real 320 MiB stream is **99.7 ms**, and the p99 across every run is **7.5 ms**. A stall clock is reset by the *first byte of the next chunk*, and TCP delivers at MTU-sized pieces as long as the link lives, so a live client at even one-fiftieth of the slowest measured rate still produces gaps ~5 s apart. **`UPLOAD_STALL_MS = 30_000`** — a 300× margin over the worst gap measured, and 3× the read surface's own total-body bound (`BODY_TIMEOUT_MS = 10_000`), which is the same failure class bounded *harder* here because this clock is reset rather than absolute.
 
-**Reversal condition:** a real upload from `almach` on a cold radio (or any client on a distant tailnet) whose gaps approach seconds. If that shows up, the threshold moves — and the phone's own request timeout is what decides whether the feature is usable at all (spec *Risks* #1).
+**Reversal condition:** a real upload from `iphone` on a cold radio (or any client on a distant tailnet) whose gaps approach seconds. If that shows up, the threshold moves — and the phone's own request timeout is what decides whether the feature is usable at all (spec *Risks* #1).
 
 **The cap is unchanged at 1 GiB (spec D4).** The measurement has nothing to say about it: the census behind it (largest EPUB on the share, 528 MiB) is the constraint, and none of the sizes above exceeded it. Recorded rather than restated.
 

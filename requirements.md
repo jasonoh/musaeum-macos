@@ -48,7 +48,7 @@ Musaeum is a macOS-native Electron application for managing a personal ebook lib
 └──────────────┬──────────────────────────────────────┘
                │
    ┌───────────┴────────────┐
-   │      //ohnas.smb        │
+   │      //nas.smb        │
    │  /Library/              │
    │    /books/{uuid}/       │
    │      book.epub          │
@@ -90,7 +90,7 @@ The following architectural decisions are made now to enable a future iOS compan
 
 ### 3.1 NAS Configuration
 
-- **Primary storage**: `//ohnas.smb` mounted as a macOS network volume
+- **Primary storage**: `//nas.smb` mounted as a macOS network volume
 - **Library root**: configurable on first launch, default detected from mounted volumes
 - **Library structure**:
 
@@ -392,7 +392,7 @@ Adopting the following as canonical standard (exceeds Calibre's convention):
 Launch migration wizard
         │
         ▼
-1. Point to Calibre library root (//ohnas.smb/calibre or similar)
+1. Point to Calibre library root (//nas.smb/calibre or similar)
         │
         ▼
 2. Scan all book folders

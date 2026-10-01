@@ -121,7 +121,7 @@ describe('getSettings', () => {
     // it replaces described a machine the user does not own.
     const note = getSettings().resolved.smbUrl.detail
     expect(note).toMatch(/will not mount one for you/)
-    expect(note).not.toMatch(/ohnas|smb:/i)
+    expect(note).not.toMatch(/nas|smb:/i)
   })
 
   it('names the cloud client a synced library folder sits inside (D7)', () => {
@@ -160,12 +160,12 @@ describe('getSettings', () => {
 
 describe('saveSettings', () => {
   it('writes a valid value', () => {
-    saveSettings({ smbUrl: 'smb://ohnas.local' })
-    expect(getConfig('smb_url')).toBe('smb://ohnas.local')
+    saveSettings({ smbUrl: 'smb://nas.local' })
+    expect(getConfig('smb_url')).toBe('smb://nas.local')
   })
 
   it('clears a key when the field is blank, restoring auto-detection', () => {
-    setConfig('smb_url', 'smb://ohnas.local')
+    setConfig('smb_url', 'smb://nas.local')
     saveSettings({ smbUrl: '' })
     // Deleted, not stored as '' — every reader treats missing as "nothing named"
     expect(getConfig('smb_url')).toBeNull()
@@ -173,14 +173,14 @@ describe('saveSettings', () => {
   })
 
   it('leaves fields that were not submitted alone', () => {
-    setConfig('smb_url', 'smb://ohnas.local')
+    setConfig('smb_url', 'smb://nas.local')
     saveSettings({ googleBooksApiKey: 'key-1' })
-    expect(getConfig('smb_url')).toBe('smb://ohnas.local')
+    expect(getConfig('smb_url')).toBe('smb://nas.local')
   })
 
   it.each([
-    ['smbUrl', 'ohnas', /Not an SMB URL/],
-    ['smbUrl', 'http://ohnas', /Not an SMB URL/],
+    ['smbUrl', 'nas', /Not an SMB URL/],
+    ['smbUrl', 'http://nas', /Not an SMB URL/],
     ['pythonPath', '/nope/python', /No Python interpreter at/],
     ['pythonPath', tmpdir(), /Not a file/],
     ['ebookConvertPath', '/nope/ebook-convert', /No ebook-convert at/]
@@ -218,7 +218,7 @@ describe('saveSettings', () => {
   })
 
   it('does not restart the sidecar for settings it never reads', () => {
-    saveSettings({ smbUrl: 'smb://ohnas.local', ebookConvertPath: '' })
+    saveSettings({ smbUrl: 'smb://nas.local', ebookConvertPath: '' })
     expect(sidecar.restart).not.toHaveBeenCalled()
   })
 })
@@ -403,7 +403,7 @@ describe('the phone API settings', () => {
     // field, or of nothing at all — must not bounce the listener out from under
     // a download in flight.
     listening()
-    await saveSettingsAndApply({ smbUrl: 'smb://ohnas.local' })
+    await saveSettingsAndApply({ smbUrl: 'smb://nas.local' })
     expect(socket.order).toEqual([])
   })
 
@@ -416,7 +416,7 @@ describe('the phone API settings', () => {
       reason: `port ${PORT} is already in use on ${BIND} (EADDRINUSE)`,
       at: null
     }
-    await saveSettingsAndApply({ smbUrl: 'smb://ohnas.local' })
+    await saveSettingsAndApply({ smbUrl: 'smb://nas.local' })
     expect(socket.order).toEqual(['stop', 'start'])
   })
 

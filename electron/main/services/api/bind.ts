@@ -11,8 +11,8 @@
  * The tailnet range is CGNAT, `100.64.0.0/10` (RFC 6598): Tailscale hands each
  * node an address in it, and on macOS it lives on a `utun` interface — measured
  * 2026-09-22 on this machine, `os.networkInterfaces()` answers `lo0 127.0.0.1`,
- * `en0 192.168.1.103`, `utun9 100.125.135.108`, `utun8 10.2.0.2`. The filter is
- * the range and nothing else: a plain tunnel (`utun8`'s `10.2.0.2`) and the LAN
+ * `en0 192.168.1.10`, `utun9 100.64.0.1`, `utun8 10.0.0.2`. The filter is
+ * the range and nothing else: a plain tunnel (`utun8`'s `10.0.0.2`) and the LAN
  * (`en0`) both have to lose, and an interface *name* is not evidence of what an
  * address is.
  *

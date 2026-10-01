@@ -72,7 +72,7 @@ export const REST_API_CONFIG_KEYS = {
 
 /**
  * The port the API listens on unless the owner sets another. Chosen by
- * measurement on 2026-09-22: 8787 is the Hermes WebUI on this machine and 9119
+ * measurement on 2026-09-22: 8787 is the a local web UI on this machine and 9119
  * another listener, while 8788 was held by nothing (`lsof -nP -iTCP:8788`).
  */
 export const DEFAULT_REST_API_PORT = 8788

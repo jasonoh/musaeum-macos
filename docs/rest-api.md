@@ -590,7 +590,7 @@ It exercises the read surface, and **every write the API has**: since slice 1c i
 MUSAEUM_USER_DATA="$SCRATCH/profile" bash scripts/api-smoke.sh
 
 # against a specific server instead of reading the profile's config
-bash scripts/api-smoke.sh --base http://100.125.135.108:8788 --token "$(sqlite3 ... )"
+bash scripts/api-smoke.sh --base http://100.64.0.1:8788 --token "$(sqlite3 ... )"
 ```
 
 It needs `curl`, `jq` and `sqlite3`, exits non-zero if any route fails, and takes `--profile`, `--base` and `--token` (environment equivalents: `MUSAEUM_USER_DATA`, `MUSAEUM_API_BASE`, `MUSAEUM_API_TOKEN`). It checks, per route: the unauthenticated 401 with `WWW-Authenticate`, the authenticated 200 and payload shape, a page walk that repeats no book id, a search that returns the same ids as the unfiltered walk's subset, the facets payload, a book detail, a cover that is an image, a file whose `Content-Length` matches the bytes received, a `Range` request that answers 206 with a `Content-Range` and the right number of bytes, a 404 for an unknown book, a 400 for a bad `size`, a `HEAD /api/health` that answers 200 with no body, a `PUT …/reading` whose percent reads back off the detail route, a stale report that comes back `applied: false`, the shelf list and a `HEAD` on it, a library page and its facets scoped to a shelf (the scoped total against that shelf's own `count`), the 404s for an unknown shelf and an unknown path, the 400s for a present-but-empty `shelf` and for `sort=shelf_added` without one, and — when a shelf exists — the membership `PUT`/`DELETE` pair, each read back off the detail route.

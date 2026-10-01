@@ -94,9 +94,9 @@ const WRONG = 'deadbeef'.repeat(8)
 /** The machine as measured 2026-09-22, as a fixture — never this machine's map. */
 const MEASURED: InterfaceMap = {
   lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
-  en0: [{ address: '192.168.1.103', family: 'IPv4', internal: false }],
-  utun9: [{ address: '100.125.135.108', family: 'IPv4', internal: false }],
-  utun8: [{ address: '10.2.0.2', family: 'IPv4', internal: false }]
+  en0: [{ address: '192.168.1.10', family: 'IPv4', internal: false }],
+  utun9: [{ address: '100.64.0.1', family: 'IPv4', internal: false }],
+  utun8: [{ address: '10.0.0.2', family: 'IPv4', internal: false }]
 }
 
 function config(overrides: Partial<ResolvedRestApiConfig> = {}): ResolvedRestApiConfig {
@@ -105,7 +105,7 @@ function config(overrides: Partial<ResolvedRestApiConfig> = {}): ResolvedRestApi
 
 /** A listen that answers without a socket, so "was it attempted?" is decidable. */
 function recordingListen(
-  outcome: ListenOutcome = { ok: true, address: '100.125.135.108', port: DEFAULT_REST_API_PORT }
+  outcome: ListenOutcome = { ok: true, address: '100.64.0.1', port: DEFAULT_REST_API_PORT }
 ) {
   return vi.fn(async (_server: Server, _host: string, _port: number) => outcome)
 }
@@ -189,9 +189,9 @@ describe('the keys the server is configured by', () => {
   })
 
   it('writes and clears the port and the bind, deleting the key on a blank', () => {
-    saveSettings({ restApiPort: '9000', restApiBind: '100.125.135.108' })
+    saveSettings({ restApiPort: '9000', restApiBind: '100.64.0.1' })
     expect(db.getConfig(REST_API_CONFIG_KEYS.port)).toBe('9000')
-    expect(db.getConfig(REST_API_CONFIG_KEYS.bind)).toBe('100.125.135.108')
+    expect(db.getConfig(REST_API_CONFIG_KEYS.bind)).toBe('100.64.0.1')
 
     saveSettings({ restApiPort: '', restApiBind: '' })
     // Deleted, not blanked — every reader treats missing as "use the default"
@@ -208,8 +208,8 @@ describe('the keys the server is configured by', () => {
     ['restApiPort', 'eighty', /Not a port/],
     ['restApiPort', '8788.5', /Not a port/],
     ['restApiBind', '0.0.0.0', /Not a bind address/],
-    ['restApiBind', '192.168.1.103', /Not a bind address/],
-    ['restApiBind', '10.2.0.2', /Not a bind address/],
+    ['restApiBind', '192.168.1.10', /Not a bind address/],
+    ['restApiBind', '10.0.0.2', /Not a bind address/],
     ['restApiBind', 'example.com', /Not a bind address/],
     ['restApiToken', 'short', /Not a token/]
   ])('rejects %s = %s', (field, value, message) => {
@@ -308,13 +308,13 @@ describe('activation', () => {
 
     expect(status).toEqual({
       state: 'listening',
-      address: '100.125.135.108',
+      address: '100.64.0.1',
       port: DEFAULT_REST_API_PORT,
       reason: null,
       at: expect.any(String)
     })
     expect(listen).toHaveBeenCalledTimes(1)
-    expect(listen.mock.calls[0].slice(1)).toEqual(['100.125.135.108', DEFAULT_REST_API_PORT])
+    expect(listen.mock.calls[0].slice(1)).toEqual(['100.64.0.1', DEFAULT_REST_API_PORT])
   })
 
   it('names the port the OS actually assigned', async () => {
@@ -331,7 +331,7 @@ describe('activation', () => {
     const listen = recordingListen()
 
     const status = await startRestApiIfEnabled({
-      config: config({ bind: '192.168.1.103' }),
+      config: config({ bind: '192.168.1.10' }),
       interfaces: MEASURED,
       listen
     })
@@ -346,7 +346,7 @@ describe('activation', () => {
 
     const status = await startRestApiIfEnabled({
       config: config(),
-      interfaces: { utun8: [{ address: '10.2.0.2', family: 'IPv4', internal: false }] },
+      interfaces: { utun8: [{ address: '10.0.0.2', family: 'IPv4', internal: false }] },
       listen
     })
 

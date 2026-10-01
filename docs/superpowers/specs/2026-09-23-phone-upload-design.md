@@ -11,7 +11,7 @@
 
 ## Why now
 
-Measured 2026-09-23, read-only, against the live library (`/Volumes/books/musaeum`, an smbfs mount of `ohnas`) and the dev database.
+Measured 2026-09-23, read-only, against the live library (`/Volumes/books/musaeum`, an smbfs mount of `nas`) and the dev database.
 
 | Fact | Reading | Where |
 | --- | --- | --- |

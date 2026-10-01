@@ -10,7 +10,7 @@
 # byte count, a value read back off a payload — and never an inference.
 #
 #   MUSAEUM_USER_DATA=/tmp/scratch/profile bash scripts/api-smoke.sh
-#   bash scripts/api-smoke.sh --base http://100.125.135.108:8788 --token <token>
+#   bash scripts/api-smoke.sh --base http://100.64.0.1:8788 --token <token>
 #
 # Requires: curl, jq, sqlite3 and zip (the upload's fixture is built here, and
 # `zip -0` is how it stores `mimetype` the way the EPUB spec requires). Exit
@@ -64,7 +64,7 @@ Usage: scripts/api-smoke.sh [--profile DIR] [--base URL] [--token TOKEN]
   --profile DIR   the profile whose musaeum.db holds the token and port
                   (default: $MUSAEUM_USER_DATA, and no other — a run with neither a
                    profile nor both --base and --token stops here instead)
-  --base URL      the server to talk to, e.g. http://100.125.135.108:8788
+  --base URL      the server to talk to, e.g. http://100.64.0.1:8788
                   (default: from rest_api_bind, else this machine's tailnet address)
   --token TOKEN   the bearer token (default: read from the profile's database)
 USAGE

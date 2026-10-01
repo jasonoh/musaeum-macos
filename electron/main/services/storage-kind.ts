@@ -14,7 +14,7 @@ import { getConfig, setConfig } from './db'
  * lands on `/Volumes` — the boot disk, which is local. Deriving the answer from
  * the *path shape* falls to the same counterexample, measured on this machine
  * 2026-09-24: `/Volumes/data` is a local HFS+ volume sitting beside
- * `//oh@ohnas…/books on /Volumes/books (smbfs, …)`. So the resolver runs at pick
+ * `//oh@nas…/books on /Volumes/books (smbfs, …)`. So the resolver runs at pick
  * time and its answer is written beside `library_root`
  * (`nas-manager.setLibraryRoot`), and Settings displays it so a wrong guess
  * costs one click rather than a silently wrong recovery.
@@ -22,7 +22,7 @@ import { getConfig, setConfig } from './db'
  * **Network only on positive evidence; local otherwise.** The asymmetry is what
  * makes the default safe: misreading a share as local costs the auto-remount
  * (the user still has the picker), while misreading a folder as a share is the
- * defect this module exists to remove — `open -g 'smb://ohnas'` three times a
+ * defect this module exists to remove — `open -g 'smb://nas'` three times a
  * minute against a server the user does not own.
  *
  * The mechanism is a `mount` scan, which reads a **name** (and therefore
@@ -95,7 +95,7 @@ export function writeLibraryKind(kind: StorageKind): void {
 /**
  * `mount`'s own output, parsed.
  *
- * Lines read `//oh@ohnas._smb._tcp.local/books on /Volumes/books (smbfs, nodev,
+ * Lines read `//oh@nas._smb._tcp.local/books on /Volumes/books (smbfs, nodev,
  * nosuid, mounted by jasonoh)` — a source with no ` on ` in it, a mount point
  * that *may* contain spaces (so the source is cut at the first ` on ` and the
  * options at the last ` (`), and an option list whose first member is the

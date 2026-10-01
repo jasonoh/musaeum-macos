@@ -31,8 +31,8 @@ const CAPTURED_TABLE = [
   'devfs on /dev (devfs, local, nobrowse)',
   '/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse, protect, root data)',
   'map auto_home on /System/Volumes/Data/home (autofs, automounted, nobrowse)',
-  '//oh@ohnas._smb._tcp.local/books on /Volumes/books (smbfs, nodev, nosuid, mounted by jasonoh)',
-  '//oh@ohnas._smb._tcp.local/media on /Volumes/media (smbfs, nodev, nosuid, mounted by jasonoh)',
+  '//oh@nas._smb._tcp.local/books on /Volumes/books (smbfs, nodev, nosuid, mounted by jasonoh)',
+  '//oh@nas._smb._tcp.local/media on /Volumes/media (smbfs, nodev, nosuid, mounted by jasonoh)',
   '/dev/disk6s2 on /Volumes/data (hfs, local, nodev, nosuid, journaled, noowners)'
 ].join('\n')
 
@@ -109,7 +109,7 @@ describe('kindFromMountTable', () => {
         '/Volumes/books/musaeum',
         [
           '/dev/disk3s5 on /Volumes (apfs, local)',
-          '//oh@ohnas._smb._tcp.local/books on /Volumes/books (smbfs, nodev, nosuid)'
+          '//oh@nas._smb._tcp.local/books on /Volumes/books (smbfs, nodev, nosuid)'
         ].join('\n')
       )
     ).toBe('network')

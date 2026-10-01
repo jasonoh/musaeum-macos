@@ -11,10 +11,10 @@ describe('the status line the phone row shows', () => {
   it('names the address and port the socket reported, never the ones asked for', () => {
     expect(
       statusLine(
-        { state: 'listening', address: '100.125.135.108', port: 8788, reason: null, at: null },
+        { state: 'listening', address: '100.64.0.1', port: 8788, reason: null, at: null },
         true
       )
-    ).toBe('Listening on 100.125.135.108:8788')
+    ).toBe('Listening on 100.64.0.1:8788')
     // A socket that reported neither is not given a flattering default
     expect(
       statusLine({ state: 'listening', address: null, port: null, reason: null, at: null }, true)

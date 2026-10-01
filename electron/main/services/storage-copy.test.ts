@@ -145,7 +145,7 @@ describe('the SMB row’s note (D5)', () => {
     expect(note).toMatch(/will not mount one for you/)
     // The placeholder this replaces was the owner's own server, shipped to every
     // user of the product. Nothing like it may come back through the note.
-    expect(note).not.toMatch(/smb:|ohnas/i)
+    expect(note).not.toMatch(/smb:|nas/i)
   })
 })
 

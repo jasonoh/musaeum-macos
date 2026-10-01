@@ -15,8 +15,8 @@ import {
  * Every case runs over a **fixture** map, never this machine's own interfaces:
  * the machine is not a fixture, and its answers change with the network. The
  * addresses below are the ones measured on 2026-09-22
- * (`lo0 127.0.0.1`, `en0 192.168.1.103`, `utun9 100.125.135.108`,
- * `utun8 10.2.0.2`), so the case that matters is visible in the fixture: the
+ * (`lo0 127.0.0.1`, `en0 192.168.1.10`, `utun9 100.64.0.1`,
+ * `utun8 10.0.0.2`), so the case that matters is visible in the fixture: the
  * tailnet address must win and the plain tunnel must lose.
  */
 
@@ -27,15 +27,15 @@ function ip(address: string, internal = false): InterfaceAddress {
 /** The machine as measured, as a fixture. */
 const MEASURED: InterfaceMap = {
   lo0: [ip('127.0.0.1', true)],
-  en0: [ip('192.168.1.103')],
-  utun9: [ip('100.125.135.108')],
-  utun8: [ip('10.2.0.2')]
+  en0: [ip('192.168.1.10')],
+  utun9: [ip('100.64.0.1')],
+  utun8: [ip('10.0.0.2')]
 }
 
 describe('isTailnetAddress', () => {
   it('accepts the range CGNAT actually covers, ends included', () => {
     expect(isTailnetAddress('100.64.0.0')).toBe(true)
-    expect(isTailnetAddress('100.125.135.108')).toBe(true)
+    expect(isTailnetAddress('100.64.0.1')).toBe(true)
     expect(isTailnetAddress('100.127.255.255')).toBe(true)
   })
 
@@ -47,11 +47,11 @@ describe('isTailnetAddress', () => {
   })
 
   it('rejects a LAN address, a plain tunnel, and anything that is not IPv4', () => {
-    expect(isTailnetAddress('192.168.1.103')).toBe(false)
-    expect(isTailnetAddress('10.2.0.2')).toBe(false)
+    expect(isTailnetAddress('192.168.1.10')).toBe(false)
+    expect(isTailnetAddress('10.0.0.2')).toBe(false)
     expect(isTailnetAddress('fe80::1%utun9')).toBe(false)
     expect(isTailnetAddress('100.125.135')).toBe(false)
-    expect(isTailnetAddress('100.125.135.1088')).toBe(false)
+    expect(isTailnetAddress('100.64.0.256')).toBe(false)
     expect(isTailnetAddress('')).toBe(false)
   })
 })
@@ -65,7 +65,7 @@ describe('isLoopbackAddress', () => {
   })
 
   it('rejects a LAN address and the wildcard', () => {
-    expect(isLoopbackAddress('192.168.1.103')).toBe(false)
+    expect(isLoopbackAddress('192.168.1.10')).toBe(false)
     expect(isLoopbackAddress('0.0.0.0')).toBe(false)
     expect(isLoopbackAddress('127.0.0.1.example.com')).toBe(false)
   })
@@ -76,8 +76,8 @@ describe('isAllowedBindAddress', () => {
     expect(isAllowedBindAddress('127.0.0.1')).toBe(true)
     expect(isAllowedBindAddress('100.64.0.1')).toBe(true)
     expect(isAllowedBindAddress('0.0.0.0')).toBe(false)
-    expect(isAllowedBindAddress('192.168.1.103')).toBe(false)
-    expect(isAllowedBindAddress('10.2.0.2')).toBe(false)
+    expect(isAllowedBindAddress('192.168.1.10')).toBe(false)
+    expect(isAllowedBindAddress('10.0.0.2')).toBe(false)
   })
 })
 
@@ -85,25 +85,25 @@ describe('resolveBindAddress — no override', () => {
   it('picks the tailnet address out of the measured interface map', () => {
     expect(resolveBindAddress(MEASURED)).toEqual({
       ok: true,
-      address: '100.125.135.108',
+      address: '100.64.0.1',
       source: 'tailnet',
       reason: null
     })
   })
 
   it('does not pick the plain tunnel or the LAN address', () => {
-    expect(resolveBindAddress({ utun8: [ip('10.2.0.2')] })).toMatchObject({
+    expect(resolveBindAddress({ utun8: [ip('10.0.0.2')] })).toMatchObject({
       ok: false,
       source: 'none'
     })
-    expect(resolveBindAddress({ en0: [ip('192.168.1.103')] })).toMatchObject({
+    expect(resolveBindAddress({ en0: [ip('192.168.1.10')] })).toMatchObject({
       ok: false,
       source: 'none'
     })
   })
 
   it('refuses with a reason naming the range when there is no tailnet address', () => {
-    const decision = resolveBindAddress({ utun8: [ip('10.2.0.2')] })
+    const decision = resolveBindAddress({ utun8: [ip('10.0.0.2')] })
     expect(decision.address).toBeNull()
     expect(decision.reason).toContain(TAILNET_CIDR)
     // The reason names the setting, because naming it is how loopback is asked for
@@ -127,7 +127,7 @@ describe('resolveBindAddress — no override', () => {
   it('answers the same address twice, and the sorted-first of two', () => {
     // Two tailnet addresses is an owner's job to disambiguate; until they do,
     // the same machine answers the same thing every time it is asked
-    const two: InterfaceMap = { utun9: [ip('100.125.135.108')], utun6: [ip('100.64.0.5')] }
+    const two: InterfaceMap = { utun9: [ip('100.64.0.1')], utun6: [ip('100.64.0.5')] }
     expect(resolveBindAddress(two).address).toBe('100.64.0.5')
     expect(resolveBindAddress(two).address).toBe(resolveBindAddress(two).address)
   })
@@ -161,12 +161,12 @@ describe('resolveBindAddress — rest_api_bind', () => {
     expect(resolveBindAddress(MEASURED, '   ')).toMatchObject({
       ok: true,
       source: 'tailnet',
-      address: '100.125.135.108'
+      address: '100.64.0.1'
     })
     expect(resolveBindAddress(MEASURED, null)).toMatchObject({ ok: true, source: 'tailnet' })
   })
 
-  it.each(['0.0.0.0', '192.168.1.103', '10.2.0.2', '8.8.8.8', 'example.com'])(
+  it.each(['0.0.0.0', '192.168.1.10', '10.0.0.2', '8.8.8.8', 'example.com'])(
     'refuses %s with a reason and no bind',
     (address) => {
       const decision = resolveBindAddress(MEASURED, address)
