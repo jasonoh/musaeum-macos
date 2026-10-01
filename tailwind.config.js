@@ -78,6 +78,10 @@ module.exports = {
       },
       boxShadow: {
         cover: '0 2px 8px rgb(0 0 0 / var(--shadow-a1)), 0 8px 24px rgb(0 0 0 / var(--shadow-a2))',
+        // The grid cover's open state: the rest shadow thrown down and to the
+        // right, as the fore edge it belongs to swings toward the reader.
+        'cover-open':
+          '1px 3px 6px rgb(0 0 0 / var(--shadow-a2)), 10px 14px 28px -6px rgb(0 0 0 / var(--shadow-a1))',
         'cover-lift':
           '0 4px 12px rgb(0 0 0 / var(--shadow-a3)), 0 16px 40px rgb(0 0 0 / var(--shadow-a1))',
         panel: '-8px 0 32px rgb(0 0 0 / var(--shadow-a1))'

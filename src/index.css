@@ -96,6 +96,108 @@
   }
 }
 
+@layer components {
+  /*
+   * The grid cover, at rest and opened.
+   *
+   * The left edge is the spine. A `rotateY` about it leaves that edge exactly
+   * where it is and swings the right edge toward the reader — a book cracked a
+   * few degrees, not a card rising. The height change is the perspective's:
+   * the fore edge is nearer the eye, so it projects taller and further out,
+   * while the spine sits *on* the axis and projects to itself. No
+   * `translateZ` for that reason — it moves the spine too, and a spine that
+   * comes forward is the card-lift this replaced.
+   *
+   * `perspective` projects the transforms of its own **children**, so the
+   * element carrying it must be the cover's own box. It used to sit on the
+   * card, whose box is the cover plus the meta lines below it: the origin
+   * landed 46 px *under* the artwork, the open inflated the cover away from
+   * that point instead of around its own middle (top edge up 10.1 px, bottom
+   * down 4.1 px — the cover slid up under the cursor), and the spine was not
+   * fixed at all. Nothing was projected at all in practice: the artwork is
+   * three levels down, behind a flat `<button>`, so the card's perspective
+   * never reached it, while the delete control's plane — a *sibling* of that
+   * button — was projected in full. Measured on the built app: the artwork's
+   * box 143.88 × 222.42 against the control's plane at 149.83 × 236.58, i.e.
+   * the control rode a box 14 px taller than the cover it sits on. Two
+   * `.cover-stage` boxes that are each exactly the cover's box give both
+   * planes one origin, and the control stays on its corner.
+   *
+   * The drop shadow and the hairline stay Tailwind's (`shadow-cover`,
+   * `group-hover:shadow-cover-open`, `ring-1`), as they were before this
+   * effect: a `box-shadow` written here loses to the utilities layer's
+   * `ring-*` — it is the same property on the same element and the utility
+   * comes later in the sheet — so the rest shadow this block used to carry
+   * never painted at all (`ring-1` won: measured `.cover-rest`'s declaration
+   * at CSS offset 15941, `.ring-1`'s at 40836) and the open shadow appeared
+   * only because `.group:hover .cover-open` out-specifies the ring, which is
+   * also why the hairline vanished on hover.
+   *
+   * A flat plane has no edge, so a rotation of one reads as a tilt in either
+   * direction. The page block is a face standing on the cover's right edge,
+   * hinged there and aimed at the reader: at rest it is exactly edge-on — a
+   * degenerate 1 × 219 px box that lays out and never paints — and it swings
+   * into view as the cover opens, a 12 px face whose local −x the cover's own
+   * rotation turns into ~2 px of page lying on the fore edge. It is hidden by
+   * `opacity` rather than left to that geometry, and it is a *soft* gradient
+   * rather than the sheet hairlines it used to be, because those 1 px light /
+   * 2 px dark stripes had nothing to antialias against: measured on the open
+   * cover, four bright runs across the band with adjacent-pixel steps up to
+   * 180 luminance (against two boundary steps and one bright run now), and
+   * that pattern re-quantised on every frame of the transform — the white
+   * flicker. Hiding the block outright is what isolates it: the same frames
+   * with `.cover-pages` removed show a clean edge and no stripes at all.
+   * It is inset 4 px top and bottom, inside the 6 px corner radius, so it
+   * cannot poke past the artwork's rounded corners.
+   *
+   * Measured on the built app (4x frames, ink not boxes): the spine's edge is
+   * at x 248.12 at rest *and* open, and its column is 222.75 px tall in both —
+   * a `rotateY` about the axis cannot move it, and that is the whole point.
+   * The fore edge runs 222.75 px → 231.25 px, the top-right corner 4.6 px
+   * above its rest place and the bottom-right 4.6 px below it. That 4.6 px is
+   * what the 24 px row gap is for; it never reaches the next row.
+   */
+  .cover-stage {
+    perspective: 900px;
+  }
+  .cover-plane {
+    transform-origin: left center;
+    transform-style: preserve-3d;
+  }
+  .group:hover .cover-open {
+    transform: rotateY(-14deg);
+  }
+  /*
+   * The page block, as a face of the cover rather than something behind it.
+   * Hinged on the cover's right edge and turned 90° toward the viewer, so it
+   * occupies no width until the cover itself rotates — the two transforms
+   * compose, and the block swings out into view only as the cover opens. The
+   * gradient is the stack of sheets: brightest where the block emerges from
+   * under the cover's fore edge, falling off toward the spine-side of the
+   * face, which is the only part of it the reader ever sees at this angle.
+   */
+  .cover-pages {
+    position: absolute;
+    top: 4px;
+    right: 0;
+    height: calc(100% - 8px);
+    width: 12px;
+    transform-origin: right center;
+    transform: rotateY(90deg);
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+    border-radius: 0 1px 1px 0;
+    background: linear-gradient(
+      to right,
+      rgb(var(--parchment-dim) / 0.85),
+      rgb(var(--parchment) / 0.95)
+    );
+  }
+  .group:hover .cover-pages {
+    opacity: 1;
+  }
+}
+
 @layer utilities {
   .app-drag {
     -webkit-app-region: drag;
