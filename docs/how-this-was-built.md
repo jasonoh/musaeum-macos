@@ -89,7 +89,7 @@ Each case below covers what failed, how it was found, and what prevents it now.
 > - **Attributions.** Every "I" in the guardrail and overrule cases comes from the repo's own record as read by another session, not from your memory. Confirm each "I caught it" and "I chose" is true. Your credibility rests on those.
 > - **The discovery-instrument pattern** is an agent's classification of changelog text. Replace "in rough order" with an actual count, and spot-check it.
 > - **Numbers.** Re-measure at a fresh commit and update the hash named in the overview. Fix the overview's §3.3, which says "86 of the Kindle's 1,555 files"; the pre-fix census was 1,556. Also pick one unit (GB or GiB) for the free-space figures. The invariant file measures GiB (72.45 vs 21.31).
-> - **The ~29,000 lines** is the overview's 16,100 + 10,000 + 2,700, measured at commit `88a6830`.
+> - **The ~29,000 lines** is the overview's 16,100 + 10,000 + 2,700, measured at commit `64e1539`.
 > - **The "who does what" table's agent column** is partly inferred. Correct it to what's true.
 > - **The react-window paragraph** is optional, and the "no design doc" inference is the other session's, not something the repo states.
 > - **On the bench, not used:** the `gold-200` defect (an invalid Tailwind class emits no CSS, invisible to type-check, lint and build). It would swap in well for the free-space case if you want a UI example.

@@ -17,7 +17,7 @@
 
 Nothing else in the section changes. No main-process code, no store, no contract type, no migration, no new IPC, no persisted state.
 
-### 1.1 Measured before (isolated profile, `npx electron .` at `949c506`, port 9222)
+### 1.1 Measured before (isolated profile, `npx electron .` at `6d961b7`, port 9222)
 
 The numbers this slice is accepted against. Instrument: `scripts/cdp.mjs` from `musaeum-app-verification`, one `eval` over the dialog's DOM.
 
@@ -111,7 +111,7 @@ A45's rule is that the four extension sites must agree; the hint is the site tha
 
 1. `npm run typecheck && npm run lint && npx prettier --check <the files touched>`; then `npm test`.
 2. A mutation campaign (`musaeum-slice-workflow` → `scripts/mutation-campaign.py`), one mutation per new decider: the import control moved inside the fold (AC8.3), `useState(false)` → `useState(true)` (AC8.9), `aria-expanded` dropped, an `onKeyDown` added to the filter (AC4.5), `.css` deleted from `THEME_EXTENSIONS` (AC8.7), a `localStorage` write added (AC8.9).
-3. The app pass on an isolated profile, **before and after on the same instrument**: the before column is §1.1's table, taken at `949c506`; the after column re-runs the same `eval` and the same crop geometry, plus a frame of the collapsed section and one of the opened list, and the AC8.8 filter cases.
+3. The app pass on an isolated profile, **before and after on the same instrument**: the before column is §1.1's table, taken at `6d961b7`; the after column re-runs the same `eval` and the same crop geometry, plus a frame of the collapsed section and one of the opened list, and the AC8.8 filter cases.
 4. The search is for a **pixel** claim here, so the frames are cropped to the modal and read with Pillow (`~/.hermes/hermes-agent/venv/bin/python`), never judged from the DOM.
 
 ## 7. Returned — 2026-09-20

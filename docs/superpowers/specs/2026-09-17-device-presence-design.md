@@ -1,6 +1,6 @@
 # Design: Kindle presence by the book's own title, not the filename
 
-**Date:** 2026-09-17 **Status:** Implemented and verified 2026-09-17 (AC1–AC9). Two readings from the run worth carrying forward: the device holds **1,555** book files rather than 1,556 (the Nerd Reich duplicate was removed in `eb67b6c`, after this was measured), and the census's bucket B lands at **2** rather than 0 — two files whose title is duplicated in the library and whose EXTH 100 names only one of two co-authors, which the uniqueness guard refuses by design. A+B = **1,343** exactly, which is the number this design promised; the guard costs 2 of them, and the app's book-level answer (1,347) matches the census's mirror of the rule. **Scope:** `electron/main/services/device-manager.ts` (scan, presence, removal) and the send path that consumes it. Adds one derived table (migration 004, `device_file_identity`); no renderer change beyond what a correct presence already drives. **Instrument:** `scripts/device-presence-census.py` — re-run it to reproduce every number here. Read-only, works while the app is running.
+**Date:** 2026-09-17 **Status:** Implemented and verified 2026-09-17 (AC1–AC9). Two readings from the run worth carrying forward: the device holds **1,555** book files rather than 1,556 (the Nerd Reich duplicate was removed in `c532d1f`, after this was measured), and the census's bucket B lands at **2** rather than 0 — two files whose title is duplicated in the library and whose EXTH 100 names only one of two co-authors, which the uniqueness guard refuses by design. A+B = **1,343** exactly, which is the number this design promised; the guard costs 2 of them, and the app's book-level answer (1,347) matches the census's mirror of the rule. **Scope:** `electron/main/services/device-manager.ts` (scan, presence, removal) and the send path that consumes it. Adds one derived table (migration 004, `device_file_identity`); no renderer change beyond what a correct presence already drives. **Instrument:** `scripts/device-presence-census.py` — re-run it to reproduce every number here. Read-only, works while the app is running.
 
 ---
 
@@ -26,7 +26,7 @@ Measured on the real device (1,556 `.mobi`/`.azw3` files, 6,384 library titles):
 - "Send to {device}" is offered for ~1,400 books that are already there, and the bulk button would re-copy them.
 - A real duplicate landed on the Kindle: The Nerd Reich sent, retitled, sent again three minutes later — two byte-identical files, same EXTH 113, same md5. Two fixes already shipped for that (below); a third of the class is this design.
 
-### Already landed (2026-09-17, `a6d7bbc`)
+### Already landed (2026-09-17, `e2fd908`)
 
 - `sendStateFor`: the send button reads the transfer **queue**, not the call that started it (`sendToDevice` resolves when the job is _queued_), so it shows "Sending to {device}…", "On {device}", and "Couldn't send — retry".
 - `noteSentFile`: a send records the name it wrote, and presence matches on that as well as on the title, so a retitle no longer hides a book we just sent. Session-scoped, and it only ever covers books _we_ sent.

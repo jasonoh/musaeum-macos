@@ -16,7 +16,7 @@
 
 Slice 2 of six, and the only slice that is `src/` only. The six, with what remains: slice 3 is drag-and-drop (`src/lib/book-drag.ts`, `BookCard`, `ListView`, the shelf rows as drop targets — **the shelf rows this slice draws are what it drops onto**), slice 4 is *Send to ‹device›* (one more item in the shelf menu this slice builds), slice 5 is the REST contract, slice 6 is the phone in its own repository. Nothing here waits on 3–6, and 3 depends on this.
 
-**The baseline this plan was written against:** `71fff98` (2026-09-27), Node v26.8.1, npm 11.19.0 — `npm run typecheck` clean, `npm run lint` clean, `npm test` = **77 files, 1723 passed, 2 skipped**. Every count below is that tree's.
+**The baseline this plan was written against:** `ab59b49` (2026-09-27), Node v26.8.1, npm 11.19.0 — `npm run typecheck` clean, `npm run lint` clean, `npm test` = **77 files, 1723 passed, 2 skipped**. Every count below is that tree's.
 
 **Four files are another session's uncommitted work** — a 0.1.0 → 0.5.0 version bump: `package.json`, `package-lock.json`, `docs/rest-api.md`, `electron/main/services/api/shape.test.ts`. They are **not** this slice's. Stage by name in every commit (never `git add -A`), and leave them modified.
 
@@ -3005,33 +3005,33 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 **Status:** landed 2026-09-27, `src/` only. Green at every commit (`typecheck`, `lint --max-warnings=0`, `prettier` on code files, full suite).
 
-**Commits** (in order, `71fff98` → tip):
+**Commits** (in order, `ab59b49` → tip):
 
 | | | |
 | --- | --- | --- |
-| `a8ba2a9` | library.store — the scope, the one persisted sort, and the reads that carry it | Tasks 2 + 3, merged |
+| `f73329a` | library.store — the scope, the one persisted sort, and the reads that carry it | Tasks 2 + 3, merged |
 | `9987936` | the open shelf is part of the result set | Task 1 |
-| `c5ced9f` | the shelf store | Task 4 |
-| `281e0f6` | one subscriber to `shelves:changed` | Task 5 |
-| `bddd55d` | shelf failures are reported once a session | Task 6 |
-| `6453d31` | an empty shelf is its own empty state | Task 7 |
-| `5db481e` | the sidebar's shelf section | Task 8 |
-| `0b997a7` | Library is a door, and the shelves are places | Task 9 |
-| `0dc2c48` | the sort control and the placeholder know the shelf | Task 10 |
-| `8afa15a` | the add, the remove, and the Undo that keeps its timestamps | Task 11 |
-| `b1102fd` | the Add to Shelf picker | Task 12 |
+| `c927f5e` | the shelf store | Task 4 |
+| `882f39b` | one subscriber to `shelves:changed` | Task 5 |
+| `5139a45` | shelf failures are reported once a session | Task 6 |
+| `a2d8add` | an empty shelf is its own empty state | Task 7 |
+| `7e8767f` | the sidebar's shelf section | Task 8 |
+| `2a945fb` | Library is a door, and the shelves are places | Task 9 |
+| `d006dcf` | the sort control and the placeholder know the shelf | Task 10 |
+| `bb8aa72` | the add, the remove, and the Undo that keeps its timestamps | Task 11 |
+| `eaf2ca2` | the Add to Shelf picker | Task 12 |
 | `5520562` | Add to Shelf from both menu scopes and the panel | Task 13 |
-| `e970144` | a book's shelves, on the detail panel | Task 14 |
-| `13e1f2d` | inside a shelf, the trash asks first | Task 15 |
+| `fa29ac3` | a book's shelves, on the detail panel | Task 14 |
+| `11548bc` | inside a shelf, the trash asks first | Task 15 |
 | *tip* | docs — the renderer's shelf rules, and the spec's next step | Task 16 |
 
-**Counts, as built against the table at the top.** 2a's 6 files, 2b's 7, 2c's 8 — **21 code files, exactly as budgeted** — plus **11 test files** (7 of them new): **32 `src/` files touched, 13 new**, and 9 docs. `src/types/` unchanged, and **no file under `electron/` or `sidecar/` in any of the 18 commits** (`git diff --name-only a3f5d35..HEAD` → 0). The four files the plan flagged as another session's uncommitted work were already committed at `a3f5d35` by the time this slice ran — nothing needed leaving modified, and every commit staged by name anyway.
+**Counts, as built against the table at the top.** 2a's 6 files, 2b's 7, 2c's 8 — **21 code files, exactly as budgeted** — plus **11 test files** (7 of them new): **32 `src/` files touched, 13 new**, and 9 docs. `src/types/` unchanged, and **no file under `electron/` or `sidecar/` in any of the 18 commits** (`git diff --name-only 58ecea3..HEAD` → 0). The four files the plan flagged as another session's uncommitted work were already committed at `58ecea3` by the time this slice ran — nothing needed leaving modified, and every commit staged by name anyway.
 
 **Tests.** `npm test` **1723 passed / 77 files / 2 skipped** → **1820 passed / 84 files / 2 skipped**: +97 cases, +7 files. Twelve of them are the two reviews' and the false-affordance fix's (below), and **every new guard was confirmed to fail without its fix before being committed** — a guard that has never been seen red is not a guard.
 
 **Where the build diverged from the plan, all recorded rather than quietly fixed:**
 
-1. **Task 2 landed before Task 1**, and **Tasks 2 and 3 landed as one commit** (`a8ba2a9`). The plan allows the reorder ("if you prefer a green commit at every step…") and acknowledges the coupling: Task 2's four scope cases cannot pass until `load()` carries the scope, so the split would have been red. The commit message names both.
+1. **Task 2 landed before Task 1**, and **Tasks 2 and 3 landed as one commit** (`f73329a`). The plan allows the reorder ("if you prefer a green commit at every step…") and acknowledges the coupling: Task 2's four scope cases cannot pass until `load()` carries the scope, so the split would have been red. The commit message names both.
 2. **The Library row is not a single button.** The plan's snippet nests the Reload button *inside* the Library button — invalid HTML, and it makes reloading also navigate. It was built as a `role="button"` div with `aria-pressed`, `tabIndex={0}` and an Enter/Space handler, which is valid but left a control inside a control with two tab stops; after the whole-branch review it is a layout wrapper holding **two sibling buttons** (the name, which navigates, and the reload icon, which does not) with `aria-current` carrying the highlight. Measured live: the wrapper has no role, no tab stop and no click; two buttons; the highlight follows the scope. This is the one component shape that changed twice, and the reviewer should look at it.
 3. **`shelf-remove-wiring.test.ts` asserts `requestLibraryDelete` without parens.** The dialog passes the reference (`onClick={requestLibraryDelete}`), so the plan's `/requestLibraryDelete\(\)/` never matched. The assertion still reddens if the handover is removed.
 4. **`ShelfRemoveDialog`'s docblock does not contain the literal `Remove from Shelf`.** The plan's own wording did, which put that string in the file earlier than the button and made the plan's "focus is on the safe answer" assertion walk backwards to the wrong `<button>`. The assertion is unchanged; the docblock says *"Its primary action takes the initial focus"*.
@@ -3050,12 +3050,12 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - *Part 2c* — menu → *Add to Shelf…* → picker → `Added 1 to Slice 2 probe`; the card's trash inside the shelf opened `ShelfRemoveDialog` with **focus on *Remove from Shelf***; *Delete from Library…* handed over to the real `DeleteBookDialog` (cancelled, never confirmed); *Remove from Shelf* produced the toast and its Undo put the book back.
 - **The library was left as found**: `shelves.json` is `{"version":1,"shelves":[]}` (it had no shelves before the probe and has none after), 7121 books in the DB, and the book the delete dialog offered is still there.
 
-**Review findings, and what was done with each.** The 2a review (a `delegate_task` reviewer) found **no blocker and no functional defect**, with five named checks passing against the real code and a pristine copy of `281e0f6` typechecking clean on both tsconfigs with 42/42 on the four 2a test files. Four nits:
+**Review findings, and what was done with each.** The 2a review (a `delegate_task` reviewer) found **no blocker and no functional defect**, with five named checks passing against the real code and a pristine copy of `882f39b` typechecking clean on both tsconfigs with 42/42 on the four 2a test files. Four nits:
 
 1. **`shelves.store.loadForBook` could commit a pre-change answer after `invalidate()` cleared the cache** — the revision exists precisely to prevent this, and the write path bypassed it. **Fixed**: the revision is captured before the read and the write is skipped if it moved, with a case that fails without the guard.
 2. **`load()` had no staleness guard** — and this slice gave it a new way to be asked twice at once (two sidebar clicks → two scoped reads whose SQL is not the same cost). **Fixed**, using the same `resultSetKey` the views use so "what a read reads" has one definition, with a case that fails without the guard.
 3. **`settings-and-editing.md` still described the old single-validator persisted rule** — it named `isBookSort` and did not say the persisted sort is the library's own. **Fixed** in Task 16 (and the note that `library-views.md` never mentioned `shelf_added` was fixed by the same task).
-4. An operational note that the working tree was mid-flight when the review ran (HEAD had moved past `281e0f6`). Nothing to do; the review was correct to evaluate its gate at its own tip.
+4. An operational note that the working tree was mid-flight when the review ran (HEAD had moved past `882f39b`). Nothing to do; the review was correct to evaluate its gate at its own tip.
 
 **The whole-branch review** (a second `delegate_task` reviewer, against CLAUDE.md's invariants list) found **no blocker** and every invariant in scope clean — 7 (both view diffs are selector-only; `App.tsx`'s new mounts are *after* `<main>`, so nothing sits between `<Toolbar />` and the view), 9 (no added line builds a `file://` URL or touches `Musaeum.files`), 2/3/4/5/11 as diff-absence proofs, 1/6/8/10/12 untouched, note 2 read line by line and holding (including that the renderer must pass `addedAt: ''` through, since main's skip is silent), and no conditional hook, missing dependency, stale closure, unhandled rejection or invalid nesting anywhere in the new code. Five worth-fixing items and eight notes; what was done:
 
@@ -3063,7 +3063,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 2. **"No element is added above either view" counted upper-case tags only**, so a lowercase element added there also read 2. **Fixed** — the assertion now names the two elements it expects.
 3. **AC21's direct-set guard had holes in both directions** — it missed the `{ deletingBookId }` shorthand and false-positived on the legitimate read `App.tsx` performs. **Fixed**, assignment-shaped.
 4. **Note 1 had no wiring assertion**, unlike its sibling in `ui.store.test.ts`. **Fixed** — the same walk over `partialize`/`merge`.
-5. **Its scope finding — that the range `a3f5d35..HEAD` is not `src/`-only — is correct but not this slice's.** The four version-bump files live in `a3f5d35` ("shelve plan"), the plan commit that was already on `main` at session start; every commit this slice made is `src/`-only, which is the check the record above states. Recorded here so the next reader does not re-open it.
+5. **Its scope finding — that the range `58ecea3..HEAD` is not `src/`-only — is correct but not this slice's.** The four version-bump files live in `58ecea3` ("shelve plan"), the plan commit that was already on `main` at session start; every commit this slice made is `src/`-only, which is the check the record above states. Recorded here so the next reader does not re-open it.
 
 Of its eight notes, four were acted on: the comment-in-handler slice (both walks now strip block comments *before* slicing — the first new attempt at this failed against its own comment, which is the same class of spurious match), the detail panel's `revision` matcher (now the deps array), the `if (shelf)` silent no-op in `BookContextMenu` (documented as deliberate: a shelf that has gone has no membership to remove, and inventing a sentence for it would be a renderer restating copy main owns), and the `byBook` flash (below). Three remain as accepted, recorded limits: the `contextMenuHandler` slice still ends at the first `}}`; `useLibrary.test.ts`'s subscription-list slice is bounded by the cleanup rather than by brace matching; and `ShelfList`'s create-field assertion now checks both expressions rather than one.
 

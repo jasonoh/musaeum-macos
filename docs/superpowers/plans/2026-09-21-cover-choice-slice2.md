@@ -77,7 +77,7 @@ AC12–AC17 are in the spec and they are the contract. Three things they do not 
 
 ```bash
 cd ~/Projects/musaeum
-git log --oneline -3                        # 70aaa18 carries 1a, 1b and the two defects 1a exposed
+git log --oneline -3                        # 214f394 carries 1a, 1b and the two defects 1a exposed
 npm run typecheck && npm run lint && npm test   # 1026 / 48 files
 sidecar/.venv/bin/python -m pytest sidecar/tests -q   # 113
 ```

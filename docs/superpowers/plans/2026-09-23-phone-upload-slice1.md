@@ -111,13 +111,13 @@ Six files: five code/test plus this document. Inside the ~10-file bound, and the
 
 ## Verification plan
 
-Gates: `npm run typecheck`, `npm run lint`, `npx prettier --check` on the touched files, and `npm test` (baseline on `a2e9be9`: **1344 tests / 57 files, 1340 pass, 4 red in `python-env.test.ts`** — order-dependent and pre-existing; that file is 24/24 green in isolation). Then the mutation campaign over this slice's deciders, run with `scripts/mutation-campaign.py` from the `musaeum-slice-workflow` skill, with one mutant per half of any paired assertion.
+Gates: `npm run typecheck`, `npm run lint`, `npx prettier --check` on the touched files, and `npm test` (baseline on `3e4696a`: **1344 tests / 57 files, 1340 pass, 4 red in `python-env.test.ts`** — order-dependent and pre-existing; that file is 24/24 green in isolation). Then the mutation campaign over this slice's deciders, run with `scripts/mutation-campaign.py` from the `musaeum-slice-workflow` skill, with one mutant per half of any paired assertion.
 
 Not in this slice's gates: the smoke script and any live-server check (both slice 2).
 
 ## Built (2026-09-23)
 
-Landed in one working-tree change, at the six files the table above names — the annex's own count held (the roadmap row's ~5 was the optimistic one). `typecheck` 0 / `lint` 0 / `prettier` clean on every touched file / **`npm test` 1379 passed in 58 files, 0 failed** (from 1344 / 57 on `a2e9be9`; +35 cases, one file). Both readings above were discharged **before** the code they bear on, as the spec's *Not verified* list requires, and neither prediction was wrong: **R2**'s decider — the existing *blocks on an ISBN-13 match* case — passes untouched, so the policy sits on `addFiles` and D3's shape is unchanged.
+Landed in one working-tree change, at the six files the table above names — the annex's own count held (the roadmap row's ~5 was the optimistic one). `typecheck` 0 / `lint` 0 / `prettier` clean on every touched file / **`npm test` 1379 passed in 58 files, 0 failed** (from 1344 / 57 on `3e4696a`; +35 cases, one file). Both readings above were discharged **before** the code they bear on, as the spec's *Not verified* list requires, and neither prediction was wrong: **R2**'s decider — the existing *blocks on an ISBN-13 match* case — passes untouched, so the policy sits on `addFiles` and D3's shape is unchanged.
 
 **The mutation campaign: 23 of 23 killed** in the build round, plus 3 of 3 in the repair round after the reviews (below), every mutant restored with its hash verified. Its value is not the number — it is the three deciders it found to be **vacuous**, which a green suite had been certifying:
 

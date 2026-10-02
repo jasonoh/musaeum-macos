@@ -52,7 +52,7 @@ Why here: 1c's `PUT` needs the same 400 discipline (a malformed `percent`, a bad
 ## Start here
 
 ```bash
-git log --oneline -3        # 1b is 707313b (the read surface), 1a is 2477944; this annex landed in 8f86c52
+git log --oneline -3        # 1b is 86e338e (the read surface), 1a is 2477944; this annex landed in 506d17b
 npm run typecheck && npm run lint       # both 0
 npm test                    # 52 files / 1198 tests
 sidecar/.venv/bin/python -m pytest -q sidecar/tests   # 113 passed

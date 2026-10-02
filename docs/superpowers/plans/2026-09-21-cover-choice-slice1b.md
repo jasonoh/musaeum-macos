@@ -66,7 +66,7 @@ AC4–AC11 are in the spec; they are the contract. Three things they do not yet 
 
 ```bash
 cd ~/Projects/musaeum
-git log --oneline -3                     # 96957c5 is this work; origin/main is one behind
+git log --oneline -3                     # e3f9d4b is this work; origin/main is one behind
 npm run typecheck && npm run lint && npm test   # 1015 / 47 files
 sidecar/.venv/bin/python -m pytest sidecar/tests -q   # 99
 ```

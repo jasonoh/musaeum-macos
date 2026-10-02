@@ -9,7 +9,7 @@
 > quoted from a cited source. Where a claim is general knowledge rather than
 > verified, it says so.
 
-**Measured at:** `f50d464` ("local library dialogs"). **1,512 vitest tests across 64 files** (through `npm test`, which runs Electron-as-Node so the native better-sqlite3 ABI matches), **113 pytest tests** in the sidecar — both suites green, and both re-run on 2026-09-24. Roughly **31,500 lines of application code** (main process 14,994 · renderer 14,356 · preload 128 · sidecar 2,000) and **24,839 lines of tests** (22,621 TypeScript, 2,218 Python), beside **7,600 lines** of vendored reading engine. Numbers about the iOS client were measured **in that client's own repository** and say so where they appear.
+**Measured at:** `93d2103` ("local library dialogs"). **1,512 vitest tests across 64 files** (through `npm test`, which runs Electron-as-Node so the native better-sqlite3 ABI matches), **113 pytest tests** in the sidecar — both suites green, and both re-run on 2026-09-24. Roughly **31,500 lines of application code** (main process 14,994 · renderer 14,356 · preload 128 · sidecar 2,000) and **24,839 lines of tests** (22,621 TypeScript, 2,218 Python), beside **7,600 lines** of vendored reading engine. Numbers about the iOS client were measured **in that client's own repository** and say so where they appear.
 
 ---
 
@@ -399,7 +399,7 @@ Stated plainly, because a feature list without this section is marketing:
 
 ## 9. Sources
 
-Everything about Musaeum in this document is measured from this repository at `f50d464` (see the stamp at the top for the suites re-run on 2026-09-24), except the numbers attributed to the iOS client, which were measured in `jasonoh/musaeum-ios`. Competitor claims come from:
+Everything about Musaeum in this document is measured from this repository at `93d2103` (see the stamp at the top for the suites re-run on 2026-09-24), except the numbers attributed to the iOS client, which were measured in `jasonoh/musaeum-ios`. Competitor claims come from:
 
 - Calibre manual, FAQ — "Do not put your calibre library on a networked drive", conversion format matrix: <https://manual.calibre-ebook.com/faq.html>
 - Calibre content server: <https://manual.calibre-ebook.com/en/server.html>

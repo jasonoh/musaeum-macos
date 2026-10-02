@@ -1,6 +1,6 @@
 # Plan: Theming slice 7a — the status family in the palette, and the two inversions
 
-**Date:** 2026-09-19 **Slice:** §2.7 of `docs/superpowers/specs/theming.md`, acceptance criteria AC8.1–AC8.3 (staged 7a per the spec's J2) **Annex to:** `docs/superpowers/specs/theming.md` — this file settles the readings §2.7 left open. It re-opens no product decision: J1 (derive the status family *and* migrate the sites), J2 (two stages, the bound per stage), J5 (the `gold-200` remedy) and A28 (the `--status-*` names) are fixed and are cited, not argued. **Read first:** `CLAUDE.md` #12, `docs/invariants/library-views.md` (row geometry — nothing here may move it), `docs/invariants/settings-and-editing.md` (`app_config`; nothing here writes it), `docs/invariants/reader.md` (the reader's own palette is slice 5's and is untouched). **Priced against the tree at `0481b97`**, working tree clean.
+**Date:** 2026-09-19 **Slice:** §2.7 of `docs/superpowers/specs/theming.md`, acceptance criteria AC8.1–AC8.3 (staged 7a per the spec's J2) **Annex to:** `docs/superpowers/specs/theming.md` — this file settles the readings §2.7 left open. It re-opens no product decision: J1 (derive the status family *and* migrate the sites), J2 (two stages, the bound per stage), J5 (the `gold-200` remedy) and A28 (the `--status-*` names) are fixed and are cited, not argued. **Read first:** `CLAUDE.md` #12, `docs/invariants/library-views.md` (row geometry — nothing here may move it), `docs/invariants/settings-and-editing.md` (`app_config`; nothing here writes it), `docs/invariants/reader.md` (the reader's own palette is slice 5's and is untouched). **Priced against the tree at `5f903b7`**, working tree clean.
 
 ---
 
@@ -137,7 +137,7 @@ Plus frames, before and after, for the Settings modal (the veil) and the grid (t
 
 ## 8. Built — 2026-09-19
 
-Landed as one slice against `0481b97`, implemented by a dispatched `renderer-engineer` child and **checked by the orchestrator on the returned tree** — gates re-run, campaign re-run, app pass run by the orchestrator, implementer's claims re-measured rather than relayed.
+Landed as one slice against `5f903b7`, implemented by a dispatched `renderer-engineer` child and **checked by the orchestrator on the returned tree** — gates re-run, campaign re-run, app pass run by the orchestrator, implementer's claims re-measured rather than relayed.
 
 **Gates** (`typecheck=0`, `lint=0`, `npm test` **852 passed / 36 files** — slice 6's baseline is 849/36, so the new pin added three cases; `npm run build=0`).
 

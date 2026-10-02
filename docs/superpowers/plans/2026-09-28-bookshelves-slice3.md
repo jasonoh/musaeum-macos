@@ -16,9 +16,9 @@
 
 Slice 3 of six, and the second and last `src/`-only slice. Slice 4 is *Send to ‹device›* (one menu item in the shelf menu slice 2 built, plus a >25 confirmation), slice 5 is the REST contract, slice 6 is the phone. **3 depends on 2** (the rows it drops onto are slice 2's); 4 is parallel with 3; nothing here waits on 5 or 6.
 
-**The baseline this plan was written against:** `d7825c7` (2026-09-28 00:07 EDT), Node v26.8.1, npm 11.19.0 — `npm run typecheck` clean, `npm run lint --max-warnings=0` clean, `npm test` = **84 files, 1820 passed, 2 skipped**. Every count below is that tree's. Twelve of those cases are slice 2's review fixes and two are its false-affordance fix; nothing in this plan assumes any of them can be removed.
+**The baseline this plan was written against:** `c0f1747` (2026-09-28 00:07 EDT), Node v26.8.1, npm 11.19.0 — `npm run typecheck` clean, `npm run lint --max-warnings=0` clean, `npm test` = **84 files, 1820 passed, 2 skipped**. Every count below is that tree's. Twelve of those cases are slice 2's review fixes and two are its false-affordance fix; nothing in this plan assumes any of them can be removed.
 
-**`origin/main` is at `9591da1` — 18 of slice 2's commits, pushed 2026-09-27 23:54 by someone other than the session that wrote this plan.** The two commits after it (`988a1b7` the empty-state fix, `d7825c7` the copy record) are local only. So: check `git log --oneline -3` before you start, and if `origin/main` has moved again, that is someone else's push, not a signal about this slice.
+**`origin/main` is at `2bfbc98` — 18 of slice 2's commits, pushed 2026-09-27 23:54 by someone other than the session that wrote this plan.** The two commits after it (`dbdf077` the empty-state fix, `c0f1747` the copy record) are local only. So: check `git log --oneline -3` before you start, and if `origin/main` has moved again, that is someone else's push, not a signal about this slice.
 
 **One tree hazard, hit twice on the night this plan was written.** If `npm run build` fails with `Failed to resolve ./assets/index-*.js from /Users/oh/Projects/musaeum/index.html`, the tree's `index.html` has been rewritten outside the build (replacing `<script type="module" src="/src/main.tsx">` with the hashed bundle references `electron-vite` emits). Nothing in this repo generates that. Restore it — `git checkout -- index.html` — and say so in the commit message; do not build around it, and do not "fix" it by pointing the source at a bundle name.
 
@@ -1030,14 +1030,14 @@ Landed 2026-09-28, `src/` and docs only, in six commits before this record:
 
 | Commit | What |
 | --- | --- |
-| `a430157` | Task 2 — `src/lib/book-drag.ts` (mime, slot, `dragScope`, `isImportDrag`), the hook's predicate swap, the unit cases |
-| `e64bfe4` | Task 3 — the sources (`BookCard`'s box, `ListView`'s `<tr>`), the drag image, `useBookDrag` mounted once, the library walk |
-| `3d52159` | the part-3a review's walk fixes — `useBookDrag.test.ts`, `bare()` in the library walk |
+| `b07fbce` | Task 2 — `src/lib/book-drag.ts` (mime, slot, `dragScope`, `isImportDrag`), the hook's predicate swap, the unit cases |
+| `c7b6a6e` | Task 3 — the sources (`BookCard`'s box, `ListView`'s `<tr>`), the drag image, `useBookDrag` mounted once, the library walk |
+| `61ea39c` | the part-3a review's walk fixes — `useBookDrag.test.ts`, `bare()` in the library walk |
 | `2001564` | Task 4 — the shelf rows accept a drop (ring, refusal, the MIME gate) |
-| `d561faf` | Task 5 — **+** and the empty-state row create with the dragged books |
+| `0027c85` | Task 5 — **+** and the empty-state row create with the dragged books |
 | (this commit) | Task 6 — the rules, the copy, the status lines, and this record |
 
-**Real counts, as measured.** `git diff --stat 4ea2e5f..HEAD` before this record: **12 files, +578 / −29** — 7 code files and 5 test files; this docs commit adds `EmptyLibrary.tsx` as the eighth code file and the markdown. The plan's tables named 9 files across the two parts (tests included); the real slice is 8 code files and 5 test files, one test file the review's rather than the plan's. Suite: baseline **84 files / 1820 passed / 2 skipped**; Task 2 predicted 85/1829 and measured **85/1830** (the plan's arithmetic missed its own hook-walk case); Task 3 predicted 86/1833 and measured **86/1833**; the review-fix commit added `useBookDrag.test.ts` (+3 cases, +1 file); Task 4 replaced slice 2's placeholder case with four and added a fifth for the MIME gate; Task 5 added two; the part-3b review's F1 case is the last, taking that file to 26; final **87 files / 1843 passed / 2 skipped**.
+**Real counts, as measured.** `git diff --stat 3106deb..HEAD` before this record: **12 files, +578 / −29** — 7 code files and 5 test files; this docs commit adds `EmptyLibrary.tsx` as the eighth code file and the markdown. The plan's tables named 9 files across the two parts (tests included); the real slice is 8 code files and 5 test files, one test file the review's rather than the plan's. Suite: baseline **84 files / 1820 passed / 2 skipped**; Task 2 predicted 85/1829 and measured **85/1830** (the plan's arithmetic missed its own hook-walk case); Task 3 predicted 86/1833 and measured **86/1833**; the review-fix commit added `useBookDrag.test.ts` (+3 cases, +1 file); Task 4 replaced slice 2's placeholder case with four and added a fifth for the MIME gate; Task 5 added two; the part-3b review's F1 case is the last, taking that file to 26; final **87 files / 1843 passed / 2 skipped**.
 
 ### Task 1's four answers, as measured
 

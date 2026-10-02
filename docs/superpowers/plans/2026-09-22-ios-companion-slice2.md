@@ -37,7 +37,7 @@ Built, reviewed (not blocking) and fixed, over two commits or one. The row is `s
 ## Start here
 
 ```bash
-git log --oneline -3        # slice 1c landed as 47e5381, its documents as 2de5128, invariant 3 as 3da9726
+git log --oneline -3        # slice 1c landed as c5ad6a1, its documents as 4055c6e, invariant 3 as 03c2daa
 npm run typecheck && npm run lint       # both 0
 npm test                    # 55 files / 1305 tests
 sidecar/.venv/bin/python -m pytest -q sidecar/tests   # 113 passed

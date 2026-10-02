@@ -54,7 +54,7 @@ Nine files, as the row says; the tenth thing to change is the health count insid
 ## Start here
 
 ```bash
-git log --oneline -3        # 2477944 — 1a landed there; this spec, the roadmap entry and this annex are in d9330d2
+git log --oneline -3        # 2477944 — 1a landed there; this spec, the roadmap entry and this annex are in d06f402
 npm run typecheck && npm run lint      # both 0
 npm test                    # 51 files / 1101 tests (1a added 3 files and 75 cases to the 1,026 baseline)
 sidecar/.venv/bin/python -m pytest -q sidecar/tests   # 113 passed

@@ -16,7 +16,7 @@
 4. A **Save** button inside the section, which is the dialog's own save — the same behaviour, placed where the owner asked for it (D6).
 5. Nothing else. No new `app_config` key, no migration, no contract change to `AppSettings`, no change to the wire, no change to the reader, no new dependency.
 
-### 1.1 Measured before (isolated profile, `MUSAEUM_USER_DATA=/tmp/musaeum-ai-config/profile`, `npx electron . --remote-debugging-port=9223` at `b30308c`)
+### 1.1 Measured before (isolated profile, `MUSAEUM_USER_DATA=/tmp/musaeum-ai-config/profile`, `npx electron . --remote-debugging-port=9223` at `bf6c76e`)
 
 Instrument: `musaeum-app-verification`'s `scripts/cdp.mjs`, one `eval` over the open dialog's DOM. The frame is `/tmp/musaeum-ai-config/before-full.png`, cropped to the modal.
 
@@ -156,7 +156,7 @@ Two of these shape the code: the error reader must carry the endpoint's own word
 
 ## 8. Verification plan
 
-1. `npm run typecheck`, `npm run lint`, `npx prettier --check` on the touched files, then `npm test`. Baseline at `b30308c`: 956 tests over 43 files.
+1. `npm run typecheck`, `npm run lint`, `npx prettier --check` on the touched files, then `npm test`. Baseline at `bf6c76e`: 956 tests over 43 files.
 2. A mutation campaign (`musaeum-slice-workflow` → `scripts/mutation-campaign.py`), one mutation per new decider: 403 merged back into the 401 arm (AC30), the bearer header sent unconditionally (AC29), `matchProvider` made case-sensitive (AC26), the cap raised past the sort (AC32), `probe()` reading `getConfig` instead of its argument (AC34), a row's URL given a trailing slash (AC27).
 3. The app pass on an isolated profile, before and after on the same instrument: §1.1 is the before column; the after column re-runs the same `eval` and the same crop geometry, plus a frame of the section with a verdict showing.
 4. **The live proof of the owner's own sentence** — that Test "returns whether the api key is correctly hitting the endpoint" — is a deliberately bogus key (`sk-musaeum-not-a-key`, typed by hand, never a real credential) against a real provider: the line must read *the endpoint rejected the key*. The same button against `https://openrouter.ai/api/v1` must read `ok` and list models with an empty key, and against Gemini's row must read *no model list* rather than blaming the key. That trio is the whole ladder, end to end, through the real IPC path.

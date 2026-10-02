@@ -604,7 +604,7 @@ Decided with the user 2026-09-24.
 
 ### N1–N5: `noUncheckedIndexedAccess`
 
-**Measured 2026-09-24 at `f81d0c8`** with `npx tsc --noEmit -p tsconfig.{node,web}.json --noUncheckedIndexedAccess`: **208 errors in 43 files** — 79 in 20 source files, 129 in 23 test files (`src/types/book.types.ts` is in both projects and counts twice). Codes in source: TS2322 ×27, TS2345 ×23, TS2532 ×16, TS18048 ×12, TS2722 ×1. Over the ~10-file bound, so it is sliced by layer; each slice is one commit `audit(N<n>): …` and ends with the full gate green.
+**Measured 2026-09-24 at `698f4b2`** with `npx tsc --noEmit -p tsconfig.{node,web}.json --noUncheckedIndexedAccess`: **208 errors in 43 files** — 79 in 20 source files, 129 in 23 test files (`src/types/book.types.ts` is in both projects and counts twice). Codes in source: TS2322 ×27, TS2345 ×23, TS2532 ×16, TS18048 ×12, TS2722 ×1. Over the ~10-file bound, so it is sliced by layer; each slice is one commit `audit(N<n>): …` and ends with the full gate green.
 
 **Rules for every slice:**
 

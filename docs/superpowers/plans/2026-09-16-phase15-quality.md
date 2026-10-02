@@ -2,7 +2,7 @@
 
 **OUTCOME (2026-09-16, final): all four slices landed; wave 1 is committed, wave 2 is not.** Owner consent for the second wave is recorded in the session (the clarify form, answer "All four, T4 first"), not out of band.
 
-- **Committed (three per-slice commits):** `d3303bc` fixes F1–F5, `76f2ec1` coverage T1–T3, `ec1eaa4` eslint/worktree + docs.
+- **Committed (three per-slice commits):** `19bfbd9` fixes F1–F5, `c5cccdd` coverage T1–T3, `396c8d7` eslint/worktree + docs.
 - **Landed uncommitted:** T4 (conflict resolution extracted to `services/conflicts.ts`, handler now 4 insertions/67 deletions), T5/T6 (device presence + `transfer-queue` tests, 16 cases), F6 (five stdout log sites moved to stderr), and the review repairs below.
 - **Gate:** typecheck 0 / lint 0 / **`npm test` 593 passed, 27 files** / **pytest 65 passed**. Every decider in this file was reproduced by the orchestrator by mutating the source and watching the named case redden, then restoring from a *file backup* (never `git checkout -- <file>`, which reverts to HEAD and silently discards the fix — that error cost F4 once here).
 
@@ -49,7 +49,7 @@ Date: 2026-09-16. Owner-approved scope: **fixes + tests**. Two adjudications tak
 
 Each new test must come with a **decider the author reports and the orchestrator reproduces by hand**: mutate the source, the named case reddens, restore the file byte-identical. A case that cannot be reddened is not coverage.
 
-- **Workflow trap found while dispatching the second wave (2026-09-16):** `claude -w <name>` bases its worktree on **`origin/main`, not local HEAD**. With the three commits of this pass unpushed, all three slices were dispatched into trees at `f41a51a` — `computeFileSizeBytes` and `useResetScrollOnResultChange` measurably absent. T4/F6 are disjoint from the pass's files so they land cleanly; T5/T6 read `transfer-queue.ts` and F6 was told `pdf_metadata.py`'s stderr convention "just changed", so both must be reconciled at landing rather than trusted. Check `git -C .claude/worktrees/<n> rev-parse --short HEAD` right after a dispatch.
+- **Workflow trap found while dispatching the second wave (2026-09-16):** `claude -w <name>` bases its worktree on **`origin/main`, not local HEAD**. With the three commits of this pass unpushed, all three slices were dispatched into trees at `9ab32c6` — `computeFileSizeBytes` and `useResetScrollOnResultChange` measurably absent. T4/F6 are disjoint from the pass's files so they land cleanly; T5/T6 read `transfer-queue.ts` and F6 was told `pdf_metadata.py`'s stderr convention "just changed", so both must be reconciled at landing rather than trusted. Check `git -C .claude/worktrees/<n> rev-parse --short HEAD` right after a dispatch.
 
 ## Findings recorded while executing (2026-09-16)
 
@@ -78,4 +78,4 @@ Invariant docs each dispatch must carry: Q1-A `library-views.md`, `selection-and
 
 ## Gate
 
-Per slice: `npm run typecheck` 0 / `npm run lint` 0 / `npm test` green (baseline **513 passed / 23 files** at `f41a51a`), sidecar `pytest` green. F1 additionally needs the live measurement. Nothing is landed until the orchestrator has reproduced each decider and a read-only `reviewer` pass has run against the invariants list.
+Per slice: `npm run typecheck` 0 / `npm run lint` 0 / `npm test` green (baseline **513 passed / 23 files** at `9ab32c6`), sidecar `pytest` green. F1 additionally needs the live measurement. Nothing is landed until the orchestrator has reproduced each decider and a read-only `reviewer` pass has run against the invariants list.

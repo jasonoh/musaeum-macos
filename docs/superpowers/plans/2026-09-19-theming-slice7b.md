@@ -1,6 +1,6 @@
 # Plan: Theming slice 7b — the status sweep, and the walk that keeps it swept
 
-**Date:** 2026-09-19 **Slice:** §2.7 of `docs/superpowers/specs/theming.md`, the **second stage** (7b, per J2) — the sweep of the stock-palette sites the bounded stage did not open. Its own acceptance is **AC8.4** (grep-to-zero); it **completes AC8.2** (§2.7's status half: the sites, not the derivation) and **AC8.3** (the second hairline). **Annex to:** `docs/superpowers/specs/theming.md` — this file settles the readings §2.7 left open for 7b. It re-opens no product decision: J1 (derive the family *and* migrate the sites), J2 (two stages), J5/J6, A28 (the frozen names) and A69 (a filled danger surface uses `500`) are cited, not argued. **Read first:** `CLAUDE.md` #12, `docs/invariants/library-views.md` (row geometry — nothing here moves it), `docs/invariants/refresh-feedback.md` (the toast surface `Toasts.tsx` is), `docs/invariants/conflicts-and-series.md` (`ConflictResolver`), `docs/invariants/reader.md` (the reader's palette is slice 5's and is untouchable), `docs/invariants/settings-and-editing.md` (`app_config`; nothing here writes it), `docs/invariants/files-and-deletion.md` (`BookDetail`'s delete entry points). **Priced against the tree at `e8d0bee`** (7a committed and pushed), working tree clean.
+**Date:** 2026-09-19 **Slice:** §2.7 of `docs/superpowers/specs/theming.md`, the **second stage** (7b, per J2) — the sweep of the stock-palette sites the bounded stage did not open. Its own acceptance is **AC8.4** (grep-to-zero); it **completes AC8.2** (§2.7's status half: the sites, not the derivation) and **AC8.3** (the second hairline). **Annex to:** `docs/superpowers/specs/theming.md` — this file settles the readings §2.7 left open for 7b. It re-opens no product decision: J1 (derive the family *and* migrate the sites), J2 (two stages), J5/J6, A28 (the frozen names) and A69 (a filled danger surface uses `500`) are cited, not argued. **Read first:** `CLAUDE.md` #12, `docs/invariants/library-views.md` (row geometry — nothing here moves it), `docs/invariants/refresh-feedback.md` (the toast surface `Toasts.tsx` is), `docs/invariants/conflicts-and-series.md` (`ConflictResolver`), `docs/invariants/reader.md` (the reader's palette is slice 5's and is untouchable), `docs/invariants/settings-and-editing.md` (`app_config`; nothing here writes it), `docs/invariants/files-and-deletion.md` (`BookDetail`'s delete entry points). **Priced against the tree at `7b6ee3c`** (7a committed and pushed), working tree clean.
 
 ---
 
@@ -38,7 +38,7 @@ Three things:
 
 **D5 — `BookDetail.tsx:83`'s hairline lands here.** §2.7 and AC8.3 say `:81`; the file is at `:83` (7a's annex recorded the same two-line staleness and left the site to this slice as the named absorber). Same substitution as `BookCard.tsx:79`, same token, same 5 % alpha; the *site* is what this slice adds, and AC8.3's decider for it is the running app on both variants (§6).
 
-**D6 — the honest count is 27 names / 15 lines / 8 files, and the parent's "53 / 16" is not the 7b remainder.** The 53-site figure is §1.3's C4 inventory taken **before 7a ran**, and 7a's ten files held most of the class: its own §4 re-tallied to 21 lines / 26 names *inside the ten*. Measured at `e8d0bee` with the pattern of D7, over `src/**` and `index.html`:
+**D6 — the honest count is 27 names / 15 lines / 8 files, and the parent's "53 / 16" is not the 7b remainder.** The 53-site figure is §1.3's C4 inventory taken **before 7a ran**, and 7a's ten files held most of the class: its own §4 re-tallied to 21 lines / 26 names *inside the ten*. Measured at `7b6ee3c` with the pattern of D7, over `src/**` and `index.html`:
 
 | Name | Sites |
 |---|---|
@@ -118,7 +118,7 @@ Plus the geometry re-read (invariant #7): a card's height and a `tr`'s height, u
 
 ## 8. Built — 2026-09-19
 
-Landed as one slice against `e8d0bee`, the 15-line migration implemented by a dispatched child from §4's table and the walk written by the orchestrator **before** the migration, then **checked on the returned tree**: the diff read line by line against §4, gates re-run, campaign run, app pass run by the orchestrator, and every child claim re-measured rather than relayed.
+Landed as one slice against `7b6ee3c`, the 15-line migration implemented by a dispatched child from §4's table and the walk written by the orchestrator **before** the migration, then **checked on the returned tree**: the diff read line by line against §4, gates re-run, campaign run, app pass run by the orchestrator, and every child claim re-measured rather than relayed.
 
 **Gates** — `typecheck=0`, `lint=0`, `npm test` **855 passed / 37 files** (7a's baseline is 852/36, so the walk added one file and three cases), `npm run build=0`, and `npx prettier --check` over the nine touched files: **7 clean, 2 dirty at `HEAD`** — `TransferQueue.tsx` and `ConflictResolver.tsx`, each with the *same* residue before and after (`git show HEAD:<f> | prettier --stdin-filepath <f>` diffs identically: an import list and an `<img>` this slice never touched). A73's trade, re-measured.
 

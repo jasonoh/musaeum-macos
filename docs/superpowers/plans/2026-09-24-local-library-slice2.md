@@ -87,7 +87,7 @@ Verified 2026-09-24 (after slice 1 was committed), its state:
 
 ## Slice 1's results, with the pre-fix value beside each
 
-Every number is measured on the committed tree (`6aff1a1`); the "before" column is the spec's own reading or the falsified run, so the claim has something to be wrong against.
+Every number is measured on the committed tree (`9aeb518`); the "before" column is the spec's own reading or the falsified run, so the claim has something to be wrong against.
 
 | What                                           | Before                                                                         | After (slice 1)                                                           | Instrument                                                           |
 | ---------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -106,7 +106,7 @@ Every number is measured on the committed tree (`6aff1a1`); the "before" column 
 ## Start here
 
 ```bash
-git log --oneline -3        # slice 1 landed as 6aff1a1 on top of dc09d8d
+git log --oneline -3        # slice 1 landed as 9aeb518 on top of e5d7b3b
 git status --short          # clean: slice 1 committed, nothing outstanding
 npm run typecheck && npm run lint      # both 0
 npm test                    # 62 files / 1445 tests
