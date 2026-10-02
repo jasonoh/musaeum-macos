@@ -12,7 +12,7 @@ Status:   Draft for Claude Code
 
 ## 1. System Overview
 
-Musaeum is a macOS-native Electron application for managing a personal ebook library of 7000+ books stored on network-attached storage. It replaces Calibre as the primary library management tool, prioritizing automatic metadata hydration, clean organization, and frictionless device delivery.
+Musaeum is an Electron desktop application for macOS for managing a personal ebook library of 7000+ books stored on network-attached storage. It replaces Calibre as the primary library management tool, prioritizing automatic metadata hydration, clean organization, and frictionless device delivery.
 
 ---
 
@@ -64,7 +64,7 @@ Musaeum is a macOS-native Electron application for managing a personal ebook lib
 
 | Layer | Technology | Rationale |
 |-------|-----------|-----------|
-| Shell | Electron (latest LTS) | macOS-native packaging, file system access |
+| Shell | Electron (latest LTS) | packages as a macOS .app, file system access |
 | UI | React + TypeScript | Component model suits library UI patterns |
 | Styling | Tailwind CSS | Rapid, consistent UI development |
 | State | Zustand | Lightweight, no boilerplate |
