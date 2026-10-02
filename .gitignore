@@ -18,6 +18,5 @@ sidecar/.venv/
 .claude/worktrees/
 .superpowers/
 
-# Obsidian's per-machine window state; the vault's settings and themes stay tracked
-.obsidian/workspace.json
-.obsidian/workspace-mobile.json
+# Obsidian vault config and third-party themes stay local (theme files carry their authors' contact details)
+.obsidian/
