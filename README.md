@@ -19,7 +19,7 @@ Import once, let the metadata fill itself in, read the books, and send them to a
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-1c1a17?logo=typescript&logoColor=3178c6)](docs/architecture.md)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-1c1a17?logo=python&logoColor=ffd343)](docs/getting-started.md)
 
-[Features](#-features) · [Getting started](#-getting-started) · [iOS companion](#-ios-companion) · [Documentation](#-documentation) · [Changelog](CHANGELOG.md)
+[Features](#-features) · [Comparison](#-how-it-compares) · [Getting started](#-getting-started) · [iOS companion](#-ios-companion) · [Documentation](#-documentation) · [Changelog](CHANGELOG.md)
 
 <br />
 
@@ -57,6 +57,30 @@ Every one of these has a measurement behind it. [`docs/project-overview.md`](doc
 ```
 
 Per-book files are canonical and `catalog.json` is derived, so there is no shared database to corrupt, and a second Mac adopts the whole library from `catalog.json` instead of re-importing. The SQLite database is a disposable local cache. Calibre's manual [says not to keep a library on a network drive](https://manual.calibre-ebook.com/faq.html); Musaeum was designed for exactly that. [Why I built it →](docs/why-i-built-it.md)
+
+## ⚖️ How it compares
+
+Musaeum is one person's Mac app, so the servers beat it on reach and Calibre beats it on depth. This is the short version; [`docs/comparison.md`](docs/comparison.md) has the full chart, sources for every cell, and where each tool is the better pick. ❔ means not verified, not "no". Checked 2026-10-06.
+
+|                            | **Musaeum**               | **Calibre**            | **Calibre-Web-Automated** | **BookOrbit**  | **Kavita**       | **Komga**     |
+| -------------------------- | ------------------------- | ---------------------- | ------------------------- | -------------- | ---------------- | ------------- |
+| **Shape**                  | Mac app                   | Desktop app            | Docker server             | Docker server  | Docker or binary | Docker or JAR |
+| **No server to run**       | ✅                        | ✅                     | ❌                        | ❌             | ❌               | ❌            |
+| **Library on a NAS**       | ✅ The design target      | ❌ Docs advise against | ⚠️ With a workaround      | ❌ Unsupported | ❔               | ❔            |
+| **Multi-user**             | ❌                        | ⚠️ Content server      | ✅                        | ✅             | ✅               | ✅            |
+| **Automatic metadata**     | ✅ With a review queue    | ✅                     | ✅                        | ✅             | ⚠️ Paid Kavita+  | ❔            |
+| **Reads in-app**           | ✅ EPUB, MOBI, AZW3       | ✅                     | ✅ Browser                | ✅             | ✅               | ✅            |
+| **Annotations**            | ❌                        | ✅                     | ❔                        | ✅             | ✅               | ❔            |
+| **Comics and manga**       | ❌                        | ⚠️                     | ❔                        | ✅             | ✅               | ✅            |
+| **Audiobooks**             | ❌                        | ❔                     | ❔                        | ✅             | ❌               | ❌            |
+| **Kindle**                 | ✅ USB, judged by content | ✅                     | ✅ Auto-send              | ❔             | ❔               | ❔            |
+| **Kobo / KOReader / OPDS** | ❌                        | ❔                     | ✅                        | ✅             | ✅               | ✅            |
+| **iPhone app**             | ⚠️ Build from source      | ❔                     | ❔                        | ✅ App Store   | ❔               | ❔            |
+| **Licence**                | MIT                       | GPL-3.0                | GPL-3.0                   | AGPL-3.0       | GPL-3.0          | MIT           |
+
+**BookLore** has no column because it is entering maintenance mode, with [BookOrbit as its official successor](https://github.com/booklore-app/booklore). Its community fork, **Grimmory**, is covered in the full comparison.
+
+**Where Musaeum is different:** the library is a folder of files rather than a database, so a NAS, an external drive and a plain folder are the same thing to it. There is no server, no Docker and no account, and "is it on my Kindle" is answered by each file's own title and author rather than its filename. **Where it isn't better:** multi-user access, Kobo and KOReader sync, comics, audiobooks, annotations, and distribution, since its iPhone app is built from source and its Mac app is unsigned.
 
 ## 🚀 Getting started
 
@@ -118,4 +142,4 @@ Musaeum is AI-assisted. The application code was written by AI coding agents und
 
 ## 📄 License
 
-[MIT](LICENSE) © 2026 Jason Oh
+[MIT](LICENSE) © 2026 Jason I. Oh
