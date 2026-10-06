@@ -18,7 +18,7 @@ def build_exth(records: list[tuple[int, bytes]]) -> bytes:
 
 def parse_exth(block: bytes) -> list[tuple[int, bytes]]:
     """The (type, payload) pairs of an EXTH block, in file order."""
-    if block[:4] != b"EXTH":
+    if block[:4] != b"EXTH" or len(block) < EXTH_HEADER_BYTES:
         raise ValueError("not an EXTH block")
     length, count = struct.unpack_from(">II", block, 4)
     end = min(length, len(block))

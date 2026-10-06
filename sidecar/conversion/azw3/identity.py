@@ -35,7 +35,9 @@ def read_identity(data: bytes) -> Identity | None:
     if len(records) < 2:  # record 0's length is the distance to record 1
         return None
     rec0 = records[0]
-    if rec0[MOBI_MAGIC_AT : MOBI_MAGIC_AT + 4] != b"MOBI":
+    # Stricter than mobi-header.ts, which reads the header length after checking
+    # only the magic's bytes and throws on a 20-23 byte record 0; here it is None.
+    if len(rec0) < MOBI_HEADER_LENGTH_AT + 4 or rec0[MOBI_MAGIC_AT : MOBI_MAGIC_AT + 4] != b"MOBI":
         return None
     (header_length,) = struct.unpack_from(">I", rec0, MOBI_HEADER_LENGTH_AT)
     exth = _exth_values(rec0, MOBI_MAGIC_AT + header_length)
