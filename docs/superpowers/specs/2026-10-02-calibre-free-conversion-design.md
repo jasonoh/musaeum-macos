@@ -1,7 +1,7 @@
 # Design: Calibre-free Kindle conversion — an in-house EPUB → AZW3 writer (kindle transfer, v1)
 
 **Date:** 2026-10-02
-**Status:** Draft for review — **not signed off, nothing built.** Slice 1 is a spike with a hard pass/fail gate on the owner's device; slices 2–4 are scheduled only if it passes.
+**Status:** Signed off 2026-10-06 (D1 run: the Oasis does not take a native EPUB). **Nothing built yet.** Slice 1 is a spike with a hard pass/fail gate on the owner's device; slices 2–4 are scheduled only if it passes.
 **Scope:** Replace the one place Musaeum runs a Calibre binary — `ebook-convert`, EPUB → AZW3 on a Kindle send — with a writer inside the Python sidecar, then remove the Calibre detection, the Settings field and the error path that exist only to serve it. It deliberately does **not** touch the Calibre *migration* wizard (that reads `metadata.db` as plain SQLite and needs no Calibre install), the PDF rule (PDFs are never converted), the presence rule, the cover-cache writer, the database schema or the `metadata.json` shape.
 **Depends on:** `docs/superpowers/specs/2026-09-17-device-presence-design.md` (the MOBI header layout, with the offsets derived) and `docs/superpowers/specs/2026-09-26-device-covers-design.md` (the device keys its cover cache on two fields *inside the file* — a converted file must carry them).
 **Interacts with:** `transfer-queue.ts`'s convert branch (the only caller), `services/sidecar.ts` (detection), `services/settings.ts` + `ipc/settings.ts` + `SettingsModal.tsx` (the `ebook_convert_path` field).
@@ -92,6 +92,6 @@ No migration, no new `app_config` key (one is *removed*), no new dependency, no 
 
 ## Open questions for review
 
-1. **D1's result** — does the Oasis list a USB-copied `.epub`? (Run before anything else; changes the whole design if yes.)
-2. **Slice 3 crosses `electron/main` ⇄ `src`** (9 files). The brief says to hand that back for approval; this spec flags it so the approval happens at sign-off, not mid-build.
-3. **The `CLAUDE.md` amendment** (slice 4) reverses a *Resolved Decision*. It is deferred until the gate passes — confirm that ordering.
+1. **D1's result** — does the Oasis list a USB-copied `.epub`? (Run before anything else; changes the whole design if yes.) **Result (2026-10-06):** not listed, would not open. The converter is needed; D2–D6 apply.
+2. **Slice 3 crosses `electron/main` ⇄ `src`** (9 files). The brief says to hand that back for approval; this spec flags it so the approval happens at sign-off, not mid-build. **Approved by the owner 2026-10-06.**
+3. **The `CLAUDE.md` amendment** (slice 4) reverses a *Resolved Decision*. It is deferred until the gate passes — confirm that ordering. **Ordering confirmed by the owner 2026-10-06.**
