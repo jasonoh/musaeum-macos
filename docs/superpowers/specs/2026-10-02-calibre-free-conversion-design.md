@@ -125,7 +125,7 @@ No migration, no new `app_config` key (one is *removed*), no new dependency, no 
 | Guide index (+0x104) | e.g. 227–228 | label = guide type (`toc`, `copyright-page`, `text`); tag 1 CNCX title, tag 6 (fragment number, offset) | measured only | yes |
 | Resource records | from +0x6c | raw JPEG/GIF/PNG; kindlegen adds `FONT` records and a `RESC` record (spine XML) — **Calibre writes neither**; the cover is the resource at EXTH 201 (cover offset) from the first image | measured; EXTH 201 per wiki | yes |
 | HUFF/CDIC, DATP | kindlegen only | compression dictionaries; `DATP` purpose not decoded | measured only | yes — **not needed**: the Calibre shape omits both |
-| FLIS / FCIS / EOF | last three records | byte-identical to the wiki's fixed layouts (FCIS +20 = text length); EOF `e9 8e 0d 0a` | MobileRead *MOBI* | yes, 7/7 |
+| FLIS / FCIS / EOF | records at +0xd0, +0xc8, and last | **FLIS** (36 B) byte-identical to the wiki's fixed layout. **FCIS differs from the wiki in KF8:** 52 B, not 44 — +12 is **2** (wiki 1), +28 is **40** (wiki 32), and it ends `00000000 00000028 00000008 0001 0001 00000000`; +20 = text length as documented. Identical in 7/7, so the writer copies the measured form. EOF `e9 8e 0d 0a` | MobileRead *MOBI* for FLIS/EOF; FCIS **measured** | yes, 7/7 |
 
 **Answers slice 1b is written from**
 
