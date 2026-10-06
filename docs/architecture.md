@@ -216,7 +216,7 @@ Both library views are virtualized (see `docs/invariants/library-views.md`); mea
 ## External Dependencies
 
 - **Calibre** (host install) — for `ebook-convert` only; detected at `/Applications/calibre.app/Contents/MacOS/ebook-convert`, overridable via `app_config.ebook_convert_path`. No Calibre GUI is launched.
-- **Python 3.11+** — sidecar venv at `sidecar/.venv` (see README).
+- **Python 3.11+** — sidecar venv at `sidecar/.venv` (see `docs/getting-started.md`).
 - Sidecar deps: `sidecar/requirements.txt` (isbnlib, requests, bs4, lxml, Pillow, pypdf, pypdfium2). Dev deps: `sidecar/requirements-dev.txt` (pytest).
 - Node deps: see `package.json`.
 
