@@ -2,6 +2,8 @@
 
 **A macOS desktop app (built on Electron) for a large ebook library — on a NAS, an external drive, or a folder on this Mac.** Import once, hydrate the metadata automatically, curate and read the books, and put them on a Kindle — with the library staying exactly where you put it.
 
+<img width="1438" height="898" alt="image" src="https://github.com/user-attachments/assets/62d8c12d-0fb4-4c6c-9274-90da079f438e" />
+
 Musaeum is a macOS desktop application for personally owning a 7,000-book collection. It is a single-user, local-first replacement for a Calibre workflow: **no server to run, no account, no Docker, and no database in the library folder.** The canonical copy of the library is the files you already have, in folders you can read with `ls` — and the app takes that as literally as it sounds. The library root is **a mounted share, an external drive, or any folder on this Mac**; the app records which one you picked, and only a share ever gets a mount attempt.
 
 **It is an Electron app, not a native one.** The shell is Electron (a Node main process and a React renderer in an embedded Chromium window), with a Python sidecar for metadata and conversion. It is not AppKit or SwiftUI, and it doesn't pretend to be: the packaged build is a 141 MB arm64 DMG that carries its own Chromium and Node, memory use is that of an Electron app, and its look and behaviour follow macOS by effort rather than by toolkit. Only the iOS companion is native (SwiftUI). [How the code is organised](#how-the-code-is-organised) has the layer map.
