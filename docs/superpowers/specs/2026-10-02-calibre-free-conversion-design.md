@@ -148,3 +148,39 @@ Three files derived from a book the Oasis already holds — *The Transparency So
 **What it settles.** T0 proves the container writer and the record-0 rebuild on the device. T1 and T2 differ in **one thing only**: compression. The original's 40 text records each decompress to exactly 4,096 bytes and none ends inside a UTF-8 sequence (measured: multibyte overlap 0 in 40/40), so T2's re-split reproduced the original boundaries and the multibyte trailer had nothing to carry. Hence: **without trailing entries, the Oasis reads uncompressed text and crashes on PalmDOC text.** One observation each, on one device (Risk 2).
 
 **Ruling for slice 1b.** The writer emits **compression 1, extra-data flags 0, text records of at most 4,096 bytes cut at UTF-8 boundaries** — T2's form. That removes the two structures without a full source (the TBS content, and a PalmDOC compressor plus its trailers) from the spike. Cost: files are larger — T2 is 233,019 B against the original's 153,877 (≈1.5×) — acceptable for lazy, per-book conversion (D7). A crash on open is the worst failure the device has shown; slice 2 keeps a pytest case that pins `compression == 1` together with `flags == 0`, so the combination T1 showed cannot be written by accident.
+
+---
+
+## Annex B — slice 1b provenance log and the D6 gate (built 2026-10-07; device readings pending)
+
+| Structure the writer emits | Source |
+| --- | --- |
+| Forward varints, CNCX records | MobileRead *MOBI* (variable-width integers); Annex A *CNCX record* |
+| INDX header + data records, the four TAGX tables (full form) | Annex A *INDX* rows; `build_index` rebuilds the skeleton, fragment, NCX and guide records of four real files byte for byte (16/16) |
+| Skeleton entries (`SKEL` + 10 digits; count ×2; start/length ×2) | Annex A *Skeleton index* |
+| Fragment entries (10-digit insert position; selector, file, sequence, offset/length), one fragment per skeleton | Annex A *Fragment index*; one-per-skeleton is Calibre's most common shape (*Red Rising*) |
+| NCX entries (breadth-first; depth; parent; first/last child; length to the next entry at the same depth or shallower) | Annex A *NCX index*; `ncx_index` rebuilds *Patent*'s three-level TOC, *Red Rising*'s and *American War*'s byte for byte from the tree alone |
+| NCX labels wider than two hex digits | **not measured** — every label is widened alike so the order holds; no gate book exercises it (largest TOC: 148 entries) |
+| Guide entries, sorted by type; a `text` entry always present | Annex A *Guide index* (labels `text`, `toc`, `copyright-page` measured) |
+| Link targets `kindle:pos:fid:FFFF:off:OOOOOOOOOO` → the target element's start tag; NCX position = the fragment's insert position + that offset | measured 2026-10-07 on *Red Rising* (5 links, 4 NCX entries checked) |
+| `aid` on block elements and every id-bearing element; selector `P-//*[@aid='…']` on the body | Annex A *Text markup* / *Fragment index* |
+| ASCII text: numeric character references in markup, `\XXXX ` escapes in CSS | *Lonely Planet Rome* (kindlegen): 6,568 `&#x…;` references |
+| Compression 1, extra-data flags 0, exact 4,096-byte records | *Device experiments* T2 (T1, PalmDOC with flags 0, crashed the Oasis) |
+| Record 0 words; EXTH 100–106/108/113/125/131/201/203/204–207/501/503/524/535 | Annex A *Record 0* and *EXTH* rows. 204–207 and 535 are Calibre's measured values: they name Amazon's kindlegen as the creator software and are kept for the gate because every file the Oasis has opened carries them; whether the firmware reads them is unmeasured. 108 is `Musaeum` (where Calibre signs itself) |
+| Pad record; FDST; FLIS; 52-byte FCIS; EOF; record order | Annex A |
+| Images ≤ 131,072 B, else a re-encoded JPEG | Annex A *Resource records*; measured maximum 130,912 B across nine files |
+| Cover-cache JPEG `thumbnail_<113>_<501>_portrait.jpg`, fitted inside 330×500 | `docs/invariants/device-transfer.md` |
+
+**Gate books, converted** (`scripts/azw3-spike.py`, files in `/tmp/azw3-gate/out/`): *Yellowface* 998,961 B in 0.13 s; *Darwin's Devices* 3,580,872 B in 0.27 s; *Raspberry Pi for Secret Agents* 4,129,009 B in 0.14 s. **No warnings on any of the three.** Cover-cache JPEGs: 18,436 B at 330×499, 26,852 B at 330×480, 29,852 B at 330×412. The 60-book sample drawn at random from the EPUB-only library converted without error (slowest: a 238 MB cookbook at 24.0 s, under the 30 s target); its warnings were 15 dropped `@font-face` rules, and image drops from one book with SVG page images and one with missing images.
+
+**Oracle** (`ebook-convert` AZW3 → EPUB, once): exit 0 on all three. Words across the source's reading-order files against the round trip's: *Yellowface* 88,798 / 88,798, *Darwin's Devices* 84,308 / 84,308, *Raspberry Pi* 36,823 / 36,823 — **missing 0, extra 0** on each.
+
+**D6, on the Oasis** (owner, to be run):
+
+| Book | Opens | Cover | TOC (incl. a deep entry) | Internal link | Reading position | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| *Yellowface* | | | | | | |
+| *Darwin's Devices* | | | | | | |
+| *Raspberry Pi for Secret Agents* | | | | | | |
+
+**Verdict:** pending the device readings. Pass (all fifteen) authorises slices 2–4 (D6); a fail names the reading and the book, and the owner decides per D6.
