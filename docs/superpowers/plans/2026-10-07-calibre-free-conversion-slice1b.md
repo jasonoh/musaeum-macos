@@ -59,8 +59,6 @@ The suites below pass on that scratch copy: 232 tests, the 187 already on `main`
 | `sidecar/tests/test_azw3_indexes.py`, `test_azw3_epub.py`, `test_azw3_markup.py`, `test_azw3_writer.py` | One suite per module. |
 | `docs/superpowers/specs/2026-10-02-calibre-free-conversion-design.md` | Gains **Annex B** (Task 5): slice 1b's provenance log and the D6 device results. |
 
-**Budget note, a ruling for the owner to see:** the spec's slice 1 row budgets "`sidecar/conversion/` (new, ≤4)". Slice 1a used four, so this plan adds four more and lands at eight. The split follows D2's "one file per concern", and each file is small enough to hold in context. The ten new files are within the brief's ~10-file bound. If the owner wants the budget held, `epub.py` folds into `markup.py` at the cost of a file twice as long.
-
 ---
 
 ### Task 1: Index tables
@@ -1595,8 +1593,12 @@ KEPT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif"}
 NONE = 0xFFFFFFFF
 FLIS = b"FLIS" + struct.pack(">IHHIIHHIII", 8, 65, 0, 0, NONE, 1, 3, 3, 1, NONE)
 EOF_RECORD = b"\xe9\x8e\r\n"
-# Creator fields as Calibre writes them (Annex A, EXTH row). The device has
-# accepted every file carrying them; the spike does not vary them.
+# EXTH 204-207 and 535 name the *creator software*. These are the values Calibre
+# writes: they say Amazon's kindlegen (Mac, 2.9, build 0730-890adc2), not Musaeum.
+# The device has opened every file carrying them and nothing measured says it reads
+# them, but no file without them has been tried; the gate keeps them and slice 2
+# tests zeroing them. Musaeum signs itself in EXTH 108 (contributor), where Calibre
+# signs itself.
 CREATOR = [(204, 202), (205, 2), (206, 9), (207, 0)]
 CREATOR_BUILD = b"0730-890adc2"
 
