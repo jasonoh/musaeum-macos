@@ -186,3 +186,87 @@ def test_a_write_that_fails_leaves_no_file_and_no_temp(book, tmp_path, monkeypat
     with pytest.raises(OSError):
         write_azw3(str(book), str(tmp_path / "out.azw3"))
     assert sorted(p.name for p in tmp_path.iterdir()) == ["book.epub"]
+
+
+# --- final review: a table of contents too big or too wild for the index degrades; it does not fail the book
+
+
+def toc_book(tmp_path, entries):
+    return build_epub(tmp_path / "toc.epub", chapters=[("c.xhtml", xhtml("<p>x</p>"))], toc=entries)
+
+
+def toc_titles(conversion) -> list[str]:
+    ncx = read_kf8(conversion.data).index(0xF4)
+    return [ncx.cncx[v[3][0]] for _, v in ncx.entries]
+
+
+def test_a_flat_table_of_contents_too_big_for_the_index_is_trimmed_with_a_warning(tmp_path):
+    conversion = build_azw3(str(toc_book(tmp_path, [(f"Chapter number {i:05d}", "c.xhtml", []) for i in range(4_000)])))
+    titles = toc_titles(conversion)
+    assert 1_000 < len(titles) < 4_000
+    assert titles == [f"Chapter number {i:05d}" for i in range(len(titles))]  # the first entries, in order
+    assert any("table of contents" in w and "trimmed" in w for w in conversion.warnings)
+
+
+def test_a_deep_table_of_contents_too_big_for_the_index_loses_its_deepest_level_first(tmp_path):
+    tree = [(f"Part {i:04d}", "c.xhtml", [(f"Section {i:04d}.1", "c.xhtml", [(f"Detail {i:04d}.1.1", "c.xhtml", [])])]) for i in range(1_800)]
+    conversion = build_azw3(str(toc_book(tmp_path, tree)))
+    ncx = read_kf8(conversion.data).index(0xF4)
+    depths = {v[4][0] for _, v in ncx.entries}
+    assert depths == {0, 1}  # the third level went; the first two survived whole
+    assert len(ncx.entries) == 3_600
+    assert any("deepest level" in w for w in conversion.warnings)
+
+
+def test_one_runaway_table_of_contents_title_is_cut(tmp_path):
+    conversion = build_azw3(str(toc_book(tmp_path, [("x" * 300_000, "c.xhtml", []), ("Short", "c.xhtml", [])])))
+    titles = toc_titles(conversion)
+    assert titles == ["x" * 255, "Short"]
+
+
+def test_a_book_with_an_unreadable_table_of_contents_converts_with_one_entry(tmp_path):
+    from tests.test_azw3_epub import replace_member
+
+    path = toc_book(tmp_path, [("Gone", "c.xhtml", [])])
+    replace_member(path, "OEBPS/toc.ncx", b"<ncx><navMap><navPoint></navMap>")
+    conversion = build_azw3(str(path))
+    assert toc_titles(conversion) == ["Test Book"]
+    assert any("table of contents" in w for w in conversion.warnings)
+
+
+FLIS_BYTES = bytes.fromhex("464c4953000000080041000000000000ffffffff000100030000000300000001ffffffff")
+
+
+def test_flis_and_fcis_are_the_bytes_measured_in_every_reference_file(book):
+    kf8 = read_kf8(build_azw3(str(book)).data)
+    assert kf8.records[kf8.word(0xD0)] == FLIS_BYTES
+    expected_fcis = (
+        bytes.fromhex("4643495300000014000000100000000200000000")
+        + len(kf8.text).to_bytes(4, "big")
+        + bytes.fromhex("00000000000000280000000000000028000000080001000100000000")
+    )
+    assert kf8.records[kf8.word(0xC8)] == expected_fcis and len(expected_fcis) == 52
+
+
+def test_english_books_carry_the_english_locale_and_others_do_not(tmp_path):
+    english = build_epub(tmp_path / "en.epub", chapters=[("c.xhtml", xhtml("<p>x</p>"))])
+    other = build_epub(tmp_path / "fr.epub", chapters=[("c.xhtml", xhtml("<p>x</p>"))], language="fr")
+    assert read_kf8(build_azw3(str(english)).data).word(0x5C) == 9
+    assert read_kf8(build_azw3(str(other)).data).word(0x5C) == 0
+
+
+def test_a_file_that_does_not_read_back_as_written_is_refused(book, monkeypatch):
+    import conversion.azw3.writer as writer
+
+    monkeypatch.setattr(writer, "read_identity", lambda data: None)
+    with pytest.raises(ValueError, match="does not read back"):
+        build_azw3(str(book))
+
+
+def test_a_table_of_contents_that_cannot_fit_even_one_entry_raises_instead_of_looping(tmp_path, monkeypatch):
+    import conversion.azw3.writer as writer
+    from conversion.azw3.indexes import IndexOverflow
+
+    monkeypatch.setattr(writer, "MAX_TOC_TITLE_CHARS", 10**9)
+    with pytest.raises(IndexOverflow):
+        build_azw3(str(toc_book(tmp_path, [("x" * 300_000, "c.xhtml", [])])))

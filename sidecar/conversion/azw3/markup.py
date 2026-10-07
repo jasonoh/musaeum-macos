@@ -7,6 +7,7 @@ measured in a kindlegen file — so a text record cut at exactly 4,096 bytes can
 never split a character (spec, *Device experiments*).
 """
 
+import codecs
 import html
 import re
 from dataclasses import dataclass, field
@@ -87,28 +88,78 @@ class Aids:
         return value
 
 
-def _parse(data: bytes) -> etree._Element:
-    text = data.decode("utf-8", "replace")
-    text = re.sub(r"^\s*<\?xml[^>]*\?>", "", text)
+def _decode(data: bytes) -> str:
+    """Text from bytes. A BOM or an XML declaration is authoritative; otherwise valid UTF-8 is UTF-8.
+
+    A `<meta charset>` is only a hint, and publishers get it wrong (a file declaring
+    iso-8859-1 over UTF-8 bytes is common), so it is used only for bytes that are not
+    valid UTF-8, with Windows-1252 as the last resort.
+    """
+    if data.startswith(codecs.BOM_UTF8):
+        return data[3:].decode("utf-8", "replace")
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return data.decode("utf-16", "replace")
+    head = data[:1024].decode("ascii", "replace")
+    declared = re.search(r"""<\?xml[^>]*encoding=["']([\w.:-]+)""", head)
+    if declared:
+        try:
+            return data.decode(declared.group(1), "replace")
+        except LookupError:
+            pass
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    meta = re.search(r"""<meta[^>]*charset=["']?([\w.:-]+)""", head, re.IGNORECASE)
+    try:
+        return data.decode(meta.group(1) if meta else "cp1252", "replace")
+    except LookupError:
+        return data.decode("cp1252", "replace")
+
+
+def _normalise(root: etree._Element) -> None:
+    """Plain tag names; no namespaced attributes (epub:type and friends); no `aid` of the source's own."""
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        if el.tag.startswith(f"{{{XHTML_NS}}}"):
+            el.tag = el.tag[len(XHTML_NS) + 2 :]
+        elif ":" in el.tag and not el.tag.startswith("{"):
+            el.tag = el.tag.rsplit(":", 1)[1]  # an HTML parser keeps `svg:svg` as one name
+        for name in list(el.attrib):
+            if name == "aid":
+                del el.attrib[name]
+            elif name == "xlink:href":  # an HTML parser's spelling of the namespaced attribute
+                el.set(f"{{{XLINK_NS}}}href", el.attrib.pop(name))
+            elif ":" in name and not name.startswith("{"):
+                del el.attrib[name]
+            elif name.startswith("{") and not name.startswith((f"{{{XML_NS}}}", f"{{{XLINK_NS}}}")):
+                del el.attrib[name]
+    etree.cleanup_namespaces(root)
+
+
+def _parse(data: bytes, warnings: list[str], path: str) -> etree._Element:
+    """Strict XML when the file is well-formed; otherwise a real HTML parse, never a lossy recovery."""
+    text = re.sub(r"^\s*<\?xml[^>]*\?>", "", _decode(data).lstrip("\ufeff"))
     text = re.sub(r"<!DOCTYPE[^>\[]*(\[[^\]]*\])?\s*>", "", text, flags=re.IGNORECASE)
     # HTML's named entities are not XML's: write them as numbers before parsing.
-    text = re.sub(
+    xml_text = re.sub(
         r"&([A-Za-z][A-Za-z0-9]*);",
         lambda m: m.group(0) if m.group(1) in XML_ENTITIES or m.group(1) not in name2codepoint
         else f"&#{name2codepoint[m.group(1)]};",
         text,
     )
-    parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=True, huge_tree=False)
-    root = etree.fromstring(text.encode("utf-8"), parser)
-    if root is None:
-        return lxml.html.document_fromstring(text)
-    for el in root.iter():
-        if isinstance(el.tag, str) and el.tag.startswith(f"{{{XHTML_NS}}}"):
-            el.tag = el.tag[len(XHTML_NS) + 2 :]
-        for name in list(el.attrib):
-            if name.startswith("{") and not name.startswith((f"{{{XML_NS}}}", f"{{{XLINK_NS}}}")):
-                del el.attrib[name]  # epub:type and friends
-    etree.cleanup_namespaces(root)
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=False, huge_tree=False)
+    try:
+        root = etree.fromstring(xml_text.encode("utf-8"), parser)
+        _normalise(root)  # strips the XHTML namespace, so <body> can be found by its plain name
+        if root.find("body") is not None:
+            return root
+    except etree.XMLSyntaxError:
+        pass
+    warnings.append(f"{path}: not well-formed XHTML; parsed as HTML")
+    root = lxml.html.document_fromstring(text)
+    _normalise(root)
     return root
 
 
@@ -143,8 +194,8 @@ def _embed(el: etree._Element, path: str, resolver: Resolver, warnings: list[str
 
 
 def build_part(path: str, data: bytes, aids: Aids, resolver: Resolver) -> Part:
-    root = _parse(data)
     warnings: list[str] = []
+    root = _parse(data, warnings, path)
     for el in list(root.iter(etree.Comment, etree.ProcessingInstruction, "script")):
         _remove(el)
     head = root.find("head")
@@ -162,15 +213,17 @@ def build_part(path: str, data: bytes, aids: Aids, resolver: Resolver) -> Part:
             link.set("rel", "stylesheet")
             link.set("type", "text/css")
 
+    for el in list(body.iter()):
+        if isinstance(el.tag, str) and etree.QName(el).localname in ("img", "image") and not _embed(el, path, resolver, warnings):
+            if el.getparent() is not None:
+                _remove(el)  # takes anything inside it along; links are counted after this
+
     targets: list[str] = []
     body.set("aid", aids.next())
-    for el in list(body.iter()):
+    for el in body.iter():
         if el is body or not isinstance(el.tag, str):
             continue
         local = etree.QName(el).localname
-        if local in ("img", "image") and not _embed(el, path, resolver, warnings):
-            _remove(el)
-            continue
         if local == "a" and el.get("href") and not urlparse(el.get("href")).scheme:
             targets.append(resolve(path, el.get("href")))
             el.set("href", LINK_PLACEHOLDER)
@@ -188,10 +241,12 @@ def build_part(path: str, data: bytes, aids: Aids, resolver: Resolver) -> Part:
     skeleton = opening + body_shell + b"</html>"
     insert_offset = len(opening) + body_shell.index(b"</body>")
 
-    placeholder = LINK_PLACEHOLDER.encode()
+    # Only a placeholder standing as an href value is a link; book text that happens to
+    # look like one is not.
+    placeholder = b'href="' + LINK_PLACEHOLDER.encode() + b'"'
     starts, at = [], fragment.find(placeholder)
     while at != -1:
-        starts.append(at)
+        starts.append(at + len(b'href="'))
         at = fragment.find(placeholder, at + 1)
     if len(starts) != len(targets):
         raise ValueError(f"{path}: {len(targets)} links but {len(starts)} placeholders")

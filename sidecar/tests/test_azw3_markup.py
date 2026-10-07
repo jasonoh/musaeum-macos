@@ -109,3 +109,90 @@ def test_css_is_ascii_and_embedded_fonts_are_dropped_with_a_warning():
     flow, warnings = css_flow("s.css", "p::before { content: '—' } @font-face { src: url(f.ttf) } h1 { x: 1 }".encode())
     assert flow == b"p::before { content: '\\2014 ' }  h1 { x: 1 }"
     assert warnings == ["s.css: dropped @font-face rules (embedded fonts are out of scope)"]
+
+
+# --- final review: malformed publisher markup must keep its text, and links/anchors must stay honest
+
+
+def raw_part(data: bytes, resolver=None):
+    return build_part("OEBPS/text/c1.xhtml", data, Aids(), resolver or FakeResolver())
+
+
+def test_an_html5_file_with_an_unclosed_meta_still_has_its_body():
+    p = raw_part(b'<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body><p>Cover</p></body></html>')
+    assert p.fragment == b'<p aid="1">Cover</p>'
+    assert any("HTML" in w for w in p.warnings)
+
+
+@pytest.mark.parametrize(
+    "markup, expected",
+    [
+        (b"<html><body><p>AT&T and a < b</p></body></html>", b"<p aid=\"1\">AT&amp;T and a &lt; b</p>"),
+        (b"<html><body><p>line<br>two</p><p>third</p></body></html>", b'<p aid="1">line<br/>two</p><p aid="2">third</p>'),
+    ],
+)
+def test_text_in_malformed_markup_is_kept_not_dropped(markup, expected):
+    assert raw_part(markup).fragment == expected
+
+
+def test_a_declared_non_utf8_encoding_is_honoured():
+    latin = '<?xml version="1.0" encoding="iso-8859-1"?><html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p>café</p></body></html>'
+    assert raw_part(latin.encode("latin-1")).fragment == b'<p aid="1">caf&#233;</p>'
+    utf16 = '<html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p>café</p></body></html>'.encode("utf-16")
+    assert raw_part(utf16).fragment == b'<p aid="1">caf&#233;</p>'
+
+
+def test_a_link_inside_an_image_that_is_dropped_does_not_unbalance_the_placeholders():
+    # Well-formed XML can nest an element inside <img>; dropping the image takes it along.
+    p = raw_part(b'<html><body><p><img src="gone.jpg"><a href="c2.xhtml">x</a></img></p><p><a href="#t">t</a></p></body></html>')
+    assert len(p.links) == p.fragment.count(b"kindle:pos:fid:0000:off:0000000000") == 1
+    assert p.links[0].target == "OEBPS/text/c1.xhtml#t"
+
+
+def test_a_link_after_an_image_that_is_dropped_survives_an_html_parse():
+    p = raw_part(b'<html><body><p><img src="gone.jpg"><a href="c2.xhtml">x</a></p></body></html>')
+    assert [link.target for link in p.links] == ["OEBPS/text/c2.xhtml"]
+
+
+def test_book_text_that_looks_like_a_link_placeholder_is_not_counted():
+    p = part("<p>kindle:pos:fid:0000:off:0000000000 <a href=\"#a\">a</a></p>")
+    assert len(p.links) == 1 and p.fragment[p.links[0].at : p.links[0].at + 34] == b"kindle:pos:fid:0000:off:0000000000"
+    assert p.fragment.index(b"href=") < p.links[0].at
+
+
+def test_aid_attributes_already_in_the_source_are_replaced_so_anchors_stay_true():
+    p = part('<span aid="2">old</span><p>new</p><p id="t">target</p>')
+    assert p.fragment[p.anchors["t"] :].startswith(b'<p id="t"')
+    assert p.fragment == b'<span>old</span><p aid="1">new</p><p id="t" aid="2">target</p>'
+
+
+# --- regression found re-running the gate books: well-formed XHTML must stay on the strict path
+
+
+def test_well_formed_xhtml_is_parsed_strictly_with_no_html_fallback_warning():
+    p = part("<p>Hello</p>")
+    assert not any("HTML" in w for w in p.warnings)
+
+
+def test_a_prefixed_svg_in_a_file_that_needs_the_html_fallback_does_not_crash():
+    body = b'<html><body><p>AT&T</p><svg:svg xmlns:svg="http://www.w3.org/2000/svg"><svg:image xlink:href="a.jpg"/></svg:svg></body></html>'
+    p = raw_part(body)
+    assert b"AT&amp;T" in p.fragment and b"svg:" not in p.fragment
+
+
+def test_an_svg_spine_document_with_no_html_body_falls_back_instead_of_raising():
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><text>Cover</text></svg>'
+    p = raw_part(svg)
+    assert b"Cover" in p.fragment and any("HTML" in w for w in p.warnings)
+
+
+def test_a_meta_charset_that_lies_does_not_override_valid_utf8():
+    # Darwin's Devices: <meta charset=iso-8859-1> over UTF-8 bytes. Valid UTF-8 is UTF-8.
+    doc = '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta content="text/html; charset=iso-8859-1" http-equiv="content-type"/></head><body><p>Darwin’s</p></body></html>'
+    assert raw_part(doc.encode("utf-8")).fragment == b'<p aid="1">Darwin&#8217;s</p>'
+
+
+def test_a_meta_charset_is_used_when_the_bytes_are_not_utf8():
+    doc = '<html><head><meta charset="iso-8859-1"></head><body><p>café</p></body></html>'
+    assert raw_part(doc.encode("latin-1")).fragment == b'<p aid="1">caf&#233;</p>'
+    assert raw_part(b"<html><body><p>caf\xe9</p></body></html>").fragment == b'<p aid="1">caf&#233;</p>'  # no claim at all: cp1252

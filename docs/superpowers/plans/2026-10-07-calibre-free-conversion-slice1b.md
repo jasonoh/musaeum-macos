@@ -36,6 +36,12 @@ These are inputs the spec implies but its slices do not test, most likely to bit
 
 ---
 
+## Changes after the final review
+
+The code blocks below are the plan as first executed. The final review changed `markup.py` (strict XML first, then an HTML parse; declared encodings; links counted after dropped images; source `aid` attributes replaced), `epub.py` (unreadable TOCs degrade; DRM-encrypted EPUBs are refused), `indexes.py` (`IndexOverflow`) and `writer.py` (TOC title cap, trimming a TOC that cannot fit one index record), with their tests. The committed files on the branch are authoritative; the suite there is 259 tests. Spec Annex B records what each change fixed.
+
+---
+
 ## How this plan's code was checked before it was written
 
 Every module below was built and run in a scratch copy of `sidecar/` (`/tmp/azw3-plan`, never committed) before being pasted here.

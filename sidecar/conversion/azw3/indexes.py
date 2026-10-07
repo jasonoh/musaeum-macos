@@ -25,6 +25,10 @@ GUIDE_TAGS: TagTable = [(1, 1, 1), (6, 2, 2)]
 Entry = tuple[bytes, dict[int, list[int]]]
 
 
+class IndexOverflow(ValueError):
+    """An index or its string record would not fit one 64 KiB record (the measured shape)."""
+
+
 def forward_varint(value: int) -> bytes:
     """7 bits per byte, most significant first; the last byte carries the high bit."""
     if value < 0:
@@ -54,7 +58,7 @@ class Cncx:
         raw = text.encode("utf-8")
         self._data += forward_varint(len(raw)) + raw
         if len(self._data) >= MAX_RECORD_BYTES:
-            raise ValueError("CNCX strings do not fit one record")
+            raise IndexOverflow("CNCX strings do not fit one record")
         return offset
 
     def record(self) -> bytes:
@@ -109,7 +113,7 @@ def build_index(table: TagTable, entries: list[Entry], cncx_records: int) -> lis
         body += encode_entry(label, values, table)
     body = bytearray(pad4(bytes(body)))
     if len(body) + 4 + 2 * len(entries) >= MAX_RECORD_BYTES:
-        raise ValueError("index entries do not fit one data record")
+        raise IndexOverflow("index entries do not fit one data record")
     data = _indx_header(len(body), len(entries))
     struct.pack_into(">II", data, 0x08, 0, 1)
     struct.pack_into(">II", data, 0x1C, 0xFFFFFFFF, 0xFFFFFFFF)

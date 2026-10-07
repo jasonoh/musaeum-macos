@@ -74,3 +74,54 @@ def rewrite_opf(path, extra_manifest_item: str) -> None:
     with zipfile.ZipFile(path, "w") as z:
         for name, data in members.items():
             z.writestr(name, data)
+
+
+# --- final review: a TOC that cannot be parsed degrades, it does not fail the book
+
+
+def replace_member(path, name: str, data: bytes) -> None:
+    with zipfile.ZipFile(path) as z:
+        members = {n: z.read(n) for n in z.namelist()}
+    members[name] = data
+    with zipfile.ZipFile(path, "w") as z:
+        for n, d in members.items():
+            z.writestr(n, d)
+
+
+@pytest.mark.parametrize(
+    "ncx",
+    [
+        b'<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap><navPoint><navLabel><text>x</navLabel></navPoint></navMap></ncx>',
+        b'<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap><navPoint><navLabel><text>a&nbsp;b</text></navLabel><content src="c1.xhtml"/></navPoint></navMap></ncx>',
+        b"\x00\x01 encrypted bytes, not XML at all",
+    ],
+)
+def test_a_table_of_contents_that_cannot_be_parsed_is_empty_with_a_warning(tmp_path, ncx):
+    path = build_epub(tmp_path / "b.epub", chapters=[("c1.xhtml", xhtml("<p>one</p>"))])
+    replace_member(path, "OEBPS/toc.ncx", ncx)
+    epub = read_epub(str(path))
+    assert epub.toc == []
+    assert any("table of contents" in w and "toc.ncx" in w for w in epub.warnings)
+
+
+# --- a DRM-encrypted EPUB fails with its real reason, not an XML error from inside it
+
+ADOBE_ENCRYPTION = (
+    '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">'
+    '<enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/>'
+    '<enc:CipherData><enc:CipherReference URI="OEBPS/c1.xhtml"/></enc:CipherData></enc:EncryptedData></encryption>'
+)
+FONT_OBFUSCATION = ADOBE_ENCRYPTION.replace("http://www.w3.org/2001/04/xmlenc#aes128-cbc", "http://www.idpf.org/2008/embedding").replace("OEBPS/c1.xhtml", "OEBPS/f.otf")
+
+
+def test_a_drm_encrypted_epub_is_refused_with_the_reason(tmp_path):
+    path = build_epub(tmp_path / "b.epub", chapters=[("c1.xhtml", xhtml("<p>one</p>"))])
+    replace_member(path, "META-INF/encryption.xml", ADOBE_ENCRYPTION.encode())
+    with pytest.raises(ValueError, match="encrypted"):
+        read_epub(str(path))
+
+
+def test_font_obfuscation_alone_is_not_drm(tmp_path):
+    path = build_epub(tmp_path / "b.epub", chapters=[("c1.xhtml", xhtml("<p>one</p>"))])
+    replace_member(path, "META-INF/encryption.xml", FONT_OBFUSCATION.encode())
+    assert read_epub(str(path)).spine == ["OEBPS/c1.xhtml"]

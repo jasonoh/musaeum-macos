@@ -20,13 +20,14 @@ from PIL import Image
 from .epub import Epub, TocEntry, read_epub
 from .exth import build_exth
 from .identity import read_identity
-from .indexes import NavPoint, Piece, fragment_index, guide_index, ncx_index, skeleton_index
+from .indexes import IndexOverflow, NavPoint, Piece, fragment_index, guide_index, ncx_index, skeleton_index
 from .markup import Aids, Part, build_part, css_flow, fixed_base32
 from .palmdb import write_palmdb
 
 TEXT_RECORD_BYTES = 4096
 MOBI_HEADER_BYTES = 264
 MAX_TITLE_BYTES = 1023  # the app's reader refuses 1,024 and over (identity.MAX_TITLE_BYTES)
+MAX_TOC_TITLE_CHARS = 255  # a publisher's runaway label must not take the book down
 MAX_IMAGE_BYTES = 131_072  # every image record measured is under 128 KiB (largest 130,912)
 KEPT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif"}
 NONE = 0xFFFFFFFF
@@ -152,8 +153,53 @@ def _nav(entries: list[TocEntry], locate) -> list[NavPoint]:
             points.extend(children)
         else:
             fid, off, pos = found
-            points.append(NavPoint(entry.title or "Untitled", fid, off, pos, children))
+            points.append(NavPoint((entry.title or "Untitled")[:MAX_TOC_TITLE_CHARS], fid, off, pos, children))
     return points
+
+
+def _entries(points: list[NavPoint]) -> int:
+    return sum(1 + _entries(p.children) for p in points)
+
+
+def _depth(points: list[NavPoint]) -> int:
+    return 1 + max((_depth(p.children) for p in points if p.children), default=0)
+
+
+def _without_deepest(points: list[NavPoint], depth: int) -> list[NavPoint]:
+    """The tree with every node at `depth` (0-based) removed."""
+    if depth == 0:
+        return []
+    return [
+        NavPoint(p.title, p.fid, p.off, p.pos, _without_deepest(p.children, depth - 1) if p.children else [])
+        for p in points
+    ]
+
+
+def _fit_ncx(nav: list[NavPoint], flow_length: int, warnings: list[str]) -> list[bytes]:
+    """The NCX records, shrinking the table of contents until its index fits one record.
+
+    Every file measured has one CNCX record and one data record per index, so the
+    spike does not write more. A book that does not fit loses its deepest level,
+    then its trailing entries, with a warning: it converts, and it is readable.
+    """
+    total = _entries(nav)
+    while True:
+        try:
+            records = ncx_index(nav, flow_length)
+            break
+        except IndexOverflow:
+            depth = _depth(nav)
+            if depth > 1:
+                nav = _without_deepest(nav, depth - 1)
+                warnings.append(f"table of contents does not fit the index: dropped its deepest level (level {depth})")
+            elif len(nav) > 1:
+                nav = nav[: max(1, len(nav) * 9 // 10)]
+            else:
+                raise  # one entry that cannot fit: nothing left to trim
+    kept = _entries(nav)
+    if kept < total:
+        warnings.append(f"table of contents trimmed from {total} to {kept} entries to fit the index")
+    return records
 
 
 def build_azw3(epub_path: str) -> Conversion:
@@ -221,7 +267,7 @@ def build_azw3(epub_path: str) -> Conversion:
     fragment_records = fragment_index(pieces)
     skeleton_records = skeleton_index(pieces)
     guide_records = guide_index(guide)
-    ncx_records = ncx_index(nav, len(flow0))
+    ncx_records = _fit_ncx(nav, len(flow0), warnings)
     first_non_book = n + 2
     at = {"first_non_book": first_non_book, "fragment": first_non_book}
     at["skeleton"] = at["fragment"] + len(fragment_records)

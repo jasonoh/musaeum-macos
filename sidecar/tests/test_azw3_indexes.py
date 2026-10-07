@@ -146,3 +146,15 @@ def test_a_table_of_contents_over_255_entries_keeps_its_labels_in_order():
 def test_an_empty_table_of_contents_is_refused():
     with pytest.raises(ValueError):
         ncx_index([], flow_length=10)
+
+
+def test_an_index_that_cannot_fit_one_record_raises_the_overflow_error_the_writer_catches():
+    from conversion.azw3.indexes import IndexOverflow
+
+    cncx = Cncx()
+    with pytest.raises(IndexOverflow):
+        for _ in range(3_000):
+            cncx.add("x" * 30)
+    entries = [(b"%05d" % i, {1: [2**27], 6: [2**27, 2**27]}) for i in range(7_000)]
+    with pytest.raises(IndexOverflow):
+        build_index(GUIDE_TAGS, entries, 0)
