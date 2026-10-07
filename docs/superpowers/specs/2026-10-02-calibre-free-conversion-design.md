@@ -177,12 +177,12 @@ Three files derived from a book the Oasis already holds — *The Transparency So
 
 **Final review of the code (2026-10-07) and what it changed.** A fresh reviewer ran the writer against all 5,024 EPUB books on the NAS (TOC and spine) and converted 33 of them; the fixes below are pinned by tests, and the gate books were rebuilt afterwards (same sizes, 0 warnings, oracle again 0 missing / 0 extra). Re-run over 90 real books (the 60-book sample plus 30 of the reviewer's 33 copies, the rest no longer on disk): **78 convert; none loses more than 0.2% of its words** (the written text compared with the source's reading-order text); **the other 12 are DRM-encrypted** (Adobe `aes128-cbc` in `META-INF/encryption.xml`) and are now refused with that reason, not an XML error from inside the encrypted file. Changes: a table of contents that cannot be parsed (3 real books) degrades to a one-entry TOC with a warning; a TOC too big for one index record (largest real: 2,899 entries) loses its deepest level, then trailing entries, with a warning, and a single title is cut to 255 characters; malformed publisher XHTML is parsed by an HTML parser, not an XML recovery that silently dropped `&T` from `AT&T`; declared encodings are honoured, and a lying `<meta charset>` over valid UTF-8 bytes is not (*Darwin's Devices* declares iso-8859-1 over UTF-8); links are counted after dropped images; the source's own `aid` attributes are replaced; FLIS, the 52-byte FCIS, the locale and the read-back refusal are pinned by tests. **Not done, and why:** a TOC over ~2,000 entries is trimmed because the spike writes one CNCX record, as every measured file has; multi-record CNCX is unmeasured and waits for slice 2 and the device. The slowest conversion measured is *The Complete Story of Civilization* (4.7 M words) at 43 s, over the 30 s target; every other real book took under 11 s.
 
-**D6, on the Oasis** (owner, to be run):
+**D6, on the Oasis** (run by the owner 2026-10-07; the three books and their cover-cache entries copied over USB, airplane mode on): the owner reported that **all three books worked perfectly** — opening, cover, TOC navigation, an internal link and a kept reading position. Recorded as a pass on all five readings for each book; the owner did not itemise the fifteen readings or note any rendering difference.
 
 | Book | Opens | Cover | TOC (incl. a deep entry) | Internal link | Reading position | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| *Yellowface* | | | | | | |
-| *Darwin's Devices* | | | | | | |
-| *Raspberry Pi for Secret Agents* | | | | | | |
+| *Yellowface* | pass | pass | pass | pass | pass | |
+| *Darwin's Devices* | pass | pass | pass | pass | pass | |
+| *Raspberry Pi for Secret Agents* | pass | pass | pass | pass | pass | |
 
-**Verdict:** pending the device readings. Pass (all fifteen) authorises slices 2–4 (D6); a fail names the reading and the book, and the owner decides per D6.
+**Verdict: pass.** Slices 2–4 are authorised (D6). Still unmeasured on the device and therefore carried into slice 2: a TOC over about 2,000 entries (multi-record CNCX), NCX labels wider than two hex digits, the creator-software fields (EXTH 204–207, 535), and any book with embedded fonts, fixed layout or SVG pages.
