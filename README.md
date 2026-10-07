@@ -119,7 +119,7 @@ Musaeum is the app its author uses daily, against a real 7,000-book library and 
 - ⚠️ No annotations or highlights, no PDF in the reader yet (PDFs open in Preview), no bulk metadata edit, no OPDS, no auto-update.
 - 🔬 Verification is layered: well over a thousand vitest cases, a pytest suite for the sidecar, strict TypeScript, and CI on every push.
 
-[`tasks.md`](tasks.md) is the honest backlog. [`docs/project-overview.md`](docs/project-overview.md) has the full "not built" list and a sourced comparison with Calibre, Calibre-Web, Kavita and Komga, including where they plainly win.
+[`tasks.md`](tasks.md) is the honest backlog; [`docs/roadmap-history.md`](docs/roadmap-history.md) is the record of everything already landed behind it. [`docs/project-overview.md`](docs/project-overview.md) has the full "not built" list and a sourced comparison with Calibre, Calibre-Web, Kavita and Komga, including where they plainly win.
 
 ## 📚 Documentation
 
@@ -134,6 +134,7 @@ Musaeum is the app its author uses daily, against a real 7,000-book library and 
 | [`docs/invariants/`](docs/invariants/)                                                         | One file per subsystem: the rule, the measurement behind it, the rejected alternative                                     |
 | [`docs/how-this-was-built.md`](docs/how-this-was-built.md)                                     | How the project was built and verified                                                                                    |
 | [`tasks.md`](tasks.md) · [`CHANGELOG.md`](CHANGELOG.md) · [`requirements.md`](requirements.md) | The backlog, the history, and the original spec                                                                           |
+| [`docs/roadmap-history.md`](docs/roadmap-history.md)                                           | The shipped record, moved out of `tasks.md` — every landed slice and its numbers                                          |
 | [`CLAUDE.md`](CLAUDE.md)                                                                       | The agent brief: invariants, conventions, and which doc to read before touching what                                      |
 
 ## 🤖 How this was built

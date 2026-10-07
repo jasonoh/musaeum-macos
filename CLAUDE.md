@@ -28,7 +28,9 @@ This file loads at the start of every session and is the **index**, not the manu
 | `docs/invariants/settings-and-editing.md` | `app_config`, persisted UI state, the metadata editor |
 | `docs/invariants/packaging-and-python.md` | `electron-builder.yml`, the Python bootstrap, the bundle |
 | `docs/invariants/menu-and-branding.md` | the native menu, the app name, the dock icon |
-| `tasks.md` · `CHANGELOG.md` · `requirements.md` | roadmap · history · original product spec |
+| `tasks.md` | the live backlog — what is open, what blocks it, where its design lives |
+| `docs/roadmap-history.md` | the shipped record `tasks.md` used to carry inline — do not read it unless you need the _why_ behind something already landed |
+| `CHANGELOG.md` · `requirements.md` | user-facing history · the original product spec |
 | `docs/superpowers/specs/` · `docs/superpowers/plans/` | feature designs and their implementation plans |
 
 Each invariant file carries the *why* — the measurement, the failure it was written to prevent, the approach that was tried and rejected. That reasoning is what stops a later change from re-breaking it, so read the file your slice touches before editing, not after.

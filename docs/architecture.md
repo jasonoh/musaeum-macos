@@ -65,6 +65,7 @@ Musaeum/
 │   ├── architecture.md           # process model, layout, perf targets
 │   ├── data-contracts.md         # metadata.json, SQLite, sidecar RPC, preload API
 │   ├── rest-api.md               # THE REST contract: routes, payloads, statuses, methods
+│   ├── roadmap-history.md        # the shipped record, moved out of tasks.md (2026-10-06)
 │   ├── invariants/               # one file per subsystem — rules + reasoning
 │   └── superpowers/              # specs/ and plans/, one per feature
 ├── package.json / tsconfig*.json / electron.vite.config.ts
