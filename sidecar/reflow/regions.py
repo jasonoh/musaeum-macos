@@ -272,6 +272,7 @@ def build_page_text(
     result = PageText()
     units = _units(layout, page_box, figure_boxes)
     boxes = [u.box for u in units]
+    rotated = [c for c in chars if c.rotated]
     dropped: list[Char] = []
     for c in chars:
         if any(_contains(f, c.cx, c.cy, 0.0) for f in figure_boxes):
@@ -298,8 +299,18 @@ def build_page_text(
             previous, previous_line = None, []
             continue
         glyphs = [c for c in unit.chars if not c.is_space]
-        if unit.rotated and not glyphs:
-            continue  # a rotated stamp: never read back in from Vision's OCR
+        if not glyphs and (
+            unit.rotated
+            or any(_contains(unit.box, c.cx, c.cy, 0.0) for c in rotated)
+        ):
+            # A rotated stamp or a sideways figure credit: never read back in
+            # from Vision's OCR, which reads it as upright words and trips G3.
+            # The rotated characters are not always *this* unit's: Vision
+            # overlays a wide credit strip with the smaller box that takes
+            # them, so the strip has none of its own and its text would come
+            # from the OCR — *Universe* p.352, where G3 found `dean`, `hines`
+            # and `nrao` in the flow.
+            continue
         lines = baseline_lines(unit.chars)
         text, source = choose_text(join_lines([line_text(ln) for ln in lines]), unit.vision_text)
         if not text:

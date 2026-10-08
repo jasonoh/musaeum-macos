@@ -88,6 +88,23 @@ def test_a_rotated_stamp_is_dropped_even_though_vision_read_it():
     assert texts(result) == ["Body text here."]
 
 
+def test_a_vision_region_holding_only_rotated_characters_is_dropped():
+    """*Universe* p.352: a figure credit printed at an angle comes back as two
+    Vision regions, and the smaller one takes its rotated characters, so the
+    wide strip has none of its own and its words arrived from Vision's OCR —
+    G3 found `dean`, `hines` and `nrao` in the flow that way."""
+    stamp = glyphs("Dean Hines", 320, 340, angle=4.71)
+    body = column(["Body text here."], 72, 700)
+    regions = layout(
+        ((70, 695, 300, 712), "Body text here."),
+        ((310, 330, 500, 352), "Dean Hines"),
+        ((320, 335, 480, 350), ""),
+    )
+    result = build_page_text(0, stamp + body, regions, [], PAGE)
+    assert texts(result) == ["Body text here."]
+    assert result.vision_regions == 0
+
+
 def test_vision_splitting_a_line_in_two_is_one_paragraph():
     chars = glyphs("The dominant models are", 72, 700) + glyphs("mechanism.", 72, 686) + glyphs("We propose a new", 150, 686)
     result = build_page_text(0, chars, layout(((70, 684, 300, 712), ""), ((148, 684, 400, 698), "")), [], PAGE)
