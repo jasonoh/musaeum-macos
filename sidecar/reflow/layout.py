@@ -54,9 +54,11 @@ from typing import Optional
 
 import pypdfium2 as pdfium
 
+from .model import MIN_PAGE_CHARS, Block, Box, Document, PageResult, clean_text
+from .model import UNMAPPED_HYPHEN as _UNMAPPED_HYPHEN
+
 # --- tunables, each one measured against the corpus rather than guessed -----
 
-MIN_PAGE_CHARS = 50  # below this a page is a plate, not text
 BAND_COVERAGE = 0.05  # a gutter bin holds under 5% of the densest occupancy
 MIN_VALLEY_PT = 6.0  # a gap narrower than this is a word space, not a gutter
 MIN_VALLEY_FRACTION = 0.02  # …and a gutter is at least 2% of the text width
@@ -75,12 +77,14 @@ FIGURE_SCALE = 0.25  # the analysis render: a 612x792 page becomes 153x198
 FIGURE_CELL_PT = 12.0  # the ink grid's cell, in points
 FIGURE_MIN_PT = 24.0  # a region thinner than this is a rule, not a figure
 FIGURE_MIN_AREA = 4000.0  # square points
-FIGURE_MAX_PAGE = 0.80  # a region this much of the page is a background
+FIGURE_MAX_PAGE = 0.80  # a region this much of the page is a background, unless it is nearly textless
+FIGURE_BACKGROUND_TEXT_SHARE = 0.10  # a page-sized region is a photo only if this little of it is text
 FIGURE_MAX_TEXT_SHARE = 0.25  # a region this covered in text is a table, not a figure
 TABLE_LABEL_MAX_CHARS = 40  # inside a table-ish region, shorter than this is a label
 TABLE_LABEL_MAX_SHARE = 0.30  # …and narrower than this share of the region
 FIGURE_CROP_SCALE = 2.0  # the crop actually written into the EPUB
 FIGURE_MAX_PIXELS = 1400  # a figure is never rendered larger than this
+PLATE_MAX_PIXELS = 1400  # a plate's long side
 FIGURE_PNG_MAX_SHARE = 0.06  # above this share of the page a figure is JPEG
 INK_THRESHOLD = 245  # a pixel darker than this at analysis scale is ink
 RUNNING_HEAD_PAGES = 0.25  # the share of pages that makes a line a running head
@@ -92,25 +96,6 @@ HEADING_LEVELS = 3
 _SENTENCE_END = (".", "!", "?", ":", "”", "’")
 _HYPHENS = ("-", "‐", "‑", "‒", "–")
 _WS = re.compile(r"\s+")
-
-# XML 1.0 cannot carry most C0 control characters, and PDFs hand them out
-# freely — a font subset's encoding leaks them into extracted text. Measured:
-# every corpus artifact failed schema parsing until these were stripped (a
-# book's outline labels carried NULs all the way into `nav.xhtml`).
-#
-# `\ufffe` is the interesting member of this set. It is not noise: pdfium returns
-# it wherever a glyph has no Unicode mapping, and in this library that is
-# *exactly* the hyphen at a line break — "excel\ufffe/lent", "unavail\ufffe/
-# able", "under\ufffe/stood" across the corpus. `_line_text` turns it back into
-# a hyphen so the existing rejoin rule can put the word together again; stripping
-# it here is the safety net for whatever else a font's encoding hides.
-_ILLEGAL_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff\ufffe\uffff]")
-_UNMAPPED_HYPHEN = "\ufffe"
-
-
-def clean_text(text: str) -> str:
-    """Text a reader can be handed: no control characters, no NULs."""
-    return _ILLEGAL_XML.sub("", text)
 
 
 @dataclass
@@ -128,59 +113,13 @@ class Element:
     image: Optional[bytes] = None
     image_width: int = 0
     image_height: int = 0
+    image_type: str = ""
     band: int = -1
     split: bool = False  # this line had to be cut at a band boundary
 
     @property
     def width(self) -> float:
         return self.right - self.left
-
-
-@dataclass
-class Block:
-    """The unit the EPUB writer emits, in reading order."""
-
-    kind: str  # 'heading' | 'para' | 'figure'
-    text: str = ""
-    level: int = 0
-    size: float = 0.0  # a heading's height in points, before levels are ranked
-    page: int = 0
-    top: float = 0.0  # where it sits on its page, for the running-head rule
-    bottom: float = 0.0
-    image: Optional[bytes] = None
-    image_width: int = 0
-    image_height: int = 0
-
-
-@dataclass
-class PageResult:
-    index: int
-    blocks: list[Block] = field(default_factory=list)
-    chars: int = 0
-    lines: int = 0
-    cross_band: int = 0
-    figures_swallowed: int = 0
-    labels_swallowed: int = 0
-    bands: int = 1
-    top: float = 0.0  # the page's own box, so a block's position is judgeable
-    bottom: float = 0.0
-    flags: list[str] = field(default_factory=list)
-    seconds: float = 0.0
-
-
-@dataclass
-class Document:
-    source: str
-    pages: list[PageResult] = field(default_factory=list)
-    sections: list[tuple[str, int]] = field(default_factory=list)
-    verdict: str = "ok"
-    reason: str = ""
-    dropped_running_heads: list[str] = field(default_factory=list)
-    outline_entries: int = 0
-
-    @property
-    def text_pages(self) -> list[PageResult]:
-        return [p for p in self.pages if p.chars >= MIN_PAGE_CHARS]
 
 
 # --- characters and lines --------------------------------------------------
@@ -519,6 +458,7 @@ def build_blocks(
                     image=el.image,
                     image_width=el.image_width,
                     image_height=el.image_height,
+                    image_type=el.image_type,
                 )
             )
             continue
@@ -614,8 +554,8 @@ def _figure_regions(
     rows = max(1, height // cell)
     text_cells: set[tuple[int, int]] = set()
     for left, bottom, right, top in text_boxes:
-        c0 = max(int(left * FIGURE_SCALE) // cell, 0)
-        c1 = min(int(right * FIGURE_SCALE) // cell, cols - 1)
+        c0 = max(int((left - page_rect[0]) * FIGURE_SCALE) // cell, 0)
+        c1 = min(int((right - page_rect[0]) * FIGURE_SCALE) // cell, cols - 1)
         r0 = max(int((page_rect[3] - top) * FIGURE_SCALE) // cell, 0)
         r1 = min(int((page_rect[3] - bottom) * FIGURE_SCALE) // cell, rows - 1)
         for r in range(r0, r1 + 1):
@@ -673,7 +613,16 @@ def _figure_regions(
         page_h = page_rect[3] - page_rect[1]
         if min(w, h) < FIGURE_MIN_PT or w * h < FIGURE_MIN_AREA:
             continue
-        if w * h > FIGURE_MAX_PAGE * page_w * page_h:
+        covered = 0.0
+        for box_left, box_bottom, box_right, box_top in text_boxes:
+            overlap_w = max(0.0, min(box_right, right) - max(box_left, left))
+            overlap_h = max(0.0, min(box_top, top) - max(box_bottom, bottom))
+            covered += overlap_w * overlap_h
+        share = covered / max(w * h, 1.0)
+        # A page-sized region is a full-bleed photo only when it carries almost
+        # no text; with text through it, it is a tinted background. Slice 1
+        # discarded every region over 80% of the page, photos included.
+        if w * h > FIGURE_MAX_PAGE * page_w * page_h and share >= FIGURE_BACKGROUND_TEXT_SHARE:
             continue
         # A *table* is ink with text all through it: its rules and their bbox
         # make one large region, and treating that as a figure deleted the
@@ -681,61 +630,93 @@ def _figure_regions(
         # Learning*, where 186 of the page's lines were swallowed by the bbox of
         # a bordered table and the page lost 59% of its text. A figure has ink
         # with only sparse labels inside it, so text coverage is the test.
-        covered = 0.0
-        for box_left, box_bottom, box_right, box_top in text_boxes:
-            overlap_w = max(0.0, min(box_right, right) - max(box_left, left))
-            overlap_h = max(0.0, min(box_top, top) - max(box_bottom, bottom))
-            covered += overlap_w * overlap_h
-        if covered / max(w * h, 1.0) > FIGURE_MAX_TEXT_SHARE:
+        if share > FIGURE_MAX_TEXT_SHARE:
             table_like.append((left, bottom, right, top))
             continue
         figures.append((left, bottom, right, top))
     return figures, table_like
 
 
-def _crop(
-    page: pdfium.PdfPage, box: tuple[float, float, float, float], page_area: float
-) -> Optional[tuple[bytes, int, int]]:
+@dataclass
+class Crop:
+    data: bytes
+    width: int
+    height: int
+    image_type: str  # 'png' | 'jpeg'
+
+
+def _crop(page: pdfium.PdfPage, box: Box, page_rect: Box) -> Optional[Crop]:
     """Render a region at 2x, trimmed of its white margin, as PNG or JPEG.
 
+    pypdfium2's `crop` is the amount to cut off each edge, measured from the
+    page box — not a region. Slice 1 passed the region itself, so most crops
+    raised `ValueError: Crop exceeds page dimensions` (29 of 44 on *Universe*,
+    34 of 41 on *Modernist Cuisine*) and the rest rendered the wrong part of
+    the page, which is where the 7×406 slivers came from (spec Annex C.1).
+
     Encoding is chosen by size, and the choice is a size decision, not a taste
-    one: a 1,000-page text book whose figures are photographs came out at **116
-    MB** when every region was a lossless PNG, against a 305 MB source PDF. Small
-    regions — charts, diagrams, line art, where text must stay crisp — stay PNG;
-    anything larger is JPEG at 82. The pixel ceiling keeps a full-page plate from
-    being rendered at a resolution no reader will ever show.
+    one: a figure-heavy textbook came out at **116 MB** when every region was a
+    lossless PNG, against a 305 MB source. Small regions — charts, diagrams,
+    line art, where text must stay crisp — stay PNG; anything larger is JPEG.
+    The returned `image_type` names the file, so the bytes and the name agree.
     """
+    px0, py0, px1, py1 = page_rect
+    left, bottom, right, top = box
+    margins = (max(left - px0, 0.0), max(bottom - py0, 0.0), max(px1 - right, 0.0), max(py1 - top, 0.0))
+    if (px1 - px0) - margins[0] - margins[2] < 1 or (py1 - py0) - margins[1] - margins[3] < 1:
+        return None
     try:
-        image = page.render(scale=FIGURE_CROP_SCALE, crop=box).to_pil().convert("RGB")
+        image = page.render(scale=FIGURE_CROP_SCALE, crop=margins).to_pil().convert("RGB")
     except Exception:
-        # A crop the page cannot render is not worth failing a whole book over.
+        # A crop the page cannot render is not worth failing a whole book
+        # over; the caller records it and keeps the region's text.
         return None
     from PIL import Image
+
     mask = image.convert("L").point(lambda v: 255 if v < 250 else 0)
     bbox = mask.getbbox()
     if bbox:
         pad = 4
         image = image.crop(
-            (
-                max(bbox[0] - pad, 0),
-                max(bbox[1] - pad, 0),
-                min(bbox[2] + pad, image.width),
-                min(bbox[3] + pad, image.height),
-            )
+            (max(bbox[0] - pad, 0), max(bbox[1] - pad, 0), min(bbox[2] + pad, image.width), min(bbox[3] + pad, image.height))
         )
     if max(image.size) > FIGURE_MAX_PIXELS:
         factor = FIGURE_MAX_PIXELS / max(image.size)
-        image = image.resize(
-            (max(1, int(image.width * factor)), max(1, int(image.height * factor))),
-            Image.LANCZOS,
-        )
+        image = image.resize((max(1, int(image.width * factor)), max(1, int(image.height * factor))), Image.LANCZOS)
     buffer = io.BytesIO()
-    region_area = (box[2] - box[0]) * (box[3] - box[1])
-    if region_area > FIGURE_PNG_MAX_SHARE * page_area:
+    page_area = max((px1 - px0) * (py1 - py0), 1.0)
+    if (right - left) * (top - bottom) > FIGURE_PNG_MAX_SHARE * page_area:
         image.save(buffer, "JPEG", quality=82, optimize=True)
+        kind = "jpeg"
     else:
         image.save(buffer, "PNG", optimize=True)
-    return buffer.getvalue(), image.width, image.height
+        kind = "png"
+    return Crop(buffer.getvalue(), image.width, image.height, kind)
+
+
+def _has_ink(page: pdfium.PdfPage) -> bool:
+    image = page.render(scale=FIGURE_SCALE).to_pil().convert("L")
+    return image.getextrema()[0] < INK_THRESHOLD
+
+
+def render_plate(page: pdfium.PdfPage) -> Optional[Crop]:
+    """A text-less page with ink on it, as one JPEG.
+
+    Slice 1 returned before figure extraction on any page under 50
+    characters, so every photo plate vanished (*Modernist Cuisine*: 6 of 6
+    sampled text-less pages carried images).
+    """
+    if not _has_ink(page):
+        return None
+    width, height = page.get_size()
+    scale = min(FIGURE_CROP_SCALE, PLATE_MAX_PIXELS / max(width, height, 1.0))
+    try:
+        image = page.render(scale=scale).to_pil().convert("RGB")
+    except Exception:
+        return None
+    buffer = io.BytesIO()
+    image.save(buffer, "JPEG", quality=82, optimize=True)
+    return Crop(buffer.getvalue(), image.width, image.height, "jpeg")
 
 
 # --- the page pass ---------------------------------------------------------
@@ -819,6 +800,16 @@ def extract_page(page: pdfium.PdfPage, index: int) -> PageResult:
     result.chars = sum(1 for c in chars if c.text.strip())
     if result.chars < MIN_PAGE_CHARS:
         result.flags.append("no_text")
+        plate = render_plate(page)
+        if plate is not None:
+            result.plate = True
+            result.blocks = [
+                Block(
+                    "figure", page=index, top=page_rect[3], bottom=page_rect[1], left=page_rect[0], right=page_rect[2],
+                    image=plate.data, image_width=plate.width, image_height=plate.height,
+                    image_type=plate.image_type, plate=True,
+                )
+            ]
         result.seconds = time.perf_counter() - started
         return result
 
@@ -847,33 +838,31 @@ def extract_page(page: pdfium.PdfPage, index: int) -> PageResult:
 
     boxes = [(e.left, e.bottom, e.right, e.top) for e in elements]
     regions, table_like = _figure_regions(page, boxes, page_rect)
-    page_area = max((page_rect[2] - page_rect[0]) * (page_rect[3] - page_rect[1]), 1.0)
+    result.figures_detected = len(regions)
+    written: list[Box] = []
     for box in regions:
-        cropped = _crop(page, box, page_area)
-        if not cropped:
+        crop = _crop(page, box, page_rect)
+        if crop is None:
+            result.crop_failures.append(f"page {index + 1} box {tuple(round(v, 1) for v in box)}")
             continue
-        data, width, height = cropped
+        written.append(box)
         elements.append(
             Element(
                 "figure", box[0], box[1], box[2], box[3],
-                image=data, image_width=width, image_height=height,
+                image=crop.data, image_width=crop.width, image_height=crop.height, image_type=crop.image_type,
             )
         )
+    result.figure_boxes = written
 
-    # Text that sits *inside* a figure is part of the figure — a chart's data
-    # labels, an axis, a diagram's own words. It is already in the crop, so
-    # leaving it in the flow prints it twice: once as prose, once as a picture.
-    if regions or table_like:
+    # Text inside a *written* figure is part of the figure — it is already in
+    # the crop. Inside a figure whose crop failed it is the only copy left, so
+    # it stays (slice 1 dropped it either way).
+    if written or table_like:
         kept: list[Element] = []
         for el in elements:
-            if el.kind == "line" and _inside(el, regions):
+            if el.kind == "line" and _inside(el, written):
                 result.figures_swallowed += 1
                 continue
-            # Inside a table-like region only the *fragments* go: a row is a long
-            # line and stays, a chart's axis label (`Moon`, `Earth`,
-            # `Temperature (K)`) is a short one and is what makes a figure-heavy
-            # book read as noise — measured on *Universe*, whose first run put
-            # 21,472 single-letter tokens into the flow.
             if el.kind == "line" and _label_inside(el, table_like):
                 result.labels_swallowed += 1
                 continue
@@ -1013,6 +1002,9 @@ def analyse(
             doc.pages.append(extract_page(pdf[i], i))
     finally:
         pdf.close()
+    doc.figures_detected = sum(p.figures_detected for p in doc.pages)
+    doc.plates = sum(1 for p in doc.pages if p.plate)
+    doc.crop_failures = [f for p in doc.pages for f in p.crop_failures]
     mark_running_heads(doc)
     assign_heading_levels(doc.pages)
     _verdict(doc)

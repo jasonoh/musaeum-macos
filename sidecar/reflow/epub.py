@@ -40,6 +40,9 @@ _EPUB_TYPE = {
     3: "subsection",
 }
 
+_IMAGE_EXT = {"png": "png", "jpeg": "jpg"}
+_IMAGE_MEDIA = {"png": "image/png", "jpeg": "image/jpeg"}
+
 # The reader owns typography; this is only what an EPUB needs to not look broken
 # when nothing else is loaded (a fallback reader, a conversion tool).
 STYLESHEET = """body { margin: 0; padding: 0; }
@@ -183,7 +186,7 @@ def _opf(
     source_name: str,
     modified: str,
     sections: list[tuple[str, int, list[Block]]],
-    images: list[str],
+    images: list[tuple[str, str]],
 ) -> str:
     items = [
         '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
@@ -195,10 +198,8 @@ def _opf(
             f'<item id="c{i + 1:03d}" href="text/c{i + 1:03d}.xhtml" '
             'media-type="application/xhtml+xml"/>'
         )
-    for name in images:
-        items.append(
-            f'<item id="{_slug(name)}" href="images/{name}" media-type="image/png"/>'
-        )
+    for i, (name, media) in enumerate(images):
+        items.append(f'<item id="img{i + 1}" href="images/{name}" media-type="{media}"/>')
     spine = "\n".join(
         f'<itemref idref="c{i + 1:03d}"/>' for i in range(len(sections))
     )
@@ -249,13 +250,15 @@ def write_epub(doc: Document, out_path: str, title: str) -> dict:
     # One file per figure, named for its page so a crop can always be traced
     # back to the page it came from.
     image_names: dict[int, str] = {}
-    images: list[tuple[str, bytes]] = []
+    images: list[tuple[str, bytes, str]] = []
     for _, _, blocks in sections:
         for block in blocks:
             if block.kind == "figure" and block.image:
-                name = f"p{block.page + 1:04d}-{len(images)}.png"
+                kind = block.image_type or "png"
+                stem = "plate" if block.plate else str(len(images))
+                name = f"p{block.page + 1:04d}-{stem}.{_IMAGE_EXT[kind]}"
                 image_names[id(block)] = name
-                images.append((name, block.image))
+                images.append((name, block.image, _IMAGE_MEDIA[kind]))
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -263,13 +266,13 @@ def write_epub(doc: Document, out_path: str, title: str) -> dict:
         info.compress_type = zipfile.ZIP_STORED
         zf.writestr(info, "application/epub+zip")
         zf.writestr("META-INF/container.xml", _container())
-        zf.writestr("OEBPS/content.opf", _opf(uid, title, os.path.basename(doc.source), modified, sections, [n for n, _ in images]))
+        zf.writestr("OEBPS/content.opf", _opf(uid, title, os.path.basename(doc.source), modified, sections, [(n, m) for n, _, m in images]))
         zf.writestr("OEBPS/nav.xhtml", _nav(sections))
         zf.writestr("OEBPS/toc.ncx", _ncx(sections, uid, title))
         zf.writestr("OEBPS/style.css", STYLESHEET)
         for i, (name, _, blocks) in enumerate(sections):
             zf.writestr(f"OEBPS/text/c{i + 1:03d}.xhtml", _xhtml(name, blocks, image_names))
-        for name, data in images:
+        for name, data, _ in images:
             zf.writestr(f"OEBPS/images/{name}", data)
 
     words = sum(
