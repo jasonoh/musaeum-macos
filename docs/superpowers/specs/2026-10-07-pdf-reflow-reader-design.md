@@ -1,0 +1,386 @@
+# Design: PDF that reads like a book — a reflowed EPUB as the default view, the original as the escape hatch (C2, v1)
+
+**Date:** 2026-10-07
+**Status:** **Agreed 2026-10-07** — the corpus (six books, a paper added at the owner's request), the fallback posture, the phone's gap for fallback books, and both boundary crossings were all answered by the owner; the record is in *Open questions for review*. **Slice 1 is built and its automated half passed** (Annex B): five of six corpus books produced a schema-clean artifact and the image-only book fell back with a reason. **The gate's other half is the owner reading `dist/reflow-spike/`.** Slices 2–5 run only after that reading, and Annex B.3 lists what the spike left open — including one recommended corpus change.
+**Scope:** A PDF-only book becomes readable in-app on both platforms by **default through a reflowed EPUB** — one artifact, produced once by the Mac sidecar, cached on the NAS — with the original PDF one gesture away. It deliberately does **not** touch `metadata.json`'s shape, `book.formats`, the SQLite schema, the Calibre migration wizard, OCR, or annotations.
+**Depends on:** `docs/invariants/reader.md` (the reader shell, the entry points, the reading-state schema, and the typography/theme layer the artifact inherits), `docs/invariants/nas-and-catalog.md` (the book folder layout and the by-extension rule), `docs/invariants/files-and-deletion.md` (what a book folder holds), `docs/rest-api.md` (the wire the phone reads), `../musaeum-ios/docs/specs/2026-09-22-client-v1-design.md` (the phone's reader).
+**Interacts with:** `components/reader/ReaderEngine.tsx` + `stores/reader.store.ts` (the open path), `services/book-bytes.ts` + the `musaeum://` registration in `electron/main/index.ts`, `services/file-access.ts` + `services/apple-books.ts` (the escape hatches), `sidecar/main.py`'s `METHODS` and the notification channel (`services/sidecar.ts:34`), `services/api/shape.ts` + `api/rest.ts`.
+**Reverses:** `docs/superpowers/specs/2026-07-14-pdf-multimachine-reader-design.md` § *Engines* ("**PDF: pdf.js** (Mozilla), canvas-rendered") and its § *Experience* line "PDF mode: fit-width / fit-page, zoom" — as the **reading** view. pdf.js is not deleted from the plan; it is demoted from the default to a later refinement of the original's own view (D9). It also fires the iOS backlog's deferred item *PDF in the reader* (revival condition: "a book wanted on the phone that is PDF-only") and amends `tasks.md`'s C2, whose text is written as pdf.js into the existing shell.
+
+---
+
+## Why now
+
+**The library is full of books the phone cannot read, and the phone is where papers are read.** Read off the live database 2026-10-07: of 6,731 books, **1,707 have no EPUB at all** — and an EPUB is the only format both engines render. 1,714 rows hold a PDF, and **1,534 of them hold a PDF and no EPUB**, which is the set this design is for: 1,489 hold *nothing* the Mac can open (`formats == ["pdf"]` coincides exactly with "no epub, azw3 or mobi" here, which is why the Mac's own rule would have found only those), and 45 more hold a Kindle format beside the PDF — **the paper shelf** (§3), where the Mac reads a `mobi` it renders perfectly well while the phone downloads that same `mobi` and fails, because Readium renders EPUB and the client has no mobi branch. On the Mac a PDF-only book falls through to Preview (`stores/reader.store.ts`'s `openBook` → `files.openBookFile`), the pleasant-once-unpleasant-for-a-chapter experience this design exists to replace. On the phone they are worse still: the wire serves `format=pdf`, the client downloads it, and `ReaderModel.load` renders every download with an `EPUBNavigatorViewController`. Readium can *parse* the PDF — the opener is already built with a `pdfFactory` — but nothing in the client renders one, which is what `../musaeum-ios`'s backlog means by "a separate navigator and a PDF document factory, which is not wired here". **Read as a product number: the phone can read 5,024 books today and 6,558 once this ships** (the 1,534 above, less the image-only minority the fallback rule sends back to the original).
+
+**The shape that makes both platforms cheap is one artifact, not two readers.** A reflowed *EPUB* is rendered by the engine each client already owns: on the Mac foliate takes it through the same `musaeum://book/…` route and the same `ReaderEngine`, so the TOC panel, find-in-book, the AI ask panel, the typography popover, the theme-derived page CSS and the whole `reading_state` policy arrive for free; on the phone Readium opens it with the navigator it already builds, at a fraction, with **no iOS engine change**. "Parse the PDF, then render it like an ebook" is therefore one pipeline and one artifact, not a per-platform project.
+
+**The owner's decisions (2026-10-07), which this spec implements.** High fidelity means *the words, the flow and the images in the correct order* — not a facsimile of the page. Conversion is **on demand, cached, with the original readable during**, and needs a visible progress surface. The reflowed EPUB's own position is the position of record; **the original PDF does not get a position in v1**. A book whose layout cannot be laid out confidently falls back to the original rather than shipping a mangled reflow. The wire carries it additively. Tooling is chosen below on measured weight and licence.
+
+## What the corpus actually says
+
+Everything in this section was measured on 2026-10-07 against `/Volumes/books/musaeum` and the live database; the commands and the raw per-page numbers are in **Annex A**. The point of measuring first was that the tooling decision and the fidelity gate both depend on facts nobody had: how much of the shelf even has text, and how badly the two candidate extractors actually read a real textbook.
+
+### 1. One book in ten has no text layer at all
+
+Thirty books holding a PDF and no EPUB sampled at random (`random.seed(20261007)`), three spread pages each, characters counted per page:
+
+| Verdict | Books | What it means |
+| --- | --- | --- |
+| **Text** (≥200 chars on some sampled page) | **27 / 30 (90%)** | Ordinary reflow candidates |
+| **Image-only** (0 chars on every sampled page) | **3 / 30 (10%)** | Scanned or plate-only; reflow needs OCR, which is **out of v1** |
+| **A parser that could not open the document** | **0 / 30** | A defensive clause in D6, **not** an observed case — see the revision note |
+
+Of the 27 text books, every one reached ≥1,000 characters on some page and **22 carried a PDF outline** (a ready-made TOC). A 30-book sample puts a wide interval on the 10% (roughly 2–26%), so treat the share as "a real minority", not a number to plan a backlog against. The three image-only verdicts were re-checked with a second extractor on the same pages (`pypdf.extract_text`: 0 characters on every one), so the verdict is the file's and not the probe's.
+
+*Measurement revision, recorded because it moved a published number:* this table first read **26 text / 3 image-only / 1 unopenable**. The unopenable one was my own probe: the page picker computed `npages - 60` without clamping, so the sample's shortest book (12 pages) asked for page **−48** and the raised `PdfiumError` was recorded as "this document cannot be opened". Re-measured, *Efficient Estimation of Word Representations in Vector Space* reads normally — 11 of 11 sampled pages, 3,539 median characters, a 19-entry outline. The corrected tally is above, and no book in the sample defeated a parser.
+
+**This is why OCR is not in v1 and why the fallback rule is load-bearing rather than boilerplate:** the population the reflow cannot serve is real, it is not rare, and D6 makes falling back on it a normal outcome instead of a defect.
+
+### 2. The five hard cases I picked were not the hard cases
+
+The five books chosen by title and size — a scanned-looking textbook, a designed cookbook, a physics text, a comic volume, a communications text — sampled 20 pages each from the middle of the book (pages 41–60):
+
+| Book | Size | Pages | Text pages | Outline | Images/page |
+| --- | --- | --- | --- | --- | --- |
+| *Molecular Cell Biology, 7th Ed* | 708.2 MB | 1,247 | **0 / 20** | 7 | 1 (full-page) |
+| *Understanding Human Communication, 11th Ed* | 371.5 MB | 516 | **0 / 20** | 14 | 1 (full-page) |
+| *The Complete Far Side, Vol 1* | 625.1 MB | 673 | **0 / 20** | 0 | 1 (full-page) |
+| *Universe: Solar Systems, Stars and Galaxies* | 304.8 MB | 535 | 20 / 20 | **256** | 19 / 20 pages, 66 objects |
+| *Modernist Cuisine, Vol 1* | 299.4 MB | 355 | 19 / 20 | **355** | 20 / 20 pages |
+
+**Three of the five have no text layer at all**, including the textbook the size alone would have nominated as the two-column case to beat. The corpus for the fidelity gate is therefore chosen by *measured content*, not by reputation — Annex A lists what each of the five actually is, and the spike re-picks if necessary.
+
+### 3. Papers are the genre the phone is for, and they are the layout this has to survive
+
+The owner's use case is reading papers on the phone, so the paper shelf was measured separately: the library holds six of them, all two-column, all with a text layer, and every one holds a `mobi` beside its `pdf` (*Attention is All You Need* an `epub` as well) — not one is `pdf` alone.
+
+| Paper | Formats | Pages | Outline | Text pages | 2-col pages | Median chars | Median runs | Widest interleave |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| *Attention is All You Need* | mobi, epub, pdf | 15 | 22 | 12 / 12 | 12 / 12 | 3,295 | 1 | 5 / 12 pages |
+| *Sequence to Sequence Learning with Neural Networks* | mobi, pdf | 9 | 0 | 8 / 8 | 8 / 8 | 4,044 | 3 | 5 / 8 pages |
+| *Learning Phrase Representations… (GRU)* | mobi, pdf | 11 | 0 | 10 / 10 | 10 / 10 | 4,535 | 4 | 4 / 10 pages |
+| *Scaling Transformer to 1M Tokens (RMT)* | mobi, pdf | 9 | 13 | 8 / 8 | 8 / 8 | 3,728 | 9 | 1 / 8 pages |
+| *Transformers Meet Directed Graphs* | mobi, pdf | 29 | 0 | 12 / 12 | 12 / 12 | 5,317 | 7 | 1 / 12 pages |
+| *Efficient Estimation of Word Representations (word2vec)* | mobi, pdf | 12 | 19 | 11 / 11 | 11 / 11 | 3,539 | 1 | 8 / 11 pages |
+
+Three things follow, and the third changes a decision:
+
+1. **Two columns are rarer here than the first probe claimed (corrected — see Annex B.1).** The line-start metric this section was written from called 12 of 12 of *Attention*'s pages two-column; gutter detection finds **one band on all 13**, and the genuinely two-column paper on this shelf is *Learning Phrase Representations* (2 bands on 6 of 9 pages, gutters 12–16pt). Across the shelf, 18% of sampled pages carry more than one band (§5). The layout the reflow has to survive is therefore *multi-region* — body plus captions, sidebars and callouts — which is why §4 is about reading order rather than about fonts.
+2. **Papers are short and mostly poorly outlined.** 9–29 pages against the 355–1,247-page books above, so a paper's first-open conversion is fractions of a second of extraction — the progress surface (D7) is for textbooks, not for these; and **three** of the six carry **no** PDF outline at all, so the heading pass is what gives a paper a TOC.
+3. **None of them is `pdf`-only, and that breaks the obvious trigger rule.** All six hold `mobi` beside the `pdf` (*Attention* also holds an `epub`), so `readableFormat` returns `mobi` and a rule phrased as *"the Mac cannot read it"* would never reflow a paper — while **the phone cannot read `mobi` or `azw3` at all**: Readium renders EPUB, and the client has no mobi branch (its only mentions of the format are a filter facet and the upload list), so a `mobi`-only book downloads and then fails to open. Measured against the live database: **1,707 books have no EPUB**, of which 1,534 hold a PDF (**the reflow set**) and 173 hold neither an EPUB nor a PDF (mobi/azw3-only — outside this feature's reach, and named as a gap rather than quietly skipped).
+
+So the trigger is **"holds a PDF and no EPUB"** (D1/D7), which is one rule that serves both clients for the same reason: the EPUB is the only format both engines render. The 45 books inside that set which also hold a Kindle format are the shelf those papers live on (they are not all papers, and a reflow serves the rest of them just the same).
+
+### 4. Neither candidate library reads a two-column page correctly
+
+**Read this with the correction in Annex B.1 before trusting the labels**: the pages measured here are *table-heavy*, not two-column, and the sentence "every sampled page of every paper is two-column" in §3 is wrong. What the table below still measures is real and still decides D4 — on a page where text sits in more than one region, pdfium's own order makes 5–14 monotone runs where a correct read of the layout needs 2–3, and pdfminer's is no better.
+
+The case is *Universe* (its body is one column, but its pages carry figure captions, sidebars and callouts — 7–9 distinct line-start clusters per page). Same six pages through both extractors, with the same line segmenter: characters, lines, monotone *runs* in the extraction order (a column-correct read gives ~1 run per column; a reader alternating columns gives ~1 per line), and lines whose own characters are split by a wide horizontal gap (the same-baseline interleave):
+
+| Page | pdfium: chars / lines / runs / wide | pdfminer: chars / lines / runs / wide |
+| --- | --- | --- |
+| 41 | 3,556 / 168 / **11** / 2 | 3,001 / 90 / **9** / 0 |
+| 43 | 5,358 / 150 / **5** / 0 | 4,895 / 94 / **4** / 0 |
+| 45 | 7,026 / 376 / **8** / 0 | 6,304 / 198 / **6** / 0 |
+| 47 | 3,482 / 151 / **12** / 1 | 2,966 / 97 / **13** / 0 |
+| 49 | 3,037 / 191 / **14** / 0 | 2,417 / 91 / **7** / 0 |
+| 51 | 4,529 / 172 / **10** / 0 | 4,134 / 107 / **8** / 0 |
+
+The finding is the one that decides D4: **the words are in the file and neither library hands us the order.** Runs of 5–14 where a correct read of a two-column page is 2–3, on both. pdfminer's own order is not better on these pages, its line count is roughly half pdfium's (it groups differently), its character count runs 85–93% of pdfium's, and on real books it writes `Cannot set stroke color: 2 components specified, but only 1 (grayscale), 3 (RGB), and 4 (CMYK) are supported` to stderr **per page** — in this architecture the sidecar's stderr is the app's log. Whatever lands must therefore own its column and reading-order pass, or hand the problem to a model (D4).
+
+*Measurement revision, recorded because it changes a number:* the first pdfminer walker did not descend into `LTFigure`, which would have read as pdfminer dropping ~13% of the words. The corrected walker (`LTContainer` recursion) is in Annex A; the residual gap is a difference in counting whitespace-only boxes and grouping, not (as far as this probe can see) dropped words. The spike's comparison must be a **word-multiset diff against the page's own text**, not a character count.
+
+### 5. Two columns are a minority of pages, and a real one
+
+The correction in Annex B.1 raised the question the original probe could not answer: if the papers are not two-column, how common is a page that genuinely needs column order? Sampled the same way as §1 — 16 books holding a PDF and no EPUB, six pages each, bands detected by the projection profile slice 1 uses (Annex B):
+
+| Result | Pages |
+| --- | --- |
+| Text pages sampled | **71** |
+| …carrying more than one band | **13 (18%)** |
+| …in a single band | 58 (82%) |
+
+It is not spread evenly, and that is the useful part: the multi-band pages cluster in **designed reference works** — the *Rough Guides* travel books (4/4, 3/4, 2/6, 2/5 pages), a designed textbook, a cookbook — while ordinary prose books and every paper here are one band throughout. So the column pass is not the main event for a shelf of prose, and it is the whole event for the travel guides, the cookbooks and the textbooks, which are also the books where a wrong reading order is most visible.
+
+### 6. What each tooling candidate weighs, installed
+
+Measured by resolving each candidate's full closure and `HEAD`ing every wheel (Annex A). The sidecar's venv is built **on the user's machine, on first launch**, from a pinned `requirements.txt` (`docs/invariants/packaging-and-python.md`) — so this is a first-run cost, not only a disk cost.
+
+| Candidate | Licence | Distributions | Download | Notable members |
+| --- | --- | --- | --- | --- |
+| `pypdfium2` — **already a dependency** | BSD / Apache | 0 new | 0 MB | char boxes, per-char font size, image objects, region renders |
+| `pdfminer.six` | MIT | **3** | **10.2 MB** | layout analysis (`LAParams`), bbox + font + size per char, AES decryption |
+| `pdfplumber` | MIT | 6 | 18.2 MB | pdfminer plus table detection |
+| `docling` | MIT | **96** | **300 MB** | torch 121 MB, opencv 46 MB, rapidocr 26 MB, scipy 20 MB, transformers 12 MB, pandas 10 MB — **plus model weights fetched from HuggingFace on first use** |
+| `PyMuPDF` | **AGPL-3.0** or commercial | — | — | **Excluded:** the repo is MIT and ships a DMG (`LICENSE`, `electron-builder.yml`); bundling an AGPL wheel relicenses the distributed app |
+| Calibre `ebook-convert` / poppler `pdftohtml` | GPL, invoked as a subprocess, user-installed | 0 MB | 0 MB | mature extraction, but an **opaque artifact**: no source-page map, no confidence signal to gate on, and it re-adds the external binary the signed-off Calibre-free work is deleting |
+
+Throughput, text only: `pypdfium2` chars **and** boxes 4 ms/page and 1–18 ms/page on the real books above; `pypdf.extract_text` 2 ms/page; `pdfminer.six` 14 ms/page on a synthetic and materially slower on real pages with many fonts. Speed is **not** the discriminator between the two permissive candidates; installation weight and whether the library hands over a reading order are.
+
+## Design decisions
+
+**D1 — The default view of a PDF is a reflowed EPUB; the original PDF is the escape hatch, and the trigger is "this book holds a PDF and no EPUB".** Rejected: pdf.js as the reading view (the 2026-07-14 spec's own C2). It renders the same fixed page at a different size — the unpleasantness being escaped — and on the phone it would need Readium's unwired PDF navigator, so it is the *expensive* option as well as the poorer one. Rejected: leaving PDFs to Preview (the status quo this feature exists to end). Rejected: the narrower trigger the Mac's own rule suggests ("no format `readableFormat` can open", 1,489 books) — it would skip the whole paper shelf, where a `mobi` beside the PDF makes the Mac happy and leaves the phone with a file it cannot render (§3). One rule, "no EPUB", is 1,534 books and is the same rule for both clients, because the EPUB is the only format both engines render.
+
+**D2 — The reflow is produced once, by the Mac's sidecar, and cached on the NAS.** Not per client and not per open. The phone cannot convert (no local library, no heavy local work — iOS invariant 7), and two converters would produce two documents, which is two positions and two fidelities for one book. Rejected: converting on every open (measured cost below, paid on every read); a conversion service on the phone.
+
+**D3 — The artifact lives outside the book-format namespace, in a `derived/` subfolder beside the book's files.** This is the rule the feature hangs on, and each hazard is an *existing* rule that keys on the extension alone:
+
+| Existing rule | What a `{title}.epub` derivative in the book folder would do |
+| --- | --- |
+| `book-files.ts:36-38` (`renameToTitle`) | renames **any** `.epub` to `{title}.epub` — onto itself on a PDF-only book, onto the real book file on an EPUB+PDF one |
+| `book-files.ts:73-79` (`computeFileSizeBytes`) | counts the derivative in `file_size_bytes` |
+| `file-access.ts:37` (`formatFile`) | makes "Open PDF in Preview" open the **derivative** — the precise opposite of what the escape hatch means |
+| `apple-books.ts:15` | exports the derivative to Apple Books |
+| `bulk-hydrate.findHydratableFile` | re-fetches a PDF book's metadata from the derivative instead of the original |
+
+The precedent that cuts the other way is deliberate and does **not** apply here: a Calibre-free converted AZW3 *is* added to `formats` and `file_size_bytes` (`transfer-queue.ts:111-115`) because it is a real ebook file another device reads. A reflow is a **derived, fallible rendering cache**: adding it to `formats` would make a PDF-only book claim an EPUB, change its format chip, change the phone's `preferredFormat`, offer the derivative to a Kindle, and pollute the `formats` facet counts.
+
+So: `{book}/derived/reflow.epub` plus `{book}/derived/reflow.json` (the version stamp of D9 and the source-page map of D5). A directory name carries no extension, so every `readdir`-plus-`extname` rule above — including the two that delete by extension — skips it without a single change, and `fs.rm` of the folder takes it with the book. Rejected: a fixed-name `reflow.epub` beside the book (the rename rule rewrites it); a library-level `{root}/reflow/{uuid}/` cache (a second layout convention for per-book derived data while covers already live in the book folder).
+
+**D4 — Extraction is our own column/reading-order pass over `pypdfium2`, with `pdfminer.six` admitted only where the spike proves it earns its keep; a layout model is the named escalation, not v1.** The probe (§4) is why this is not "use the library that does layout": no permissive library hands us a reading order, so a heuristic pipeline is ours to write either way, and the fastest primitives are already installed. Slice 1 measures our pass against pdfminer's on the corpus, page by page.
+
+**Escalation condition, stated now so it is a reading and not a debate:** if the spike cannot reach the corpus gate with the heuristic pass, the choice is a layout model (`docling`'s 300 MB closure and first-use model download — a decision for the owner, with the numbers in §6) or shipping the feature as *fallback-only* for the books we cannot order. `PyMuPDF` is not on that list (AGPL). An external CLI is not either while the Calibre-free work is in flight (the tooling table in §6, last row).
+
+**Whichever tool wins, the seam is fixed:** one module maps *PDF → blocks*, each block carrying its bbox, its source page, and a role (heading / paragraph / figure / caption). Numbers are not the difference between the candidates; reversibility is what keeps this decision cheap to revisit.
+
+**D5 — Every block carries its source page, and the reflowed EPUB is the position of record.** The reflow's `position` is a CFI into the derived document and its `percent` is the portable currency — the existing schema, unchanged (`docs/invariants/reader.md` *Reading position*). The **original PDF gets no position in v1** (owner, 2026-10-07). The map is still written, because it is what makes a later "open the original at the page I was on" and a future pdf.js viewer possible without re-extracting anything, and because it is the only way to debug a reflow against the page it came from.
+
+**D6 — Confidence, not optimism: a book whose reading order cannot be established falls back to the original, and the surface says why.** The gate is evaluated during the pass and is per **book**, not per page: a textless document (the 10% of §1), a document the parser cannot open, a layout whose regions cannot be ordered, or a genuinely fixed page (a comic, an art book). One rule with no per-file judgement: **no artifact, the original path, one line of reason.** This is invariant 12's posture applied to a new subsystem, and it is what lets a heuristic pass ship at all. `docs/invariants/files-and-deletion.md` gains the rule in slice 5.
+
+*Named consequence, so nobody discovers it on the phone:* the fallback lands on the Mac's escape hatch (Preview) and on the phone as **a book the client still cannot open** — Readium there parses a PDF but nothing renders one until its separate PDF navigator is wired (`../musaeum-ios` backlog). For the ~10% image-only population that is the status quo of today's phone, unchanged by this feature and recorded as a gap rather than papered over.
+
+**D7 — Conversion is on demand, cached, and the reader shows progress while the original stays reachable** (owner, 2026-10-07). The pass runs when a reflowable PDF is first opened, streams progress on the existing notification channel (`sidecar.ts:34`'s `onNotification`, the same mechanism migration progress uses), and is cached permanently. Rejected: a bulk job over 1,534 books that nobody has opened — the same lazy rule the AZW3 cache follows, and the same reasoning as that spec's D7. A 1,247-page scanned textbook is not the cost model: measured on *Universe* (535 pages) the raw extraction is ~18 ms/page and the added line/column/figure work is ours, so a first open is seconds for a typical trade book and minutes for a 700-page textbook — which is exactly why the progress surface is a requirement and not a nicety.
+
+**D8 — The wire gains a reflow representation, additively — never a synthetic member of `formats`.** `formats` keeps meaning *the files this book holds*; a PDF-only book must not report an EPUB, or the phone's `preferredFormat` (`formats.first`) would lie and the Mac's chips and facets would follow it. The shape is a route the phone can already consume: `GET /api/books/{id}/file?format=reflow` answering `application/epub+zip`, and an additive book-payload member reporting availability and version (the pattern `cover` already uses for "does it exist, and what version"). The phone's rule becomes *one clause*: `reflow.available` → download `reflow` and save it locally as `{id}.epub` (the local name is the client's business — iOS invariant 2), else `formats.first` as today. The detailed field list belongs to `docs/rest-api.md` in slice 4, and **the contract lands in this repo first** (iOS invariant 1).
+
+**D9 — Failure stays non-fatal and honest, and a stale artifact is never served.** Temp name, verify, rename into place; a failed pass leaves no residue, logs one line, and the book keeps the original path (invariant 12, and the Calibre-free spec's D5 in the same posture). `derived/reflow.json` records the source PDF's **size and mtime** and the **converter's version**, re-checked on open: a replaced PDF or a new converter version re-runs the pass instead of serving a stale rendering. A regenerated reflow invalidates a stored CFI — the existing percent fallback absorbs it, which is why `percent` is the member that travels.
+
+**D10 — Nothing in the reader's shell changes.** Same `ReaderEngine`, same `musaeum://` route, same panels, same typography and theme resolution, same `reading_state` schema, same search-in-book and ask panel — because the artifact is an EPUB and the engine is already an EPUB engine. The TOC comes from the PDF outline where there is one (§1: 22 of 27) and from a font-size heading pass where there is not — which for this library's papers, three of six with no outline at all (§3), is the difference between a TOC and none. **This is the whole argument for the shape**, and it is also the acceptance test for it: if any part of the reader has to learn about PDFs, the design has gone wrong.
+
+## Slices
+
+| Slice | What | Files (budget) | Gate |
+| --- | --- | --- | --- |
+| **1 — the spike** | Our own layout pass (columns, lines, reading order, headings) over `pypdfium2` and a throwaway EPUB writer, run over the corpus; the same corpus through `pdfminer.six` for comparison; a probe script that reports word-multiset diff vs the page text, image order, heading detection and TOC per book | `sidecar/reflow/` (new, ≤4) + `scripts/pdf-reflow-probe.py` | **The corpus gate (D6/D4):** ≥5 of the 6 corpus books read end to end in the correct order — no interleaved columns, no dropped paragraphs, images interleaved where they belong — decided by an automated report **and** by the owner reading the six artifacts in the existing reader. The image-only book must produce **no artifact and the fallback**, which is a pass and never counted as a miss. Below the bar, D4's escalation, recorded in the annex |
+| **2 — the pipeline, production** | Promote to `reflow_pdf` behind the RPC with progress notifications, the `derived/` artifact and its version stamp, the confidence gate, temp-write-and-rename; fixtures and pytest per rule (a generated two-column page, an image-only one, an outline/no-outline pair, a page with no text layer inside a text book) | `sidecar/reflow/*`, `sidecar/main.py`, `sidecar/tests/*`, fixture generator (**≤7**) | pytest green; every corpus book's artifact byte-stable across two runs; no residue on an induced failure; the stamp re-runs on a touched source |
+| **3 — the Mac reader** | `derived/reflow.epub` served over `musaeum://book/{id}/reflow` (`book-bytes.ts`'s allowlist, noted in `tasks.md` as the one that fails as a missing feature); the on-demand trigger and cache check; the progress surface and the fallback-with-reason; the readability rule that lets a PDF-only book with a reflow open in-app | `services/reflow.ts` (new), `book-bytes.ts`+test, `ipc/reader.ts` or `ipc/files.ts`, preload + `window.Musaeum` types, `reader.store.ts`+test, `ReaderView.tsx`, `book.types.ts` (**≈8, crossing `electron/main` ⇄ `src` — the brief makes that a hand-back: flagged here so approval happens at sign-off**) | typecheck / lint / `npm test` green; opening a PDF-only book on the real library: progress, then a reflowed book with a working TOC; an image-only book falls back with one line; the original still opens in Preview from the same rows |
+| **4 — the wire, then the phone** | `docs/rest-api.md` + `services/api/shape.ts` + `api/rest.ts` + the payload goldens + `scripts/api-smoke.sh`; then the iOS slice: ask for `reflow` when available, save it as `{id}.epub`, open it through the existing `EPUBNavigatorViewController`, report the fraction | Mac: docs + 3 files + goldens + smoke script. iOS: `ContractModels.swift`, `BookDetailScreen.swift`, `MusaeumClient.swift`, `DownloadStore.swift` + tests (**≤5**) | smoke green with the new member; on the phone, a PDF-only book downloads, opens, turns pages and reports a position the Mac's row accepts — **with no engine change** (D10) |
+| **5 — the record** | `CLAUDE.md` (the C2 line; the invariant index if a line is added), `docs/invariants/reader.md` (the reflow, the fallback rule), `docs/invariants/files-and-deletion.md` (`derived/` is not a format), `docs/invariants/nas-and-catalog.md` (the folder diagram), `docs/architecture.md` (the sidecar tree), `docs/comparison.md` (the reader row), `tasks.md` in both repos, `CHANGELOG.md` | docs only | — |
+
+## Acceptance criteria
+
+- **AC1** — The corpus gate is run and recorded (automated report + the owner's reading, per book) **before** any pipeline code is promoted, and the annex names the layout approach that passed.
+- **AC2** — A reflowed book's `book.formats` and `file_size_bytes` are **byte-identical** to before the pass, and no `metadata.json` gains a member (checked against the live database and the file, not asserted).
+- **AC3** — Each of D3's extension-keyed hazards has a decider, not a hope: `renameToTitle` leaves `derived/` untouched, `computeFileSizeBytes` does not count it, `formatFile` and `apple-books.ts` resolve the **original** PDF, and `findHydratableFile` still reads the PDF. (`renameToTitle` and `computeFileSizeBytes` are `book-files.test.ts` cases; the escape hatches are `file-access.test.ts` and an Apple Books check; the last is a `bulk-hydrate` case.)
+- **AC4** — A book the pass cannot order confidently produces **no artifact**, opens the original, and shows one line saying why (D6); a textless book is not a blank page.
+- **AC5** — An induced failure mid-pass leaves no file at `derived/reflow.epub` and no `.tmp` residue; a source PDF whose size or mtime moved re-runs the pass rather than serving the old rendering (D9).
+- **AC6** — While a reflow is being produced the reader shows progress and the original is reachable from the same surface (D7), and a second open of the same book does not start a second pass.
+- **AC7** — Reading state behaves exactly as it does for an EPUB: percent travels to the Mac row and to the phone, `read_status` advances by the documented rule, and a regenerated artifact degrades a dead CFI to percent with no new code path (D5/D9).
+- **AC8** — The phone reads a PDF-only book end to end with **no change to `ReaderHost.swift` or the navigator construction** (D10), and the position it reports is accepted by the Mac's existing `PUT /api/books/{id}/reading`.
+- **AC9** — No new dependency ships unless the spike's verdict authorises it; if `pdfminer.six` is taken, the first-launch install grows by ≤10 MB, and no candidate citing AGPL appears anywhere in `requirements.txt`.
+- **AC10** — The sidecar's stderr is clean during a pass on the corpus (no per-page library chatter in the app's log), or the noise is explicitly suppressed in the pipeline module.
+
+## Risks, named
+
+1. **Reading order is the whole feature, and the probe says the libraries do not provide it.** Measured: on a two-column textbook, 5–14 runs against the 2–3 a correct read needs, with 6 of 20 pages carrying a line that spans both columns (§4); on a two-column *paper*, medians of 1–9 runs with 1–8 pages of 8–12 interleaved (§3). Mitigated by the spike being slice 1, by the gate being a reading rather than a metric, and by D4's escalation carrying its own numbers. This is the risk that decides the feature.
+2. **~10% of PDF-only books are image-only and stay unreadable in-app** (3/30 in the sample, wide interval, cross-checked with a second extractor). OCR is out of v1 and the phone renders no PDF at all, so for those books the phone is no better off than today. Revived by wanting one of them on the phone, which is the iOS PDF-navigator item.
+3. **`derived/` is a new namespace convention held up by extension-keyed rules.** It is invisible today because a directory has no extension; a future walk that sweeps folders "for all files" must be taught. Mitigated by stating the rule in `docs/invariants/files-and-deletion.md` in the same slice that ships the reader path.
+4. **A big book's first open is slow** — seconds for a trade book, minutes for a 1,247-page textbook, paid once. Mitigated by progress (D7) and the cache; not hidden.
+5. **Fidelity is judged by reading, and the corpus is five books.** A book outside it may read badly. Mitigated by the confidence gate (D6) and by the escape hatch staying one gesture away — the failure mode is "this one opened in Preview", not "this one is unreadable".
+6. **A regenerated artifact is a different document.** A converter-version change re-paginates the reflow, so stored CFIs die and only the fraction survives. Named rather than solved: per-field positions are already an open item in the portable-decisions design, and this adds one more reason to want them.
+7. **The phone's gap on fallback books is a product decision, and it is now made.** D6 lets a book fall back; the phone has nowhere to fall back *to*. **Accepted for v1 by the owner on 2026-10-07** (Open question 4) — recorded here so the next person finds a decision rather than a hole.
+8. **173 books are outside this feature's reach entirely and are the phone's other gap.** They hold `mobi`/`azw3` and neither an EPUB nor a PDF, so there is nothing to reflow and nothing the phone can render. Named because the headline number in *Why now* ("the phone can read 1,534 more books") could otherwise read as "the phone's gap is closed": it is 90% of it, and the residue is a format the client has no branch for at all.
+
+## Deliberately not needed
+
+No OCR. No change to the `metadata.json` shape, `book.formats`, or the SQLite schema. No bulk conversion job. No position for the original PDF, and no pdf.js in the Mac's shell as part of the default path (D9 leaves the door open as a refinement of the *original's* view). No annotations or highlights — still waiting on the storage decision they always were. No new top-level directory in the library root.
+
+## Open questions for review
+
+All five were answered by the owner on 2026-10-07; the record is kept here rather than deleted, because the corpus and the two boundary approvals are the conditions the later slices run under.
+
+1. **The corpus — answered, and changed.** Chosen by measured content rather than by title or size, and the paper case was added at the owner's request ("a lot of the types of pdfs I'd expect to read on my phone"): **(1)** *Universe: Solar Systems, Stars and Galaxies* — two-column body plus captions and sidebars, 256 outline entries: the layout stress; **(2)** *Attention is All You Need* — the paper, the owner's own case, 15 pages, 22 outline entries (measured as a **PDF**; the book itself holds an `epub`, so the app would open that instead — it is the layout benchmark, not a reflow candidate); **(3)** *Sequence to Sequence Learning with Neural Networks* — a paper genuinely in the reflow set, 9 pages, **no outline**, and the worst interleave of the six (5 of 8 pages); **(4)** *Politics, Philosophy, Culture* — plain single-column academic prose, the easy case that must not regress; **(5)** *Modernist Cuisine, Vol 1* — designed and caption-heavy, 355 outline entries, where figures in the right order is the test; **(6)** *The Complete Guide to Asterix* — image-only, where the fallback must fire.
+2. **The `derived/` folder name** — and whether the heading/TOC pass belongs in slice 2. Open: the name is provisional, and the pass is **in** slice 2, because three of the library's six papers carry no outline (§3) and a paper with no TOC is a paper you cannot navigate.
+3. **D8's wire shape** — drafted above, decided in `docs/rest-api.md` in slice 4. Unchanged by the answers here.
+4. **The phone's gap for fallback books** — **accepted for v1** (owner, 2026-10-07): a book the reflow refuses stays unreadable on the phone, as it is today, until Readium's PDF navigator is wired. Risk 7 keeps it visible.
+5. **Boundaries** — **approved by the owner 2026-10-07**: slice 3 crosses `electron/main` ⇄ `src` (≈8 files) and slice 4 crosses into `../musaeum-ios`, which must be attached to the thread before it can be edited.
+6. **Add the GRU paper to the corpus?** — *Learning Phrase Representations using RNN Encoder–Decoder* is the shelf's clean two-column page (2 bands on 6 of 9 pages, 12–16pt gutters) and the six-book corpus turned out to have no genuinely two-column book in it at all, because the metric that chose *Universe* for that role was wrong (Annex B.1). Recommended: add it as a seventh book before slice 2, so the hardest reading the gate claims to make is a real one. **Awaiting the owner.**
+
+---
+
+## Annex A — the corpus probe (measured 2026-10-07)
+
+Environment: macOS, Python 3.12.8, `pypdfium2` 5.14.0, `pdfminer.six` 20260107, `pypdf` 6.19.0, `docling` 2.135.0 (resolution only — never installed). Library at `/Volumes/books/musaeum` (mounted), database at `~/Library/Application Support/Musaeum/musaeum.db` (read-only).
+
+**Populations, read off the database:** 6,731 books; 1,714 rows hold a PDF; **1,534 hold a PDF and no EPUB** (the reflow set this design commits to); of those, 1,489 hold nothing the Mac can open (`formats == ["pdf"]`, which is exactly the set with no epub, azw3 or mobi on this library — the two queries were run against each other) and 45 hold a Kindle format beside the PDF; **1,707 books have no EPUB at all**, so 173 of them (mobi/azw3-only, no PDF) are outside this feature's reach (Risk 8).
+
+**Text-layer scan** — 30 randomly sampled books from the 1,534 that hold a PDF and no EPUB (`random.seed(20261007)`; the 45 Kindle-format ones inside it are included, on purpose, since §3 is about them), pages `min(10, n)`, `n//2`, `max(0, n-60)`, characters counted with `PdfTextPage.count_chars()` and image objects with `page.get_objects()`:
+
+| Book | MB | Pages | Chars on the three pages | Verdict |
+| --- | --- | --- | --- | --- |
+| Essential Mobile Interaction Design | 9.3 | 303 | 979 / 1,626 / 2,004 | text |
+| The Investopedia Guide to Wall Speak | 4.4 | 353 | 1,985 / 1,809 / 1,813 | text |
+| Birth of Biopolitics | 1.1 | 365 | 2,163 / 2,603 / 4,355 | text |
+| The Gulag Archipelago, Vol 2 | 33.9 | 717 | 203 / 2,479 / 1,893 | text |
+| The Rough Guide to The Bahamas | 17.4 | 372 | 1,984 / 3,645 / 3,950 | text |
+| The Rough Guides Directions Athens | 7.5 | 201 | 21 / 1,714 / 1,469 | text |
+| Uberpreneurs | 1.0 | 339 | 1,852 / 1,991 / 1,867 | text |
+| The Rough Guide Directions Orlando | 20.4 | 196 | 59 / 1,044 / 2,165 | text |
+| The Writer's World — Sentences and Paragraphs | 17.3 | 480 | 3,794 / 2,207 / 2,223 | text |
+| A Byte of Python | 2.6 | 177 | 1,786 / 1,824 / 1,472 | text |
+| Government of Self & Others | 2.8 | 421 | 34 / 2,604 / 2,711 | text |
+| **The Complete Guide to Asterix** | 25.7 | 104 | 0 / 0 / 0 | **image-only** |
+| Politics, Philosophy, Culture | 5.4 | 355 | 2,579 / 2,392 / 1,673 | text |
+| The Rough Guide Directions Dublin | 5.1 | 240 | 1,651 / 2,961 / 2,354 | text |
+| **Cabinets and Countertops** | 99.6 | 161 | 0 / 0 / 0 | **image-only** |
+| **Calculus — A Complete Course, 7th Ed** | 95.5 | 1,077 | 0 / 0 / 0 | **image-only** |
+| Outlines of the Philosophy of Right | 2.2 | 421 | 2,547 / 2,652 / 2,468 | text |
+| 42 Rules for Your New Leadership Role | 3.1 | 136 | 1,182 / 2,782 / 2,651 | text |
+| Search Patterns | 14.8 | 193 | 1,129 / 586 / 1,022 | text |
+| Dynamics of Galaxies | 17.1 | 474 | 2,164 / 3,540 / 4,115 | text |
+| UX for Lean Startups | 6.7 | 236 | 1,236 / 2,563 / 902 | text |
+| Coding Interviews | 5.4 | 293 | 3,121 / 2,016 / 2,302 | text |
+| Recommender Systems and the Social Web | 3.8 | 118 | 3,179 / 3,808 / 3,325 | text |
+| Decide | 4.3 | 312 | 1,846 / 1,969 / 2,041 | text |
+| Designing Brand Identity | 18.2 | 321 | 2,344 / 1,166 / 964 | text |
+| Cheese and Microbes | 19.6 | 346 | 0 / 4,363 / 4,250 | text |
+| How to Find Business Information | 1.9 | 218 | 2,428 / 1,857 / 35 | text |
+| Trading for Dummies | 4.9 | 387 | 4,184 / 2,046 / 1,697 | text |
+| **Efficient Estimation of Word Representations in Vector Space** | 0.2 | 12 | 2,862 / 3,217 / 3,591 | text (see the revision note) |
+| Killer UX Design | 56.2 | 289 | 2,673 / 997 / 1,594 | text |
+
+**Tally:** 27 text, 3 image-only, 0 unopenable. Of the 27 text books: 27 reached ≥1,000 chars on some page; 22 carried a PDF outline. The three image-only verdicts were confirmed with a second extractor (`pypdf.extract_text` on the same pages: 0 characters each).
+
+*Revision note — this table's first version was wrong, and the way it was wrong is the reason it is recorded:* the word2vec paper was reported as `PdfiumError`, i.e. unopenable. The page picker computed `npages - 60` with no clamp, so for that 12-page book it asked for page **−48**, and my scan's blanket `except` recorded a *probe* error as a *document* error. Re-measured with the clamp: 12 pages, 2,862 / 3,217 / 3,591 characters on those same three pages, a 19-entry outline, and no call on any page raising (page / size / textpage / count_chars / get_charbox / get_objects all tried individually). **There is no unopenable book in this sample**, which is why D6's parser clause is written as defensive rather than as an observed case — and why a pipeline that dies on one odd page would be a defect this probe would not have caught.
+
+**The five hard-case books**, pages 41–60 sampled (20 pages each):
+
+| Book | MB | Pages | Outline | Text pages | Median chars | Median lines | Pages with wide-gap lines | Images |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Molecular Cell Biology, 7th Ed | 708.2 | 1,247 | 7 | 0 | 0 | 0 | 0 | 20 pages, 20 objects |
+| Understanding Human Communication, 11th Ed | 371.5 | 516 | 14 | 0 | 0 | 0 | 0 | 20 pages, 20 objects |
+| The Complete Far Side, Vol 1 | 625.1 | 673 | 0 | 0 | 0 | 0 | 0 | 20 pages, 20 objects |
+| Universe: Solar Systems, Stars and Galaxies | 304.8 | 535 | 256 | 20 | 4,166 | 186 | 6 | 19 pages, 66 objects |
+| Modernist Cuisine, Vol 1 | 299.4 | 355 | 355 | 19 | 4,423 | 236 | 9 | 20 pages, 20 objects |
+
+Sampling cost: 0.2–1.5 ms/page on the three textless books (pdfium finds no text to walk) and 12–18 ms/page on the two text books because of the per-character `get_charbox` work this probe does.
+
+**The paper shelf** (all of it: six books, pages 2–13 sampled — the whole of every paper but the front matter), and the row that changed a decision:
+
+| Paper | Formats | MB | Pages | Outline | Text pages | 2-col pages | Median chars | Median lines | Median runs | Pages with wide-gap lines | Images |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Attention is All You Need | mobi, epub, pdf | 2.1 | 15 | 22 | 12 | 12 | 3,295 | 197 | 1 | 5 | 3 |
+| Sequence to Sequence Learning with Neural Networks | mobi, pdf | 0.1 | 9 | 0 | 8 | 8 | 4,044 | 163 | 3 | 5 | 0 |
+| Learning Phrase Representations… (GRU) | mobi, pdf | 0.6 | 11 | 0 | 10 | 10 | 4,535 | 319 | 4 | 4 | 6 |
+| Scaling Transformer to 1M Tokens (RMT) | mobi, pdf | 0.7 | 9 | 13 | 8 | 8 | 3,728 | 195 | 9 | 1 | 6 |
+| Transformers Meet Directed Graphs | mobi, pdf | 2.7 | 29 | 0 | 12 | 12 | 5,317 | 372 | 7 | 1 | 4 |
+| Efficient Estimation of Word Representations (word2vec) | mobi, pdf | 0.2 | 12 | 19 | 11 | 11 | 3,539 | 131 | 1 | 8 | 0 |
+
+Note the shape of the evidence: **median runs of 1 with 5–8 pages whose lines span both columns** (*Attention*, word2vec) and **median runs of 3–9 with 1–5 such pages** (the rest). A run count alone would call the first two clean and be wrong — the same-baseline interleave is invisible to a vertical-run metric, which is exactly why the probe counts both. Sampling cost: 6.6–20.3 ms/page, the whole shelf in well under a second per book.
+
+*Correction, 2026-10-07 (Annex B.1):* both columns of this table are a **proxy that over-counts columns**. `cols >= 2` clustered *line-left edges* at a 6% threshold, which counts an indented caption, a table's rows and a figure's label as a second column; and `wide` fires on a table row whose cells are separated by gaps. Gutter detection (Annex B) finds **one band** on 13 of 13 sampled *Attention* pages, on 24 of 24 *Transformers Meet Directed Graphs* pages, and on 10 of 10 word2vec pages. The corrected picture: five of six papers are **single column**, the GRU paper is two-column on 6 of 9 pages, and *Universe* — the "two-column textbook" of §2 and §4 — is **one band on all 24 sampled pages**. The runs numbers are real; the *name* put on the layout was not.
+
+**The negative result, and the reason it is recorded:** pdfium does *not* fail on this shelf — word2vec, the file the first scan called unopenable, reads 11 of 11 pages in a second pass (see the revision note above). No book in this entire probe defeated a parser; the D6 parser clause stays as insurance against a corrupt file in the wild, not as a case this data supports.
+
+**Reading order, *Universe*, pages 41/43/45/47/49/51** — pdfium's char order versus pdfminer's layout-analysis order, both segmented by the same rule and both counting a *run* as a monotone downward passage (a correct read of a page in regions needs 2–3 runs per page):
+
+| Page | pdfium chars | lines | runs | wide | pdfminer chars | lines | runs | wide |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 41 | 3,556 | 168 | 11 | 2 | 3,001 | 90 | 9 | 0 |
+| 43 | 5,358 | 150 | 5 | 0 | 4,895 | 94 | 4 | 0 |
+| 45 | 7,026 | 376 | 8 | 0 | 6,304 | 198 | 6 | 0 |
+| 47 | 3,482 | 151 | 12 | 1 | 2,966 | 97 | 13 | 0 |
+| 49 | 3,037 | 191 | 14 | 0 | 2,417 | 91 | 7 | 0 |
+| 51 | 4,529 | 172 | 10 | 0 | 4,134 | 107 | 8 | 0 |
+
+Line-start clusters per page on this book: 7–9 (pdfium), 3–7 (pdfminer) — a page of two columns *plus* captions, sidebars and callouts. Neither extraction is a reading order.
+
+*Revision note:* the first comparison walker collected only `LTTextContainer` descendants, which excludes text inside `LTFigure` — the numbers above are from the corrected walker (`LTContainer` recursion). The character gap that remains (85–93%) is grouping and whitespace-box handling; the spike's decider is a word-multiset diff, not this count.
+
+**Dependency weights** (`pip install --dry-run --report`, then a `HEAD` per distribution URL for `content-length`):
+
+| Candidate | Distributions | Download total | Largest members |
+| --- | --- | --- | --- |
+| `pdfminer.six` | 3 | 10.2 MB | pdfminer.six 6.3, cryptography 3.7, cffi 0.2 |
+| `pdfplumber` | 6 | 18.2 MB | + pillow 4.6, pypdfium2 3.4 (already present) |
+| `docling` | **96** | **300 MB** | torch 121, opencv 46, rapidocr 26, scipy 20, transformers 12, pandas 10, docling-parse 9, lxml 8, sympy 6, numpy 5 |
+
+`docling` also downloads model weights from HuggingFace at first use (not measured; not installed). `PyMuPDF` was not resolved — its AGPL licence excludes it before weight matters.
+
+**Throughput**, generated 30-page single-column PDF (~2,700 chars/page): `pypdfium2` chars **and** boxes 108 ms total (4 ms/page); `pypdf.extract_text` 62 ms (2 ms/page); `pdfminer.six.extract_pages` 424 ms (14 ms/page).
+
+The generator and the three probe scripts (`probe.py`, `compare2.py`, `scan.py`) are throwaway measurement code under `/tmp/reflowprobe`; slice 1 replaces them with `scripts/pdf-reflow-probe.py`, which must re-derive every number above rather than quote it.
+
+**Two minors recorded, not fixed:** pdfminer writes `Cannot set stroke color: 2 components specified…` to stderr **per affected page** on the real books (AC10 covers suppressing it if pdfminer is taken), and a probe's page picker can fail a whole document's verdict on one odd index — the correction above is the worked example, and slice 1's probe must clamp and must name the call that failed rather than the file.
+
+---
+
+## Annex B — slice 1's log: the spike, built and measured 2026-10-07
+
+**What exists.** `sidecar/reflow/` — `layout.py` (characters → lines → bands → reading order → paragraphs, headings, figures, confidence), `outline.py` (sections from the PDF outline, or from the headings), `epub.py` (a deterministic EPUB 3 writer, one XHTML file per section, page anchors, figures) — plus `scripts/pdf-reflow-probe.py`, which runs the six-book corpus and prints the table below. **Nothing is wired into the sidecar's RPC and no library file or row was touched**; every artifact lands in `dist/reflow-spike/` (gitignored). Re-derive everything with:
+
+```bash
+sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --out dist/reflow-spike
+```
+
+### The gate's first half — the automated report
+
+| Book | Verdict | Schema problems | Sections | Figures | Words lost | Words extra | Artifact | Time |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| *Universe* (535 pp) | ok | **0** | 146 | 159 | 10% | 5% | 56.1 MB | 44 s |
+| *Attention is All You Need* (15 pp) | ok | **0** | 9 | 1 | 6% | 19% | 35 KB | 0.4 s |
+| *Sequence to Sequence Learning* (9 pp) | ok | **0** | 5 | 0 | 5% | 4% | 18 KB | 0.3 s |
+| *Politics, Philosophy, Culture* (355 pp) | ok | **0** | 25 | 0 | 1% | 3% | 296 KB | 9.5 s |
+| *Modernist Cuisine, Vol 1* (355 pp) | ok | **0** | 177 | 87 | 5% | 3% | 12.8 MB | 28 s |
+| *The Complete Guide to Asterix* (104 pp) | **no_text_layer** | — | — | — | — | — | **none, as D6 requires** | 0.0 s |
+
+**5 of 6 produced a clean artifact**, and the sixth is the image-only book falling back with a reason — which the design counts as a pass and never as a miss, so the automated half of the corpus gate is met. Every artifact also passes `unzip -t`, carries `mimetype` first and uncompressed, and parses as XHTML, OPF and NCX under `ElementTree` with every manifest href present in the zip.
+
+**What "words lost" is, and is not.** It is a multiset difference between the artifact's tokens and pdfium's own page text, so it says nothing about order — that is what the owner's reading is for. Its two largest sources are *by design and reported separately*: the running heads the pass drops on purpose (Universe 0, *Attention* 14, *Sequence to Sequence* 9, *Modernist Cuisine* 180 — mostly bare page numbers, all inside the top or bottom band), and the synthetic spaces the pass inserts where a PDF stores no space character, which splits a token (`<pad>` → `<`, `pad`, `>`) and so shows as one loss and two gains. Figure labels swallowed into a crop count as losses too. Nothing in the table suggests text going missing from a page's prose, and the largest single offender — 10% on *Universe* — is a 1,247-page-capable textbook whose pages are half figure.
+
+### B.1 The correction the spike forced: the paper shelf is not two-column
+
+Annex A's §3 and its paper table said "every sampled page of every paper is two-column" from a metric that clustered *line-left edges* at a 6% threshold. Re-measured with the projection profile the pass actually uses — bins covered by characters, a gutter being a gap of at least 2% of the text width — while sampling pages 3–26 of each book:
+
+| Book | Pages sampled | Bands per page | Gutters found |
+| --- | --- | --- | --- |
+| *Attention is All You Need* | 13 | **1 band on all 13** | — |
+| *Sequence to Sequence Learning* | 7 | **1 on all 7** | — |
+| *Scaling Transformer to 1M Tokens* | 7 | **1 on all 7** | — |
+| *Transformers Meet Directed Graphs* | 24 | **1 on all 24** | — |
+| *Efficient Estimation of Word Representations* | 10 | **1 on all 10** | — |
+| *Learning Phrase Representations* (GRU) | 9 | 1 on 3, **2 on 6** | 12–16pt |
+| *Universe* (the "two-column textbook") | 24 | **1 on all 24** | — |
+| *Modernist Cuisine, Vol 1* | 20 | 1 on 11, 2 on 8, 3 on 1 | 12–26pt |
+
+The metric that produced the original claim counted an indented caption, a table's rows and a figure's label as columns; the same metric also fired on *table rows whose cells are separated by gaps*, which is what the `wide` column in Annex A's reading-order table was measuring. **Five of the six papers are single-column, *Universe* is single-column, and the shelf's genuinely two-column members are the GRU paper and parts of *Modernist Cuisine*.** §3, §4 and Annex A now carry this correction in place; §5 carries the prevalence measurement it prompted (13 of 71 sampled pages, 18%, concentrated in designed reference works).
+
+### B.2 Bugs the corpus found, each with the measurement that found it
+
+This is the list the spike exists to produce. Each was invisible until a real book was run through the whole path:
+
+| Bug | What it did | Found by |
+| --- | --- | --- |
+| The gutter was judged against the page, not the text (3% of 612pt = 18.4pt) | merged every two-column page into one band; *Attention* "reflowed" as a single column | the band check above |
+| Coverage was built from *line* extents | the same, from the other side: two columns on one baseline are one line by construction, so the profile was uniformly solid and no gutter could be found | the same |
+| A band was "solid" when more than one character covered a bin | with character coverage a normal bin holds exactly one, so nothing was solid and the page collapsed to one band | the same |
+| The single-band path returned lines with **no text** | 56% of *Sequence to Sequence* silently vanished | the per-page word comparison |
+| Repeated-text detection normalised digits, and every numeric block is `#` | 442 real blocks on *Universe* were deleted as "running heads" — the page-level rule (top/bottom band, ≤80 chars, not a bare number) is what stops it | *Universe* missing 3,421 instances of `the` |
+| A bordered table's ink is one region | 186 lines swallowed by a table's bounding box: page 7 of *Sequence to Sequence* lost 59% of its text | the same comparison, per page |
+| A figure region is not always a figure | the fix above, applied the other way, would have kept a chart's axis labels in the prose — 21,472 single-letter tokens in *Universe*'s flow | the token histogram |
+| `page.render(scale=…, crop=…)` per region, lossless | *Universe*'s artifact was **116 MB** against a 305 MB source | artifact size |
+| pdfium returns **U+FFFE** for a glyph with no Unicode mapping — in this library, the hyphen at a line break | two bugs at once: every artifact failed XML parsing (U+FFFE is not a legal XML character) and words were left split (`excel␞lent`, `unavail␞able`, `under␞stood`) | the schema check and the missing-token list |
+| Outline labels are sometimes the printer's marks | *Modernist Cuisine*'s 240 top-level entries were `cover1`, `cover2`, … and "use the outline" produced a TOC of cover numbers | its section list |
+| Heading levels were ranked largest-first | the *rarest* heading size became level 1, so hand-picked "sections" were nearly empty: *Modernist Cuisine* produced **one** section from 1,383 headings | section count |
+| A wrapped line's fragment looks like a heading | a paper's sections were named `ships.`, `SMT [29].`, `and 0.08` | its TOC |
+
+### B.3 What is left, named rather than smoothed over
+
+1. **The second half of the gate is a reading, and it is the owner's.** The artifacts are in `dist/reflow-spike/`; five are readable files and the sixth is the fallback. Nothing here substitutes for opening them.
+2. **The corpus's real two-column case is not in the corpus.** *Universe* was chosen as the layout stress and turned out single-column; the GRU paper is the clean two-column page (6 of 9) and is not among the six. **Recommended: add it** as a seventh book, which costs one command and makes the gate's hardest reading real rather than assumed.
+3. **Table structure is absent** (a documented limit, not a surprise): a table's rows survive as paragraphs, its cells do not, and a table's *rules* are why the figure detector needs its text-coverage test at all.
+4. **Headings are noisy on a designed page.** *Modernist Cuisine* yields 715 "headings", many of them design labels rather than titles, and its 177 sections are more TOC than a reader wants. Fine cannot be fixed by tuning alone; slice 2 should cap sections per page-range and require a heading to open a page or follow a gap.
+5. **Artifact size scales with figures**, not with text: 56 MB for a 535-page figure-heavy textbook. Slice 2 should decide a per-book budget (and consider downscaling plates further) rather than leaving it unbounded.
+6. **Two-column pages inside a *table-like* region** are neither split nor cropped — they keep their words in pdfium's order. The GRU paper's 2-band pages are split correctly, but a table with column text is not, and nothing measures that yet.
+7. **The probe's own measures are proxies.** Runs, bands and word multisets are how this annex argues; the artifact is the artifact, and only a reader decides.
