@@ -54,7 +54,8 @@ RUNNING_HEAD_BAND = 0.08  # of the page height, top and bottom, where it sits
 RUNNING_HEAD_MAX_CHARS = 80
 HEADING_RATIO = 1.15  # a region this much larger than the body may be a heading
 HEADING_MAX_CHARS = 120
-HEADING_MAX_LINES = 2
+HEADING_MAX_LINES = 2  # at the body's own size, a bold line, not a paragraph
+HEADING_MAX_LINES_BIG = 4  # larger than the body: a heading that wrapped
 HEADING_LEVELS = 3
 FOOTNOTE_RATIO = 0.85  # a region this much smaller than the body…
 FOOTNOTE_ZONE = 0.25  # …inside the bottom quarter of its page is a footnote
@@ -357,8 +358,16 @@ def classify_roles(pages: list[PageResult]) -> float:
         for b in page.blocks:
             if b.kind != "para" or b.size <= 0:
                 continue
-            short = b.lines <= HEADING_MAX_LINES and len(b.text) <= HEADING_MAX_CHARS and re.search(r"[A-Za-z]{2}", b.text)
-            if short and (b.size >= HEADING_RATIO * body or (b.lines == 1 and b.bold and not body_bold)):
+            # A heading larger than the body is allowed to wrap: *Universe*'s
+            # `14-2 Making Stars from the Interstellar Medium` is 13pt bold over
+            # three lines, and the two-line cap made it a paragraph (24 of the
+            # book's 60 G5 misses were a block like that, carrying the entry's
+            # own text). At the body's own size the cap stays, because there the
+            # signal is one bold line.
+            fits = len(b.text) <= HEADING_MAX_CHARS and re.search(r"[A-Za-z]{2}", b.text)
+            bigger = b.size >= HEADING_RATIO * body and b.lines <= HEADING_MAX_LINES_BIG
+            bolder = b.lines == 1 and b.bold and not body_bold
+            if fits and (bigger or bolder):
                 b.kind = "heading"
             elif b.size <= FOOTNOTE_RATIO * body and b.top <= page.bottom + FOOTNOTE_ZONE * height:
                 b.kind = "footnote"

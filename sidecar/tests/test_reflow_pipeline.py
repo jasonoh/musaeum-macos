@@ -130,6 +130,21 @@ def test_roles_from_size_and_weight():
     assert note.kind == "footnote"
 
 
+def test_a_section_heading_that_wraps_to_three_lines_is_still_a_heading():
+    """*Universe*'s `14-2 Making Stars from the Interstellar Medium` is 13pt bold
+    across three lines at a 10.5pt body, and `7-1 The Solar Atmosphere` is the
+    same at two. The two-line cap left every wrapped section head a paragraph,
+    so G5 counted those outline entries as landing nowhere — 24 of the 60 misses
+    with the entry's own text on the block it landed on."""
+    body = B(text="x" * 400)
+    wrapped = B(text="14-2 Making Stars from the Interstellar Medium", size=13, lines=3, top=580)
+    too_long = B(text="y" * 130, size=13, lines=4, top=500)
+    long_bold = B(text="z" * 300, size=10, bold=True, lines=6, top=400)
+    classify_roles([page(body, wrapped, too_long, long_bold)])
+    assert wrapped.kind == "heading"
+    assert too_long.kind == "para" and long_bold.kind == "para"
+
+
 def test_a_paragraph_continuing_onto_the_next_page_is_joined_before_its_notes():
     last = B(text="approaches in sequence modeling and")
     note = B("footnote", text="* Equal contribution.")
