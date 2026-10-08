@@ -1,78 +1,40 @@
-"""PDF → blocks: the layout pass the whole reflow rests on.
+"""PDF → blocks: the page pass the reflow rests on.
 
-**Why this module exists.** Measured on the owner's library (2026-10-07; the
-numbers are in `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md`,
-Annex A): neither permissive extractor returns a reading order. pdfium hands
-back characters in content-stream order, and pdfminer's layout analysis reorders
-them only partly — on a two-column textbook both were measured at 5–14 monotone
-runs per page where a correct read of the layout needs 2–3, and on a two-column
-paper pdfium produced lines whose own characters spanned the gutter on 5–8 pages
-of 12. So the columns, the line grouping, the paragraph boundaries and the
-heading levels are ours; `pypdfium2` supplies char boxes, region renders and
-image objects, which is all it is used for.
+**What changed in slice 1R, and why.** Slice 1 ordered each page with its own
+projection-profile column detector over pdfium's characters, and the owner's
+reading found every corpus book interleaved. The review traced it to that pass
+(spec Annex C.1): one profile over a whole page, which any spanning title or
+caption defeats. Reading order now comes from Apple Vision through the layout
+helper (`vision.py`), and the words from the text layer (`regions.py`). What is
+left here is everything around them: figures, plates, roles, page furniture,
+footnotes across a page break, and the per-book verdict.
 
-**The three ideas in it.**
+**A figure is any non-text ink**, not an embedded image object: charts, vector
+line art and scanned plates are all invisible to `page.get_objects()`, while a
+coarse ink grid over a 0.25-scale render sees all three, and the crop is then
+rendered at 2x. Vision does not report figures, so this stays ours.
 
-1. A page is cut into *bands* by the vertical white gaps that persist across the
-   page's own height — a projection profile over lines, not a per-line guess. A
-   gutter qualifies; a single wide word space in justified text cannot, because
-   only the one line that contains it covers it.
-2. Every element that reaches across the bands — a title, a full-width table, a
-   page-wide figure — is *page-level* and is emitted where it sits vertically.
-   The pass therefore segments the page top-to-bottom first and orders the
-   columns inside each segment, which is what keeps a title above its columns
-   and a wide figure between the two halves of a page.
-3. A figure is *any non-text ink*, not an embedded image object: charts, vector
-   line art and scanned plates are all invisible to `page.get_objects()`
-   (measured: the six-paper corpus sample reports **zero** image objects on most
-   pages), while a coarse ink grid over a 0.25-scale render sees all three, and
-   the crop is then rendered at 2x.
-
-**Conservative by construction.** Everything uncertain is recorded in
-`PageResult.flags` rather than smoothed over, because the design turns "cannot
-be ordered confidently" into *keep the original PDF* (D6) rather than into a
-mangled book.
-
-Nothing here touches the library: this is slice 1's spike, called by
-`scripts/pdf-reflow-probe.py`, and it is deliberately **not** wired into the
-sidecar's RPC yet.
-
-Known limits, named rather than discovered later: left-to-right scripts only
-(characters are ordered by x within a line); no table structure (a table's rows
-survive as lines, its cells do not); no OCR, so a page without a text layer
-reports `no_text` and the book falls back.
+**Conservative by construction.** A book whose pages cannot be laid out falls
+back to the original (D6) with one line saying why; nothing here raises.
 """
 
 from __future__ import annotations
 
 import io
 import re
-import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import pypdfium2 as pdfium
 
-from .model import MIN_PAGE_CHARS, Block, Box, Document, PageResult, clean_text
-from .model import UNMAPPED_HYPHEN as _UNMAPPED_HYPHEN
+from .chars import page_chars
+from .model import MIN_PAGE_CHARS, Block, Box, Document, PageResult
+from .regions import build_page_text, join_lines
+from .vision import LayoutUnavailable, PageLayout, run_helper
 
 # --- tunables, each one measured against the corpus rather than guessed -----
 
-BAND_COVERAGE = 0.05  # a gutter bin holds under 5% of the densest occupancy
-MIN_VALLEY_PT = 6.0  # a gap narrower than this is a word space, not a gutter
-MIN_VALLEY_FRACTION = 0.02  # …and a gutter is at least 2% of the text width
-MIN_BAND_CHARS = 0.03  # a band holding fewer characters than this is not text
-FULL_WIDTH = 0.65  # an element this wide of the text area is page-level
-BASELINE_TOLERANCE = 0.6  # of the char height, when grouping chars into lines
-WORD_GAP_EM = 0.5  # a gap this wide starts a new word with no space char
-BODY_RATIO = 1.12  # a line taller than the body by this much may be a heading
-MAX_BANDS = 4  # more bands than this on a page is a layout we do not claim
-VALLEY_CHAR_LIMIT = 0.02  # chars sitting in a gutter, as a share of the page
-HEADING_MAX_CHARS = 100
-PARAGRAPH_LEADING = 1.6  # leading above the median's multiple starts a paragraph
-SHORT_LINE = 0.72  # a line this much narrower than its band ends a paragraph
-INDENT_EM = 0.9
 FIGURE_SCALE = 0.25  # the analysis render: a 612x792 page becomes 153x198
 FIGURE_CELL_PT = 12.0  # the ink grid's cell, in points
 FIGURE_MIN_PT = 24.0  # a region thinner than this is a rule, not a figure
@@ -80,8 +42,6 @@ FIGURE_MIN_AREA = 4000.0  # square points
 FIGURE_MAX_PAGE = 0.80  # a region this much of the page is a background, unless it is nearly textless
 FIGURE_BACKGROUND_TEXT_SHARE = 0.10  # a page-sized region is a photo only if this little of it is text
 FIGURE_MAX_TEXT_SHARE = 0.25  # a region this covered in text is a table, not a figure
-TABLE_LABEL_MAX_CHARS = 40  # inside a table-ish region, shorter than this is a label
-TABLE_LABEL_MAX_SHARE = 0.30  # …and narrower than this share of the region
 FIGURE_CROP_SCALE = 2.0  # the crop actually written into the EPUB
 FIGURE_MAX_PIXELS = 1400  # a figure is never rendered larger than this
 PLATE_MAX_PIXELS = 1400  # a plate's long side
@@ -89,440 +49,18 @@ FIGURE_PNG_MAX_SHARE = 0.06  # above this share of the page a figure is JPEG
 INK_THRESHOLD = 245  # a pixel darker than this at analysis scale is ink
 RUNNING_HEAD_PAGES = 0.25  # the share of pages that makes a line a running head
 RUNNING_HEAD_MIN = 3
-RUNNING_HEAD_BAND = 0.10  # of the page height, top and bottom, where it sits
+RUNNING_HEAD_BAND = 0.08  # of the page height, top and bottom, where it sits
 RUNNING_HEAD_MAX_CHARS = 80
+HEADING_RATIO = 1.15  # a region this much larger than the body may be a heading
+HEADING_MAX_CHARS = 120
+HEADING_MAX_LINES = 2
 HEADING_LEVELS = 3
+FOOTNOTE_RATIO = 0.85  # a region this much smaller than the body…
+FOOTNOTE_ZONE = 0.25  # …inside the bottom quarter of its page is a footnote
+LAYOUT_ERROR_SHARE = 0.25  # more text pages than this without a layout: fall back
+_SENTENCE_END = (".", "!", "?", ":", "”", "’", '"')
 
-_SENTENCE_END = (".", "!", "?", ":", "”", "’")
-_HYPHENS = ("-", "‐", "‑", "‒", "–")
 _WS = re.compile(r"\s+")
-
-
-@dataclass
-class Element:
-    """One thing on a page: a text line or a figure region."""
-
-    kind: str  # 'line' | 'figure'
-    left: float
-    bottom: float
-    right: float
-    top: float
-    text: str = ""
-    height: float = 0.0
-    chars: list[Element] = field(default_factory=list)
-    image: Optional[bytes] = None
-    image_width: int = 0
-    image_height: int = 0
-    image_type: str = ""
-    band: int = -1
-    split: bool = False  # this line had to be cut at a band boundary
-
-    @property
-    def width(self) -> float:
-        return self.right - self.left
-
-
-# --- characters and lines --------------------------------------------------
-def _height(el: Element) -> float:
-    return max(el.top - el.bottom, 1.0)
-
-
-def _page_chars(textpage: pdfium.PdfTextPage) -> list[Element]:
-    """Every character on the page with its box, in pdfium's own order.
-
-    Zero-area boxes are kept (they are real spaces in some files) but they
-    contribute nothing to geometry, which is why the band profile counts lines
-    rather than characters.
-    """
-    chars: list[Element] = []
-    for i in range(textpage.count_chars()):
-        left, bottom, right, top = textpage.get_charbox(i)
-        text = textpage.get_text_range(i, 1)
-        if text in ("\r", "\n"):
-            continue
-        chars.append(Element("line", left, bottom, right, top, text=text))
-    return chars
-
-
-def _group_lines(chars: list[Element]) -> list[Element]:
-    """Chars → y-bands ("rough lines"), each carrying its own characters.
-
-    A rough line is *not* yet a line of text: two columns on one baseline land
-    in the same band, which is what `_split_at_bands` undoes.
-    """
-    lines: list[Element] = []
-    for c in chars:
-        placed = False
-        if lines:
-            ln = lines[-1]
-            if abs(c.bottom - ln.bottom) <= BASELINE_TOLERANCE * max(_height(c), ln.height):
-                ln.chars.append(c)
-                ln.left = min(ln.left, c.left)
-                ln.right = max(ln.right, c.right)
-                ln.top = max(ln.top, c.top)
-                ln.height = max(ln.height, _height(c))
-                placed = True
-        if not placed:
-            lines.append(
-                Element(
-                    "line",
-                    c.left,
-                    c.bottom,
-                    c.right,
-                    c.top,
-                    height=_height(c),
-                    chars=[c],
-                )
-            )
-    for ln in lines:
-        ln.text = _line_text(ln.chars)
-    return lines
-
-
-def _line_text(chars: list[Element]) -> str:
-    """Assemble a line's text, restoring the spaces the PDF never stored.
-
-    Most PDFs write a real space character between words, and pdfium returns it;
-    this only fills the gap where one is genuinely absent. The threshold is
-    deliberately *high* (half a character's height) because the two cases are
-    not separable by size: measured on page 1 of *Attention is All You Need*,
-    the median gap between characters with no space between them is **0.39pt**
-    (p90 0.72pt) while the letter-spaced email addresses on the same page sit at
-    **2.6pt** — larger than a 10pt font's own space. A low threshold shredded
-    those addresses into `ill i a . po l o sukhin`, which is a worse defect than
-    the rare word that runs together in a file that stores no space characters
-    at all.
-
-    Punctuation is never separated even across a wide gap: a reflow that renders
-    `it .` or `don ' t` is wrong in a way a reader notices, and the artifact's own
-    word diff reports it as thousands of invented tokens (measured on *Politics,
-    Philosophy, Culture*: `it.` 67, `don't` 76 missing tokens that were all one
-    false space each).
-    """
-    ordered = sorted(chars, key=lambda c: c.left)
-    out: list[str] = []
-    prev_text = ""
-    prev_right: Optional[float] = None
-    for c in ordered:
-        text = "-" if c.text == _UNMAPPED_HYPHEN else c.text
-        if prev_right is not None and not _binds(prev_text, text):
-            if c.left - prev_right > WORD_GAP_EM * _height(c):
-                out.append(" ")
-        out.append(text)
-        prev_text, prev_right = text, c.right
-    return _WS.sub(" ", clean_text("".join(out))).strip()
-
-
-_CLOSING = ".,;:!?)]}»”’'\"%°-–—> ·"
-_OPENING = "([{«“‘¿¡<'’ "
-
-
-def _binds(before: str, after: str) -> bool:
-    """Do these two characters belong to the same token whatever the gap?
-
-    Only two shapes, and both are about the character that *starts* the token:
-    punctuation attaches to what precedes it, and a gap after an opening bracket
-    attaches to the bracket. Everything else may take a space.
-    """
-    if not before or not after:
-        return False
-    return after[0] in _CLOSING or before[-1] in _OPENING
-
-
-# --- bands (columns) -------------------------------------------------------
-def _find_bands(lines: list[Element], width: float) -> list[tuple[float, float]]:
-    """The page's text bands, left to right, by projection profile.
-
-    A bin is *solid* when characters cover it. A two-column gutter has no
-    characters in it at all, so it is a gap however the lines above it were
-    grouped, while a word space is a gap too narrow to count as one.
-
-    The gap threshold is measured in the page's *text* width, not its paper
-    width: a LaTeX gutter is 3–6% of the text area (this library's papers: ~17pt
-    on a 397pt text width) while the paper is much wider, and judging the gutter
-    against the paper is how the first version of this merged two columns into
-    one — measured on *Attention is All You Need*, whose 15 pages then reflowed
-    as a single column.
-    """
-    if not lines or width <= 0:
-        return []
-    occupied = [ch for ln in lines for ch in ln.chars if ch.text.strip()]
-    if not occupied:
-        return []
-    left_edge = min(ch.left for ch in occupied)
-    right_edge = max(ch.right for ch in occupied)
-    text_width = max(right_edge - left_edge, 1.0)
-
-    # Coverage comes from the *characters*, never from the lines: two columns on
-    # one baseline are one rough line by construction (splitting it is what
-    # `_split_at_bands` does), so a profile built from line extents is uniformly
-    # solid and finds no gutter at all — the second bug this shipped with.
-    n = int(width) + 1
-    bins = [0] * n
-    for ch in occupied:
-        for x in range(max(int(ch.left), 0), min(int(ch.right) + 1, n)):
-            bins[x] += 1
-    peak = max(bins)
-    if peak == 0:
-        return []
-    # Occupancy, not majority: with character coverage a normal body bin holds
-    # exactly one character, so a threshold meaning "more than one" finds no
-    # solid run anywhere and the page collapses to a single band — measured on
-    # *Attention is All You Need*'s two-column pages, which reflowed as one
-    # column for exactly this reason.
-    threshold = max(1, int(peak * BAND_COVERAGE))
-
-    runs: list[list[float]] = []
-    start: Optional[int] = None
-    for x in range(n):
-        if bins[x] >= threshold:
-            if start is None:
-                start = x
-        elif start is not None:
-            runs.append([float(start), float(x)])
-            start = None
-    if start is not None:
-        runs.append([float(start), float(n)])
-
-    # A run separated from its neighbour by less than a gutter is a ragged edge,
-    # not a column break; folding it in avoids splitting a page of one column at
-    # the longest line's right edge.
-    min_gap = max(MIN_VALLEY_PT, MIN_VALLEY_FRACTION * text_width)
-    merged: list[list[float]] = []
-    for r in runs:
-        if merged and r[0] - merged[-1][1] < min_gap:
-            merged[-1][1] = r[1]
-        else:
-            merged.append(r)
-    if not merged:
-        return []
-
-    # A band holding almost no text is not a column. This is what keeps a
-    # rotated stamp or a decorative strip in the margin from becoming a column
-    # of one-character lines: measured on page 1 of *Attention is All You Need*,
-    # the arXiv stamp held ~10 of 2,838 characters and still produced six
-    # single-character "headings" before this rule existed.
-    total_chars = len(occupied)
-    keep: list[int] = []
-    for i, (lo, hi) in enumerate(merged):
-        count = sum(1 for ch in occupied if lo <= (ch.left + ch.right) / 2 <= hi)
-        if count >= max(4, MIN_BAND_CHARS * total_chars):
-            keep.append(i)
-    if len(keep) < 2:
-        return [(left_edge, right_edge)]
-    return [(merged[i][0], merged[i][1]) for i in keep]
-
-
-def _band_of(el: Element, bands: list[tuple[float, float]]) -> int:
-    centre = (el.left + el.right) / 2
-    best, best_d = 0, None
-    for i, (lo, hi) in enumerate(bands):
-        d = 0.0 if lo <= centre <= hi else min(abs(centre - lo), abs(centre - hi))
-        if best_d is None or d < best_d:
-            best, best_d = i, d
-    return best
-
-
-def _is_page_level(el: Element, bands: list[tuple[float, float]]) -> bool:
-    """Does this element span the text area rather than sit in one column?"""
-    if len(bands) < 2:
-        return True
-    area = bands[-1][1] - bands[0][0]
-    if area <= 0 or el.width < FULL_WIDTH * area:
-        return False
-    return el.left <= bands[0][0] + 0.08 * area and el.right >= bands[-1][1] - 0.08 * area
-
-
-# --- reading order ---------------------------------------------------------
-def order_elements(
-    elements: list[Element], bands: list[tuple[float, float]]
-) -> list[Element]:
-    """Segment the page vertically, then order each segment's columns.
-
-    Sorting everything by y instead is the bug this exists to avoid: a page
-    title would land wherever its baseline falls relative to the two columns
-    beneath it, and a wide figure in the middle of a page would be interleaved
-    into one column's text.
-    """
-    for el in elements:
-        el.band = _band_of(el, bands)
-    segments: list[tuple[str, list[Element]]] = []
-    run: list[Element] = []
-    for el in sorted(elements, key=lambda e: (-e.top, e.left)):
-        if _is_page_level(el, bands):
-            if run:
-                segments.append(("columns", run))
-                run = []
-            segments.append(("page", [el]))
-        else:
-            run.append(el)
-    if run:
-        segments.append(("columns", run))
-
-    ordered: list[Element] = []
-    for kind, group in segments:
-        if kind == "page":
-            ordered.extend(group)
-            continue
-        for i in range(len(bands)):
-            ordered.extend(sorted((e for e in group if e.band == i), key=lambda e: -e.top))
-    return ordered
-
-
-# --- paragraphs and headings ----------------------------------------------
-def _leading(ordered: list[Element]) -> float:
-    """The page's median baseline step, measured **within** a band.
-
-    Across a band boundary the step is meaningless — the first line of column
-    two sits *above* the last of column one — so those pairs are excluded.
-    """
-    deltas = [
-        a.bottom - b.bottom
-        for a, b in zip(ordered, ordered[1:])
-        if a.kind == b.kind == "line" and a.band == b.band and a.bottom - b.bottom > 0.5
-    ]
-    if not deltas:
-        return 12.0
-    deltas.sort()
-    return deltas[len(deltas) // 2]
-
-
-def _body_height(lines: list[Element]) -> float:
-    """The page's body size: the height carrying the most characters."""
-    weights: dict[int, int] = {}
-    for ln in lines:
-        key = int(round(ln.height))
-        weights[key] = weights.get(key, 0) + max(len(ln.text), 1)
-    if not weights:
-        return 10.0
-    return float(max(weights.items(), key=lambda kv: kv[1])[0])
-
-
-def _joins(prev: Element, cur: Element, leading: float, band_width: float) -> bool:
-    """Does `cur` continue `prev`'s paragraph?"""
-    if prev.bottom - cur.bottom > leading * PARAGRAPH_LEADING:
-        return False
-    ends = prev.text.rstrip().endswith(_SENTENCE_END)
-    if not ends:
-        return True
-    if cur.left - prev.left > INDENT_EM * max(cur.height, 1.0):
-        return False
-    return prev.width >= SHORT_LINE * band_width
-
-
-def build_blocks(
-    ordered: list[Element], bands: list[tuple[float, float]], page: int
-) -> list[Block]:
-    """Elements → paragraphs, headings and figures, in reading order."""
-    lines = [e for e in ordered if e.kind == "line"]
-    body = _body_height(lines)
-    leading = _leading(ordered)
-    blocks: list[Block] = []
-    current: list[Element] = []
-    current_band = -1
-
-    def flush() -> None:
-        nonlocal current
-        if not current:
-            return
-        text = ""
-        for ln in current:
-            if text:
-                # A word broken across lines rejoins without its hyphen; any
-                # other break is a space.
-                if text.endswith(_HYPHENS) and ln.text[:1].islower():
-                    text = text[:-1]
-                else:
-                    text += " "
-            text += ln.text
-        blocks.append(
-            Block(
-                "para",
-                text=text.strip(),
-                page=page,
-                top=max(ln.top for ln in current),
-                bottom=min(ln.bottom for ln in current),
-            )
-        )
-        current = []
-
-    for el in ordered:
-        if el.kind == "figure":
-            flush()
-            blocks.append(
-                Block(
-                    "figure",
-                    page=page,
-                    top=el.top,
-                    bottom=el.bottom,
-                    image=el.image,
-                    image_width=el.image_width,
-                    image_height=el.image_height,
-                    image_type=el.image_type,
-                )
-            )
-            continue
-        if (
-            el.height >= body * BODY_RATIO
-            and len(el.text) >= 3
-            and len(el.text) <= HEADING_MAX_CHARS
-            and not el.text.isdigit()
-            # A heading starts a thought with a capital; a fragment of a wrapped
-            # line starts lowercase and ends in a comma or a stop. Without this,
-            # a paper's shifted math and its table fragments became "headings" —
-            # measured on *Sequence to Sequence Learning*, whose six sections
-            # were named `ships.`, `SMT [29].` and `and 0.08`.
-            and el.text[:1].isupper()
-            and not el.text.rstrip().endswith((",", ";"))
-        ):
-            flush()
-            blocks.append(
-                Block(
-                    "heading",
-                    text=el.text.strip(),
-                    page=page,
-                    size=el.height,
-                    top=el.top,
-                    bottom=el.bottom,
-                )
-            )
-            continue
-        band_width = bands[el.band][1] - bands[el.band][0] if 0 <= el.band < len(bands) else 0.0
-        if current and (el.band != current_band or not _joins(current[-1], el, leading, band_width)):
-            flush()
-        if not current:
-            current_band = el.band
-        current.append(el)
-    flush()
-    return [b for b in blocks if b.kind != "para" or b.text]
-
-
-def assign_heading_levels(pages: list[PageResult]) -> None:
-    """Rank the document's heading sizes, with the *dominant* one at level 1.
-
-    Not "the largest size is level 1", which sounds equivalent and is not: a
-    book's part titles are larger than its chapter titles and far rarer, so
-    ranking by size alone puts chapters at level 2, and `sections_from_headings`
-    — which takes level 1 — then finds almost nothing. Measured on *Modernist
-    Cuisine, Vol 1*: 1,383 detected headings produced a **one-section** document.
-    The dominant heading size is what a book repeats, which is what a TOC is.
-    """
-    counted = Counter(
-        round(b.size, 1) for p in pages for b in p.blocks if b.kind == "heading"
-    )
-    if not counted:
-        return
-    common = counted.most_common(1)[0][0]
-    smaller = sorted((size for size in counted if size < common), reverse=True)
-    levels: dict[float, int] = {size: 2 + min(1, i) for i, size in enumerate(smaller)}
-    levels[common] = 1
-    for page in pages:
-        for b in page.blocks:
-            if b.kind == "heading":
-                size = round(b.size, 1)
-                # Anything larger than the dominant size is its equal as a
-                # divider (a part title), never a subsection of it.
-                b.level = 1 if size >= common else levels.get(size, HEADING_LEVELS)
 
 
 # --- figures ---------------------------------------------------------------
@@ -719,188 +257,6 @@ def render_plate(page: pdfium.PdfPage) -> Optional[Crop]:
     return Crop(buffer.getvalue(), image.width, image.height, "jpeg")
 
 
-# --- the page pass ---------------------------------------------------------
-def _split_at_bands(
-    chars: list[Element], bands: list[tuple[float, float]], proto: Element
-) -> list[Element]:
-    """Cut one y-band's characters into bands — the columns on its baseline.
-
-    A space character that lands in the gutter between columns is attached to
-    the band it precedes rather than dropped: a reflow that loses word
-    boundaries is worse than one that keeps a trailing space.
-    """
-    if not chars:
-        return []
-    if len(bands) < 2:
-        ln = Element(
-            "line",
-            proto.left,
-            proto.bottom,
-            proto.right,
-            proto.top,
-            chars=sorted(chars, key=lambda c: c.left),
-        )
-        _refresh(ln)
-        ln.text = _line_text(ln.chars)
-        return [ln]
-    groups: list[list[Element]] = [[] for _ in bands]
-    for c in sorted(chars, key=lambda c: c.left):
-        centre = (c.left + c.right) / 2
-        index = None
-        for i, (lo, hi) in enumerate(bands):
-            if lo <= centre <= hi:
-                index = i
-                break
-        if index is None:
-            index = min(
-                range(len(bands)),
-                key=lambda i: min(abs(centre - bands[i][0]), abs(centre - bands[i][1])),
-            )
-            if not c.text.strip() and index > 0 and not groups[index]:
-                index -= 1
-        groups[index].append(c)
-    out: list[Element] = []
-    for group in groups:
-        if not group:
-            continue
-        ln = Element("line", proto.left, proto.bottom, proto.right, proto.top, chars=group)
-        _refresh(ln)
-        ln.text = _line_text(group)
-        ln.split = True
-        out.append(ln)
-    return out
-
-
-def _refresh(ln: Element) -> None:
-    """A line's box and its *size*: the middle character's height, not the max.
-
-    The max is what made math and table rows look like headings: one superscript
-    or one tall glyph in an otherwise body-sized line pushed the line's height
-    past the heading threshold, so *Attention is All You Need* produced 27
-    "headings", including `O(n2 · d) O(1) O(1)` and a table caption. The median
-    character is the line's apparent type size, and it is what a reader sees.
-    """
-    if not ln.chars:
-        return
-    ln.left = min(c.left for c in ln.chars)
-    ln.right = max(c.right for c in ln.chars)
-    ln.bottom = min(c.bottom for c in ln.chars)
-    ln.top = max(c.top for c in ln.chars)
-    heights = sorted(_height(c) for c in ln.chars)
-    ln.height = heights[len(heights) // 2]
-
-
-def extract_page(page: pdfium.PdfPage, index: int) -> PageResult:
-    """One page → blocks in reading order, plus what the pass is unsure of."""
-    started = time.perf_counter()
-    result = PageResult(index=index)
-    page_rect = page.get_bbox()
-    result.top, result.bottom = page_rect[3], page_rect[1]
-    chars = _page_chars(page.get_textpage())
-    result.chars = sum(1 for c in chars if c.text.strip())
-    if result.chars < MIN_PAGE_CHARS:
-        result.flags.append("no_text")
-        plate = render_plate(page)
-        if plate is not None:
-            result.plate = True
-            result.blocks = [
-                Block(
-                    "figure", page=index, top=page_rect[3], bottom=page_rect[1], left=page_rect[0], right=page_rect[2],
-                    image=plate.data, image_width=plate.width, image_height=plate.height,
-                    image_type=plate.image_type, plate=True,
-                )
-            ]
-        result.seconds = time.perf_counter() - started
-        return result
-
-    band_width = page_rect[2] - page_rect[0]
-    rough = _group_lines(chars)
-    bands = _find_bands(rough, band_width)
-    result.bands = len(bands)
-    elements: list[Element] = []
-    for ln in rough:
-        pieces = _split_at_bands(ln.chars, bands, ln)
-        if len(pieces) > 1:
-            result.cross_band += 1
-        elements.extend(pieces)
-    result.lines = sum(1 for e in elements if e.text.strip())
-
-    # Characters that sit in a gutter belong to no band, and a page full of them
-    # is one we cannot claim to have ordered.
-    valley = sum(
-        1
-        for c in chars
-        if c.text.strip()
-        and not any(lo <= (c.left + c.right) / 2 <= hi for lo, hi in bands)
-    )
-    if result.chars and valley / result.chars > VALLEY_CHAR_LIMIT:
-        result.flags.append("valley_chars")
-
-    boxes = [(e.left, e.bottom, e.right, e.top) for e in elements]
-    regions, table_like = _figure_regions(page, boxes, page_rect)
-    result.figures_detected = len(regions)
-    written: list[Box] = []
-    for box in regions:
-        crop = _crop(page, box, page_rect)
-        if crop is None:
-            result.crop_failures.append(f"page {index + 1} box {tuple(round(v, 1) for v in box)}")
-            continue
-        written.append(box)
-        elements.append(
-            Element(
-                "figure", box[0], box[1], box[2], box[3],
-                image=crop.data, image_width=crop.width, image_height=crop.height, image_type=crop.image_type,
-            )
-        )
-    result.figure_boxes = written
-
-    # Text inside a *written* figure is part of the figure — it is already in
-    # the crop. Inside a figure whose crop failed it is the only copy left, so
-    # it stays (slice 1 dropped it either way).
-    if written or table_like:
-        kept: list[Element] = []
-        for el in elements:
-            if el.kind == "line" and _inside(el, written):
-                result.figures_swallowed += 1
-                continue
-            if el.kind == "line" and _label_inside(el, table_like):
-                result.labels_swallowed += 1
-                continue
-            kept.append(el)
-        elements = kept
-
-    result.blocks = build_blocks(order_elements(elements, bands), bands, index)
-    if len(bands) > MAX_BANDS:
-        result.flags.append("many_bands")
-    result.seconds = time.perf_counter() - started
-    return result
-
-
-def _inside(el: Element, regions: list[tuple[float, float, float, float]]) -> bool:
-    """Is most of this element inside one of these regions?"""
-    area = max((el.right - el.left) * (el.top - el.bottom), 1.0)
-    for left, bottom, right, top in regions:
-        overlap_w = max(0.0, min(el.right, right) - max(el.left, left))
-        overlap_h = max(0.0, min(el.top, top) - max(el.bottom, bottom))
-        if overlap_w * overlap_h / area >= 0.6:
-            return True
-    return False
-
-
-def _label_inside(
-    el: Element, regions: list[tuple[float, float, float, float]]
-) -> bool:
-    """Is this a short label sitting inside a table-like region?"""
-    if len(el.text) > TABLE_LABEL_MAX_CHARS:
-        return False
-    if not _inside(el, regions):
-        return False
-    for left, _bottom, right, _top in regions:
-        if left <= (el.left + el.right) / 2 <= right:
-            return el.width < TABLE_LABEL_MAX_SHARE * max(right - left, 1.0)
-    return False
-
-
 # --- running heads ---------------------------------------------------------
 def _normalise(text: str) -> str:
     return _WS.sub(" ", re.sub(r"\d+", "#", text)).strip().lower()
@@ -947,7 +303,7 @@ def mark_running_heads(doc: Document) -> None:
 
 def _is_furniture(block: Block, page: PageResult) -> bool:
     """Is this block page furniture rather than content?"""
-    if block.kind == "figure" or not block.text.strip():
+    if block.kind in ("figure", "table") or not block.text.strip():
         return False
     if len(block.text) > RUNNING_HEAD_MAX_CHARS:
         return False
@@ -965,47 +321,209 @@ def _is_furniture(block: Block, page: PageResult) -> bool:
     return bool(apart_from_digits) or len(block.text.strip()) <= 5
 
 
-def _verdict(doc: Document) -> None:
-    """The per-book confidence gate (D6): order it or keep the original.
+# --- roles (spec Annex C.5 item 4) ------------------------------------------
+def _size_key(size: float) -> float:
+    return round(size * 2) / 2
 
-    The signals are deliberately about *our own* uncertainty rather than about
-    the page being complex: a two-column page is not a problem (splitting its
-    baselines is the pass working), while a page carrying more bands than this
-    pass claims to order, or characters stranded in a gutter, is.
+
+def classify_roles(pages: list[PageResult]) -> None:
+    """Headings and footnotes, from font size and weight against the body.
+
+    The body is the size carrying the most characters. Slice 1 measured
+    glyph-box heights instead, which made body lines headings and missed a
+    paper's bold section titles at the body's own size. Heading levels rank the
+    heading sizes, largest first; an outline entry that later claims a heading
+    overrides its level with the outline's depth (`epub.link_entries`).
     """
+    sizes: Counter = Counter()
+    bold_chars = all_chars = 0
+    for page in pages:
+        for b in page.blocks:
+            if b.kind == "para" and b.size > 0:
+                n = len(b.text)
+                sizes[_size_key(b.size)] += n
+                all_chars += n
+                bold_chars += n if b.bold else 0
+    if not sizes:
+        return
+    body = sizes.most_common(1)[0][0]
+    body_bold = bold_chars * 2 > all_chars
+    for page in pages:
+        height = max(page.top - page.bottom, 1.0)
+        for b in page.blocks:
+            if b.kind != "para" or b.size <= 0:
+                continue
+            short = b.lines <= HEADING_MAX_LINES and len(b.text) <= HEADING_MAX_CHARS and re.search(r"[A-Za-z]{2}", b.text)
+            if short and (b.size >= HEADING_RATIO * body or (b.lines == 1 and b.bold and not body_bold)):
+                b.kind = "heading"
+            elif b.size <= FOOTNOTE_RATIO * body and b.top <= page.bottom + FOOTNOTE_ZONE * height:
+                b.kind = "footnote"
+    ranked = sorted({_size_key(b.size) for p in pages for b in p.blocks if b.kind == "heading"}, reverse=True)
+    level_of = {size: min(i + 1, HEADING_LEVELS) for i, size in enumerate(ranked)}
+    for page in pages:
+        for b in page.blocks:
+            if b.kind == "heading":
+                b.level = level_of[_size_key(b.size)]
+
+
+def _index(blocks: list[Block], block: Block) -> int:
+    return next(i for i, b in enumerate(blocks) if b is block)
+
+
+def stitch_pages(pages: list[PageResult]) -> None:
+    """Carry a paragraph across a page break, and its page's footnotes past it.
+
+    Vision orders a page's footnotes after its last paragraph, so a sentence
+    running on to the next page would be read with the notes in its middle —
+    *Attention is All You Need*'s Introduction, pages 1 to 2. When a page's
+    last paragraph ends without terminal punctuation: a next page that opens
+    in lower case is the same paragraph and is joined to it; otherwise the
+    notes move to just after the next page's first paragraph.
+    """
+    text_pages = [p for p in pages if any(b.kind == "para" for b in p.blocks)]
+    for page, nxt in zip(text_pages, text_pages[1:]):
+        last = [b for b in page.blocks if b.kind == "para"][-1]
+        if last.text.rstrip().endswith(_SENTENCE_END):
+            continue
+        first = next((b for b in nxt.blocks if b.kind == "para"), None)
+        if first is None:
+            continue
+        if first.text[:1].islower():
+            last.text = join_lines([last.text, first.text])
+            last.lines += first.lines
+            del nxt.blocks[_index(nxt.blocks, first)]
+            continue
+        start = _index(page.blocks, last)
+        notes = [b for b in page.blocks[start + 1 :] if b.kind == "footnote"]
+        if not notes:
+            continue
+        page.blocks = [b for b in page.blocks if not any(b is n for n in notes)]
+        at = _index(nxt.blocks, first) + 1
+        nxt.blocks[at:at] = notes
+
+
+def place_figures(text_blocks: list[Block], figures: list[Block]) -> list[Block]:
+    """Each figure before the first block that lies below it in its column.
+
+    "Below" is the block's top at or under the figure's bottom; "its column"
+    is any horizontal overlap. A figure with nothing below it closes the page.
+    """
+    out = list(text_blocks)
+    for fig in sorted(figures, key=lambda f: -f.top):
+        at = len(out)
+        for i, b in enumerate(out):
+            if b.kind == "figure":
+                continue
+            if b.top <= fig.bottom + 2.0 and min(b.right, fig.right) - max(b.left, fig.left) > 0:
+                at = i
+                break
+        out.insert(at, fig)
+    return out
+
+
+def _verdict(doc: Document) -> None:
+    """The per-book confidence gate (D6): lay it out, or keep the original."""
     text_pages = doc.text_pages
     if not text_pages:
         doc.verdict, doc.reason = "no_text_layer", "no page carries a text layer"
-        return
-    flagged = [p for p in text_pages if "many_bands" in p.flags or "valley_chars" in p.flags]
-    if len(flagged) > 0.25 * len(text_pages):
+    elif doc.layout_errors > LAYOUT_ERROR_SHARE * len(text_pages):
         doc.verdict = "unstable_layout"
-        doc.reason = (
-            f"{len(flagged)} of {len(text_pages)} pages carry more bands than this pass "
-            "can order (or characters stranded in a gutter)"
+        doc.reason = f"{doc.layout_errors} of {len(text_pages)} text pages could not be laid out"
+    else:
+        doc.verdict, doc.reason = "ok", ""
+
+
+def _text_count(page: pdfium.PdfPage) -> int:
+    return len(re.sub(r"\s", "", page.get_textpage().get_text_range()))
+
+
+def _page(page: pdfium.PdfPage, index: int, layout: Optional[PageLayout], doc: Document) -> PageResult:
+    result = PageResult(index=index)
+    rect = page.get_bbox()
+    result.top, result.bottom = rect[3], rect[1]
+    chars = page_chars(page.get_textpage())
+    result.chars = sum(1 for c in chars if not c.is_space)
+    if result.chars < MIN_PAGE_CHARS:
+        plate = render_plate(page)
+        if plate is not None:
+            result.plate = True
+            result.blocks = [
+                Block(
+                    "figure", page=index, left=rect[0], bottom=rect[1], right=rect[2], top=rect[3],
+                    image=plate.data, image_width=plate.width, image_height=plate.height,
+                    image_type=plate.image_type, plate=True,
+                )
+            ]
+        return result
+
+    usable = layout is not None and layout.error is None and bool(layout.regions or layout.tables)
+    if not usable:
+        doc.layout_errors += 1
+        result.flags.append("layout_error")
+        mask = [(c.left, c.bottom, c.right, c.top) for c in chars if not c.is_space]
+    else:
+        mask = [r.bbox for r in layout.regions] + [t.bbox for t in layout.tables]
+
+    regions, _table_like = _figure_regions(page, mask, rect)
+    result.figures_detected = len(regions)
+    figures: list[Block] = []
+    for box in regions:
+        crop = _crop(page, box, rect)
+        if crop is None:
+            result.crop_failures.append(f"page {index + 1} box {tuple(round(v, 1) for v in box)}")
+            continue
+        result.figure_boxes.append(box)
+        figures.append(
+            Block(
+                "figure", page=index, left=box[0], bottom=box[1], right=box[2], top=box[3],
+                image=crop.data, image_width=crop.width, image_height=crop.height, image_type=crop.image_type,
+            )
         )
-        return
-    doc.verdict, doc.reason = "ok", ""
+
+    text = build_page_text(index, chars, layout if usable else None, result.figure_boxes, rect)
+    doc.orphans += text.orphans
+    doc.vision_regions += text.vision_regions
+    if text.vision_regions:
+        doc.vision_pages.add(index)
+    doc.dropped_text.extend(text.dropped_text)
+    result.blocks = place_figures(text.blocks, figures)
+    return result
 
 
-def analyse(
-    path: str,
-    sections: Optional[list[tuple[str, int]]] = None,
-    limit: Optional[int] = None,
-) -> Document:
-    """A whole PDF → a Document the EPUB writer can lay out."""
-    doc = Document(source=path, sections=list(sections or []))
-    pdf = pdfium.PdfDocument(path)
+def analyse(path: str, limit: Optional[int] = None, layouts: Optional[dict[int, PageLayout]] = None) -> Document:
+    """A whole PDF → a Document the EPUB writer can lay out, or a verdict saying why not.
+
+    `layouts` (keyed by 1-based page number) is the helper's answer; when it
+    is `None` the helper is run. A book with no text layer never runs it.
+    """
+    doc = Document(source=path)
     try:
-        total = len(pdf)
-        for i in range(min(total, limit) if limit else total):
-            doc.pages.append(extract_page(pdf[i], i))
+        pdf = pdfium.PdfDocument(path)
+    except Exception as err:
+        doc.verdict, doc.reason = "unreadable", f"the PDF cannot be opened ({type(err).__name__})"
+        return doc
+    try:
+        count = min(len(pdf), limit) if limit else len(pdf)
+        counts = [_text_count(pdf[i]) for i in range(count)]
+        if not any(n >= MIN_PAGE_CHARS for n in counts):
+            doc.pages = [PageResult(index=i, chars=counts[i]) for i in range(count)]
+            _verdict(doc)
+            return doc
+        if layouts is None:
+            try:
+                layouts = run_helper(path, first=1, last=count)
+            except LayoutUnavailable as err:
+                doc.verdict, doc.reason = "no_layout", err.reason
+                return doc
+        for i in range(count):
+            doc.pages.append(_page(pdf[i], i, layouts.get(i + 1), doc))
     finally:
         pdf.close()
     doc.figures_detected = sum(p.figures_detected for p in doc.pages)
     doc.plates = sum(1 for p in doc.pages if p.plate)
     doc.crop_failures = [f for p in doc.pages for f in p.crop_failures]
     mark_running_heads(doc)
-    assign_heading_levels(doc.pages)
+    classify_roles(doc.pages)
+    stitch_pages(doc.pages)
     _verdict(doc)
     return doc

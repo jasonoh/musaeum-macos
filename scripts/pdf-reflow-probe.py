@@ -3,7 +3,6 @@
 
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --out dist/reflow-spike
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --book "Attention is All You Need"
-    sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --compare   # adds pdfminer.six
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --gate-only dist/reflow-spike-slice1
 
 The corpus is the six books named in the design's *Open questions for review*
@@ -16,9 +15,8 @@ like every other lookup in the app.
 It writes one EPUB per book into `--out` (inside `dist/`, which is gitignored),
 plus `report.json`. It reads the library and writes **only** to the output
 directory: no `metadata.json`, no database row, no file inside a book folder.
-The numbers it prints are what Annex B of
-`docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md` is built from,
-and it re-derives them rather than quoting the annex.
+Each artifact is judged by the gate of the spec's Annex C.4
+(sidecar/reflow/gate.py); the script exits 1 if any book fails it.
 """
 
 from __future__ import annotations
@@ -30,12 +28,9 @@ import re
 import sqlite3
 import sys
 import time
-import zipfile
 from collections import Counter
-from html import unescape
 from pathlib import Path
 from typing import Optional
-from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "sidecar"))
 
@@ -45,7 +40,6 @@ from reflow.chars import page_chars  # noqa: E402
 from reflow.outline import outline_entries  # noqa: E402
 
 DB = os.path.expanduser("~/Library/Application Support/Musaeum/musaeum.db")
-TAG = re.compile(r"<[^>]+>")
 
 # The gate's corpus: (database title, what this book is here to prove).
 CORPUS = [
@@ -219,130 +213,11 @@ def pdf_in(folder: str) -> Optional[str]:
     return found[0] if found else None
 
 
-def pdf_words(path: str, pages: int, limit: Optional[int]) -> Counter:
-    """Every word the PDF's own text layer holds, as a multiset."""
-    import pypdfium2 as pdfium
-
-    counter: Counter = Counter()
-    pdf = pdfium.PdfDocument(path)
-    try:
-        for i in range(min(pages, limit) if limit else pages):
-            text = pdf[i].get_textpage().get_text_range()
-            counter.update(text.split())
-    finally:
-        pdf.close()
-    return counter
-
-
-def epub_text(path: str) -> tuple[Counter, list[str]]:
-    """The artifact's words, and the entry names of every XHTML it holds."""
-    counter: Counter = Counter()
-    names: list[str] = []
-    with zipfile.ZipFile(path) as zf:
-        for name in zf.namelist():
-            if not name.endswith(".xhtml"):
-                continue
-            names.append(name)
-            raw = zf.read(name).decode("utf-8", "replace")
-            text = unescape(TAG.sub(" ", raw))
-            counter.update(text.split())
-    return counter, names
-
-
-def validate(path: str) -> list[str]:
-    """Structural checks an EPUB reader would refuse the file over."""
-    problems: list[str] = []
-    with zipfile.ZipFile(path) as zf:
-        names = zf.namelist()
-        if not names or names[0] != "mimetype":
-            problems.append("mimetype is not the first entry")
-        info = zf.getinfo("mimetype")
-        if info.compress_type != zipfile.ZIP_STORED:
-            problems.append("mimetype is compressed")
-        if zf.read("mimetype") != b"application/epub+zip":
-            problems.append("mimetype has the wrong content")
-        for name in ("META-INF/container.xml", "OEBPS/content.opf", "OEBPS/nav.xhtml"):
-            if name not in names:
-                problems.append(f"{name} is missing")
-        for name in names:
-            if name.endswith((".xhtml", ".opf", ".ncx", ".xml")):
-                try:
-                    ElementTree.fromstring(zf.read(name))
-                except ElementTree.ParseError as err:
-                    problems.append(f"{name} does not parse: {err}")
-        try:
-            opf = ElementTree.fromstring(zf.read("OEBPS/content.opf"))
-            ns = "{http://www.idpf.org/2007/opf}"
-            for item in opf.iter(f"{ns}item"):
-                href = item.get("href") or ""
-                if not href or "://" in href:
-                    continue
-                if f"OEBPS/{href}" not in names:
-                    problems.append(f"manifest href OEBPS/{href} is not in the zip")
-        except ElementTree.ParseError as err:  # pragma: no cover - caught above
-            problems.append(f"content.opf did not parse: {err}")
-        for name in names:
-            if name.startswith("OEBPS/images/") and zf.getinfo(name).file_size == 0:
-                problems.append(f"{name} is empty")
-    return problems
-
-
-def missing_report(pdf: Counter, art: Counter, dropped: list[str]) -> dict:
-    """Words the artifact lost, and words it invented.
-
-    Tokens are compared as multisets, so a reordered page contributes nothing
-    here — this measures dropped and duplicated *words*, not order. Hyphenated
-    line breaks legitimately change the token set (the pass rejoins them), and
-    the dropped running heads are excluded from the count and reported beside
-    it, so the number is a floor on real loss rather than a fiction of one.
-    """
-    missing = pdf - art
-    extra = art - pdf
-    dropped_words = Counter(w for text in dropped for w in text.split())
-    for token, count in dropped_words.items():
-        if missing[token] <= count:
-            missing.pop(token, None)
-        else:
-            missing[token] -= count
-    total_missing = sum(missing.values())
-    return {
-        "pdf_words": sum(pdf.values()),
-        "artifact_words": sum(art.values()),
-        "missing": total_missing,
-        "extra": sum(extra.values()),
-        "missing_top": missing.most_common(12),
-    }
-
-
-def compare_pdfminer(path: str, limit: Optional[int]) -> Optional[dict]:
-    """The same pages through pdfminer.six's layout analysis, for the record."""
-    try:
-        from pdfminer.high_level import extract_pages
-    except Exception:
-        return None
-    started = time.perf_counter()
-    pages = 0
-    chars = 0
-    try:
-        for layout in extract_pages(path, page_numbers=list(range(limit)) if limit else None):
-            pages += 1
-            chars += len(layout.get_text())
-    except Exception as err:  # a comparison that raises is itself a reading
-        return {"error": f"{type(err).__name__}: {err}"}
-    return {
-        "pages": pages,
-        "chars": chars,
-        "seconds": round(time.perf_counter() - started, 1),
-        "ms_per_page": round((time.perf_counter() - started) / max(pages, 1) * 1000, 1),
-    }
-
-
-def run_one(title: str, why: str, root: str, out_dir: str, limit: Optional[int], compare: bool) -> dict:
+def run_one(title: str, why: str, root: str, out_dir: str, limit: Optional[int], golden: dict[str, list[str]]) -> dict:
     matched, rel, formats = book(title)
-    folder = os.path.join(root, rel)
-    path = pdf_in(folder)
+    path = pdf_in(os.path.join(root, rel))
     if not path:
-        return {"title": matched, "why": why, "verdict": "no_pdf", "reason": "folder holds no .pdf"}
+        return {"title": matched, "why": why, "verdict": "no_pdf", "reason": "folder holds no .pdf", "artifact": None}
 
     rec: dict = {
         "title": matched,
@@ -357,80 +232,74 @@ def run_one(title: str, why: str, root: str, out_dir: str, limit: Optional[int],
     rec["seconds"] = round(time.perf_counter() - started, 1)
     rec["pages"] = len(doc.pages)
     rec["ms_per_page"] = round(rec["seconds"] / max(len(doc.pages), 1) * 1000, 1)
-
-    text_pages = doc.text_pages
-    rec["verdict"] = doc.verdict
-    rec["reason"] = doc.reason
-    rec["text_pages"] = len(text_pages)
-    rec["multi_band_pages"] = sum(1 for p in text_pages if p.bands > 1)
-    rec["flagged_pages"] = sum(1 for p in text_pages if p.flags)
-    rec["cross_band_lines"] = sum(p.cross_band for p in text_pages)
-    rec["headings"] = sum(1 for p in doc.pages for b in p.blocks if b.kind == "heading")
-    rec["figures"] = sum(1 for p in doc.pages for b in p.blocks if b.kind == "figure")
-    rec["dropped_running_heads"] = len(doc.dropped_running_heads)
-    rec["running_head_sample"] = doc.dropped_running_heads[:4]
-    rec["outline_entries"] = doc.outline_entries
-    rec["sections"] = len(doc.entries)
-    rec["section_titles"] = [e.title for e in doc.entries[:8]]
+    blocks = [b for p in doc.pages for b in p.blocks]
+    rec.update(
+        verdict=doc.verdict,
+        reason=doc.reason,
+        text_pages=len(doc.text_pages),
+        headings=sum(1 for b in blocks if b.kind == "heading"),
+        footnotes=sum(1 for b in blocks if b.kind == "footnote"),
+        tables=sum(1 for b in blocks if b.kind == "table"),
+        figures=doc.figures_detected,
+        plates=doc.plates,
+        crop_failures=doc.crop_failures[:5],
+        vision_regions=doc.vision_regions,
+        vision_pages=len(doc.vision_pages),
+        orphans=doc.orphans,
+        layout_errors=doc.layout_errors,
+        dropped_running_heads=len(doc.dropped_running_heads),
+        running_head_sample=doc.dropped_running_heads[:4],
+        outline_entries=doc.outline_entries,
+        toc_from="outline" if doc.entries_from_outline else "headings",
+        section_titles=[e.title for e in doc.entries[:8]],
+    )
 
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", matched).strip("-")[:60]
     epub_path = os.path.join(out_dir, f"{slug}.epub")
     if doc.verdict != "ok":
         rec["artifact"] = None
         rec["note"] = "fallback: no artifact written, which is what D6 asks for"
-    else:
-        rec.update(write_epub(doc, epub_path, matched))
-        rec["artifact"] = os.path.relpath(epub_path, out_dir)
-        rec["problems"] = validate(epub_path)
-        art, names = epub_text(epub_path)
-        rec["xhtml_files"] = len(names)
-        rec["words"] = missing_report(pdf_words(path, len(doc.pages), limit), art, doc.dropped_running_heads)
-
-    if compare:
-        rec["pdfminer"] = compare_pdfminer(path, limit)
+        return rec
+    rec.update(write_epub(doc, epub_path, matched))
+    rec["artifact"] = os.path.relpath(epub_path, out_dir)
+    rec["gate"] = gate_book(
+        path,
+        epub_path,
+        passages=golden.get(matched, []),
+        pages=len(doc.pages),
+        expected_figures=doc.figures_detected,
+        exclusions={p.index: p.figure_boxes for p in doc.pages},
+        skip_pages=frozenset(doc.vision_pages),
+        excluded_words=Counter(gate.tokens("\n".join(doc.dropped_running_heads + doc.dropped_text))),
+    )
     return rec
 
 
 def print_report(records: list[dict]) -> None:
-    print(f"{'book':44s} {'pages':>6s} {'verdict':<15s} {'sect':>5s} {'figs':>5s} "
-          f"{'heads':>5s} {'words':>7s} {'lost':>6s} {'extra':>6s} {'sec':>6s} {'ms/pg':>6s}")
+    print(f"{'book':44s} {'pages':>6s} {'verdict':<15s} {'toc':>5s} {'figs':>5s} {'plates':>6s} {'ocr':>5s} {'sec':>6s} {'ms/pg':>6s}")
     for r in records:
         if r.get("verdict") == "no_pdf":
             print(f"{r['title'][:44]:44s} {'-':>6s} no pdf")
             continue
-        words = r.get("words") or {}
         print(
-            f"{r['title'][:44]:44s} {r['pages']:>6d} {r['verdict']:<15s} {r['sections']:>5d} "
-            f"{r['figures']:>5d} {r['headings']:>5d} {words.get('artifact_words', 0):>7d} "
-            f"{words.get('missing', 0):>6d} {words.get('extra', 0):>6d} {r['seconds']:>6.1f} {r['ms_per_page']:>6.1f}"
+            f"{r['title'][:44]:44s} {r['pages']:>6d} {r['verdict']:<15s} {r.get('toc_entries', 0):>5d} "
+            f"{r['figures']:>5d} {r['plates']:>6d} {r['vision_regions']:>5d} {r['seconds']:>6.1f} {r['ms_per_page']:>6.1f}"
         )
     print()
     for r in records:
         if r.get("verdict") == "no_pdf":
             continue
-        print(f"— {r['title']}")
-        print(f"    why       {r['why']}")
-        print(f"    formats   {', '.join(r['formats'])}   {r['mb']} MB   {r['pages']} pages")
+        print(f"— {r['title']}  ({r['why']})")
         print(f"    verdict   {r['verdict']}{' — ' + r['reason'] if r['reason'] else ''}")
-        print(f"    pages     {r['text_pages']} with text, {r['multi_band_pages']} multi-band, "
-              f"{r['cross_band_lines']} lines cut at a gutter, {r['flagged_pages']} flagged")
-        print(f"    structure {r['headings']} headings, {r['figures']} figures, "
-              f"{r['sections']} sections (outline: {r['outline_entries']} entries), "
-              f"{r['dropped_running_heads']} dropped running heads")
+        print(f"    toc       from the {r['toc_from']}; {r['outline_entries']} outline entries; first: {r['section_titles'][:4]}")
+        print(
+            f"    blocks    {r['headings']} headings, {r['footnotes']} footnotes, {r['tables']} tables, "
+            f"{r['dropped_running_heads']} furniture dropped, {r['orphans']} orphan chars, {r['layout_errors']} layout errors, "
+            f"{r['vision_regions']} regions read from Vision on {r['vision_pages']} pages"
+        )
+        print(f"    figures   {r['figures']} detected, {r['plates']} plates, crop failures: {r['crop_failures'] or 'none'}")
         if r.get("artifact"):
-            words = r.get("words") or {}
-            print(f"    artifact  {r['artifact']}  {r['bytes'] / 1024:.0f} KB  "
-                  f"{words.get('artifact_words', 0)} words  {r['xhtml_files']} xhtml")
-            print(f"    loss      {words.get('missing', 0)} words missing, {words.get('extra', 0)} extra "
-                  f"(pdf has {words.get('pdf_words', 0)})")
-            if words.get("missing_top"):
-                print(f"    lost top  {words['missing_top'][:8]}")
-            print(f"    validate  {'clean' if not r.get('problems') else r['problems']}")
-        else:
-            print(f"    artifact  none — {r.get('note', '')}")
-        if r.get("pdfminer"):
-            print(f"    pdfminer  {r['pdfminer']}")
-        print(f"    section titles: {r['section_titles']}")
+            print(f"    artifact  {r['artifact']}  {r['bytes'] / 1024:.0f} KB  {r['words']} words  {r['sections']} files")
         print()
 
 
@@ -438,7 +307,6 @@ def main(argv: list[str]) -> int:
     out_dir = "dist/reflow-spike"
     limit: Optional[int] = None
     only: Optional[str] = None
-    compare = False
     gate_dir: Optional[str] = None
     i = 1
     while i < len(argv):
@@ -452,8 +320,6 @@ def main(argv: list[str]) -> int:
         elif arg == "--book":
             i += 1
             only = argv[i]
-        elif arg == "--compare":
-            compare = True
         elif arg == "--gate-only":
             i += 1
             gate_dir = argv[i]
@@ -472,21 +338,18 @@ def main(argv: list[str]) -> int:
         print(f"no corpus book matches {only!r}", file=sys.stderr)
         return 2
 
+    golden = load_golden()
     records = []
     for title, why in targets:
         print(f"… {title}", file=sys.stderr, flush=True)
-        records.append(run_one(title, why, root, out_dir, limit, compare))
+        records.append(run_one(title, why, root, out_dir, limit, golden))
 
     print_report(records)
     report = os.path.join(out_dir, "report.json")
     with open(report, "w") as fh:
         json.dump({"limit": limit, "books": records}, fh, indent=1)
     print(f"report: {report}")
-    passed = [r for r in records if r.get("verdict") == "ok" and not r.get("problems")]
-    fallback = [r for r in records if r.get("verdict") != "ok"]
-    print(f"gate: {len(passed)}/{len(records)} books produced a clean artifact; "
-          f"{len(fallback)} fell back ({[r['title'] for r in fallback]})")
-    return 0
+    return 1 if print_gate(records) else 0
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@ from PIL import Image
 
 from reflow import gate, layout
 from reflow.epub import write_epub
-from reflow.layout import _crop, _figure_regions, extract_page, render_plate
+from reflow.layout import _crop, _figure_regions, analyse, render_plate
+from reflow.vision import PageLayout, Region
 from reflow.model import Block, Document, PageResult
 from tests.reflow_pdfs import Page, Rect, Text, write_pdf
 
@@ -78,27 +79,35 @@ def test_a_blank_page_has_no_plate(tmp_path):
     assert render_plate(page) is None
 
 
+LABELLED = BODY + [Text(320, 340, "Label inside the figure")]
+LABEL_LAYOUT = {
+    1: PageLayout(
+        page=1, box=(0, 0, 612, 792),
+        regions=[Region(0, (70, 670, 450, 732), ""), Region(1, (310, 335, 480, 352), "Label inside the figure")],
+    )
+}
+
+
 def test_a_failed_crop_keeps_the_figures_labels(tmp_path, monkeypatch):
-    texts = BODY + [Text(320, 340, "Label inside the figure")]
-    pdf, page = _page(tmp_path, Page(texts=texts, rects=[Rect(300, 300, 200, 90, 0.8)]))
+    path = write_pdf(tmp_path / "l.pdf", [Page(texts=LABELLED, rects=[Rect(300, 300, 200, 90, 0.8)])])
     monkeypatch.setattr(layout, "_crop", lambda *a, **k: None)
-    result = extract_page(page, 0)
-    assert "Label inside the figure" in " ".join(b.text for b in result.blocks)
-    assert result.crop_failures and not any(b.kind == "figure" for b in result.blocks)
+    doc = analyse(path, layouts=LABEL_LAYOUT)
+    assert "Label inside the figure" in " ".join(b.text for b in doc.pages[0].blocks)
+    assert len(doc.crop_failures) == 1 and not any(b.kind == "figure" for b in doc.pages[0].blocks)
 
 
 def test_a_written_crop_swallows_its_labels(tmp_path):
-    texts = BODY + [Text(320, 340, "Label inside the figure")]
-    pdf, page = _page(tmp_path, Page(texts=texts, rects=[Rect(300, 300, 200, 90, 0.8)]))
-    result = extract_page(page, 0)
-    assert "Label inside the figure" not in " ".join(b.text for b in result.blocks)
-    assert [b.image_type for b in result.blocks if b.kind == "figure"] == ["png"]
+    path = write_pdf(tmp_path / "w.pdf", [Page(texts=LABELLED, rects=[Rect(300, 300, 200, 90, 0.8)])])
+    doc = analyse(path, layouts=LABEL_LAYOUT)
+    assert "Label inside the figure" not in " ".join(b.text for b in doc.pages[0].blocks)
+    assert [b.image_type for b in doc.pages[0].blocks if b.kind == "figure"] == ["png"]
+    assert "Label inside the figure" in doc.dropped_text
 
 
 def test_a_textless_page_becomes_a_plate(tmp_path):
-    pdf, page = _page(tmp_path, Page(rects=[Rect(0, 0, 612, 792, 0.3)]))
-    result = extract_page(page, 0)
-    assert [b.plate for b in result.blocks] == [True]
+    path = write_pdf(tmp_path / "p.pdf", [Page(texts=LABELLED), Page(rects=[Rect(0, 0, 612, 792, 0.3)])])
+    doc = analyse(path, layouts={1: LABEL_LAYOUT[1]})
+    assert [b.plate for b in doc.pages[1].blocks] == [True]
 
 
 def _image(kind, w, h):

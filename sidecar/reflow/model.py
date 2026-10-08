@@ -74,20 +74,12 @@ class PageResult:
     figure_boxes: list[Box] = field(default_factory=list)  # the crops actually written
     crop_failures: list[str] = field(default_factory=list)
     plate: bool = False
-    # Slice-1 bookkeeping for the band pass; deleted with it in Task 8.
-    lines: int = 0
-    cross_band: int = 0
-    figures_swallowed: int = 0
-    labels_swallowed: int = 0
-    bands: int = 1
-    seconds: float = 0.0
 
 
 @dataclass
 class Document:
     source: str
     pages: list[PageResult] = field(default_factory=list)
-    sections: list[tuple[str, int]] = field(default_factory=list)  # slice 1; Task 5 replaces it with `entries`
     entries: list["Entry"] = field(default_factory=list)
     entries_from_outline: bool = False
     verdict: str = "ok"
