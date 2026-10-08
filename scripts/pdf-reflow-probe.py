@@ -4,6 +4,7 @@
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --out dist/reflow-spike
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --book "Attention is All You Need"
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --compare   # adds pdfminer.six
+    sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --gate-only dist/reflow-spike-slice1
 
 The corpus is the six books named in the design's *Open questions for review*
 (a two-column textbook, the paper the owner reads, a paper in the reflow set
@@ -39,6 +40,9 @@ from xml.etree import ElementTree
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "sidecar"))
 
 from reflow import analyse, document_sections, write_epub  # noqa: E402
+from reflow import gate  # noqa: E402
+from reflow.chars import page_chars  # noqa: E402
+from reflow.outline import outline_entries  # noqa: E402
 
 DB = os.path.expanduser("~/Library/Application Support/Musaeum/musaeum.db")
 TAG = re.compile(r"<[^>]+>")
@@ -52,6 +56,134 @@ CORPUS = [
     ("Modernist Cuisine: Volume 1: History & Fundamentals", "designed and caption-heavy"),
     ("The Complete Guide to Asterix", "image-only: the fallback must fire"),
 ]
+
+GOLDEN = Path(__file__).with_name("reflow-golden.json")
+
+# The corpus book whose correct outcome is *no artifact* (D6).
+EXPECT_FALLBACK = {"The Complete Guide to Asterix"}
+CHECKS = ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
+
+
+def load_golden() -> dict[str, list[str]]:
+    with open(GOLDEN) as fh:
+        return json.load(fh)
+
+
+def gate_book(
+    pdf_path: str,
+    epub_path: str,
+    *,
+    passages: list[str],
+    pages: int,
+    expected_figures: Optional[int],
+    expected_plates: Optional[int] = None,
+    exclusions: Optional[dict[int, list]] = None,
+    skip_pages: frozenset = frozenset(),
+    excluded_words: Optional[Counter] = None,
+) -> dict[str, list[str]]:
+    """Run G1–G7 (spec Annex C.4) on one artifact against its source PDF.
+
+    `expected_plates=None` means "derive it from the PDF"; the other pipeline
+    inputs default to *nothing excluded*, which is how the slice-1 artifacts
+    are judged — they recorded no figure boxes and read no page from Vision.
+    """
+    import pypdfium2 as pdfium
+
+    results: dict[str, list[str]] = {g: [] for g in CHECKS}
+    results["G7"] = gate.check_package(epub_path)
+    spine = gate.spine_text(epub_path)
+    spine_tokens = gate.tokens(spine)
+    results["G1"] = gate.check_golden(spine, passages)
+
+    segments: list[list[str]] = []
+    rotated: list[str] = []
+    upright: list[str] = []
+    pdf_counter: Counter = Counter()
+    plates = 0
+    pdf = pdfium.PdfDocument(pdf_path)
+    try:
+        for i in range(pages):
+            page = pdf[i]
+            box = page.get_bbox()
+            ev = gate.page_evidence(page, page_chars(page.get_textpage()), (exclusions or {}).get(i, []), box)
+            plates += ev.plate_expected
+            rotated.extend(ev.rotated)
+            upright.extend(ev.upright)
+            if i not in skip_pages:
+                segments.extend(ev.segments)
+                pdf_counter.update(ev.upright)
+    finally:
+        pdf.close()
+
+    recall, trigrams = gate.trigram_recall(segments, spine_tokens)
+    if recall < gate.TRIGRAM_RECALL_MIN:
+        results["G2"].append(f"G2 segment trigram recall {recall:.1%} of {trigrams} (needs {gate.TRIGRAM_RECALL_MIN:.0%})")
+    results["G3"] = gate.check_rotated(spine_tokens, gate.rotated_only(rotated, upright))
+    results["G4"] = gate.check_figures(
+        epub_path, expected_figures=expected_figures, expected_plates=plates if expected_plates is None else expected_plates
+    )
+    outline = outline_entries(pdf_path, pages=pages)
+    results["G5"] = gate.check_toc(epub_path, [(e.title, e.depth) for e in outline] if len(outline) >= 2 else None)
+    loss, missing = gate.word_loss(pdf_counter, Counter(spine_tokens), excluded_words or Counter())
+    if loss > gate.WORD_LOSS_MAX:
+        results["G6"].append(f"G6 {loss:.1%} of words lost (top: {missing.most_common(6)})")
+    return results
+
+
+def print_gate(records: list[dict]) -> int:
+    """One line per check per book; returns how many books failed."""
+    failed = 0
+    for r in records:
+        title = r["title"]
+        if title in EXPECT_FALLBACK:
+            ok = r.get("artifact") is None and bool(r.get("reason"))
+            print(f"{'PASS' if ok else 'FAIL'}  {title} — G8 fallback ({r.get('reason') or 'an artifact was written'})")
+            failed += not ok
+            continue
+        results = r.get("gate")
+        if results is None:
+            print(f"FAIL  {title} — no artifact ({r.get('reason', '')})")
+            failed += 1
+            continue
+        bad = [g for g in CHECKS if results.get(g)]
+        print(f"{'PASS' if not bad else 'FAIL'}  {title}")
+        for g in bad:
+            lines = results[g]
+            for line in lines[:3]:
+                print(f"        {line}")
+            if len(lines) > 3:
+                print(f"        … and {len(lines) - 3} more {g} failures")
+        failed += bool(bad)
+    print(f"gate: {len(records) - failed}/{len(records)} books pass")
+    return failed
+
+
+def gate_only(directory: str, root: str, only: Optional[str]) -> int:
+    """Judge existing artifacts — the slice-1 negative control — without re-running the pipeline."""
+    golden = load_golden()
+    with open(os.path.join(directory, "report.json")) as fh:
+        previous = {b["title"]: b for b in json.load(fh)["books"]}
+    records = []
+    for title, _ in CORPUS:
+        if only and only.lower() not in title.lower():
+            continue
+        matched, rel, _ = book(title)
+        path = pdf_in(os.path.join(root, rel))
+        before = previous.get(matched, {})
+        slug = re.sub(r"[^a-zA-Z0-9]+", "-", matched).strip("-")[:60]
+        epub_path = os.path.join(directory, f"{slug}.epub")
+        rec = {"title": matched, "reason": before.get("reason", ""), "artifact": None}
+        if os.path.exists(epub_path) and path:
+            print(f"… gating {matched}", file=sys.stderr, flush=True)
+            import pypdfium2 as pdfium
+
+            pages = len(pdfium.PdfDocument(path))
+            rec["artifact"] = os.path.basename(epub_path)
+            rec["gate"] = gate_book(
+                path, epub_path, passages=golden.get(matched, []), pages=pages, expected_figures=before.get("figures")
+            )
+        records.append(rec)
+    return 1 if print_gate(records) else 0
 
 
 def library_root() -> str:
@@ -308,6 +440,7 @@ def main(argv: list[str]) -> int:
     limit: Optional[int] = None
     only: Optional[str] = None
     compare = False
+    gate_dir: Optional[str] = None
     i = 1
     while i < len(argv):
         arg = argv[i]
@@ -322,12 +455,17 @@ def main(argv: list[str]) -> int:
             only = argv[i]
         elif arg == "--compare":
             compare = True
+        elif arg == "--gate-only":
+            i += 1
+            gate_dir = argv[i]
         else:
             print(__doc__, file=sys.stderr)
             return 2
         i += 1
 
     root = library_root()
+    if gate_dir:
+        return gate_only(os.path.abspath(gate_dir), root, only)
     out_dir = os.path.abspath(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     targets = [c for c in CORPUS if only is None or only.lower() in c[0].lower()]

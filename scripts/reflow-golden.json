@@ -1,0 +1,27 @@
+{
+  "Universe: Solar Systems, Stars, and Galaxies": [
+    "Soon Hveen was an international center of astronomical study. Tycho Brahe's Legacy Tycho made no direct contribution to astronomical theory",
+    "Kepler was born in 1571 to a poor family in a region that is now part of southwest Germany",
+    "His father was unreliable and shiftless, principally employed as a mercenary soldier fighting for whoever paid enough"
+  ],
+  "Attention is All You Need": [
+    "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks that include an encoder and a decoder",
+    "1 Introduction Recurrent neural networks, long short-term memory [13] and gated recurrent [7] neural networks in particular",
+    "have been firmly established as state of the art approaches in sequence modeling and transduction problems such as language modeling and machine translation"
+  ],
+  "Sequence to Sequence Learning with Neural Networks": [
+    "Graves [10] introduced a novel differentiable attention mechanism that allows neural networks to focus on different parts of their input",
+    "monotonic alignment between the inputs and the outputs [11]. Figure 1: Our model reads an input sentence",
+    "The simple trick of reversing the words in the source sentence is one of the key technical contributions of this work"
+  ],
+  "Politics, Philosophy, Culture": [
+    "I have written a book about the history of psychiatry from the 17th century to the very beginning of the 19th",
+    "At first I refused to go there since I am not a psychiatrist, even if I have some experience, a very short experience as I told you earlier",
+    "Many people look at you as someone who is able to tell them the deep truth about the world and about themselves"
+  ],
+  "Modernist Cuisine: Volume 1: History & Fundamentals": [
+    "What Einstein Told His Cook: Kitchen Science Explained (2002) by Robert L. Wolke (who also contributed to this book",
+    "In March 1988, he and Nicholas Kurti together decided they would launch a new scientific discipline and an international conference",
+    "examined digital scans of original documents available on the website of Harold McGee"
+  ]
+}

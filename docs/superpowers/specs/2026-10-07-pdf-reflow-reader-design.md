@@ -487,3 +487,18 @@ Each check is computed by `scripts/pdf-reflow-probe.py` from the source PDF and 
 ### C.6 What did not change
 
 D1–D3 and D5–D10 stand. OCR stays out of v1: Vision would make it cheap, but an image-only book is mostly comics and plates, where a reflow is the wrong rendering. That is a separate decision for later, not part of this pivot.
+
+### C.7 The gate's runs
+
+**Run 1 — the slice-1 artifacts, kept at `dist/reflow-spike-slice1/` (2026-10-08).** `scripts/pdf-reflow-probe.py --gate-only dist/reflow-spike-slice1`. The gate is valid only if this fails, and it did:
+
+| Book | G1 | G2 | G3 | G4 | G5 | G6 | G7 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Universe: Solar Systems, Stars, and Galaxies | 3 of 3 passages | 87.0% recall | rotated text in the flow: alabama, dean, fred… | 46 failures, first p0006-0.png bytes jpeg, extension png | 146 entries for 255; 0% on headings | 8.9% of words lost | pass |
+| Attention is All You Need | 2 of 3 passages | pass | pass | pass | 9 entries for 22; 0% on headings | pass | pass |
+| Sequence to Sequence Learning with Neural Networks | pass | 93.3% recall | pass | pass | 0 of 5 land on a matching heading | 4.5% of words lost | pass |
+| Politics, Philosophy, Culture | pass | pass | pass | 0 plates written, 8 text-less pages carry ink | 25 entries for 31; 0% on headings | pass | pass |
+| Modernist Cuisine: Volume 1: History & Fundamentals | 3 of 3 passages | 92.7% recall | pass | 69 failures, first p0022-4.png bytes jpeg, extension png | 177 entries for 7; 0% on headings | 6.1% of words lost | pass |
+| The Complete Guide to Asterix | G8 pass — no artifact | — | — | — | — | — | — |
+
+The run printed `gate: 1/6 books pass` and exited 1: every text book failed, and the only pass is the image-only book, whose correct outcome is no artifact (D6).
