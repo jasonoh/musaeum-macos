@@ -39,7 +39,7 @@ from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "sidecar"))
 
-from reflow import analyse, document_sections, write_epub  # noqa: E402
+from reflow import analyse, document_entries, write_epub  # noqa: E402
 from reflow import gate  # noqa: E402
 from reflow.chars import page_chars  # noqa: E402
 from reflow.outline import outline_entries  # noqa: E402
@@ -353,8 +353,7 @@ def run_one(title: str, why: str, root: str, out_dir: str, limit: Optional[int],
     }
     started = time.perf_counter()
     doc = analyse(path, limit=limit)
-    sections, outline_entries = document_sections(path, doc)
-    doc.sections = sections
+    doc.entries = document_entries(path, doc)
     rec["seconds"] = round(time.perf_counter() - started, 1)
     rec["pages"] = len(doc.pages)
     rec["ms_per_page"] = round(rec["seconds"] / max(len(doc.pages), 1) * 1000, 1)
@@ -370,9 +369,9 @@ def run_one(title: str, why: str, root: str, out_dir: str, limit: Optional[int],
     rec["figures"] = sum(1 for p in doc.pages for b in p.blocks if b.kind == "figure")
     rec["dropped_running_heads"] = len(doc.dropped_running_heads)
     rec["running_head_sample"] = doc.dropped_running_heads[:4]
-    rec["outline_entries"] = outline_entries
-    rec["sections"] = len(sections)
-    rec["section_titles"] = [t for t, _ in sections[:8]]
+    rec["outline_entries"] = doc.outline_entries
+    rec["sections"] = len(doc.entries)
+    rec["section_titles"] = [e.title for e in doc.entries[:8]]
 
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", matched).strip("-")[:60]
     epub_path = os.path.join(out_dir, f"{slug}.epub")

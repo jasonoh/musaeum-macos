@@ -9,18 +9,21 @@ See `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md` for the
 decisions this implements and Annex B for what it measured.
 """
 
-from .epub import write_epub
-from .layout import Block, Document, PageResult, analyse, extract_page
-from .outline import document_sections, sections_from_headings, sections_from_outline
+from .epub import link_entries, write_epub
+from .layout import analyse, extract_page
+from .model import Block, Document, PageResult
+from .outline import Entry, document_entries, heading_entries, outline_entries
 
 __all__ = [
     "Block",
     "Document",
+    "Entry",
     "PageResult",
     "analyse",
-    "document_sections",
+    "document_entries",
     "extract_page",
-    "sections_from_headings",
-    "sections_from_outline",
+    "heading_entries",
+    "link_entries",
+    "outline_entries",
     "write_epub",
 ]
