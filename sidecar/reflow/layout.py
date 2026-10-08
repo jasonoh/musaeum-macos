@@ -379,10 +379,21 @@ def stitch_pages(pages: list[PageResult]) -> None:
     last paragraph ends without terminal punctuation: a next page that opens
     in lower case is the same paragraph and is joined to it; otherwise the
     notes move to just after the next page's first paragraph.
+
+    The join *removes* the paragraph it takes, and a page holding only that
+    one then has none left — *Universe* pages 290→291 end in the copyright
+    footer, which carries no terminal punctuation, and page 291 is a single
+    paragraph starting in lower case. The paragraph list is therefore read
+    per page as the loop reaches it, not once at the top: the snapshot is what
+    made `[-1]` an `IndexError` that took down the whole book.
     """
     text_pages = [p for p in pages if any(b.kind == "para" for b in p.blocks)]
     for page, nxt in zip(text_pages, text_pages[1:]):
-        last = [b for b in page.blocks if b.kind == "para"][-1]
+        last = next((b for b in reversed(page.blocks) if b.kind == "para"), None)
+        if last is None:
+            # The previous page's join took this page's only paragraph; its
+            # words are already there, so there is nothing to carry onward.
+            continue
         if last.text.rstrip().endswith(_SENTENCE_END):
             continue
         first = next((b for b in nxt.blocks if b.kind == "para"), None)

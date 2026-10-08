@@ -140,6 +140,21 @@ def test_a_paragraph_continuing_onto_the_next_page_is_joined_before_its_notes():
     assert p1.blocks == []
 
 
+def test_a_page_the_join_emptied_does_not_crash_the_next_page():
+    """*Universe* pages 290→291: page 291 holds one paragraph, the join below
+    takes it, and the next iteration then found a page with no paragraph to
+    end — `IndexError` on the whole 535-page book."""
+    p0 = page(B(text="ends without a stop"), index=0)
+    p1 = page(B(text="lowercase continuation."), index=1)
+    p2 = page(B(text="A page after it."), index=2)
+    stitch_pages([p0, p1, p2])
+    assert [b.text for b in p0.blocks] == [
+        "ends without a stop lowercase continuation."
+    ]
+    assert p1.blocks == []
+    assert [b.text for b in p2.blocks] == ["A page after it."]
+
+
 def test_notes_move_past_a_paragraph_that_continues_with_a_capital():
     last, note = B(text="ends without a stop"), B("footnote", text="note")
     first, more = B(text="Next starts upper."), B(text="More.")
