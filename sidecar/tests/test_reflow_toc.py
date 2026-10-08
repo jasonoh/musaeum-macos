@@ -89,6 +89,26 @@ def test_outline_depth_sets_the_heading_level(tmp_path):
     assert h.level == 1
 
 
+def test_a_page_label_outline_falls_back_to_the_headings(tmp_path):
+    """*Modernist Cuisine*'s outline is 355 page labels — `cover1`–`cover11`,
+    `viii`–`xiii`, the folios `2`–`335`, `end1`–`end4` — and the filter kept the
+    seven that carry three or more letters. The TOC was `viii, xii, xiii, end1…`
+    and no entry could land on a heading (G5: 0 of 7), where the spec's item 9
+    asks for the heading pass once the outline is not a TOC."""
+    path = write_pdf(
+        tmp_path / "j.pdf",
+        [Page(texts=[Text(72, 700, "x")]), Page(texts=[Text(72, 700, "y")])],
+        outline=[
+            OutlineItem("cover4", 0),
+            OutlineItem("viii", 0, 1),
+            OutlineItem("xii", 0, 1),
+            OutlineItem("end1", 0, 1),
+            OutlineItem("Introduction", 0, 1),
+        ],
+    )
+    assert [e.title for e in outline_entries(path)] == ["Introduction"]
+
+
 def test_headings_stand_in_for_a_missing_outline(tmp_path):
     path = write_pdf(tmp_path / "n.pdf", [Page(texts=[Text(72, 700, "x")])])
     doc = _doc(tmp_path, [[H("Intro", 1), H("Detail", 2, 500), H("Minor", 3, 400), P("p", 300)]])

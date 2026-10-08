@@ -24,8 +24,13 @@ _WS = re.compile(r"\s+")
 # a book assembled from spreads) names its top-level destinations after the
 # printer's marks: measured on *Modernist Cuisine, Vol 1*, all 240 top-level
 # entries were `cover1`, `cover2`, … and "using the outline" produced a TOC of
-# cover numbers that is worse than no outline at all.
-_JUNK_LABEL = re.compile(r"^(cover|untitled|page|blank|front|back|spread)[\s_-]*\d*$", re.I)
+# cover numbers that is worse than no outline at all. `end1`–`end4` (its
+# endpapers) are the same family, and a *Roman* folio has to be named
+# separately: `is_junk` already drops a label with no run of three letters, so
+# `ix` went but `viii`, `xii` and `xiii` — seven entries of that book's 355 —
+# came through as the whole TOC.
+_JUNK_LABEL = re.compile(r"^(cover|untitled|page|blank|front|back|spread|end)[\s_-]*\d*$", re.I)
+_ROMAN = re.compile(r"^[ivxlcdm]+$", re.I)
 
 # --- slice 1R: the outline at every depth (spec Annex C.5, item 9) ---------
 
@@ -41,9 +46,15 @@ class Entry:
 
 
 def is_junk(label: str) -> bool:
-    """A printer's mark (`cover4`), a folio (`ix`, `3`), or nothing at all."""
+    """A printer's mark (`cover4`, `end1`), a folio (`ix`, `viii`, `3`), or
+    nothing at all."""
     text = label.strip()
-    return not text or bool(_JUNK_LABEL.match(text)) or not re.search(r"[A-Za-z]{3}", text)
+    return (
+        not text
+        or bool(_JUNK_LABEL.match(text))
+        or bool(_ROMAN.match(text))
+        or not re.search(r"[A-Za-z]{3}", text)
+    )
 
 
 def clean_label(label: object) -> str:
