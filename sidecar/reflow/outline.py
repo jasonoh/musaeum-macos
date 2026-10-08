@@ -120,3 +120,86 @@ def document_sections(path: str, doc: Document) -> tuple[list[tuple[str, int]], 
     if _usable(entries):
         return entries, len(entries)
     return sections_from_headings(doc), len(entries)
+
+# --- slice 1R: the outline at every depth (spec Annex C.5, item 9) ---------
+
+from dataclasses import dataclass  # noqa: E402
+
+
+@dataclass(frozen=True)
+class Entry:
+    """One TOC entry: the outline's own, or a heading standing in for it."""
+
+    title: str
+    depth: int
+    page: int  # 0-based
+    top: Optional[float] = None  # the destination's y in PDF units, when it has one
+
+
+def is_junk(label: str) -> bool:
+    """A printer's mark (`cover4`), a folio (`ix`, `3`), or nothing at all."""
+    text = label.strip()
+    return not text or bool(_JUNK_LABEL.match(text)) or not re.search(r"[A-Za-z]{3}", text)
+
+
+def clean_label(label: object) -> str:
+    return _WS.sub(" ", clean_text(str(label or ""))).strip()[:120]
+
+
+def normalise_depths(entries: list[Entry]) -> list[Entry]:
+    """No entry may sit more than one level below the one before it.
+
+    Dropping a junk parent would otherwise leave its children two levels deep
+    under nothing, which no nested list can express.
+    """
+    out: list[Entry] = []
+    prev = -1
+    for e in entries:
+        depth = min(e.depth, prev + 1)
+        out.append(Entry(e.title, depth, e.page, e.top))
+        prev = depth
+    return out
+
+
+def _top(item: object) -> Optional[float]:
+    try:
+        value = getattr(item, "top", None)
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def outline_entries(path: str, pages: Optional[int] = None) -> list[Entry]:
+    """Every usable outline entry at every depth, in outline order.
+
+    Slice 1 kept one entry per page and decimated outlines over 240 entries;
+    *Attention is All You Need* lost "3 Model Architecture" and nine more that
+    way. Nothing is dropped here but printer's marks and entries whose page
+    cannot be resolved or lies past `pages`.
+    """
+    try:
+        import pypdf
+
+        reader = pypdf.PdfReader(path)
+        found: list[Entry] = []
+
+        def walk(items: object, depth: int) -> None:
+            for item in items:  # type: ignore[union-attr]
+                if isinstance(item, list):
+                    walk(item, depth + 1)
+                    continue
+                title = clean_label(getattr(item, "title", ""))
+                if is_junk(title):
+                    continue
+                try:
+                    page = reader.get_destination_page_number(item)
+                except Exception:
+                    continue
+                if not isinstance(page, int) or page < 0 or (pages is not None and page >= pages):
+                    continue
+                found.append(Entry(title, depth, page, _top(item)))
+
+        walk(reader.outline, 0)
+    except Exception:
+        return []
+    return normalise_depths(found)
