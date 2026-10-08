@@ -20,6 +20,7 @@ class Text:
     size: float = 10.0
     bold: bool = False
     rotated: bool = False  # 90° anticlockwise, like an arXiv stamp
+    scaled: bool = False  # `Tf 1` plus a scaling `Tm`, as *Universe* writes it
 
 
 @dataclass
@@ -63,6 +64,9 @@ def _content(page: Page) -> bytes:
         font = "F2" if t.bold else "F1"
         if t.rotated:
             ops.append(f"0 g BT /{font} {t.size} Tf 0 1 -1 0 {t.x} {t.y} Tm ({_escape(t.text)}) Tj ET")
+        elif t.scaled:
+            s = t.size
+            ops.append(f"0 g BT /{font} 1 Tf {s} 0 0 {s} {t.x} {t.y} Tm ({_escape(t.text)}) Tj ET")
         else:
             ops.append(f"0 g BT /{font} {t.size} Tf {t.x} {t.y} Td ({_escape(t.text)}) Tj ET")
     return "\n".join(ops).encode("latin-1")

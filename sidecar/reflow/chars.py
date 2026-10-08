@@ -2,8 +2,10 @@
 
 The layout comes from Vision (`vision.py`); the words come from here: every
 character the PDF's text layer holds, with its box in PDF user space (the crop
-box does not shift it), its font size, whether its font is bold, and its
-rotation. Measured 2026-10-08: pdfium reports **weight 0** for a font with no
+box does not shift it), the size it is really drawn at, whether its font is
+bold, and its rotation. The size is the `Tf` operand scaled by the text matrix
+(`_font_size`), because a producer that writes `Tf 1` leaves every glyph at
+1.0. Measured 2026-10-08: pdfium reports **weight 0** for a font with no
 descriptor — the standard 14 fonts and many subset fonts in this library — so
 boldness also reads the font's *name*.
 """
@@ -56,6 +58,31 @@ class Char:
         return not self.text.strip()
 
 
+def _font_size(handle, index: int) -> float:
+    """The size the glyph actually occupies, in page units.
+
+    `FPDFText_GetFontSize` alone is the `Tf` operand, and a producer that
+    writes `Tf 1` and puts the real size in the text matrix leaves it at
+    **1.0 for every character of the book** — measured on *Universe* (5,650 of
+    5,650 glyphs on p.78 report 1.0) and *Modernist Cuisine*. That is not a
+    cosmetic number: the body size came out 1.0pt, so every heading test
+    (`≥1.15× body`) and footnote test (`≤0.85× body`) was unreachable, and the
+    space test — a stored space survives only at a gap ≥0.1× the size — kept
+    *Universe*'s `fi ghting`, where the real space's gap is 0.4pt against ~1pt
+    of allowance. Multiplying by the text matrix's scale reads 10.5 / 8.5 /
+    11.0 / 5.0 on that page; on a producer that reports real sizes already the
+    matrix is the identity and nothing moves (*Attention*, *Sequence to
+    Sequence* and *Politics* all measure a scale of 1.00).
+    """
+    size = float(raw.FPDFText_GetFontSize(handle, index))
+    matrix = raw.FS_MATRIX()
+    if raw.FPDFText_GetMatrix(handle, index, ctypes.byref(matrix)):
+        scale = math.sqrt(abs(matrix.a * matrix.d - matrix.b * matrix.c))
+        if scale > 0:
+            size *= scale
+    return size
+
+
 def page_chars(textpage) -> list[Char]:
     """Every character on a page except pdfium's synthesised line breaks."""
     out: list[Char] = []
@@ -78,7 +105,7 @@ def page_chars(textpage) -> list[Char]:
                 bottom,
                 right,
                 top,
-                size=float(raw.FPDFText_GetFontSize(handle, i)),
+                size=_font_size(handle, i),
                 bold=weight >= 600 or bool(_BOLD_NAME.search(name)),
                 angle=angle if angle > 0 else 0.0,
             )

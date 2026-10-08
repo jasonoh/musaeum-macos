@@ -39,6 +39,30 @@ def test_page_chars_reports_size_bold_and_rotation(tmp_path):
     assert stamp and all(c.rotated for c in stamp)
 
 
+def test_a_size_that_lives_in_the_text_matrix_is_read_from_it(tmp_path):
+    """*Universe* and *Modernist Cuisine* write `Tf 1` and put the real size in
+    the text matrix, so `FPDFText_GetFontSize` alone reports 1.0 for every
+    glyph: the whole book's body came out at 1.0pt, which is why its stored
+    spaces survived (the 0.1×-size gap test) and why no heading or footnote
+    test that compares against the body could fire."""
+    pdf = pdfium.PdfDocument(
+        write_pdf(
+            tmp_path / "s.pdf",
+            [
+                Page(texts=[Text(72, 700, "Body text", 10.5)]),
+                Page(texts=[Text(72, 700, "Body text", 10.5, scaled=True)]),
+            ],
+        )
+    )
+    plain = page_chars(pdf[0].get_textpage())
+    scaled = page_chars(pdf[1].get_textpage())
+    assert [c.text for c in scaled] == [c.text for c in plain]
+    assert [(round(c.left, 2), round(c.bottom, 2)) for c in scaled] == [
+        (round(c.left, 2), round(c.bottom, 2)) for c in plain
+    ]
+    assert all(abs(c.size - 10.5) < 0.1 for c in scaled)
+
+
 def test_char_boxes_are_absolute_whatever_the_crop_box(tmp_path):
     chars = _chars(tmp_path, Page(texts=[Text(72, 700, "Absolute")], crop=(40, 40, 572, 752)))
     first = next(c for c in chars if c.text == "A")
