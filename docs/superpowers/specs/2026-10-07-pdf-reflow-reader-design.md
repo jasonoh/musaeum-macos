@@ -1,7 +1,7 @@
 # Design: PDF that reads like a book — a reflowed EPUB as the default view, the original as the escape hatch (C2, v1)
 
 **Date:** 2026-10-07
-**Status:** **Agreed 2026-10-07** — the corpus (six books, a paper added at the owner's request), the fallback posture, the phone's gap for fallback books, and both boundary crossings were all answered by the owner; the record is in *Open questions for review*. **Slice 1 is built and its automated half passed** (Annex B): five of six corpus books produced a schema-clean artifact and the image-only book fell back with a reason. **The gate's other half is the owner reading `dist/reflow-spike/`.** Slices 2–5 run only after that reading, and Annex B.3 lists what the spike left open — including one recommended corpus change.
+**Status:** **Agreed 2026-10-07; amended 2026-10-08 after slice 1 failed review.** The owner read `dist/reflow-spike/` and every artifact failed: no usable images, interleaved columns, a broken TOC. The review (Annex C) traced each defect to a cause in the code, found that the automated gate could not fail a book on order, figures or TOC, and withdrew Annex B's pass and its B.1 "correction". **D4 is superseded by D4R** (Apple Vision's document analysis supplies regions and reading order; the PDF's text layer supplies the characters), and **slice 1R** re-runs the spike behind a rebuilt gate. Slices 2–5 still wait on the corpus gate, now slice 1R's.
 **Scope:** A PDF-only book becomes readable in-app on both platforms by **default through a reflowed EPUB** — one artifact, produced once by the Mac sidecar, cached on the NAS — with the original PDF one gesture away. It deliberately does **not** touch `metadata.json`'s shape, `book.formats`, the SQLite schema, the Calibre migration wizard, OCR, or annotations.
 **Depends on:** `docs/invariants/reader.md` (the reader shell, the entry points, the reading-state schema, and the typography/theme layer the artifact inherits), `docs/invariants/nas-and-catalog.md` (the book folder layout and the by-extension rule), `docs/invariants/files-and-deletion.md` (what a book folder holds), `docs/rest-api.md` (the wire the phone reads), `../musaeum-ios/docs/specs/2026-09-22-client-v1-design.md` (the phone's reader).
 **Interacts with:** `components/reader/ReaderEngine.tsx` + `stores/reader.store.ts` (the open path), `services/book-bytes.ts` + the `musaeum://` registration in `electron/main/index.ts`, `services/file-access.ts` + `services/apple-books.ts` (the escape hatches), `sidecar/main.py`'s `METHODS` and the notification channel (`services/sidecar.ts:34`), `services/api/shape.ts` + `api/rest.ts`.
@@ -144,6 +144,29 @@ So: `{book}/derived/reflow.epub` plus `{book}/derived/reflow.json` (the version 
 
 **Whichever tool wins, the seam is fixed:** one module maps *PDF → blocks*, each block carrying its bbox, its source page, and a role (heading / paragraph / figure / caption). Numbers are not the difference between the candidates; reversibility is what keeps this decision cheap to revisit.
 
+*Superseded 2026-10-08 by D4R.* The heuristic pass was built and failed the owner's reading on every corpus book (Annex C). The escalation condition above fired, and the escalation is D4R, not `docling`.
+
+**D4R — Layout comes from Apple's Vision framework through a small Swift helper; the characters come from the PDF's own text layer; figures stay ours.** `RecognizeDocumentsRequest` (Vision, macOS 26) returns a page's paragraphs, title, lists and tables in reading order. A ~100-line Swift command-line helper renders each page, runs the request and prints the regions as JSON. The sidecar assigns every pdfium character to the region that contains it, so the words are the PDF's exact text and Vision's OCR transcript is never used where a text layer exists (measured: the OCR reads `suprior`, `valucs`, `MODEKR ASIKONOMY` on the corpus). Vision does not detect figures, so the ink-region figure detector stays in Python, fixed (Annex C.1).
+
+Why this and not the alternatives, measured on 2026-10-08 (Annex C.3):
+
+| | Vision helper (D4R) | Hardened heuristic pass (D4) | `docling` |
+| --- | --- | --- | --- |
+| Universe p.78 (two columns + sidebar) | column 1, then column 2, paragraphs whole | one band, lines interleaved | not run |
+| Attention p.1 (rotated arXiv stamp, footnotes) | stamp isolated as two narrow strips, footnotes separate | stamp spliced into the abstract | not run |
+| Cost in the DMG | **+84 KB** (the compiled spike) | 0 | 0 (sidecar ships as source) |
+| Cost at first launch | 0 | 0 | +300 MB download plus model weights |
+| Licence | OS framework | ours | MIT, 96 distributions |
+| Speed | 0.5–1.3 s/page, unchanged by render scale | ~80 ms/page | not measured |
+
+**Named costs, accepted by the owner on 2026-10-08:**
+
+- **Platform floor.** `RecognizeDocumentsRequest` is macOS 26 and later. On an older macOS the helper reports `unsupported` and the book falls back with that reason (D6), the same non-fatal path as a textless book.
+- **First-open time.** Roughly 5–10 minutes for a 535-page textbook at one page at a time. The helper processes pages concurrently, and the gate measures the result. D7's progress surface was already a requirement; this makes it load-bearing.
+- **A new layer.** `helpers/musaeum-layout/` is Swift source built with `swiftc` from the Xcode toolchain. It is signed and shipped as an `extraResources` binary in slice 2, and the sidecar calls it as a subprocess the way the transfer path calls `ebook-convert`.
+
+The seam above holds: the helper produces *regions*, and `sidecar/reflow/` still turns them into blocks that each carry their bbox, source page and role.
+
 **D5 — Every block carries its source page, and the reflowed EPUB is the position of record.** The reflow's `position` is a CFI into the derived document and its `percent` is the portable currency — the existing schema, unchanged (`docs/invariants/reader.md` *Reading position*). The **original PDF gets no position in v1** (owner, 2026-10-07). The map is still written, because it is what makes a later "open the original at the page I was on" and a future pdf.js viewer possible without re-extracting anything, and because it is the only way to debug a reflow against the page it came from.
 
 **D6 — Confidence, not optimism: a book whose reading order cannot be established falls back to the original, and the surface says why.** The gate is evaluated during the pass and is per **book**, not per page: a textless document (the 10% of §1), a document the parser cannot open, a layout whose regions cannot be ordered, or a genuinely fixed page (a comic, an art book). One rule with no per-file judgement: **no artifact, the original path, one line of reason.** This is invariant 12's posture applied to a new subsystem, and it is what lets a heuristic pass ship at all. `docs/invariants/files-and-deletion.md` gains the rule in slice 5.
@@ -163,6 +186,7 @@ So: `{book}/derived/reflow.epub` plus `{book}/derived/reflow.json` (the version 
 | Slice | What | Files (budget) | Gate |
 | --- | --- | --- | --- |
 | **1 — the spike** | Our own layout pass (columns, lines, reading order, headings) over `pypdfium2` and a throwaway EPUB writer, run over the corpus; the same corpus through `pdfminer.six` for comparison; a probe script that reports word-multiset diff vs the page text, image order, heading detection and TOC per book | `sidecar/reflow/` (new, ≤4) + `scripts/pdf-reflow-probe.py` | **The corpus gate (D6/D4):** ≥5 of the 6 corpus books read end to end in the correct order — no interleaved columns, no dropped paragraphs, images interleaved where they belong — decided by an automated report **and** by the owner reading the six artifacts in the existing reader. The image-only book must produce **no artifact and the fallback**, which is a pass and never counted as a miss. Below the bar, D4's escalation, recorded in the annex |
+| **1R — the spike, re-run (2026-10-08)** | Rebuild the gate so it can fail a book on order, figures and TOC, and confirm it fails the slice-1 artifacts. Fix the figure path (crop, plates, MIME). Rebuild the TOC from the whole outline with heading anchors. Replace the text pass with the D4R hybrid: the Swift helper's regions, filled with pdfium's characters | `helpers/musaeum-layout/` (new), `sidecar/reflow/*`, `scripts/pdf-reflow-probe.py`, `sidecar/tests/test_reflow_*.py` | **The corpus gate, rebuilt (Annex C.4):** every check passes on the five text books, and the image-only book still falls back. Then the owner reads the artifacts in the reader. Below the bar, stop and hand back |
 | **2 — the pipeline, production** | Promote to `reflow_pdf` behind the RPC with progress notifications, the `derived/` artifact and its version stamp, the confidence gate, temp-write-and-rename; fixtures and pytest per rule (a generated two-column page, an image-only one, an outline/no-outline pair, a page with no text layer inside a text book) | `sidecar/reflow/*`, `sidecar/main.py`, `sidecar/tests/*`, fixture generator (**≤7**) | pytest green; every corpus book's artifact byte-stable across two runs; no residue on an induced failure; the stamp re-runs on a touched source |
 | **3 — the Mac reader** | `derived/reflow.epub` served over `musaeum://book/{id}/reflow` (`book-bytes.ts`'s allowlist, noted in `tasks.md` as the one that fails as a missing feature); the on-demand trigger and cache check; the progress surface and the fallback-with-reason; the readability rule that lets a PDF-only book with a reflow open in-app | `services/reflow.ts` (new), `book-bytes.ts`+test, `ipc/reader.ts` or `ipc/files.ts`, preload + `window.Musaeum` types, `reader.store.ts`+test, `ReaderView.tsx`, `book.types.ts` (**≈8, crossing `electron/main` ⇄ `src` — the brief makes that a hand-back: flagged here so approval happens at sign-off**) | typecheck / lint / `npm test` green; opening a PDF-only book on the real library: progress, then a reflowed book with a working TOC; an image-only book falls back with one line; the original still opens in Preview from the same rows |
 | **4 — the wire, then the phone** | `docs/rest-api.md` + `services/api/shape.ts` + `api/rest.ts` + the payload goldens + `scripts/api-smoke.sh`; then the iOS slice: ask for `reflow` when available, save it as `{id}.epub`, open it through the existing `EPUBNavigatorViewController`, report the fraction | Mac: docs + 3 files + goldens + smoke script. iOS: `ContractModels.swift`, `BookDetailScreen.swift`, `MusaeumClient.swift`, `DownloadStore.swift` + tests (**≤5**) | smoke green with the new member; on the phone, a PDF-only book downloads, opens, turns pages and reports a position the Mac's row accepts — **with no engine change** (D10) |
@@ -178,7 +202,7 @@ So: `{book}/derived/reflow.epub` plus `{book}/derived/reflow.json` (the version 
 - **AC6** — While a reflow is being produced the reader shows progress and the original is reachable from the same surface (D7), and a second open of the same book does not start a second pass.
 - **AC7** — Reading state behaves exactly as it does for an EPUB: percent travels to the Mac row and to the phone, `read_status` advances by the documented rule, and a regenerated artifact degrades a dead CFI to percent with no new code path (D5/D9).
 - **AC8** — The phone reads a PDF-only book end to end with **no change to `ReaderHost.swift` or the navigator construction** (D10), and the position it reports is accepted by the Mac's existing `PUT /api/books/{id}/reading`.
-- **AC9** — No new dependency ships unless the spike's verdict authorises it; if `pdfminer.six` is taken, the first-launch install grows by ≤10 MB, and no candidate citing AGPL appears anywhere in `requirements.txt`.
+- **AC9** — No new dependency ships unless the spike's verdict authorises it; if `pdfminer.six` is taken, the first-launch install grows by ≤10 MB, and no candidate citing AGPL appears anywhere in `requirements.txt`. *Amended 2026-10-08 (D4R):* `requirements.txt` gains nothing. The layout helper adds ≤1 MB to the DMG, and on macOS older than 26 its absence or refusal is a fallback reason, never a crash.
 - **AC10** — The sidecar's stderr is clean during a pass on the corpus (no per-page library chatter in the app's log), or the noise is explicitly suppressed in the pipeline module.
 
 ## Risks, named
@@ -318,6 +342,8 @@ The generator and the three probe scripts (`probe.py`, `compare2.py`, `scan.py`)
 
 ## Annex B — slice 1's log: the spike, built and measured 2026-10-07
 
+> **Withdrawn 2026-10-08 (Annex C).** The "automated half passed" claim below rests on a gate that checked only that the XML parses, and a word-multiset diff that cannot see order. B.1's correction — that *Universe* and five of six papers are single-column — was produced by the same broken band detector it was meant to validate. Vision reads *Universe* p.78 as two columns. Kept as the record of what was tried.
+
 **What exists.** `sidecar/reflow/` — `layout.py` (characters → lines → bands → reading order → paragraphs, headings, figures, confidence), `outline.py` (sections from the PDF outline, or from the headings), `epub.py` (a deterministic EPUB 3 writer, one XHTML file per section, page anchors, figures) — plus `scripts/pdf-reflow-probe.py`, which runs the six-book corpus and prints the table below. **Nothing is wired into the sidecar's RPC and no library file or row was touched**; every artifact lands in `dist/reflow-spike/` (gitignored). Re-derive everything with:
 
 ```bash
@@ -384,3 +410,79 @@ This is the list the spike exists to produce. Each was invisible until a real bo
 5. **Artifact size scales with figures**, not with text: 56 MB for a 535-page figure-heavy textbook. Slice 2 should decide a per-book budget (and consider downscaling plates further) rather than leaving it unbounded.
 6. **Two-column pages inside a *table-like* region** are neither split nor cropped — they keep their words in pdfium's order. The GRU paper's 2-band pages are split correctly, but a table with column text is not, and nothing measures that yet.
 7. **The probe's own measures are proxies.** Runs, bands and word multisets are how this annex argues; the artifact is the artifact, and only a reader decides.
+
+---
+
+## Annex C — the review of slice 1, and the plan it forced (2026-10-08)
+
+The owner opened the five artifacts in the reader and reported no images, garbled and interleaved text, and a broken TOC. Each defect below was reproduced against the source PDFs on `/Volumes/books/musaeum` before a cause was named.
+
+### C.1 Defects, with the cause and the measurement
+
+| Defect | Cause | Measured |
+| --- | --- | --- |
+| Figures missing | `_crop` passes the figure's box as `render(crop=…)`, which pypdfium2 reads as *margins to cut off*. Most crops raise `ValueError: Crop exceeds page dimensions`, and a bare `except` returns `None` | Universe 29 of 44 sampled figures raised; Modernist 34 of 41; Attention Figures 1 and 2 detected, then lost |
+| Slivers instead of figures (7×406, 12×1008) | the crops that did not raise rendered the wrong region of the page | the image dimensions in the artifacts |
+| A failed figure also loses its labels | lines inside a figure region are dropped whether or not the crop succeeded | `extract_page`, the swallow loop |
+| Photo plates gone | a page under 50 characters returns before figure extraction runs | Modernist: 6 of 6 sampled text-less pages carried image objects |
+| Large figures gone | an ink region over 80% of the page is discarded as "background" | `FIGURE_MAX_PAGE` |
+| Text mask offset on some books | the char-to-cell mapping ignores the page origin, while the figure box adds it | Universe's page box is [33, 33, 681, 816] |
+| JPEG served as PNG | every image is named `.png` and declared `image/png`, whatever the encoder wrote | about two-thirds of the images are JPEG bytes |
+| Columns interleaved | one projection profile over the whole page; any element spanning the gutter fills it, and the 1-pt gaps left are merged back | Universe p.78: one band found on a two-column page |
+| arXiv stamp in the abstract | rotated characters are never removed; the band rule only stops them forming a column | Attention p.1: 37 rotated characters, all in the flow |
+| Body lines as headings, real headings missed | heading size is the median *glyph-box* height, not the font size; weight is ignored | Attention "2 Background" is 12pt / weight 700 against 10pt / 425 body |
+| Every line its own paragraph | lines grouped against the previous character only, plus a paragraph break on every band change | Universe p.78: 13 baselines split into several rough lines |
+| Footnotes merged into prose | no footnote detection, and paragraph joins ignore a size change | Attention p.1 |
+| TOC entries lost | one entry per page, first wins | Attention: 10 of 19 depth-0/1 entries dropped, including "3 Model Architecture"; Universe: 93 |
+| TOC thinned | an outline over 240 entries is decimated by even sampling | Modernist: 355 → 240 |
+| TOC links land mid-chapter | entries link to a file's start; a section starts at its page's top when its heading was not detected | Attention's "3.3" file opens with the end of 3.2.2 |
+
+### C.2 Why the gate passed
+
+`scripts/pdf-reflow-probe.py` passed a book when the verdict was `ok` and its XML parsed. The word check is a multiset difference, blind to order, and it had no threshold: Universe was missing 41,068 words (about 10%) and passed. Nothing counted figures written against figures detected, nothing checked an image's bytes against its media type, and nothing compared the TOC with the outline.
+
+### C.3 The Vision spike (2026-10-08)
+
+`/tmp/vision-spike/main.swift`, 60 lines: PDFKit renders a page, `RecognizeDocumentsRequest` runs on it, and the paragraphs print in order with their normalised boxes. Compiled with `swiftc -O`: an 84 KB binary. macOS 26.7.1, Swift 6.4, SDK 27.0.
+
+| Page | What Vision returned | What slice 1 produced |
+| --- | --- | --- |
+| Attention p.1 | the stamp as two strips at x=0.02, w=0.03; the abstract in order; "1 Introduction" alone; three footnotes separate | stamp letters spliced into the abstract; footnotes merged into the Introduction |
+| Attention p.3 | Figure 1's labels as 26 small regions, then the caption, then "3.1 Encoder and Decoder Stacks" | caption only, no figure |
+| Universe p.78 | 11 regions at x=0.13, then 9 at x=0.52; headings and footnote separate; the running footer isolated at y=0.08 | alternating lines from both columns |
+| Modernist p.200 | the table detected as a table | rows as paragraphs |
+| Modernist p.120 | nothing (a photo plate) | nothing — and no image either |
+
+Speed is 0.5–1.3 s per page, the same at render scales 1.0, 1.5 and 2.5. Region boundaries at 1.5 match 2.5, so 1.5 is the default. The OCR text is not usable as the book's words: `suprior`, `seguence`, `valucs`, `amod = 512`, `HE UKIGIN OF MODEKR ASIKONOMY`.
+
+### C.4 The rebuilt gate
+
+Each check is computed by `scripts/pdf-reflow-probe.py` from the source PDF and the artifact, independently of the pipeline's own bookkeeping. **The gate is valid only if it fails the slice-1 artifacts** (commit `dabc549`), and that run is recorded first.
+
+| # | Check | Pass |
+| --- | --- | --- |
+| G1 | **Golden passages.** Each text book has ≥3 passages of ≥8 words, read off the page by a person, at least one of them crossing a line break on a multi-region page. Whitespace and line-break hyphens normalised | every passage appears contiguously in the spine text |
+| G2 | **Segment trigram recall.** A *segment* is a run of pdfium characters on one baseline with no gap wider than the line's median character height, so a segment never crosses a gutter. Trigrams of words inside segments | ≥95% found contiguous in the artifact's token sequence |
+| G3 | **No rotated text in the flow.** Tokens built only from characters whose `FPDFText_GetCharAngle` is non-zero | none in the spine text |
+| G4 | **Figures.** Written equals detected; no image under 32 px on its short side; each image's magic bytes match its extension and manifest media type; every text-less page of a text book that carries ink appears as a full-page image | all four |
+| G5 | **TOC.** Nav entries equal the outline's usable entries at every depth, nested to match; every `href` fragment resolves to an element | entries equal, and ≥90% land on a heading whose text matches the entry |
+| G6 | **Words.** Multiset loss, after removing the dropped page furniture and the figure labels inside written crops (each reported separately) | ≤3% |
+| G7 | **Package.** The existing checks: `mimetype` first and stored, every document parses, every manifest `href` exists | clean |
+| G8 | **Fallback.** The image-only book | no artifact, and a reason |
+
+### C.5 The hybrid, specified
+
+1. **The helper.** `musaeum-layout <pdf> [--pages a-b] [--concurrency n] [--scale s]` writes JSON lines. The first line is `{"helper":"musaeum-layout","version":1,"supported":bool}`; `supported` is false below macOS 26, and the process then exits 0. Each later line is one page: `{"page":n,"box":[x0,y0,x1,y1],"ms":t,"regions":[…]}` or `{"page":n,"error":"…"}`. `box` is the page box in PDF units, the one the coordinates are relative to. A region is `{"kind":"paragraph"|"title"|"table_cell","order":i,"bbox":[x0,y0,x1,y1],"text":"…"}` with the bbox in PDF units and a bottom-left origin; a `table_cell` also carries `table`, `row` and `col`. Pages are processed concurrently and written in page order. One failing page is one error line, never a dead process.
+2. **Characters.** Rotated characters are dropped (G3). Each other character goes to the smallest region that contains its centre, with 1pt of padding. A character outside every region joins the nearest region within 6pt, or is counted as an orphan.
+3. **Lines and text, inside a region.** Characters are clustered by baseline (tolerance: half the character height) and sorted by centre x, not left edge. Spaces come from the PDF's own space characters, with a synthetic space only where a gap exceeds a quarter of the character height. Words broken at a line end are rejoined; U+FFFE becomes a hyphen first, as before.
+4. **Roles.** The body size is the character-weighted mode of `FPDFText_GetFontSize` across the document. A region is a heading when it has at most two lines and 120 characters, and either its median size is ≥1.15× body, or it is a single line at weight ≥600 over a body below 600. Heading levels follow the outline's depth for headings an outline entry matched, and size rank otherwise (at most three levels). A region whose median size is ≤0.85× body and which sits in the bottom quarter of the page is a footnote, emitted where Vision ordered it with `class="footnote"`.
+5. **Page furniture.** A region inside the top or bottom 8% of the page, at most 80 characters long, whose digit-normalised text repeats on ≥25% of text pages, or which is a bare number. Dropped and counted.
+6. **Figures.** `_figure_regions`, with its text mask taken from Vision's regions and the page origin applied on both axes. A crop is rendered with margins computed from the page box, as JPEG above 6% of the page and PNG below, with the file name and media type taken from the encoding. A figure takes its place in reading order before the first region that lies below it and overlaps it horizontally, or after the page's last region. Vision regions and characters inside a figure are dropped **only when the crop succeeded**. A failed crop is logged with its page and box.
+7. **Plates.** A page with fewer than 50 characters and any ink becomes one full-page image, long side ≤1,400 px.
+8. **Tables.** Vision's cells become an XHTML `<table>`, with each cell's text taken from the characters in its bbox.
+9. **Sections and TOC.** Every usable outline entry at every depth, junk labels still filtered (`cover4`, `ix`), and no per-page dedupe and no decimation. Files split at depth-0 entries. Each nav entry links to the id of the heading that matches its title on its page or the next one; failing that, the region nearest the destination's y; failing that, `#pg{n}`. The nav nests by depth. With no outline, level-1 and level-2 headings make the TOC.
+10. **Version.** `reflow.json`'s converter version records the helper's version beside the sidecar's, so a new helper re-runs the pass (D9).
+
+### C.6 What did not change
+
+D1–D3 and D5–D10 stand. OCR stays out of v1: Vision would make it cheap, but an image-only book is mostly comics and plates, where a reflow is the wrong rendering. That is a separate decision for later, not part of this pivot.
