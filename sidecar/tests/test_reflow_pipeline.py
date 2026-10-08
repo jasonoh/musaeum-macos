@@ -155,6 +155,38 @@ def test_a_page_the_join_emptied_does_not_crash_the_next_page():
     assert [b.text for b in p2.blocks] == ["A page after it."]
 
 
+def test_a_page_ends_where_its_body_size_ends_not_at_its_last_block():
+    """*Attention is All You Need* p.1: its last block is the NIPS venue line,
+    9.0pt against a 10.0pt body and ending in a full stop, so the page's "last
+    paragraph" looked finished, the join never fired, and the notes sat in the
+    middle of the Introduction's first sentence (golden passage G1 #3)."""
+    last = B(text="approaches in sequence modeling and")
+    note = B(text="* Equal contribution.", size=9.0)
+    venue = B(text="31st Conference on NIPS, Long Beach, CA, USA.", size=9.0)
+    p0 = page(last, note, venue)
+    p1 = page(B(text="transduction problems such as language modeling."), index=1)
+    stitch_pages([p0, p1], body=10.0)
+    assert [b.text for b in p0.blocks] == [
+        "approaches in sequence modeling and transduction problems such as language modeling.",
+        "* Equal contribution.",
+        "31st Conference on NIPS, Long Beach, CA, USA.",
+    ]
+    assert p1.blocks == []
+
+
+def test_note_sized_blocks_move_behind_a_continuation_that_opens_upper():
+    last = B(text="approaches in sequence modeling and")
+    note = B(text="* Equal contribution.", size=9.0)
+    p0 = page(last, note)
+    p1 = page(B(text="Transduction problems follow."), index=1)
+    stitch_pages([p0, p1], body=10.0)
+    assert [b.text for b in p0.blocks] == ["approaches in sequence modeling and"]
+    assert [b.text for b in p1.blocks] == [
+        "Transduction problems follow.",
+        "* Equal contribution.",
+    ]
+
+
 def test_notes_move_past_a_paragraph_that_continues_with_a_capital():
     last, note = B(text="ends without a stop"), B("footnote", text="note")
     first, more = B(text="Next starts upper."), B(text="More.")

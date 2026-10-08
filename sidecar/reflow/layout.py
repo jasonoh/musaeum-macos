@@ -326,7 +326,7 @@ def _size_key(size: float) -> float:
     return round(size * 2) / 2
 
 
-def classify_roles(pages: list[PageResult]) -> None:
+def classify_roles(pages: list[PageResult]) -> float:
     """Headings and footnotes, from font size and weight against the body.
 
     The body is the size carrying the most characters. Slice 1 measured
@@ -334,6 +334,9 @@ def classify_roles(pages: list[PageResult]) -> None:
     paper's bold section titles at the body's own size. Heading levels rank the
     heading sizes, largest first; an outline entry that later claims a heading
     overrides its level with the outline's depth (`epub.link_entries`).
+
+    Returns the body size, which `stitch_pages` needs: what a page ends with is
+    a *body* paragraph, not whatever Vision put last.
     """
     sizes: Counter = Counter()
     bold_chars = all_chars = 0
@@ -345,7 +348,7 @@ def classify_roles(pages: list[PageResult]) -> None:
                 all_chars += n
                 bold_chars += n if b.bold else 0
     if not sizes:
-        return
+        return 0.0
     body = sizes.most_common(1)[0][0]
     body_bold = bold_chars * 2 > all_chars
     for page in pages:
@@ -364,21 +367,49 @@ def classify_roles(pages: list[PageResult]) -> None:
         for b in page.blocks:
             if b.kind == "heading":
                 b.level = level_of[_size_key(b.size)]
+    return body
 
 
 def _index(blocks: list[Block], block: Block) -> int:
     return next(i for i, b in enumerate(blocks) if b is block)
 
 
-def stitch_pages(pages: list[PageResult]) -> None:
-    """Carry a paragraph across a page break, and its page's footnotes past it.
+def _is_body_text(block: Block, body: float) -> bool:
+    """Is this paragraph at the document's body size?
+
+    `body` is 0.0 when the page pass could not tell (no sizes at all), and then
+    every paragraph counts, which is what the rule did before.
+    """
+    if block.kind != "para":
+        return False
+    return body <= 0 or _size_key(block.size) == _size_key(body)
+
+
+def _is_note_like(block: Block, body: float) -> bool:
+    """A block a page carries after its body: a classified footnote, or small
+    print at a size the body is not — how Vision leaves a page's notes."""
+    if block.kind == "footnote":
+        return True
+    return block.kind == "para" and body > 0 and _size_key(block.size) != _size_key(body)
+
+
+def stitch_pages(pages: list[PageResult], body: float = 0.0) -> None:
+    """Carry a paragraph across a page break, and its page's notes past it.
 
     Vision orders a page's footnotes after its last paragraph, so a sentence
     running on to the next page would be read with the notes in its middle —
     *Attention is All You Need*'s Introduction, pages 1 to 2. When a page's
-    last paragraph ends without terminal punctuation: a next page that opens
-    in lower case is the same paragraph and is joined to it; otherwise the
-    notes move to just after the next page's first paragraph.
+    last **body-sized** paragraph ends without terminal punctuation: a next page
+    that opens in lower case is the same paragraph and is joined to it;
+    otherwise the note-sized blocks behind it move to just after the next page's
+    first paragraph.
+
+    *Body-sized* is the whole point of passing `body` in. *Attention* p.1 ends
+    with its NIPS venue line — 9.0pt against a 10.0pt body, and a full stop — so
+    the page's "last paragraph" was the venue line, the join never fired, and
+    the notes sat in the middle of the introduction's first sentence (golden
+    passage G1 #3). The page's text ends where its body size ends; everything
+    smaller behind it is the note block Vision put there.
 
     The join *removes* the paragraph it takes, and a page holding only that
     one then has none left — *Universe* pages 290→291 end in the copyright
@@ -389,10 +420,12 @@ def stitch_pages(pages: list[PageResult]) -> None:
     """
     text_pages = [p for p in pages if any(b.kind == "para" for b in p.blocks)]
     for page, nxt in zip(text_pages, text_pages[1:]):
-        last = next((b for b in reversed(page.blocks) if b.kind == "para"), None)
+        last = next(
+            (b for b in reversed(page.blocks) if _is_body_text(b, body)), None
+        )
         if last is None:
-            # The previous page's join took this page's only paragraph; its
-            # words are already there, so there is nothing to carry onward.
+            # Nothing at body size is left here (the previous page's join took
+            # this page's only paragraph), so there is nothing to carry onward.
             continue
         if last.text.rstrip().endswith(_SENTENCE_END):
             continue
@@ -405,7 +438,7 @@ def stitch_pages(pages: list[PageResult]) -> None:
             del nxt.blocks[_index(nxt.blocks, first)]
             continue
         start = _index(page.blocks, last)
-        notes = [b for b in page.blocks[start + 1 :] if b.kind == "footnote"]
+        notes = [b for b in page.blocks[start + 1 :] if _is_note_like(b, body) and b.text]
         if not notes:
             continue
         page.blocks = [b for b in page.blocks if not any(b is n for n in notes)]
@@ -534,7 +567,7 @@ def analyse(path: str, limit: Optional[int] = None, layouts: Optional[dict[int, 
     doc.plates = sum(1 for p in doc.pages if p.plate)
     doc.crop_failures = [f for p in doc.pages for f in p.crop_failures]
     mark_running_heads(doc)
-    classify_roles(doc.pages)
-    stitch_pages(doc.pages)
+    body = classify_roles(doc.pages)
+    stitch_pages(doc.pages, body)
     _verdict(doc)
     return doc
