@@ -16,6 +16,10 @@
 PY=/Users/jasonoh/Projects/musaeum-macos/sidecar/.venv/bin/python
 ```
 
+## Resume here (2026-10-08)
+
+No task has started. The spec amendment (D4R, Annex C) and this plan are committed on `feat/pdf-reflow-vision` (`cec1071` and earlier). The slice-1 artifacts are already preserved at `dist/reflow-spike-slice1/` (gitignored), so Task 3 Step 1 is done; skip its `cp`. Every code block in this plan is complete. The `/tmp/...` paths it cites are provenance only and may be gone; nothing depends on them. Task 6 needs the Xcode toolchain, and Tasks 3 and 9 need the NAS mounted at `/Volumes/books/musaeum`.
+
 ## Global Constraints
 
 - **No new Python dependency.** `sidecar/requirements.txt` is unchanged (AC9 as amended). Only `pypdfium2`, `pypdf`, `Pillow` and the standard library.
