@@ -6,6 +6,16 @@ computed from the artifact and from what the source PDF says. Where a check is
 defined over the pipeline's own bookkeeping — the figure boxes it wrote, the
 pages it read from Vision, the furniture it dropped — that input is a named
 parameter, so it is visible in the call rather than trusted silently.
+
+**One rule it shares with the pipeline, deliberately.** G2 and G6 read the
+source's *words* with C.5 item 3's space rule (`regions.line_text`), because
+that rule is the spec's definition of a word: a stored space survives only at a
+gap of at least 0.1× the size. Reading the stored characters raw called the
+repair of *Universe*'s `fi ghting`, `Th e sun` and `diff erence` lost words, and
+made G1's golden passages and G6 contradict each other — measured on *Universe*
+pp.1–60: 10.6% loss raw against 5.9% with the rule. It stays strict in the
+direction that matters: a space the source keeps is a boundary, so a pipeline
+that merges across a real word space still loses those words.
 """
 
 from __future__ import annotations
@@ -22,6 +32,7 @@ from typing import Iterable, Optional, Sequence
 from xml.etree import ElementTree
 
 from .chars import Char, baseline_lines
+from .regions import line_text
 
 Box = tuple[float, float, float, float]
 
@@ -147,7 +158,7 @@ def page_evidence(page, chars: Sequence[Char], exclude: Sequence[Box] = (), page
     ev.rotated = tokens("".join(c.text for c in chars if c.rotated))
     upright = [c for c in chars if not c.rotated]
     lines = baseline_lines(upright)
-    ev.upright = tokens("\n".join("".join(c.text for c in ln) for ln in lines))
+    ev.upright = tokens("\n".join(line_text(ln) for ln in lines))
     for line in baseline_lines([c for c in upright if not _in_any(c, exclude)]):
         glyphs = [c for c in line if not c.is_space]
         if not glyphs:
@@ -171,7 +182,7 @@ def _emit(seg: list[Char], out: list[list[str]], page_box: Optional[Box]) -> Non
     glyphs = [c for c in seg if not c.is_space]
     if not glyphs:
         return
-    text = "".join(c.text for c in seg)
+    text = line_text(seg)
     if _is_furniture(glyphs, text, page_box):
         return
     toks = tokens(text)

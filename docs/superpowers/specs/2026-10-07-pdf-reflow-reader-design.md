@@ -462,11 +462,11 @@ Each check is computed by `scripts/pdf-reflow-probe.py` from the source PDF and 
 | # | Check | Pass |
 | --- | --- | --- |
 | G1 | **Golden passages.** Each text book has ≥3 passages of ≥8 words, read off the page by a person, at least one of them crossing a line break on a multi-region page. Whitespace and line-break hyphens normalised | every passage appears contiguously in the spine text |
-| G2 | **Segment trigram recall** (regions read from Vision excluded, and counted). A *segment* is a run of pdfium characters on one baseline with no gap wider than the line's median character height, so a segment never crosses a gutter. Trigrams of words inside segments | ≥95% found contiguous in the artifact's token sequence |
+| G2 | **Segment trigram recall** (regions read from Vision excluded, and counted). A *segment* is a run of pdfium characters on one baseline with no gap wider than the line's median character height, so a segment never crosses a gutter. Trigrams of words inside segments, read with C.5 item 3's space rule — a stored space is a boundary only at a gap of at least 0.1× the size | ≥95% found contiguous in the artifact's token sequence |
 | G3 | **No rotated text in the flow.** Tokens built only from characters whose `FPDFText_GetCharAngle` is non-zero | none in the spine text |
 | G4 | **Figures.** Written equals detected; no image under 32 px on its short side; each image's magic bytes match its extension and manifest media type; every text-less page of a text book that carries ink appears as a full-page image | all four |
 | G5 | **TOC.** Nav entries equal the outline's usable entries at every depth, nested to match; every `href` fragment resolves to an element | entries equal, and ≥90% land on a heading whose text matches the entry |
-| G6 | **Words.** Multiset loss over regions read from the text layer, after removing the dropped page furniture and the figure labels inside written crops (each reported separately) | ≤3% |
+| G6 | **Words.** Multiset loss over regions read from the text layer, after removing the dropped page furniture and the figure labels inside written crops (each reported separately) . The source's words are read with C.5 item 3's space rule too, so its repair of a stored space inside a word is not loss (measured on *Universe* pp.1–60: **10.6% raw against 5.9%** with the rule) | ≤3% |
 | G7 | **Package.** The existing checks: `mimetype` first and stored, every document parses, every manifest `href` exists | clean |
 | G8 | **Fallback.** The image-only book | no artifact, and a reason |
 

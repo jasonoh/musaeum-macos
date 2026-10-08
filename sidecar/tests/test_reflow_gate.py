@@ -86,6 +86,19 @@ def test_segments_split_at_a_gutter_and_drop_a_trailing_hyphen_fragment():
     assert ev.segments == [["left", "column", "words"], ["right", "side"]]
 
 
+def test_a_stored_space_inside_a_glyph_cluster_is_not_a_word_break():
+    """*Universe*'s text layer stores `fi ghting`, `Th e sun` and `diff erence`:
+    the space's box lies inside the glyph cluster (a 0.4pt gap against ~2.5pt for
+    a word space). C.5 item 3 drops it, so a gate that reads the stored
+    characters raw calls the repaired word lost and misses every trigram across
+    it — measured on *Universe* pp.1–60: 10.6% word loss raw against 5.9% with
+    the rule."""
+    cluster = row("fi", 72, 700) + [Char(" ", 82.0, 700, 82.4, 700)] + row("ghting", 82.4, 700)
+    ev = gate.page_evidence(None, cluster)
+    assert ev.segments == [["fighting"]]
+    assert ev.upright == ["fighting"]
+
+
 def test_segments_skip_page_furniture_and_excluded_boxes():
     chars = row("CHAPTER 4 THE ORIGIN", 72, 20) + row("body words here now", 72, 400) + row("axis label text", 300, 300)
     ev = gate.page_evidence(None, chars, exclude=[(290, 290, 420, 320)], page_box=(0, 0, 612, 792))
