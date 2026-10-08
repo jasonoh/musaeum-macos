@@ -61,6 +61,25 @@ def test_text_mask_respects_the_page_origin(tmp_path):
     assert left <= 300 and right >= 420 and bottom <= 200 and top >= 290
 
 
+def test_a_faint_band_that_crops_to_a_sliver_is_not_a_figure(tmp_path):
+    """*Universe* pp.501/504/512: a band a few points tall straddles a 12pt
+    analysis cell, so the region measures 24pt and passes `FIGURE_MIN_PT` while
+    the crop it yields is 1008x24 — under the 32px G4 allows. The crop is what
+    knows: the same band reads 16pt tall at analysis scale and 27px in the
+    render (p.501), so the coarse grid cannot settle it."""
+    texts = [Text(72, 720 - 14 * i, "Body line carries enough characters here.") for i in range(3)]
+    path = write_pdf(
+        tmp_path / "s.pdf",
+        [Page(texts=texts, rects=[Rect(33, 44, 500, 8, gray=0.94), Rect(300, 300, 120, 90)])],
+    )
+    layouts = {1: PageLayout(page=1, box=(0, 0, 612, 792), regions=[Region(0, (70, 670, 450, 730), "")])}
+    doc = analyse(path, layouts=layouts)
+    images = [b for b in doc.pages[0].blocks if b.kind == "figure"]
+    assert len(images) == 1 and images[0].image_width > 200
+    assert doc.slivers and "is 1008x24" in doc.slivers[0]
+    assert doc.figures_detected == 1
+
+
 def test_a_full_page_photo_with_little_text_is_a_figure(tmp_path):
     pdf, page = _page(tmp_path, Page(texts=BODY[:1], rects=[Rect(0, 0, 612, 700, 0.3)]))  # 88% of the page
     figures, _ = _figure_regions(page, [(72, 715, 500, 730)], page.get_bbox())

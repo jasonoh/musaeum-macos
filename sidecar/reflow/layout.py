@@ -47,6 +47,7 @@ FIGURE_MAX_PIXELS = 1400  # a figure is never rendered larger than this
 PLATE_MAX_PIXELS = 1400  # a plate's long side
 FIGURE_PNG_MAX_SHARE = 0.06  # above this share of the page a figure is JPEG
 INK_THRESHOLD = 245  # a pixel darker than this at analysis scale is ink
+MIN_FIGURE_PIXELS = 32  # the smallest side a written figure may have (C.4, G4)
 RUNNING_HEAD_PAGES = 0.25  # the share of pages that makes a line a running head
 RUNNING_HEAD_MIN = 3
 RUNNING_HEAD_BAND = 0.08  # of the page height, top and bottom, where it sits
@@ -516,6 +517,19 @@ def _page(page: pdfium.PdfPage, index: int, layout: Optional[PageLayout], doc: D
         if crop is None:
             result.crop_failures.append(f"page {index + 1} box {tuple(round(v, 1) for v in box)}")
             continue
+        if min(crop.width, crop.height) < MIN_FIGURE_PIXELS:
+            # Not a figure after all: a faint band that straddles an analysis
+            # cell measures 24pt and reaches here, and the crop is what knows
+            # better (the coarse render says the band is 16pt tall and the crop
+            # renders 27px of it, measured on *Universe* p.501). Recorded, and
+            # not counted as detected — G4 allows no image under 32px, and a
+            # region that never becomes one was never a figure.
+            result.slivers.append(
+                f"page {index + 1} box {tuple(round(v, 1) for v in box)} is "
+                f"{crop.width}x{crop.height}"
+            )
+            result.figures_detected -= 1
+            continue
         result.figure_boxes.append(box)
         figures.append(
             Block(
@@ -566,6 +580,7 @@ def analyse(path: str, limit: Optional[int] = None, layouts: Optional[dict[int, 
     doc.figures_detected = sum(p.figures_detected for p in doc.pages)
     doc.plates = sum(1 for p in doc.pages if p.plate)
     doc.crop_failures = [f for p in doc.pages for f in p.crop_failures]
+    doc.slivers = [f for p in doc.pages for f in p.slivers]
     mark_running_heads(doc)
     body = classify_roles(doc.pages)
     stitch_pages(doc.pages, body)

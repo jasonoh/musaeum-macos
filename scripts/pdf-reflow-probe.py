@@ -243,6 +243,7 @@ def run_one(title: str, why: str, root: str, out_dir: str, limit: Optional[int],
         figures=doc.figures_detected,
         plates=doc.plates,
         crop_failures=doc.crop_failures[:5],
+        slivers=doc.slivers[:5],
         vision_regions=doc.vision_regions,
         vision_pages=len(doc.vision_pages),
         orphans=doc.orphans,
@@ -298,6 +299,7 @@ def print_report(records: list[dict]) -> None:
             f"{r['vision_regions']} regions read from Vision on {r['vision_pages']} pages"
         )
         print(f"    figures   {r['figures']} detected, {r['plates']} plates, crop failures: {r['crop_failures'] or 'none'}")
+        print(f"    slivers   {r.get('slivers') or 'none'}")
         if r.get("artifact"):
             print(f"    artifact  {r['artifact']}  {r['bytes'] / 1024:.0f} KB  {r['words']} words  {r['sections']} files")
         print()

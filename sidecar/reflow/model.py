@@ -73,6 +73,7 @@ class PageResult:
     figures_detected: int = 0
     figure_boxes: list[Box] = field(default_factory=list)  # the crops actually written
     crop_failures: list[str] = field(default_factory=list)
+    slivers: list[str] = field(default_factory=list)  # ink too thin to be a figure
     plate: bool = False
 
 
@@ -89,6 +90,7 @@ class Document:
     figures_detected: int = 0
     plates: int = 0
     crop_failures: list[str] = field(default_factory=list)
+    slivers: list[str] = field(default_factory=list)
     layout_errors: int = 0
     orphans: int = 0
     vision_regions: int = 0
