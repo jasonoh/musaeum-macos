@@ -93,10 +93,10 @@ METHODS = {
         book_dir=p["book_dir"],
         image_path=p["image_path"],
     ),
+    # `ebook_convert_path` may still arrive from an older caller; it is ignored.
     "convert_format": lambda p: convert_format(
         input_path=p["input_path"],
         output_path=p["output_path"],
-        ebook_convert_path=p["ebook_convert_path"],
     ),
     "migrate_library": lambda p: migrate_library(
         job_id=p["job_id"],
