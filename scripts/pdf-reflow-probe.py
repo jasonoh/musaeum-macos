@@ -373,11 +373,22 @@ def gate_artifact(title: str, pdf: str, epub_path: str, golden: dict, rec: dict)
     pass, rather than from the RPC's result, whose consumer is the reader and not
     this probe. Gating the artifact with a fresh record is a cross-check as well:
     if the artifact had come from some other pass, G2 and G6 would move.
+
+    That re-layout is retried while it is degraded, and a degraded one is
+    recorded: measured 2026-10-08, a layout whose helper answered no pages at all
+    (8 of 9 pages lost) moved G4 and G6 on a book whose own pass had 0 layout
+    errors, so a verdict from a degraded record is noise rather than evidence.
     """
-    doc = analyse(pdf)
-    doc.entries = document_entries(pdf, doc)
+    attempts = []
+    for _ in range(3):
+        doc = analyse(pdf)
+        attempts.append({"verdict": doc.verdict, "layout_errors": doc.layout_errors})
+        if doc.verdict == "ok":
+            break
+    rec["gate_layouts"] = attempts
     rec["gate_layout_errors"] = doc.layout_errors
     rec["gate_verdict"] = doc.verdict
+    doc.entries = document_entries(pdf, doc)
     return gate_book(
         pdf,
         epub_path,
@@ -432,11 +443,22 @@ def production_book(title: str, why: str, book_dir: str, pdf: str, golden: dict)
     rec["produced"] = True
     first_digest = (_sha(epub_path), _sha(stamp_path))
     first_content = _content_digest(epub_path)
-    second = _run(book_dir, pdf, force=True)
+    # The forced second pass is the byte-stability probe. A pass can legitimately
+    # *refuse* a book it laid out minutes earlier — D6's posture, and 1R's own
+    # record names the helper failing pages on a later run — so a refusal is
+    # retried and recorded rather than read as an instability of the artifact.
+    # Measured 2026-10-08: one refusal in roughly thirty passes of this corpus.
+    attempts: list[dict] = []
+    for _ in range(3):
+        forced = _run(book_dir, pdf, force=True)
+        attempts.append({"status": forced["status"], "verdict": forced["verdict"], "reason": forced["reason"]})
+        if forced["status"] == "produced":
+            break
     second_digest = (_sha(epub_path), _sha(stamp_path))
+    rec["attempts"] = attempts
     rec["digest"] = {"first": first_digest, "second": second_digest}
     rec["content"] = {"first": first_content, "second": _content_digest(epub_path)}
-    rec["byte_stable"] = second["status"] == "produced" and first_digest == second_digest
+    rec["byte_stable"] = attempts[-1]["status"] == "produced" and first_digest == second_digest
     rec["cached"] = _run(book_dir, pdf)["status"] == "cached"
     rec["residue"] = [name for name in _listing(os.path.dirname(epub_path)) if name.endswith(".tmp")]
     rec["only_derived_changed"] = _listing(book_dir) == sorted([*before, "derived"])
@@ -481,19 +503,23 @@ def production_failed(records: list[dict]) -> list[str]:
             # exists to prevent, and they are not the same finding.
             bad.append(f"{title}: after the source moved the pass said {rec.get('touched')}")
         if not rec.get("byte_stable"):
-            # Say which of the two moved, and whether the document itself moved
-            # or only the container's metadata: the causes are different, and a
-            # run that reports only "false" costs another corpus pass to find out.
-            got = rec.get("digest") or {}
-            first, second = got.get("first"), got.get("second")
-            moved = "epub" if first and second and first[0] != second[0] else "stamp"
-            content = rec.get("content") or {}
-            where = (
-                "its content moved"
-                if content.get("first") != content.get("second")
-                else "only its zip metadata moved, the content did not"
-            )
-            bad.append(f"{title}: byte_stable is false — the {moved} moved ({first} then {second}); {where}")
+            attempts = rec.get("attempts") or []
+            if attempts and not any(attempt["status"] == "produced" for attempt in attempts):
+                bad.append(f"{title}: the pass refused {len(attempts)} forced attempts: {attempts}")
+            else:
+                got = rec.get("digest") or {}
+                first, second = got.get("first"), got.get("second")
+                content = rec.get("content") or {}
+                if first == second:
+                    bad.append(f"{title}: byte_stable is false with identical digests ({first}) — a pass did not produce")
+                else:
+                    moved = "epub" if first and second and first[0] != second[0] else "stamp"
+                    where = (
+                        "its content moved"
+                        if content.get("first") != content.get("second")
+                        else "only its zip metadata moved, the content did not"
+                    )
+                    bad.append(f"{title}: byte_stable is false — the {moved} moved ({first} then {second}); {where}")
         if rec.get("residue"):
             bad.append(f"{title}: {rec['residue']} left behind")
         if rec.get("stamp_mtime") != rec.get("source_mtime"):
@@ -513,6 +539,15 @@ def gate_regression(records: list[dict]) -> list[str]:
     for rec in records:
         title = rec["title"]
         if title in EXPECT_FALLBACK or not rec.get("gate"):
+            continue
+        if rec.get("gate_layout_errors"):
+            # Not a finding about the artifact: the record the checks need is the
+            # one the source could not give this time, so the run has to be
+            # repeated rather than read.
+            bad.append(
+                f"{title}: the gate's own layout was degraded {rec['gate_layouts']} — re-run this book, "
+                "its verdict is not evidence"
+            )
             continue
         failed = [check for check in CHECKS if rec["gate"].get(check)]
         if title in PASSED_IN_RUN_2 and failed:
@@ -542,6 +577,13 @@ def print_production(records: list[dict], report: str) -> None:
         f"{sum(1 for r in written if r.get('stamp_reran'))} re-ran the pass on a touched source, "
         f"{sum(1 for r in written if r.get('only_derived_changed'))} wrote only derived/"
     )
+    for rec in records:
+        for attempt in (rec.get("attempts") or []) + (rec.get("touched") or []):
+            # A refusal is a *fallback* — no artifact and one reason (D6). A
+            # `cached` answer is expected here: it is what the call after a
+            # successful re-run must say.
+            if attempt["status"] == "fallback":
+                print(f"NOTE  {rec['title']}: a pass refused ({attempt['verdict']}: {attempt['reason']})")
     for line in production_failed(records) + gate_regression(records):
         print(f"FAIL  {line}")
     print(f"report: {report}")
