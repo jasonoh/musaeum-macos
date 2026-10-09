@@ -80,10 +80,16 @@ Musaeum/
 ├── vendor/foliate-js/            # VENDORED reader engine — never edited; see
 │                                 # its VENDORED.md (the npm package is a
 │                                 # stale third-party republish)
+├── helpers/musaeum-layout/       # the PDF reflow's Swift helper (spec D4R): Vision's
+│                                 # regions and reading order, one JSON line per page.
+│                                 # Built by scripts/build-layout-helper.sh into
+│                                 # helpers/bin/ (gitignored, no bundle ships it yet)
 ├── scripts/
 │   ├── api-smoke.sh              # every REST route against a live app: PASS/FAIL per check
 │   ├── dev-app-branding.mjs      # postinstall: name + icon the dev Electron bundle
-│   └── make-icons.mjs            # build/icon.png → build/icon.icns (npm run icons)
+│   ├── make-icons.mjs            # build/icon.png → build/icon.icns (npm run icons)
+│   ├── pdf-reflow-probe.py       # the reflow spike's CLI: one book → EPUB, or --gate-only DIR
+│   └── build-layout-helper.sh    # xcrun swiftc → helpers/bin/musaeum-layout (Xcode toolchain)
 │
 ├── electron/
 │   ├── main/
@@ -190,8 +196,16 @@ Musaeum/
     ├── fetchers/                 # google_books.py, openlibrary.py, goodreads.py
     ├── pipeline/                 # hydration.py, conflict.py, cover.py, migrate.py,
     │                             # topup.py (Calibre PDF top-up)
-    ├── conversion/               # converter.py (ebook-convert wrapper)
-    └── tests/                    # pytest — pdf_metadata, hydration_pdf, topup
+    ├── conversion/               # converter.py (ebook-convert wrapper), azw3/ (the
+    │                             # in-house EPUB → AZW3 writer)
+    ├── reflow/                   # PDF → EPUB (spec C2, slice 1R): chars.py (the
+    │                             # pdfium characters), vision.py (the helper's
+    │                             # stream), regions.py (Vision's order filled with
+    │                             # the PDF's words), layout.py (roles, furniture,
+    │                             # figures, plates), outline.py, epub.py, model.py,
+    │                             # gate.py (the corpus gate's checks G1–G8)
+    └── tests/                    # pytest — pdf_metadata, hydration_pdf, topup,
+                                  # the reflow suite (test_reflow_*)
 ```
 
 Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*` (all three layers), `@vendor/*` → `vendor/*` (renderer only — the reader engine). Configured in `electron.vite.config.ts` and both tsconfigs.
