@@ -79,6 +79,44 @@ export interface ProgressReport {
 }
 
 /**
+ * What one reflow came to, in the app's spelling rather than the sidecar's.
+ *
+ * `status` is the pipeline's own three answers (D2/D9): `produced` wrote an
+ * artifact on this call, `cached` found a current one, `fallback` wrote nothing
+ * and `reason` is the one sentence to show (D6). `epub` and `stampFile` are
+ * relative to the book folder and `''` when nothing was written; `pages`,
+ * `bytes` and `seconds` are the pass's own measurements.
+ */
+export interface ReflowResult {
+  status: 'produced' | 'cached' | 'fallback'
+  reason: string
+  verdict: string
+  epub: string
+  stampFile: string
+  pages: number
+  bytes: number
+  seconds: number
+}
+
+/**
+ * One `reflow_progress` frame, in the app's spelling.
+ *
+ * `phase` is the pipeline's — `start`, `layout`, `reading`, `writing`, `done`,
+ * `cached`, `fallback` — plus one this app adds, `retrying`, and the two page
+ * phases carry `completed` of `total` against the same page count. The sidecar
+ * sends `book_id`; this is `bookId`, because it crosses into the renderer here
+ * and every renderer type in this repo is camelCase.
+ */
+export interface ReflowProgress {
+  bookId: string
+  phase: string
+  completed: number
+  total: number
+  /** The pipeline's own sentence — on `fallback`, and on this app's `retrying`. */
+  reason?: string
+}
+
+/**
  * What a manual Refresh or Rebuild reports back. Both return the same *shape*
  * because either can become the other: `library-sync.refreshLibrary` walks and
  * rebuilds when the catalog is missing, so a caller cannot tell which ran

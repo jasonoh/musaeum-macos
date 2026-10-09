@@ -432,6 +432,13 @@ export const EVENT_CHANNELS = {
   menuCommand: 'event:menu-command',
   pythonEnvProgress: 'event:python-env-progress',
   themeChanged: 'event:theme-changed',
+  /**
+   * A reflow pass's progress for one book (D7). Carried as an event rather than
+   * through the call's own promise because the frames arrive whether or not
+   * anything is awaiting the result — and because a bar fed by the awaiting
+   * closure would freeze the moment React re-rendered that component.
+   */
+  reflowProgress: 'event:reflow-progress',
   aiChunk: 'event:ai-chunk',
   aiDone: 'event:ai-done',
   aiError: 'event:ai-error',
