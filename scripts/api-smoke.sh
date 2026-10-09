@@ -668,6 +668,60 @@ else
   fail 'GET /api/books/{id}/file answers 200' 'no book in the first 100 declares a format'
 fi
 
+# ---------------------------------------------------------------------------
+# The reflow (PDF-only books, slice 4): the member, the 404 for an ineligible
+# book, and — when the profile holds an eligible one — the pass, polled to its end.
+# ---------------------------------------------------------------------------
+
+printf '\n--- the reflow (PDF-only books)\n'
+
+if [ -n "$FIRST_ID" ]; then
+  request "/api/books/$FIRST_ID" >/dev/null
+  check 'book detail carries reflow.available as a boolean' 'boolean' "$(jq -r '.reflow.available | type' "$BODY")"
+fi
+
+# An EPUB-holding book must be the uniform 404, not a probe oracle
+EPUB_ID="$(jq -r '[.books[] | select(.formats | index("epub"))][0].id // empty' "$LIBRARY_PAGE")"
+if [ -n "$EPUB_ID" ]; then
+  code=$(request "/api/books/$EPUB_ID/file?format=reflow")
+  check 'format=reflow on a book with an EPUB answers 404' 404 "$code"
+fi
+
+REFLOW_ID="$(jq -r '[.books[] | select(.reflow.available)][0].id // empty' "$LIBRARY_PAGE")"
+if [ -z "$REFLOW_ID" ]; then
+  note 'no reflow-eligible book in the first 100; the pass is not exercised'
+else
+  # A bounded poll: 202 means "working, ask again after Retry-After". A 600 s
+  # ceiling, and a 202 still standing at the deadline is a failure, not a pass.
+  deadline=$((SECONDS + 600))
+  started=$SECONDS
+  status=000
+  sequence=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    status=$(request "/api/books/$REFLOW_ID/file?format=reflow")
+    sequence="$sequence $status"
+    [ "$status" = 202 ] || break
+    # Once, on the first 202: the poll can run for many iterations
+    [ "$sequence" != " 202" ] || check 'a 202 body names a phase' 'string' "$(jq -r '.phase | type' "$BODY")"
+    wait_s="$(as_number "$(header retry-after)")"
+    [ "$wait_s" -gt 0 ] || wait_s=2
+    sleep "$wait_s"
+  done
+  note "reflow poll: statuses$sequence, $((SECONDS - started)) s"
+  if [ "$status" = 202 ]; then
+    fail 'the reflow answers within 600 s' 'still 202 at the deadline'
+  elif [ "$status" = 422 ]; then
+    # A legitimate answer for some PDFs, not a failure of the route
+    check 'a refused book says why' 'string' "$(jq -r '.reason | type' "$BODY")"
+    note "$REFLOW_ID was refused by the pipeline ($(jq -r '.reason' "$BODY")) — pick another book to see the 200"
+  else
+    check 'the reflow answers 200 once the pass is done' 200 "$status"
+    check 'its type is an EPUB' 'application/epub+zip' "$(header content-type)"
+    check 'it carries an ETag' 1 "$(header etag | grep -c '^"')"
+    check 'its first bytes are a zip' 'PK' "$(head -c 2 "$BODY")"
+  fi
+fi
+
 printf '\n--- the shape of a refusal\n'
 
 code=$(request '/api/library?sort=athor')
