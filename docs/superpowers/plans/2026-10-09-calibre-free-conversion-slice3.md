@@ -93,7 +93,7 @@ The sentence _"Calibre not found — Kindle transfers can't convert EPUB to AZW3
 
 ## Start here
 
-Run these three before reading anything else. The counts belong to `7f5b5e3` (slice 2's merge on `main`).
+Run these three before reading anything else. The counts belong to `7f5b5e3` (slice 2's merge on `main`); only documentation has landed since, so they are unchanged.
 
 ```bash
 git log --oneline -3                      # 7f5b5e3 Merge calibre-free-slice2 … at the top
