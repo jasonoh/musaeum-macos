@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Optional
@@ -197,19 +198,89 @@ def run_helper(
     scale: float = 1.5,
     helper: Optional[str] = None,
     timeout: Optional[float] = None,
+    on_page: Optional[Callable[[int], None]] = None,
 ) -> dict[int, PageLayout]:
-    """Lay out pages `first`–`last` (1-based, inclusive; all by default)."""
+    """Lay out pages `first`–`last` (1-based, inclusive; all by default).
+
+    `on_page(done)` is called as each page's line arrives: the helper answers in
+    page order while working concurrently, and one page of *Universe* at a time
+    takes 0.5–1.3 s, so a pass over a 535-page book is minutes and has to report
+    itself (D7).
+
+    Every page of the requested range the helper never answered comes back as a
+    `PageLayout` whose `error` says so. Slice 1R's review found the defect this
+    closes: a helper killed mid-book was indistinguishable from a short document,
+    and the short one would have been cached as the book's whole reflow. Missing
+    pages count as layout errors, which is what the per-book verdict already
+    weighs (D6 tolerates a quarter of the text pages).
+
+    `last` without `first` asks for pages 1–`last`; `first` alone has no syntax
+    in the helper's `--pages a-b`, so the whole document is laid out and the
+    caller takes the pages it asked for.
+    """
     exe = helper or find_helper()
     if not exe:
         raise LayoutUnavailable("the layout helper is not installed")
     args = [exe, str(pdf_path), "--concurrency", str(concurrency), "--scale", str(scale)]
-    if first is not None and last is not None:
-        args += ["--pages", f"{first}-{last}"]
+    if last is not None:
+        args += ["--pages", f"{first or 1}-{last}"]
+    stream, code = _stream_helper(args, timeout, on_page)
+    pages = dict(stream.pages)
+    for number in _unanswered(stream.header, first, last):
+        pages.setdefault(
+            number,
+            PageLayout(
+                page=number,
+                error="the layout helper did not answer for this page"
+                + (f" (it exited with code {code})" if code else ""),
+            ),
+        )
+    return pages
+
+
+def _unanswered(header: HelperHeader, first: Optional[int], last: Optional[int]) -> range:
+    """The pages of the requested range the helper was asked for and can have.
+
+    Clamped by the header's own page count, so a range that runs past the end of
+    the document asks for nothing rather than inventing pages the helper could
+    not have answered.
+    """
+    lo = first or 1
+    hi = last if last is not None else header.pages
+    if hi is None:
+        return range(0)
+    if header.pages is not None:
+        hi = min(hi, header.pages)
+    return range(lo, hi + 1) if hi >= lo else range(0)
+
+
+def _stream_helper(
+    args: list[str], timeout: Optional[float], on_page: Optional[Callable[[int], None]]
+) -> tuple[HelperStream, int]:
+    """Run the helper and read its stream as it is written — `(stream, exit code)`.
+
+    The helper's stderr is discarded, never passed through: the sidecar's stderr
+    is the app's log (AC10), and PDFKit writes "CoreGraphics PDF has logged an
+    error" there for many real books.
+    """
     try:
-        # stderr is captured, never passed through: the sidecar's stderr is
-        # the app's log (AC10), and PDFKit writes "CoreGraphics PDF has logged
-        # an error" there for many real books.
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired) as err:
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    except OSError as err:
         raise LayoutUnavailable(f"the layout helper did not run ({type(err).__name__})") from err
-    return parse_stream(proc.stdout.splitlines())
+    late: list[bool] = []
+    killer = threading.Timer(timeout, lambda: (late.append(True), proc.kill())) if timeout else None
+    try:
+        if killer is not None:
+            killer.start()
+        try:
+            stream = read_stream(proc.stdout, on_page)
+        except LayoutUnavailable:
+            proc.kill()
+            raise
+    finally:
+        if killer is not None:
+            killer.cancel()
+        proc.wait()
+    if late:
+        raise LayoutUnavailable("the layout helper ran too long")
+    return stream, proc.returncode

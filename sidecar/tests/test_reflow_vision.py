@@ -5,7 +5,7 @@ import pypdfium2 as pdfium
 import pytest
 
 from reflow.chars import page_chars
-from reflow.vision import LayoutUnavailable, find_helper, parse_stream, run_helper
+from reflow.vision import LayoutUnavailable, find_helper, parse_stream, read_stream, run_helper
 from tests.reflow_pdfs import Page, Text, write_pdf
 
 HEADER = json.dumps({"helper": "musaeum-layout", "version": 1, "supported": True, "pages": 2})
@@ -59,12 +59,29 @@ def test_a_missing_helper_is_a_reason(monkeypatch, tmp_path):
     assert "not installed" in err.value.reason
 
 
-def test_run_helper_reads_whatever_helper_it_is_given(tmp_path):
+PAGE_LINE = json.dumps({"page": 1, "box": [0, 0, 1, 1], "regions": [], "tables": []})
+
+
+def page_line(number: int) -> str:
+    return json.dumps({"page": number, "box": [0, 0, 1, 1], "regions": [], "tables": []})
+
+
+def _header(pages: int) -> str:
+    return json.dumps({"helper": "musaeum-layout", "version": 1, "supported": True, "pages": pages})
+
+
+def _script(tmp_path, lines: list[str], exit_code: int = 0, body: str = ""):
+    """A stand-in for the helper, answering exactly `lines`."""
     script = tmp_path / "fake"
-    page = json.dumps({"page": 1, "box": [0, 0, 1, 1], "regions": [], "tables": []})
-    script.write_text(f"#!/bin/sh\necho '{HEADER}'\necho '{page}'\necho noise >&2\n")
+    echo = "\n".join(f"echo '{line}'" for line in lines)
+    script.write_text("#!/bin/sh\n" + echo + body + (f"\nexit {exit_code}\n" if exit_code else "\n"))
     script.chmod(0o755)
-    assert list(run_helper(tmp_path / "x.pdf", helper=str(script))) == [1]
+    return script
+
+
+def test_run_helper_reads_whatever_helper_it_is_given(tmp_path):
+    script = _script(tmp_path, [HEADER, PAGE_LINE, page_line(2)])
+    assert list(run_helper(tmp_path / "x.pdf", helper=str(script))) == [1, 2]
 
 
 def _real_helper():
