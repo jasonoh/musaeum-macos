@@ -750,7 +750,7 @@ def test_the_report_maps_every_page_to_the_file_that_holds_it(tmp_path):
 $PY -m pytest sidecar/tests -k reflow -q
 ```
 
-Expected: `93 passed` with the helper built (`91 passed, 2 skipped` without it). Then the same three tests must pass twice in a row, and the second run must not be a fluke of the clock:
+Expected: `98 passed` with the helper built (`96 passed, 2 skipped` without it) — 95 after Task 1, plus this file's three. Then the same three tests must pass twice in a row, and neither run may be a fluke of the clock:
 
 ```bash
 $PY -m pytest sidecar/tests/test_reflow_produce.py -q
@@ -1608,7 +1608,7 @@ $PY -m pytest sidecar/tests/test_reflow_produce.py -q
 $PY -m pytest sidecar/tests -q
 ```
 
-Expected for the last: `371 passed` with the helper built (`369 passed, 2 skipped` without it) — 349 before this task, plus its 22 tests.
+Expected for the last: `379 passed` with the helper built (`377 passed, 2 skipped` without it) — 357 before this task, plus its 22 tests. (The plan's counts are the actual ones as each task ran: Task 1's five tests precede this file's three, so the plan's later steps carry the running total.)
 
 ```bash
 git add sidecar/tests/test_reflow_produce.py
