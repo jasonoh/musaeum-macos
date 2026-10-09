@@ -318,8 +318,8 @@ interface RouteDeps {
 interface ByteSource {
   path: string
   contentType: string
-  /** Extra response headers (the reflow route's `ETag`). */
-  headers?: Record<string, string>
+  /** Send an `ETag` derived from the same stat the bytes are served by (the reflow route). */
+  etag?: boolean
 }
 
 /** The 503s, which differ only in their wait and their word. */
@@ -352,8 +352,11 @@ async function sendBytes(
 
   try {
     let size: number
+    let etag: string | undefined
     try {
-      size = (await fs.stat(source.path)).size
+      const stat = await fs.stat(source.path)
+      size = stat.size
+      if (source.etag) etag = `"${stat.size}-${Math.trunc(stat.mtimeMs)}"`
     } catch {
       sendJson(res, 404, errorPayload('notFound'))
       return
@@ -363,7 +366,7 @@ async function sendBytes(
       'content-type': source.contentType,
       'cache-control': 'no-store',
       'accept-ranges': 'bytes',
-      ...source.headers
+      ...(etag ? { etag } : {})
     }
 
     // **The range is decided before the empty-file branch, because the two interact.**
@@ -454,6 +457,13 @@ async function serveReflow(
     return
   }
 
+  // The PDF must resolve before any pass starts, so a traversing row or a
+  // missing file is the uniform 404 and not a 422 with a reason (D11).
+  if (!(await resolveBookFile(bookId, 'pdf'))) {
+    sendJson(res, 404, errorPayload('notFound'))
+    return
+  }
+
   const pass = reflow.ensure(bookId)
   // Attached before the race: a pass that rejects after the grace window has
   // closed must not surface as an unhandled rejection (invariant 12).
@@ -476,6 +486,13 @@ async function serveReflow(
     clearTimeout(timer)
   }
 
+  // The share may have dropped while the pass ran: that is the offline 503,
+  // whatever the pass came to.
+  if (!nas.isOnline()) {
+    sendUnavailable(res, 'offline')
+    return
+  }
+
   if (winner === null) {
     sendJson(
       res,
@@ -491,18 +508,11 @@ async function serveReflow(
   }
 
   const path = await resolveReflowFile(bookId)
-  let stat
-  try {
-    stat = path ? await fs.stat(path) : null
-  } catch {
-    stat = null
-  }
-  if (!path || !stat) {
+  if (!path) {
     sendJson(res, 404, errorPayload('notFound'))
     return
   }
-  const etag = `"${stat.size}-${Math.trunc(stat.mtimeMs)}"`
-  await sendBytes(req, res, { path, contentType: bookContentType('epub'), headers: { etag } }, deps)
+  await sendBytes(req, res, { path, contentType: bookContentType('epub'), etag: true }, deps)
 }
 
 // ---------------------------------------------------------------------------

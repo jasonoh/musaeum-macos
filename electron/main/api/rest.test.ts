@@ -1981,6 +1981,7 @@ describe('the reflow route', () => {
     mkdirSync(dir, { recursive: true })
     reflowEpub = join(dir, 'reflow.epub')
     writeFileSync(reflowEpub, EPUB_BYTES)
+    writeFileSync(join(dir, '..', 'Book.pdf'), 'pdf')
     db.insertBook({ ...makeBook('b1'), formats: ['pdf'] })
     db.insertBook({ ...makeBook('has-epub'), formats: ['epub', 'pdf'] })
 
@@ -2102,6 +2103,31 @@ describe('the reflow route', () => {
     const res = await get(URL_REFLOW)
     expect(res.status).toBe(422)
     expect(((await res.json()) as { reason: string }).reason).toContain('unavailable')
+  })
+
+  it('404s a traversing row and a missing PDF without starting a pass', async () => {
+    db.insertBook({ ...makeBook('trav'), nasPath: '../outside', formats: ['pdf'] })
+    expect((await get('/api/books/trav/file?format=reflow')).status).toBe(404)
+    rmSync(join(root, 'books', 'b1', 'Book.pdf'))
+    expect((await get(URL_REFLOW)).status).toBe(404)
+    expect(reflow.ensure).not.toHaveBeenCalled()
+  })
+
+  it('503s with Retry-After 5 when the share drops while the pass runs', async () => {
+    for (const outcome of [
+      { ...produced(), status: 'fallback' as const, reason: 'x' },
+      produced(),
+      new Error('boom')
+    ]) {
+      vi.mocked(nas.isOnline).mockReturnValue(true)
+      vi.mocked(reflow.ensure).mockImplementation(async () => {
+        vi.mocked(nas.isOnline).mockReturnValue(false)
+        if (outcome instanceof Error) throw outcome
+        return outcome
+      })
+      const res = await get(URL_REFLOW)
+      expect([res.status, res.headers.get('retry-after')]).toEqual([503, '5'])
+    }
   })
 
   it('holds no byte-gate slot for a 202', async () => {
