@@ -408,7 +408,7 @@ npm test -- electron/main/services/book-bytes.test.ts
 npm test
 ```
 
-Expected: the first command green **with every pre-existing case in the file unchanged** — that is the extraction's sweep — and the second at `88 files` with the count up by exactly 6.
+Expected: the first command green **with every pre-existing case in the file unchanged** — that is the extraction's sweep — and the second at **1893 tests** (measured; the _file_ count is unchanged, because `book-bytes.test.ts` already existed), up by exactly 6.
 
 ```bash
 git add electron/main/services/book-bytes.ts electron/main/services/book-bytes.test.ts
@@ -948,10 +948,11 @@ describe('the frames', () => {
 })
 ```
 
-Two things to expect while making this pass, both of which are the harness talking rather than the code:
+Three things to expect while making this pass. The first two are the harness talking rather than the code; the third was found by running the case, which hung for its full 5 s timeout before it was fixed:
 
-- `nas.setLibraryRootForTests` is whatever `book-bytes.test.ts` already uses to point the library at its temp root — **read that file's `beforeEach` and copy its root-setting call verbatim** rather than inventing one. Its `beforeEach`/`afterEach` pair is also the model for this file's.
-- `vi.restoreAllMocks()` in `beforeEach` can un-install `vi.mock`'s module-level replacements in older vitest; if the mocked `call` comes back `undefined`, drop `restoreAllMocks` and rely on the explicit `mockReset` calls above it.
+- The library root is set with **`nas.setLibraryRoot(root)`** — read `book-bytes.test.ts`'s `beforeEach`/`afterEach` pair and copy it verbatim (it also deletes the three `musaeum.db*` files first), rather than inventing a test-only setter.
+- **Mock `./events` as a whole module too** (`vi.mock('./events', () => ({ broadcast: vi.fn() }))`), rather than `vi.spyOn(events, 'broadcast')`: `reflow.ts` imports the namespace, and a spy on an ESM namespace is the fragile path.
+- **The AC6 case needs `await vi.waitFor(() => expect(call).toHaveBeenCalled())` before `release(…)`.** The first `ensure` reaches the mocked `call` only after an `fs.readdir`/`realpath` await, so releasing synchronously after building the `Promise.all` fires the initial no-op `release` and the pair never settles. (This is also why the case is worth having: it is the only place the in-flight map's _timing_ is exercised rather than its bookkeeping.)
 
 ```bash
 npm test -- electron/main/services/reflow.test.ts
@@ -959,7 +960,7 @@ npm test
 npm run typecheck
 ```
 
-Expected: green, then `1888 + 12` files' worth of the same suite, and typecheck clean.
+Expected: green, then the whole suite at **1907 tests / 88 files** (measured: 1893 after Task 1, plus this file's 14), and typecheck clean.
 
 ```bash
 git add src/types/book.types.ts src/types/api.types.ts electron/main/services/reflow.ts electron/main/services/reflow.test.ts
@@ -1715,7 +1716,7 @@ sidecar/.venv/bin/python -m pytest sidecar/tests -q
 git diff --stat main...feat/pdf-reflow-slice-3
 ```
 
-Expected: typecheck clean; eslint exit 0; `npm test` green with the count up by 18 over the 1887 baseline (6 + 12 in Tasks 1–2, 4 + 8 in Task 4, and however many the harness costs); pytest **unchanged** at 388 passed / 129 reflow — a Python change here means the pass was touched, which this slice forbids; and a `--stat` that names exactly the ten code files, their tests, this plan, and the four documents — nothing else, and no `.md` file hard-wrapped.
+Expected: typecheck clean; eslint exit 0; `npm test` green with the count up by 20 over the 1887 baseline (6 in Task 1, 14 in Task 2 — measured — plus 4 + 8 for Task 4); pytest **unchanged** at 388 passed / 129 reflow — a Python change here means the pass was touched, which this slice forbids; and a `--stat` that names exactly the ten code files, their tests, this plan, and the four documents — nothing else, and no `.md` file hard-wrapped.
 
 ```bash
 git add tasks.md CHANGELOG.md docs/data-contracts.md docs/invariants/reader.md
