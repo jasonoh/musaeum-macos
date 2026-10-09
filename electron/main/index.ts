@@ -16,7 +16,7 @@ import { registerReaderHandlers } from './ipc/reader'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShelvesHandlers } from './ipc/shelves'
 import { registerThemeHandlers } from './ipc/theme'
-import { resolveBookFile, resolveCoverFile } from './services/book-bytes'
+import { resolveBookFile, resolveCoverFile, resolveReflowFile } from './services/book-bytes'
 import { closeDb } from './services/db'
 import { startDeviceDetection, stopDeviceDetection } from './services/device-manager'
 import { broadcast, setMainWindow, subscribe } from './services/events'
@@ -61,6 +61,8 @@ protocol.registerSchemesAsPrivileged([
  * musaeum:// — the renderer's only path to library files. Two hosts:
  *   cover/{bookId}/{thumb|full}   cover images
  *   book/{bookId}/{format}        book bytes for the reader
+ *   book/{bookId}/reflow          the reflowed EPUB a PDF-only book is read
+ *                                 through (slice 3) — not a format (D3)
  * CSP forbids file://, so everything the renderer displays comes through here.
  */
 function registerMusaeumProtocol(): void {
@@ -70,7 +72,14 @@ function registerMusaeumProtocol(): void {
     if (!bookId || !rest) return new Response(null, { status: 400 })
 
     if (url.host === 'book') {
-      const file = await resolveBookFile(bookId, rest)
+      // `reflow` is not a format (D3, AC2): it is the artifact's own route, and
+      // it goes through `resolveReflowFile` rather than `resolveBookFile`'s
+      // allowlist so that `GET /api/books/{id}/file?format=reflow` stays 404
+      // until slice 4 documents it (D8, R1) — `api/rest.ts` passes the caller's
+      // format straight into the other resolver. Two path shapes, one
+      // containment rule (`bookFolder`/`contained`).
+      const file =
+        rest === 'reflow' ? await resolveReflowFile(bookId) : await resolveBookFile(bookId, rest)
       return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 })
     }
 
