@@ -12,6 +12,7 @@ import { closeDb, getBook, insertBook, setConfig, updateBook } from './db'
 import { setCoverEncoderForTests } from './device-covers'
 import * as deviceManager from './device-manager'
 import * as events from './events'
+import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import { LIBRARY_KIND_KEY } from './storage-kind'
 import * as sidecar from './sidecar'
@@ -35,6 +36,18 @@ vi.mock('./device-manager', () => ({
   getDevice: vi.fn(),
   refreshDeviceContents: vi.fn(),
   noteSentFile: vi.fn()
+}))
+
+/**
+ * The catalog write is a tracked fire-and-forget promise against a NAS file, so
+ * it is asserted at the call rather than on the file: what these cases decide is
+ * that the transfer path announces a newly cached format to the same writers
+ * every other gain-a-format path uses. Spread over the real module so a
+ * neighbour's call still lands.
+ */
+vi.mock('./library-sync', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./library-sync')>()),
+  upsertCatalog: vi.fn()
 }))
 
 const DEVICE_ID = 'kindle:Kindle'
@@ -175,6 +188,17 @@ describe('format choice', () => {
     // the conversion entirely
     expect(await fs.readdir(bookDir)).toContain(`${STEM}.azw3`)
     expect(getBook('a')?.formats).toEqual(['epub', 'azw3'])
+    // Recorded in the *canonical* file too, not only in SQLite — the cache is
+    // what a rebuild and another machine's adoption discard, so a format living
+    // only there is a format they lose (measured on the real library before this
+    // was fixed). `last_modified` is the row's post-update value: writing the
+    // pre-patch book would leave the file claiming the old one.
+    const metadata = JSON.parse(await fs.readFile(join(bookDir, 'metadata.json'), 'utf8'))
+    expect(metadata.formats).toEqual(['epub', 'azw3'])
+    expect(metadata.last_modified).toBe(getBook('a')?.lastModified)
+    expect(librarySync.upsertCatalog).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'a', formats: ['epub', 'azw3'] })
+    ])
     expect(await delivered(`${TITLE}.azw3`)).toBe('converted azw3 bytes')
 
     const statuses = spy.mock.calls

@@ -10,6 +10,8 @@ import { writeDeviceCover } from './device-covers'
 import * as db from './db'
 import { getDevice, noteSentFile, refreshDeviceContents } from './device-manager'
 import { broadcast } from './events'
+import * as importer from './importer'
+import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 import { sanitizeTitle } from './sanitize'
 import * as sidecar from './sidecar'
@@ -103,6 +105,18 @@ async function runTransfer(job: TransferJob): Promise<void> {
         // file_size_bytes like any other format the book gains.
         const fileSizeBytes = (await computeFileSizeBytes(bookDir)) ?? book.fileSizeBytes
         db.updateBook(book.id, { formats, fileSizeBytes })
+        // …and the **canonical** record has to say so, not just the cache.
+        // `db.updateBook` writes SQLite, which is a disposable local cache:
+        // `metadata.json` is what a catalog rebuild and another machine's
+        // adoption read back, so a format recorded only here is a format those
+        // paths lose. The add-format import path does the same three things
+        // (`importer.ts:580-582`) for the same reason. Re-read the row rather
+        // than reusing `book`: the patch above moved `last_modified`, and the
+        // file would otherwise claim the old one.
+        const updated = db.getBook(book.id)
+        if (!updated) throw new Error('Book not found')
+        await importer.writeMetadataJson(bookDir, updated)
+        librarySync.upsertCatalog([updated])
         broadcast('libraryChanged')
       } else {
         // PDF-only book: Kindles render PDF natively; conversion output is
