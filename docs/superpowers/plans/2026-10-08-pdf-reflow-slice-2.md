@@ -941,6 +941,7 @@ DERIVED = "derived"
 EPUB_NAME = "reflow.epub"
 STAMP_NAME = "reflow.json"
 TMP = ".tmp"
+STALE_TEMP_SECONDS = 3600  # an hour: a temp this old is a crash's, not a live pass's
 
 # What a pass measured about the book, shared by the stamp and the result.
 # `page_map` is D5's map, not a count (`write_epub`'s report also carries
@@ -987,10 +988,19 @@ def read_stamp(stamp_path: str) -> Optional[dict]:
 
 
 def stamp_is_current(stamp: Optional[dict], stat: os.stat_result) -> bool:
-    """Would a pass over *this* file write this stamp now?"""
+    """Would a pass over *this* file write this stamp now?
+
+    Every shape is checked, because a stamp is a file on a share that anyone can
+    edit: `source` as a list or a string used to raise `AttributeError` out of
+    `reflow_pdf` — which the RPC then answered as an error, forever, on every open
+    of that book — and a stamp missing a stat key was served as a cache hit with
+    zeroes for the fields the reader asks about.
+    """
     if not isinstance(stamp, dict) or stamp.get("version") != STAMP_VERSION:
         return False
-    source = stamp.get("source") or {}
+    source = stamp.get("source")
+    if not isinstance(source, dict) or any(key not in stamp for key in STAT_KEYS):
+        return False
     return (
         source.get("size") == stat.st_size
         and source.get("mtime") == int(stat.st_mtime)
@@ -1020,10 +1030,48 @@ def _title(book_dir: str, pdf_path: str) -> str:
     """The EPUB's title: the canonical record's, else the file's own stem."""
     try:
         with open(os.path.join(book_dir, "metadata.json"), encoding="utf-8") as fh:
-            title = (json.load(fh) or {}).get("title")
+            meta = json.load(fh)
     except (OSError, ValueError):
-        title = None
+        meta = None
+    title = meta.get("title") if isinstance(meta, dict) else None
     return str(title or "").strip() or os.path.splitext(os.path.basename(pdf_path))[0]
+
+
+def _temp_for(path: str) -> str:
+    """A temp name of this run's own, so two passes cannot collide on one book.
+
+    A fixed name is what a second *process* collides with — another Mac on the
+    same library, a second instance of the app, or this repo's own corpus harness
+    while the app is open: both passes write the same temp, one renames it away,
+    and the other's rename raises, so **both** fall back and the book gets no
+    artifact at all (measured by Task 3's review). Unique names make that race
+    benign: a pass over one source writes the same bytes every time, so whichever
+    rename lands last leaves the same artifact.
+    """
+    return f"{path}.{os.getpid()}-{threading.get_ident()}{TMP}"
+
+
+def _clear_stale_temps(derived: str) -> None:
+    """Remove temps an earlier run crashed on — never a concurrent pass's.
+
+    Unique temp names mean a live pass's temp is seconds old while a killed one's
+    sits there for good, so age is the only thing that tells them apart. The
+    clock decides cleanup here and never the artifact's content.
+    """
+    try:
+        names = os.listdir(derived)
+    except OSError:
+        return
+    now = time.time()
+    for name in names:
+        if not name.endswith(TMP):
+            continue
+        full = os.path.join(derived, name)
+        try:
+            if now - os.stat(full).st_mtime > STALE_TEMP_SECONDS:
+                os.unlink(full)
+        except OSError:
+            continue
 
 
 def _doc_stats(doc) -> dict:
@@ -1134,10 +1182,17 @@ def reflow_pdf(
 
     def progress(phase: str, done: int = 0, total: int = 0, **extra) -> None:
         if notify is not None:
-            notify(
-                "reflow_progress",
-                {"book_id": book_id, "phase": phase, "completed": done, "total": total, **extra},
-            )
+            try:
+                notify(
+                    "reflow_progress",
+                    {"book_id": book_id, "phase": phase, "completed": done, "total": total, **extra},
+                )
+            except Exception:  # noqa: BLE001 — a sink that raises is the caller's problem
+                # The sink is the app's `notify` writing to its stdout pipe, which
+                # can be gone, and this module promises never to raise (D6, D9). A
+                # dropped frame costs progress, never an answer: the pass itself
+                # has already succeeded by the time the last frames are sent.
+                pass
 
     def finish(status: str = "") -> dict:
         if status:
@@ -1161,24 +1216,33 @@ def reflow_pdf(
         return fallback(f"the PDF cannot be read ({type(err).__name__})")
 
     epub_path, stamp_path = artifact_paths(book_dir)
+    derived = os.path.dirname(epub_path)
+    if os.path.exists(derived) and not os.path.isdir(derived):
+        return fallback("the book's derived folder is not a folder")
     with _lock_for(epub_path):
         if not force and os.path.exists(epub_path):
             stamp = read_stamp(stamp_path)
             if stamp_is_current(stamp, stat):
-                result.update({key: stamp.get(key, result[key]) for key in STAT_KEYS})
-                result["epub"] = os.path.relpath(epub_path, book_dir)
-                result["stamp_file"] = os.path.relpath(stamp_path, book_dir)
-                progress("cached", pages=result["pages"], bytes=result["bytes"])
-                return finish("cached")
+                # A cache hit is a claim about a file on a share, so it is checked
+                # like the pass's own output: a truncated artifact under a current
+                # stamp used to be served forever, and only `force` could heal it.
+                # A cache we cannot read is not a cache — fall through and re-run.
+                try:
+                    _verify_epub(epub_path)
+                except Exception:  # noqa: BLE001 — an unreadable artifact is a re-run
+                    pass
+                else:
+                    result.update({key: stamp.get(key, result[key]) for key in STAT_KEYS})
+                    result["epub"] = os.path.relpath(epub_path, book_dir)
+                    result["stamp_file"] = os.path.relpath(stamp_path, book_dir)
+                    progress("cached", pages=result["pages"], bytes=result["bytes"])
+                    return finish("cached")
 
-        # An earlier run that died mid-write, cleaned before this one starts, so
-        # the folder's contents always mean "the last pass that finished".
-        _remove(epub_path + TMP)
-        _remove(stamp_path + TMP)
-        derived = os.path.dirname(epub_path)
         made_dir = not os.path.isdir(derived)
         placed = False
         placed_stamp = False
+        epub_tmp = ""
+        stamp_tmp = ""
         try:
             progress("start")
             doc = analyse(pdf_path, progress=progress)
@@ -1189,14 +1253,17 @@ def reflow_pdf(
                 return fallback(doc.reason or "this book cannot be laid out")
 
             os.makedirs(derived, exist_ok=True)
+            _clear_stale_temps(derived)
             progress("writing")
-            report = write_epub(doc, epub_path + TMP, _title(book_dir, pdf_path))
-            _verify_epub(epub_path + TMP)
-            os.replace(epub_path + TMP, epub_path)
+            epub_tmp = _temp_for(epub_path)
+            report = write_epub(doc, epub_tmp, _title(book_dir, pdf_path))
+            _verify_epub(epub_tmp)
+            os.replace(epub_tmp, epub_path)
             placed = True
             stats = _stats(doc, report)
+            stamp_tmp = _temp_for(stamp_path)
             _write_stamp(
-                stamp_path + TMP,
+                stamp_tmp,
                 {
                     "version": STAMP_VERSION,
                     "converter": converter_version(),
@@ -1208,7 +1275,7 @@ def reflow_pdf(
                     **stats,
                 },
             )
-            os.replace(stamp_path + TMP, stamp_path)
+            os.replace(stamp_tmp, stamp_path)
             placed_stamp = True
             result.update(stats)
             result["epub"] = os.path.relpath(epub_path, book_dir)
@@ -1219,12 +1286,18 @@ def reflow_pdf(
             print(f"reflow: {pdf_path}: {type(err).__name__}: {err}", file=sys.stderr, flush=True)
             return fallback(f"the reflow could not be written ({type(err).__name__})", verdict="write_failed")
         finally:
-            _remove(epub_path + TMP)
-            _remove(stamp_path + TMP)
+            for path in (epub_tmp, stamp_tmp):
+                if path:
+                    _remove(path)
             if placed and not placed_stamp:
                 # An artifact no stamp describes is not an artifact: the next open
                 # would re-run anyway, and D6 says a book that could not be
-                # produced keeps the original path with nothing behind it.
+                # produced keeps the original path with nothing behind it. (The
+                # rename has already consumed any older artifact, so this leaves
+                # the older stamp without one — harmless, because the artifact is
+                # checked first, and documented rather than corrected: keeping the
+                # old pair would mean writing the stamp first, which is the order
+                # D9 deliberately avoids.)
                 _remove(epub_path)
             if made_dir:
                 try:
@@ -2200,3 +2273,35 @@ Slice 1R's reviews left five measured things behind. This plan places every one 
 2. Every commit's message says what changed and, where the change was forced by a measurement, names the measurement.
 3. `git diff main...feat/pdf-reflow-slice-2 --stat`: 7 files in the spec's row plus the probe, `docs/data-contracts.md`, `tasks.md` and this plan document — nothing else, and no `.md` file hard-wrapped.
 4. The corpus comparison with Annex C.7 run 2, book by book, before the slice is called done.
+
+
+---
+
+## Review repairs (2026-10-08)
+
+Each task's reviewer found things the plan could not have known; every one is fixed on this branch, with the plan's blocks above re-synced to the code where they moved. The per-step `Expected:` counts above are the numbers those steps measured when they ran; these are the repairs that came after them.
+
+| Repair | Found by | What it fixed | Tests |
+| --- | --- | --- | --- |
+| `45f56ee` | Task 1's review | a raised progress sink cancelled the timeout and then waited on a live helper (a wedged sidecar worker, no answer ever sent); a *complete* answer was discarded when the timer fired | +3 (one of which fails by hanging) |
+| `679cdd9` | Task 2's review | the fixed-date rule was pinned for documents but not for `OEBPS/images/*`, the entry class its own measurement named; the byte comparison slept 1.1 s against a two-second zip timestamp bucket (it passed 8 of 20 runs against the clock); `page_map`'s contract claimed a cover where it is a span per file | +1 |
+| the Task 3 block | Task 3's review | `stamp_is_current` trusted `source`'s shape, so a stamp with `"source": [...]` raised out of `reflow_pdf` `—` an RPC error on **every** open of that book, forever; a cache hit was decided on the artifact's existence, so a truncated EPUB under a current stamp was served forever; a raising `notify` echoed out of a pass that had already succeeded | +5 |
+| the Task 3 block | Task 3's review | unique temp names per run and age-based stale-temp cleanup: a fixed temp name made two *processes* `—` a second app instance, a second Mac on the same library, this repo's own harness while the app is open `—` collide, and both passes fell back with no artifact at all | (in the +5) |
+
+Final counts: **`383` → `388` passed** for the whole sidecar suite (**`124` → `129`** of them reflow). Two things Task 3's review measured and left as notes rather than fixes, because each is a deliberate rule rather than a defect: an older artifact is consumed if the failure lands at the *stamp*'s rename (the stamp is written last on purpose, and the next open re-runs and heals), and the lock is per process, which unique temp names now make survivable rather than fatal.
+
+
+---
+
+## Review repairs (2026-10-08)
+
+Each task's reviewer found things the plan could not have known; every one is fixed on this branch, with the plan's blocks above re-synced to the code where they moved. The per-step `Expected:` counts above are the numbers those steps measured when they ran; these are the repairs that came after them.
+
+| Repair | Found by | What it fixed | Tests |
+| --- | --- | --- | --- |
+| `45f56ee` | Task 1's review | a raised progress sink cancelled the timeout and then waited on a live helper (a wedged sidecar worker, no answer ever sent); a *complete* answer was discarded when the timer fired | +3 (one of which fails by hanging) |
+| `679cdd9` | Task 2's review | the fixed-date rule was pinned for documents but not for `OEBPS/images/*`, the entry class its own measurement named; the byte comparison slept 1.1 s against a two-second zip timestamp bucket (it passed 8 of 20 runs against the clock); `page_map`'s contract claimed a cover where it is a span per file | +1 |
+| the Task 3 block | Task 3's review | `stamp_is_current` trusted `source`'s shape, so a stamp with `"source": [...]` raised out of `reflow_pdf` `—` an RPC error on **every** open of that book, forever; a cache hit was decided on the artifact's existence, so a truncated EPUB under a current stamp was served forever; a raising `notify` echoed out of a pass that had already succeeded | +5 |
+| the Task 3 block | Task 3's review | unique temp names per run and age-based stale-temp cleanup: a fixed temp name made two *processes* `—` a second app instance, a second Mac on the same library, this repo's own harness while the app is open `—` collide, and both passes fell back with no artifact at all | (in the +5) |
+
+Final counts: **`383` → `388` passed** for the whole sidecar suite (**`124` → `129`** of them reflow). Two things Task 3's review measured and left as notes rather than fixes, because each is a deliberate rule rather than a defect: an older artifact is consumed if the failure lands at the *stamp*'s rename (the stamp is written last on purpose, and the next open re-runs and heals), and the lock is per process, which unique temp names now make survivable rather than fatal.

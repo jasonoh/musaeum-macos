@@ -411,15 +411,107 @@ def test_an_artifact_without_its_stamp_is_removed(book, helper, monkeypatch):
     assert sorted(os.listdir(book_dir)) == ["A Book.pdf", "metadata.json"]
 
 
-def test_a_previous_runs_temp_is_cleaned_before_the_next_run(book, helper):
+def test_a_crashed_runs_temp_is_cleared_and_a_live_ones_is_left(book, helper):
+    """Temp names are unique per run now, so a killed process's temp would sit
+    there for good; age is the only thing that tells it from a concurrent pass's.
+    """
     book_dir, pdf = book()
     derived = os.path.join(book_dir, "derived")
     os.makedirs(derived)
-    for name in ("reflow.epub.tmp", "reflow.json.tmp"):
-        with open(os.path.join(derived, name), "w") as fh:
+    crashed = os.path.join(derived, "reflow.epub.999-1.tmp")
+    live = os.path.join(derived, "reflow.json.999-2.tmp")
+    for path in (crashed, live):
+        with open(path, "w") as fh:
             fh.write("torn")
+    old = time.time() - 2 * produce.STALE_TEMP_SECONDS
+    os.utime(crashed, (old, old))
     assert reflow_pdf(book_dir, pdf)["status"] == "produced"
-    assert sorted(os.listdir(derived)) == ["reflow.epub", "reflow.json"]
+    assert sorted(os.listdir(derived)) == ["reflow.epub", "reflow.json", "reflow.json.999-2.tmp"]
+
+
+def test_a_malformed_stamp_never_raises_and_re_runs(book, helper):
+    """A stamp is a file on a share that anyone can edit, and `source` as a list
+    used to raise `AttributeError` out of `reflow_pdf` — which came back as an
+    RPC error on every open of that book, for good, rather than D6's fallback.
+    A stamp missing a stat key was worse in the other direction: it was served as
+    a cache hit with zeroes for everything the reader asks about.
+    """
+    book_dir, pdf = book()
+    assert reflow_pdf(book_dir, pdf)["status"] == "produced"
+    stamp_path = artifact_paths(book_dir)[1]
+    good = json.loads(open(stamp_path).read())
+    for broken in (
+        {**good, "source": ["x"]},
+        {**good, "source": "nope"},
+        {k: v for k, v in good.items() if k != "bytes"},
+        {**good, "version": produce.STAMP_VERSION + 1},
+        ["not", "a", "stamp"],
+    ):
+        with open(stamp_path, "w") as fh:
+            json.dump(broken, fh)
+        result = reflow_pdf(book_dir, pdf)
+        assert result["status"] == "produced", broken
+
+
+def test_a_corrupt_artifact_is_not_served_from_the_cache(book, helper):
+    """A cache hit is decided on an artifact's bytes, not on its existence: a
+    truncated EPUB under a current stamp used to be served forever, and only
+    `force` could heal it.
+    """
+    book_dir, pdf = book()
+    assert reflow_pdf(book_dir, pdf)["status"] == "produced"
+    epub_path, stamp_path = artifact_paths(book_dir)
+    whole = os.path.getsize(epub_path)
+    with open(epub_path, "rb+") as fh:
+        fh.truncate(whole // 2)
+    again = reflow_pdf(book_dir, pdf)
+    assert again["status"] == "produced" and os.path.getsize(epub_path) == whole
+    assert runs(helper) == 2
+
+
+def test_the_temp_is_verified_before_it_replaces_the_good_one(book, helper, monkeypatch):
+    """D9's "verify" half, which had no witness: a temp that fails its check must
+    not replace the artifact already on the share.
+    """
+    book_dir, pdf = book()
+    reflow_pdf(book_dir, pdf)
+    epub_path = artifact_paths(book_dir)[0]
+    before = open(epub_path, "rb").read()
+
+    def unreadable(*args, **kwargs):
+        raise ValueError("the written file is not an EPUB")
+
+    monkeypatch.setattr(produce, "_verify_epub", unreadable)
+    result = reflow_pdf(book_dir, pdf, force=True)
+    assert result["status"] == "fallback" and result["verdict"] == "write_failed"
+    assert open(epub_path, "rb").read() == before
+    assert sorted(os.listdir(os.path.dirname(epub_path))) == ["reflow.epub", "reflow.json"]
+
+
+def test_a_size_only_change_re_runs_the_pass(book, helper, monkeypatch):
+    """D9 records the source's size *and* mtime because either can move alone: an
+    rsync restore can keep the mtime while the file changes underneath it."""
+    book_dir, pdf = book()
+    reflow_pdf(book_dir, pdf)
+    before = os.stat(pdf)
+    write_pdf(pdf, [text_page(i) for i in range(5)])  # a different document, same path
+    os.utime(pdf, (before.st_mtime, before.st_mtime))
+    monkeypatch.setenv("FAKE_PAGES", "5")
+    assert os.stat(pdf).st_size != before.st_size
+    again = reflow_pdf(book_dir, pdf)
+    assert again["status"] == "produced" and again["pages"] == 5
+
+
+def test_a_raising_notify_does_not_fail_the_pass(book, helper):
+    """The sink is the app's `notify` writing to its stdout pipe, which can be
+    gone; a dropped frame costs progress, never an answer (D6, D9)."""
+    book_dir, pdf = book()
+
+    def gone(*args, **kwargs):
+        raise BrokenPipeError("the app quit first")
+
+    result = reflow_pdf(book_dir, pdf, notify=gone)
+    assert result["status"] == "produced" and os.path.exists(artifact_paths(book_dir)[0])
 
 
 def test_the_pass_writes_nothing_but_its_own_folder(book, helper):
