@@ -158,8 +158,8 @@ it('the book payload reports reflow without touching formats', () => {
 })
 
 it('the pending and refusal bodies are exactly their documented members', () => {
-  expect(reflowPendingPayload({ phase: 'page', completed: 12, total: 24 })).toEqual({
-    phase: 'page', completed: 12, total: 24
+  expect(reflowPendingPayload({ phase: 'layout', completed: 12, total: 24 })).toEqual({
+    phase: 'layout', completed: 12, total: 24
   })
   expect(cannotReflowPayload('no page carries a text layer')).toEqual({
     error: 'cannot reflow', reason: 'no page carries a text layer'
@@ -232,8 +232,8 @@ it('wireStatus is null when idle, the latest frame while a pass runs, null after
   expect(reflow.wireStatus('b1')).toBeNull()
   const pending = reflow.ensure('b1') // sidecar mock holds the call open
   expect(reflow.wireStatus('b1')).toEqual({ phase: 'start', completed: 0, total: 0 })
-  emitFrame({ book_id: 'b1', phase: 'page', completed: 12, total: 24 }) // the file's existing notification helper
-  expect(reflow.wireStatus('b1')).toEqual({ phase: 'page', completed: 12, total: 24 })
+  emitFrame({ book_id: 'b1', phase: 'layout', completed: 12, total: 24 }) // the file's existing notification helper
+  expect(reflow.wireStatus('b1')).toEqual({ phase: 'layout', completed: 12, total: 24 })
   releaseCall({ status: 'produced', epub: 'x', pages: 24 })
   await pending
   expect(reflow.wireStatus('b1')).toBeNull()
@@ -333,10 +333,10 @@ it('503s with Retry-After 5 when the share is offline, before any pass', async (
 })
 
 it('202s with the pass\'s progress while one is running, and starts nothing', async () => {
-  vi.mocked(reflow.wireStatus).mockReturnValue({ phase: 'page', completed: 12, total: 24 })
+  vi.mocked(reflow.wireStatus).mockReturnValue({ phase: 'layout', completed: 12, total: 24 })
   const res = await get('/api/books/b1/file?format=reflow')
   expect([res.status, res.headers.get('retry-after')]).toEqual([202, '2'])
-  expect(await res.json()).toEqual({ phase: 'page', completed: 12, total: 24 })
+  expect(await res.json()).toEqual({ phase: 'layout', completed: 12, total: 24 })
   expect(reflow.ensure).not.toHaveBeenCalled() // Review Focus 1: join, never double-start
 })
 

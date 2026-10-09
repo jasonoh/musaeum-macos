@@ -452,8 +452,8 @@ describe('reflow on the wire (D1, D8)', () => {
   })
 
   it('the pending and refusal bodies are exactly their documented members', () => {
-    expect(reflowPendingPayload({ phase: 'page', completed: 12, total: 24 })).toEqual({
-      phase: 'page',
+    expect(reflowPendingPayload({ phase: 'layout', completed: 12, total: 24 })).toEqual({
+      phase: 'layout',
       completed: 12,
       total: 24
     })

@@ -294,11 +294,11 @@ describe('the service’s view of a pass (D8)', () => {
 
     // `ensure` subscribed synchronously, so the handler is there before the call is.
     const handler = vi.mocked(sidecar.onNotification).mock.calls[0][1] as (params: unknown) => void
-    handler({ book_id: 'b16', phase: 'page', completed: 12, total: 24 })
-    expect(wireStatus('b16')).toEqual({ phase: 'page', completed: 12, total: 24 })
+    handler({ book_id: 'b16', phase: 'layout', completed: 12, total: 24 })
+    expect(wireStatus('b16')).toEqual({ phase: 'layout', completed: 12, total: 24 })
     // Another book's frame is not this book's status.
-    handler({ book_id: 'other', phase: 'page', completed: 1, total: 2 })
-    expect(wireStatus('b16')).toEqual({ phase: 'page', completed: 12, total: 24 })
+    handler({ book_id: 'other', phase: 'layout', completed: 1, total: 2 })
+    expect(wireStatus('b16')).toEqual({ phase: 'layout', completed: 12, total: 24 })
 
     await vi.waitFor(() => expect(vi.mocked(sidecar.call)).toHaveBeenCalled())
     release(PRODUCED)

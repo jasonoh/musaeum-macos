@@ -2015,10 +2015,10 @@ describe('the reflow route', () => {
   })
 
   it("202s with the pass's progress while one is running, and starts nothing", async () => {
-    vi.mocked(reflow.wireStatus).mockReturnValue({ phase: 'page', completed: 12, total: 24 })
+    vi.mocked(reflow.wireStatus).mockReturnValue({ phase: 'layout', completed: 12, total: 24 })
     const res = await get(URL_REFLOW)
     expect([res.status, res.headers.get('retry-after')]).toEqual([202, '2'])
-    expect(await res.json()).toEqual({ phase: 'page', completed: 12, total: 24 })
+    expect(await res.json()).toEqual({ phase: 'layout', completed: 12, total: 24 })
     expect(reflow.ensure).not.toHaveBeenCalled()
   })
 
@@ -2131,7 +2131,7 @@ describe('the reflow route', () => {
   })
 
   it('holds no byte-gate slot for a 202', async () => {
-    vi.mocked(reflow.wireStatus).mockReturnValue({ phase: 'page', completed: 1, total: 2 })
+    vi.mocked(reflow.wireStatus).mockReturnValue({ phase: 'layout', completed: 1, total: 2 })
     for (let i = 0; i < 5; i++) expect((await get(URL_REFLOW)).status).toBe(202)
     vi.mocked(reflow.wireStatus).mockReturnValue(null)
     vi.mocked(reflow.ensure).mockResolvedValue(produced())
