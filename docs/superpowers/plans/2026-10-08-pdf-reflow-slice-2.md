@@ -934,6 +934,25 @@ def _title(book_dir: str, pdf_path: str) -> str:
     return str(title or "").strip() or os.path.splitext(os.path.basename(pdf_path))[0]
 
 
+def _doc_stats(doc) -> dict:
+    """What the pass measured before anything was written.
+
+    A book that falls back (D6) still carries these, because they are the numbers
+    its one line of reason is made of — `3 of 5 text pages could not be laid
+    out` — and a reader that shows the reason with a zero next to it is worse
+    than one that shows nothing. What only a written artifact can report (words,
+    bytes, the page map, the TOC's entry count) stays empty on a fallback.
+    """
+    return {
+        "pages": len(doc.pages),
+        "text_pages": len(doc.text_pages),
+        "figures": doc.figures_detected,
+        "plates": doc.plates,
+        "layout_errors": doc.layout_errors,
+        "vision_regions": doc.vision_regions,
+    }
+
+
 def _stats(doc, report: dict) -> dict:
     return {
         "pages": len(doc.pages),
@@ -1073,6 +1092,7 @@ def reflow_pdf(
             doc = analyse(pdf_path, progress=progress)
             doc.entries = document_entries(pdf_path, doc)
             result["verdict"] = doc.verdict
+            result.update(_doc_stats(doc))
             if doc.verdict != "ok":
                 return fallback(doc.reason or "this book cannot be laid out")
 
@@ -1544,11 +1564,15 @@ def test_a_missing_book_folder_is_a_reason(tmp_path, helper):
     assert result["status"] == "fallback" and result["reason"] == "the book folder is not there"
 
 
-def test_pypdf_chatter_never_reaches_the_app_log(tmp_path, capsys):
+def test_pypdf_chatter_never_reaches_the_app_log(tmp_path, caplog):
     """AC10. Measured 2026-10-08: a read of the library's damaged PDFs wrote
-    thousands of pypdf warnings to stderr, which is the app's log; at ERROR the
-    same read is silent, and AC10 allows exactly that ("or the noise is
+    thousands of pypdf warnings to stderr, which is the app's log. `produce` sets
+    that logger to ERROR, and AC10 allows exactly that ("or the noise is
     explicitly suppressed in the pipeline module").
+
+    The witness is the log *record*, not stderr: pytest's capture plugin takes
+    over stderr, so what has to be true is that pypdf's record is never created
+    at ERROR — and that the damaged fixture really does provoke one.
     """
     import logging
 
@@ -1561,16 +1585,13 @@ def test_pypdf_chatter_never_reaches_the_app_log(tmp_path, capsys):
     write_pdf(damaged, [text_page()])
     damaged.write_bytes(damaged.read_bytes().replace(b"startxref\n", b"startxref\n9", 1))
 
-    level = logger.level
-    logger.setLevel(logging.WARNING)
-    try:
+    with caplog.at_level(logging.WARNING, logger="pypdf"):
         outline_entries(str(damaged))
-        assert capsys.readouterr().err  # the fixture really does provoke it
-    finally:
-        logger.setLevel(level)
+    assert caplog.records, "the fixture has to provoke the chatter for this test to mean anything"
 
+    caplog.clear()
     outline_entries(str(damaged))
-    assert capsys.readouterr().err == ""
+    assert caplog.records == []  # at the production level, nothing is even recorded
 
 
 def test_the_real_helper_produces_a_readable_artifact(book):

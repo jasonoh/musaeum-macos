@@ -146,6 +146,25 @@ def _title(book_dir: str, pdf_path: str) -> str:
     return str(title or "").strip() or os.path.splitext(os.path.basename(pdf_path))[0]
 
 
+def _doc_stats(doc) -> dict:
+    """What the pass measured before anything was written.
+
+    A book that falls back (D6) still carries these, because they are the numbers
+    its one line of reason is made of — `3 of 5 text pages could not be laid
+    out` — and a reader that shows the reason with a zero next to it is worse
+    than one that shows nothing. What only a written artifact can report (words,
+    bytes, the page map, the TOC's entry count) stays empty on a fallback.
+    """
+    return {
+        "pages": len(doc.pages),
+        "text_pages": len(doc.text_pages),
+        "figures": doc.figures_detected,
+        "plates": doc.plates,
+        "layout_errors": doc.layout_errors,
+        "vision_regions": doc.vision_regions,
+    }
+
+
 def _stats(doc, report: dict) -> dict:
     return {
         "pages": len(doc.pages),
@@ -285,6 +304,7 @@ def reflow_pdf(
             doc = analyse(pdf_path, progress=progress)
             doc.entries = document_entries(pdf_path, doc)
             result["verdict"] = doc.verdict
+            result.update(_doc_stats(doc))
             if doc.verdict != "ok":
                 return fallback(doc.reason or "this book cannot be laid out")
 
