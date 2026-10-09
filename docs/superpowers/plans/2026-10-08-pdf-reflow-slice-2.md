@@ -280,7 +280,10 @@ def run_helper(
 
     `last` without `first` asks for pages 1–`last`; `first` alone has no syntax
     in the helper's `--pages a-b`, so the whole document is laid out and the
-    caller takes the pages it asked for.
+    caller takes the pages it asked for. The range's upper bound for the padding
+    below is the page count the header reports, so a header that understates the
+    document bounds how much of the gap can be named here — `analyse` counts a
+    page with no layout at all either way.
     """
     exe = helper or find_helper()
     if not exe:
@@ -333,6 +336,7 @@ def _stream_helper(
         raise LayoutUnavailable(f"the layout helper did not run ({type(err).__name__})") from err
     late: list[bool] = []
     killer = threading.Timer(timeout, lambda: (late.append(True), proc.kill())) if timeout else None
+    stream: Optional[HelperStream] = None
     try:
         if killer is not None:
             killer.start()
@@ -340,7 +344,6 @@ def _stream_helper(
             stream = read_stream(proc.stdout, on_page)
         except LayoutUnavailable:
             if not late:
-                proc.kill()
                 raise
             # The kill is why the stream stopped where it did, so the timeout
             # below is the reason to report: a half-written stream has no header
@@ -349,13 +352,25 @@ def _stream_helper(
     finally:
         if killer is not None:
             killer.cancel()
+        if stream is None:
+            # Whatever ended the read before it finished — a header this module
+            # refuses, or `on_page` raising (Task 3's sink is the RPC's `notify`,
+            # which can) — the helper must not be left alive holding a pipe that
+            # nobody drains: the timer that would have killed it was cancelled
+            # just above, and `wait()` would then block for good.
+            proc.kill()
         proc.wait()
-    if late:
+    if stream is None:
         raise LayoutUnavailable("the layout helper ran too long")
+    # A complete answer stands even when the timer fired: it means the helper
+    # answered every page it was asked for and then failed to exit.
     return stream, proc.returncode
 ```
 
-The `if not late` branch is the plan's own correction, found by the timeout test in Step 4: without it a killed-by-timeout helper raised *"wrote no header"*, because the kill ends the stream before the header line finishes arriving and `parse_header` sees an empty line.
+Two corrections the Task 1 review forced, both found by its own reproductions and both now in the tests below:
+
+- **The `finally` kills whenever the read did not finish.** It used to cancel the timer and then `wait()`, so an `on_page` that raised (Task 3 hands it the RPC's `notify`) left the helper alive with a full pipe nobody drained and `wait()` blocked for good — one wedged sidecar worker per occurrence, with no answer ever sent.
+- **A complete answer is no longer thrown away.** The timeout is a whole-run deadline, so a helper that answers every page and then lingers got `ran too long` with its whole answer in hand; only a stream that stopped before it finished is a timeout now.
 
 and add `threading` to the imports at the top of the file (`import json` / `import os` / `import subprocess` / `import threading`).
 
@@ -525,13 +540,66 @@ def test_a_helper_that_never_answers_is_a_reason_not_a_hang(tmp_path):
     with pytest.raises(LayoutUnavailable) as err:
         run_helper(tmp_path / "x.pdf", helper=str(script), timeout=0.3)
     assert "too long" in err.value.reason
+
+
+def test_a_progress_sink_that_raises_does_not_wedge_the_helper(tmp_path):
+    """Task 3 hands `on_page` to the RPC's `notify`, which can raise. The read has
+    to end and the helper must not be left alive holding a pipe nobody drains —
+    the timer that would have killed it is cancelled in the same `finally`."""
+    script = _script(tmp_path, [_header(500)] + [page_line(n) for n in range(1, 501)])
+
+    def sink(done: int) -> None:
+        if done == 2:
+            raise RuntimeError("the progress sink blew up")
+
+    caught: list[BaseException] = []
+
+    def call() -> None:
+        try:
+            run_helper(tmp_path / "x.pdf", helper=str(script), timeout=5, on_page=sink)
+        except BaseException as err:  # noqa: BLE001 — the point is that it comes back
+            caught.append(err)
+
+    worker = threading.Thread(target=call, daemon=True)
+    worker.start()
+    worker.join(15)
+    assert not worker.is_alive(), "run_helper never returned: the helper was left running"
+    assert isinstance(caught[0], RuntimeError)
+
+
+def test_the_page_range_is_asked_for_as_the_caller_gave_it(tmp_path):
+    """`last` without `first` used to ask for nothing, which the helper reads as
+    the whole document — so a caller bounding the top of a range laid out every
+    page of a 535-page book."""
+    script = tmp_path / "recorder"
+    script.write_text(
+        "#!/bin/sh\n" + f'echo "$@" > {tmp_path / "argv.txt"}\n' + f"echo '{HEADER}'\necho '{PAGE_LINE}'\n"
+    )
+    script.chmod(0o755)
+
+    run_helper(tmp_path / "x.pdf", last=2, helper=str(script))
+    assert "--pages 1-2" in (tmp_path / "argv.txt").read_text()
+    run_helper(tmp_path / "x.pdf", first=3, last=5, helper=str(script))
+    assert "--pages 3-5" in (tmp_path / "argv.txt").read_text()
+    run_helper(tmp_path / "x.pdf", first=3, helper=str(script))
+    assert "--pages" not in (tmp_path / "argv.txt").read_text()  # first alone cannot be expressed
+
+
+def test_a_complete_answer_stands_even_when_the_helper_lingers(tmp_path):
+    """The timeout is a whole-run deadline, and a helper that answers every page
+    and then fails to exit has still answered: discarding its answer would turn a
+    slow exit into a fallback reason."""
+    script = _script(tmp_path, [_header(2), PAGE_LINE, page_line(2)], body="exec sleep 30\n")
+    assert sorted(run_helper(tmp_path / "x.pdf", helper=str(script), timeout=0.5)) == [1, 2]
 ```
+
+and `import threading` goes beside `import json` at the top of that file.
 
 ```bash
 $PY -m pytest sidecar/tests -k reflow -q
 ```
 
-Expected: `95 passed` with the helper built (`93 passed, 2 skipped` without it).
+Expected: `98 passed` with the helper built (`96 passed, 2 skipped` without it).
 
 ```bash
 git add sidecar/tests/test_reflow_vision.py

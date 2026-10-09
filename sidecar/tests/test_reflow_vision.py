@@ -1,4 +1,5 @@
 import json
+import threading
 import platform
 
 import pypdfium2 as pdfium
@@ -162,3 +163,54 @@ def test_a_helper_that_never_answers_is_a_reason_not_a_hang(tmp_path):
     with pytest.raises(LayoutUnavailable) as err:
         run_helper(tmp_path / "x.pdf", helper=str(script), timeout=0.3)
     assert "too long" in err.value.reason
+
+
+def test_a_progress_sink_that_raises_does_not_wedge_the_helper(tmp_path):
+    """Task 3 hands `on_page` to the RPC's `notify`, which can raise. The read has
+    to end and the helper must not be left alive holding a pipe nobody drains —
+    the timer that would have killed it is cancelled in the same `finally`."""
+    script = _script(tmp_path, [_header(500)] + [page_line(n) for n in range(1, 501)])
+
+    def sink(done: int) -> None:
+        if done == 2:
+            raise RuntimeError("the progress sink blew up")
+
+    caught: list[BaseException] = []
+
+    def call() -> None:
+        try:
+            run_helper(tmp_path / "x.pdf", helper=str(script), timeout=5, on_page=sink)
+        except BaseException as err:  # noqa: BLE001 — the point is that it comes back
+            caught.append(err)
+
+    worker = threading.Thread(target=call, daemon=True)
+    worker.start()
+    worker.join(15)
+    assert not worker.is_alive(), "run_helper never returned: the helper was left running"
+    assert isinstance(caught[0], RuntimeError)
+
+
+def test_the_page_range_is_asked_for_as_the_caller_gave_it(tmp_path):
+    """`last` without `first` used to ask for nothing, which the helper reads as
+    the whole document — so a caller bounding the top of a range laid out every
+    page of a 535-page book."""
+    script = tmp_path / "recorder"
+    script.write_text(
+        "#!/bin/sh\n" + f'echo "$@" > {tmp_path / "argv.txt"}\n' + f"echo '{HEADER}'\necho '{PAGE_LINE}'\n"
+    )
+    script.chmod(0o755)
+
+    run_helper(tmp_path / "x.pdf", last=2, helper=str(script))
+    assert "--pages 1-2" in (tmp_path / "argv.txt").read_text()
+    run_helper(tmp_path / "x.pdf", first=3, last=5, helper=str(script))
+    assert "--pages 3-5" in (tmp_path / "argv.txt").read_text()
+    run_helper(tmp_path / "x.pdf", first=3, helper=str(script))
+    assert "--pages" not in (tmp_path / "argv.txt").read_text()  # first alone cannot be expressed
+
+
+def test_a_complete_answer_stands_even_when_the_helper_lingers(tmp_path):
+    """The timeout is a whole-run deadline, and a helper that answers every page
+    and then fails to exit has still answered: discarding its answer would turn a
+    slow exit into a fallback reason."""
+    script = _script(tmp_path, [_header(2), PAGE_LINE, page_line(2)], body="exec sleep 30\n")
+    assert sorted(run_helper(tmp_path / "x.pdf", helper=str(script), timeout=0.5)) == [1, 2]
