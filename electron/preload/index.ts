@@ -105,7 +105,8 @@ const api: MusaeumAPI = {
     openBookFile: (bookId, format) => invoke('files:openBookFile', bookId, format)
   },
   reader: {
-    saveProgress: (report) => invoke('reader:saveProgress', report)
+    saveProgress: (report) => invoke('reader:saveProgress', report),
+    reflow: (bookId) => invoke('reader:reflow', bookId)
   },
   ai: {
     getStatus: () => invoke('ai:getStatus'),
@@ -138,7 +139,8 @@ const api: MusaeumAPI = {
     themeChanged: (cb) => listen(EVENT_CHANNELS.themeChanged, cb),
     aiChunk: (cb) => listen(EVENT_CHANNELS.aiChunk, cb),
     aiDone: (cb) => listen(EVENT_CHANNELS.aiDone, cb),
-    aiError: (cb) => listen(EVENT_CHANNELS.aiError, cb)
+    aiError: (cb) => listen(EVENT_CHANNELS.aiError, cb),
+    reflowProgress: (cb) => listen(EVENT_CHANNELS.reflowProgress, cb)
   }
 }
 

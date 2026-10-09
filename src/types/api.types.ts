@@ -17,7 +17,9 @@ import type {
   ImportProgress,
   ImportResult,
   LibraryFacets,
-  ProgressReport
+  ProgressReport,
+  ReflowProgress,
+  ReflowResult
 } from './book.types'
 import type { Device, TransferJob, TransferProgress } from './device.types'
 import type {
@@ -331,6 +333,22 @@ export interface MusaeumAPI {
 
   reader: {
     saveProgress(report: ProgressReport): Promise<void>
+
+    /**
+     * Produce — or find — this book's reflowed EPUB (D2, D7).
+     *
+     * Resolves with the pass's answer; progress arrives as `on.reflowProgress`
+     * frames, not through this promise, because the frames are emitted whether
+     * or not anything is awaiting it.
+     *
+     * **Rejects only for the pre-flight failures** — the metadata engine is
+     * unavailable, or the book holds no PDF — which is `metadata.rehydrateBook`'s
+     * own contract and the reason this is not an `{ ok: false }` answer. A pass
+     * that runs and refuses the book **resolves** with `status: 'fallback'` and
+     * the pipeline's one sentence (D6): a book that cannot be laid out
+     * confidently is a normal outcome, not an error.
+     */
+    reflow(bookId: string): Promise<ReflowResult>
   }
 
   ai: {
@@ -413,6 +431,8 @@ export interface MusaeumAPI {
     aiChunk(cb: (event: AiChunkEvent) => void): Unsubscribe
     aiDone(cb: (event: AiDoneEvent) => void): Unsubscribe
     aiError(cb: (event: AiErrorEvent) => void): Unsubscribe
+    /** One reflow pass's frame, for whichever book it names (D7). */
+    reflowProgress(cb: (progress: ReflowProgress) => void): Unsubscribe
   }
 }
 
