@@ -4,6 +4,8 @@
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --out dist/reflow-spike
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --book "Attention is All You Need"
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --gate-only dist/reflow-spike-slice1
+    sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --production
+    sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --production --book "Attention"
 
 The corpus is the six books named in the design's *Open questions for review*
 (a two-column textbook, the paper the owner reads, a paper in the reflow set
@@ -17,17 +19,26 @@ plus `report.json`. It reads the library and writes **only** to the output
 directory: no `metadata.json`, no database row, no file inside a book folder.
 Each artifact is judged by the gate of the spec's Annex C.4
 (sidecar/reflow/gate.py); the script exits 1 if any book fails it.
+
+`--production` is slice 2's half of the same thing: instead of the spike's own
+writer it runs the production pass (`sidecar/reflow/produce.py`) over a *copy* of
+each corpus PDF placed in `--out`, because the mount is read-only and the pass
+writes `derived/` beside the book — and it measures the bar slice 2 is signed off
+on (byte-stability across two runs, the cache, the stamp, no residue).
 """
 
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import time
+import zipfile
 from collections import Counter
 from pathlib import Path
 from typing import Optional
@@ -305,17 +316,293 @@ def print_report(records: list[dict]) -> None:
         print()
 
 
+# --- the production pass (slice 2) ------------------------------------------
+
+# Run 2 of the gate (spec Annex C.7) is the owner's accepted reading of this
+# pass, so it is the baseline the production artifacts are compared with: these
+# are the books it passed, and the source's content rules are frozen, so nothing
+# about them may move except the artifact's writer.
+PASSED_IN_RUN_2 = {
+    "Attention is All You Need",
+    "Sequence to Sequence Learning with Neural Networks",
+    "Modernist Cuisine: Volume 1: History & Fundamentals",
+}
+
+# Slice 2's own bar, per text book: written, byte-stable across two runs,
+# cached on the next open, never serving a stale stamp after the source moved,
+# re-running the pass for the moved source, and nothing but `derived/` written
+# into the book folder.
+BAR = ("produced", "byte_stable", "cached", "stamp_not_stale", "stamp_reran", "only_derived_changed")
+
+
+def _sha(path: str) -> str:
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:16]
+
+
+def _content_digest(path: str) -> str:
+    """The artifact's *content* — entries and their bytes — ignoring zip metadata.
+
+    A byte-stability failure has two very different causes (the document moved, or
+    only the container's dates/order did), and reporting the pair of digests says
+    which without another 30-minute corpus pass.
+    """
+    with zipfile.ZipFile(path) as zf:
+        return hashlib.sha256(b"".join(n.encode() + zf.read(n) for n in sorted(zf.namelist()))).hexdigest()[:16]
+
+
+def _listing(directory: str) -> list[str]:
+    return sorted(os.listdir(directory)) if os.path.isdir(directory) else []
+
+
+def _run(book_dir: str, pdf: str, *, force: bool = False) -> dict:
+    from reflow.produce import reflow_pdf
+
+    started = time.perf_counter()
+    result = reflow_pdf(book_dir, pdf, force=force)
+    result["wall"] = round(time.perf_counter() - started, 1)
+    return result
+
+
+def gate_artifact(title: str, pdf: str, epub_path: str, golden: dict, rec: dict) -> dict[str, list[str]]:
+    """G1–G7 on the artifact the production pass wrote (Annex C.4).
+
+    The exclusions C.4 asks for — the regions read from Vision, the figure labels
+    inside written crops, the dropped furniture — are facts about the *source*,
+    so they come from laying it out again with `analyse`, the same deterministic
+    pass, rather than from the RPC's result, whose consumer is the reader and not
+    this probe. Gating the artifact with a fresh record is a cross-check as well:
+    if the artifact had come from some other pass, G2 and G6 would move.
+    """
+    doc = analyse(pdf)
+    doc.entries = document_entries(pdf, doc)
+    rec["gate_layout_errors"] = doc.layout_errors
+    rec["gate_verdict"] = doc.verdict
+    return gate_book(
+        pdf,
+        epub_path,
+        passages=golden.get(title, []),
+        pages=len(doc.pages),
+        expected_figures=doc.figures_detected,
+        exclusions={p.index: p.figure_boxes for p in doc.pages},
+        skip_pages=frozenset(doc.vision_pages),
+        excluded_words=Counter(gate.tokens("\n".join(doc.dropped_running_heads + doc.dropped_text))),
+    )
+
+
+def production_book(title: str, why: str, book_dir: str, pdf: str, golden: dict) -> dict:
+    """One corpus book through `reflow_pdf`, measured against slice 2's bar."""
+    from reflow.produce import artifact_paths, read_stamp
+
+    epub_path, stamp_path = artifact_paths(book_dir)
+    derived = os.path.dirname(epub_path)
+    if os.path.isdir(derived):
+        # A re-run of this harness starts each book from nothing, so every number
+        # below is this run's. (Without this, a second invocation would find the
+        # previous run's stamp current and measure a cache hit as if it were the
+        # pass.)
+        shutil.rmtree(derived)
+    before = _listing(book_dir)
+    first = _run(book_dir, pdf)
+    rec: dict = {
+        "title": title,
+        "why": why,
+        "mb": round(os.path.getsize(pdf) / 1048576, 1),
+        "status": first["status"],
+        "verdict": first["verdict"],
+        "reason": first["reason"],
+        "seconds": first["seconds"],
+        "pages": first["pages"],
+        "text_pages": first["text_pages"],
+        "ms_per_page": round(first["seconds"] / max(first["pages"], 1) * 1000, 1),
+        "bytes": first["bytes"],
+        "toc_entries": first["toc_entries"],
+        "figures": first["figures"],
+        "plates": first["plates"],
+        "layout_errors": first["layout_errors"],
+        "vision_regions": first["vision_regions"],
+        "artifact": os.path.basename(epub_path) if first["epub"] else None,
+    }
+    if first["status"] != "produced":
+        # A fallback writes nothing, so there is nothing to measure beyond the
+        # reason — which `print_gate` reads as the image-only book's G8 result.
+        rec["residue"] = [name for name in _listing(os.path.dirname(epub_path)) if name.endswith(".tmp")]
+        return rec
+
+    rec["produced"] = True
+    first_digest = (_sha(epub_path), _sha(stamp_path))
+    first_content = _content_digest(epub_path)
+    second = _run(book_dir, pdf, force=True)
+    second_digest = (_sha(epub_path), _sha(stamp_path))
+    rec["digest"] = {"first": first_digest, "second": second_digest}
+    rec["content"] = {"first": first_content, "second": _content_digest(epub_path)}
+    rec["byte_stable"] = second["status"] == "produced" and first_digest == second_digest
+    rec["cached"] = _run(book_dir, pdf)["status"] == "cached"
+    rec["residue"] = [name for name in _listing(os.path.dirname(epub_path)) if name.endswith(".tmp")]
+    rec["only_derived_changed"] = _listing(book_dir) == sorted([*before, "derived"])
+
+    # A touched source is a different document (D9), so the next pass may never
+    # serve the old stamp — and the pass itself has to be able to re-run it. Two
+    # calls, because a pass can legitimately *refuse* a book it cannot lay out
+    # that time (D6, and 1R's record already names the helper failing pages on a
+    # second run); what must never happen is a `cached` answer for a moved
+    # source, and what has to be shown is that the pass does re-run.
+    later = int(os.stat(pdf).st_mtime) + 60
+    os.utime(pdf, (later, later))
+    touched = [_run(book_dir, pdf), _run(book_dir, pdf)]
+    rec["touched"] = [
+        {"status": call["status"], "verdict": call["verdict"], "reason": call["reason"]} for call in touched
+    ]
+    rec["stamp_not_stale"] = touched[0]["status"] != "cached"
+    rec["stamp_reran"] = any(call["status"] == "produced" for call in touched)
+    stamp = read_stamp(stamp_path)
+    rec["stamp_mtime"] = stamp["source"]["mtime"] if stamp else None
+    rec["source_mtime"] = later
+    rec["gate"] = gate_artifact(title, pdf, epub_path, golden, rec)
+    return rec
+
+
+def production_failed(records: list[dict]) -> list[str]:
+    """Every book's failure against slice 2's own bar, one line each."""
+    bad: list[str] = []
+    for rec in records:
+        title = rec["title"]
+        if rec["status"] != "produced":
+            if title not in EXPECT_FALLBACK:
+                bad.append(f"{title}: no artifact ({rec['status']}: {rec['reason']})")
+            continue
+        if title in EXPECT_FALLBACK:
+            bad.append(f"{title}: wrote an artifact, and its correct outcome is the fallback")
+            continue
+        bad.extend(f"{title}: {key} is false" for key in BAR if not rec.get(key))
+        if not rec.get("stamp_reran") or not rec.get("stamp_not_stale"):
+            # Name what the pass actually said for the moved source: a refusal is
+            # D6's own posture and a `cached` answer is the defect the stamp
+            # exists to prevent, and they are not the same finding.
+            bad.append(f"{title}: after the source moved the pass said {rec.get('touched')}")
+        if not rec.get("byte_stable"):
+            # Say which of the two moved, and whether the document itself moved
+            # or only the container's metadata: the causes are different, and a
+            # run that reports only "false" costs another corpus pass to find out.
+            got = rec.get("digest") or {}
+            first, second = got.get("first"), got.get("second")
+            moved = "epub" if first and second and first[0] != second[0] else "stamp"
+            content = rec.get("content") or {}
+            where = (
+                "its content moved"
+                if content.get("first") != content.get("second")
+                else "only its zip metadata moved, the content did not"
+            )
+            bad.append(f"{title}: byte_stable is false — the {moved} moved ({first} then {second}); {where}")
+        if rec.get("residue"):
+            bad.append(f"{title}: {rec['residue']} left behind")
+        if rec.get("stamp_mtime") != rec.get("source_mtime"):
+            bad.append(f"{title}: the stamp does not name the touched source")
+    return bad
+
+
+def gate_regression(records: list[dict]) -> list[str]:
+    """A book that passed Annex C.7 run 2 and fails now is a real regression.
+
+    The other direction is printed as news rather than failed: with this slice's
+    content rules frozen it should not happen, and if it does the owner is the
+    one who reads it (the two G5 failures and *Universe*'s G3 are their open
+    questions, not this harness's to settle).
+    """
+    bad: list[str] = []
+    for rec in records:
+        title = rec["title"]
+        if title in EXPECT_FALLBACK or not rec.get("gate"):
+            continue
+        failed = [check for check in CHECKS if rec["gate"].get(check)]
+        if title in PASSED_IN_RUN_2 and failed:
+            bad.append(f"{title}: passed Annex C.7 run 2 and fails {failed} now")
+        elif title not in PASSED_IN_RUN_2 and not failed:
+            print(f"NOTE  {title}: failed Annex C.7 run 2 and passes the gate now — the owner's to read, not this run's verdict")
+    return bad
+
+
+def print_production(records: list[dict], report: str) -> None:
+    print(f"{'book':42s} {'status':<9s} {'pages':>6s} {'sec':>7s} {'ms/pg':>6s} {'MB':>7s} {'toc':>5s} {'figs':>5s} {'stable':>7s} {'cache':>6s}")
+    for rec in records:
+        print(
+            f"{rec['title'][:42]:42s} {rec['status']:<9s} {rec.get('pages', 0):>6d} {rec.get('seconds', 0.0):>7.1f} "
+            f"{rec.get('ms_per_page', 0.0):>6.1f} {rec.get('bytes', 0) / 1048576:>7.1f} {rec.get('toc_entries', 0):>5d} "
+            f"{rec.get('figures', 0):>5d} {str(bool(rec.get('byte_stable'))):>7s} {str(bool(rec.get('cached'))):>6s}"
+        )
+    print()
+    print_gate(records)
+    text_books = [rec for rec in records if rec["title"] not in EXPECT_FALLBACK]
+    written = [rec for rec in text_books if rec["status"] == "produced"]
+    print(
+        f"production: {len(written)}/{len(text_books)} written, "
+        f"{sum(1 for r in written if r.get('byte_stable'))} byte-stable across two runs, "
+        f"{sum(1 for r in written if r.get('cached'))} cached on the next open, "
+        f"{sum(1 for r in written if r.get('stamp_not_stale'))} never served a stale stamp, "
+        f"{sum(1 for r in written if r.get('stamp_reran'))} re-ran the pass on a touched source, "
+        f"{sum(1 for r in written if r.get('only_derived_changed'))} wrote only derived/"
+    )
+    for line in production_failed(records) + gate_regression(records):
+        print(f"FAIL  {line}")
+    print(f"report: {report}")
+
+
+def production(directory: str, root: str, only: Optional[str]) -> int:
+    """Run `reflow_pdf` over the corpus and measure slice 2's bar.
+
+    The library stays untouched: each book's PDF is copied once, with its mtime,
+    into `{directory}/books/{slug}/`, and that copy is the book folder the pass
+    writes `derived/` in. Per book: the artifact is written and gated with Annex
+    C.4's exclusions; two *runs* over the unchanged source must be byte-identical
+    (artifact and stamp); the next open must be served from the cache; a touched
+    source must re-run the pass, and be current again afterwards; and nothing but
+    `derived/` may appear in the book folder. The exit code answers this slice's
+    bar and a regression against Annex C.7 run 2 — the gate's own score is
+    printed and read against that table, never asserted here.
+    """
+    os.makedirs(directory, exist_ok=True)
+    golden = load_golden()
+    records: list[dict] = []
+    for title, why in CORPUS:
+        if only and only.lower() not in title.lower():
+            continue
+        matched, rel, _ = book(title)
+        source = pdf_in(os.path.join(root, rel))
+        slug = re.sub(r"[^a-zA-Z0-9]+", "-", matched).strip("-")[:60]
+        book_dir = os.path.join(directory, "books", slug)
+        os.makedirs(book_dir, exist_ok=True)
+        if not source:
+            records.append({"title": matched, "why": why, "status": "no_pdf", "reason": "folder holds no .pdf"})
+            continue
+        pdf = os.path.join(book_dir, os.path.basename(source))
+        if not os.path.exists(pdf):
+            shutil.copy2(source, pdf)  # copy2 keeps the mtime the stamp records
+        with open(os.path.join(book_dir, "metadata.json"), "w") as fh:
+            json.dump({"title": matched}, fh)
+        print(f"… {matched}", file=sys.stderr, flush=True)
+        records.append(production_book(matched, why, book_dir, pdf, golden))
+
+    report = os.path.join(directory, "report.json")
+    with open(report, "w") as fh:
+        json.dump({"books": records}, fh, indent=1)
+    print_production(records, report)
+    return 1 if production_failed(records) or gate_regression(records) else 0
+
+
 def main(argv: list[str]) -> int:
     out_dir = "dist/reflow-spike"
+    explicit_out = False
     limit: Optional[int] = None
     only: Optional[str] = None
     gate_dir: Optional[str] = None
+    production_mode = False
     i = 1
     while i < len(argv):
         arg = argv[i]
         if arg == "--out":
             i += 1
             out_dir = argv[i]
+            explicit_out = True
         elif arg == "--limit":
             i += 1
             limit = int(argv[i])
@@ -325,12 +612,16 @@ def main(argv: list[str]) -> int:
         elif arg == "--gate-only":
             i += 1
             gate_dir = argv[i]
+        elif arg == "--production":
+            production_mode = True
         else:
             print(__doc__, file=sys.stderr)
             return 2
         i += 1
 
     root = library_root()
+    if production_mode:
+        return production(os.path.abspath(out_dir if explicit_out else "dist/reflow-production"), root, only)
     if gate_dir:
         return gate_only(os.path.abspath(gate_dir), root, only)
     out_dir = os.path.abspath(out_dir)
