@@ -223,6 +223,24 @@ describe('the contract document and the goldens (AC19)', () => {
     expect(DOC).toContain(String(MAX_PAGE_LIMIT))
   })
 
+  it('names the reflow words where a client looks for them (slice 4)', () => {
+    // Scoped to the section or table row that owns each word, so a word that
+    // survives only in the changelog-style header paragraph does not pass.
+    const section = DOC.split(/^#### `format=reflow`$/m)[1]?.split(/^#{1,4} /m)[0] ?? ''
+    expect(DOC).toContain('#### `format=reflow`')
+    expect(DOC).toContain('GET /api/books/{id}/file?format=reflow')
+    expect(section).toContain('**422**')
+    expect(section).toContain(`"error": "${API_ERRORS.cannotReflow}"`)
+    expect(section).toContain('reflow.available')
+
+    const row = DOC.split('\n').find((l) => l.includes(`\`${API_ERRORS.cannotReflow}\``)) ?? ''
+    expect(row).toMatch(/^\| 422\s+\|/)
+
+    // The payload side: the member is documented as a field of the book payload
+    expect(DOC).toMatch(/- \*\*`reflow`\*\* says whether/)
+    expect(DOC).toContain('"reflow": {')
+  })
+
   it('states the HTTP method policy instead of leaving HEAD unstated', () => {
     // 1a's health route matched GET only, so a URLSession probe — HEAD — met a
     // 404 where the connect check belongs. Whatever the policy is, the document
