@@ -122,7 +122,7 @@ Musaeum is the app its author uses daily, against a real 7,000-book library and 
 - ✅ The full loop works: **import → hydrate → curate → read → send**, plus the iOS companion.
 - ⚠️ It is an **Electron** app, not a native one: macOS-only (arm64 build), single-user, and **unsigned** for now.
 - ⚠️ No annotations or highlights, no bulk metadata edit, no OPDS, no auto-update.
-- ✅ **Kindle sends convert in-house.** EPUB → AZW3 is the app's own writer, so no Calibre binary is installed, detected or required; Calibre's *library* is still readable for a migration, and nothing is ever deleted from it.
+- ✅ **Kindle sends convert in-house.** EPUB → AZW3 is the app's own writer, so no Calibre binary is installed, detected or required; Calibre's _library_ is still readable for a migration, and nothing is ever deleted from it.
 - 🔬 Verification is layered: well over a thousand vitest cases, a pytest suite for the sidecar, strict TypeScript, and CI on every push.
 
 [`tasks.md`](tasks.md) is the honest backlog; [`docs/roadmap-history.md`](docs/roadmap-history.md) is the record of everything already landed behind it. [`docs/project-overview.md`](docs/project-overview.md) has the full "not built" list and a sourced comparison with Calibre, Calibre-Web, Kavita and Komga, including where they plainly win.
