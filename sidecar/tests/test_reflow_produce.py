@@ -135,45 +135,52 @@ def _source(tmp_path):
     return source
 
 
-def _doc(tmp_path, pages: int = 5) -> Document:
+def _doc(tmp_path, pages: int = 5, figure: bool = False) -> Document:
     doc = Document(source=str(_source(tmp_path)))
+    figure_bytes = b"\xff\xd8\xff\xd9" if figure else None
     for i in range(pages):
-        doc.pages.append(
-            PageResult(
-                index=i,
-                chars=500,
-                top=792.0,
-                bottom=0.0,
-                blocks=[
-                    Block("heading", text=f"Chapter {i + 1}", level=1, page=i, top=700.0),
-                    Block("para", text="Body text on this page, and enough of it to read.", page=i, top=600.0),
-                ],
+        blocks = [
+            Block("heading", text=f"Chapter {i + 1}", level=1, page=i, top=700.0),
+            Block("para", text="Body text on this page, and enough of it to read.", page=i, top=600.0),
+        ]
+        if figure and i == 0:
+            blocks.append(
+                Block(
+                    "figure", page=i, top=690.0, bottom=500.0, left=80.0, right=500.0,
+                    image=figure_bytes, image_width=420, image_height=190, image_type="jpeg",
+                )
             )
-        )
+        doc.pages.append(PageResult(index=i, chars=500, top=792.0, bottom=0.0, blocks=blocks))
     return doc
 
 
 def test_every_zip_entry_carries_a_fixed_date(tmp_path):
     """Measured 2026-10-08: a str-named entry took the run's own second, so two
     runs a second apart differed and slice 2's byte-stability bar could not be
-    met."""
+    met. The figure is here because the images are the entry class that
+    measurement named — the four documents *and every image* carried the clock —
+    so a suite that never writes one would not notice the image path regressing."""
     out = tmp_path / "one.epub"
-    write_epub(_doc(tmp_path), str(out), "A Book")
+    write_epub(_doc(tmp_path, figure=True), str(out), "A Book")
     with zipfile.ZipFile(out) as zf:
+        names = zf.namelist()
+        assert any(name.startswith("OEBPS/images/") for name in names)
         assert {info.date_time for info in zf.infolist()} == {(1980, 1, 1, 0, 0, 0)}
 
 
 def test_two_runs_over_one_source_are_byte_identical(tmp_path):
-    """The sleep crosses the second the removed clock had as its resolution."""
-    doc = _doc(tmp_path)
+    """The sleep has to cross a *bucket*: a zip entry's DOS timestamp has
+    two-second granularity, so a shorter gap can leave two runs in the same one
+    and this test would pass against the clock it is here to catch."""
+    doc = _doc(tmp_path, figure=True)
     first, second = tmp_path / "one.epub", tmp_path / "two.epub"
     write_epub(doc, str(first), "A Book")
-    time.sleep(1.1)
+    time.sleep(2.5)
     write_epub(doc, str(second), "A Book")
     assert first.read_bytes() == second.read_bytes()
 
 
-def test_the_report_maps_every_page_to_the_file_that_holds_it(tmp_path):
+def test_the_report_maps_each_file_to_the_pages_it_holds(tmp_path):
     """D5: a position in the reflow can name the PDF page it came from without
     re-extracting anything. Two depth-0 entries split the book into two files."""
     doc = _doc(tmp_path, pages=5)
@@ -184,7 +191,24 @@ def test_the_report_maps_every_page_to_the_file_that_holds_it(tmp_path):
         {"href": "text/c001.xhtml", "title": "Chapter 1", "from_page": 1, "to_page": 2},
         {"href": "text/c002.xhtml", "title": "Chapter 3", "from_page": 3, "to_page": 5},
     ]
-    assert max(entry["to_page"] for entry in report["page_map"]) == len(doc.pages)
+
+
+def test_a_page_two_files_share_names_both(tmp_path):
+    """The map is a span per file, not a partition: a chapter that opens in the
+    middle of a page puts that page in both files' spans, which is what the
+    artifact does too — c001 holds the page's tail and c002 its heading. The
+    exact witness for a page is the `pgN` anchor, and the span is the answer to
+    "which file holds page N"."""
+    doc = _doc(tmp_path, pages=3)
+    doc.entries = [Entry("Chapter 1", 0, 0), Entry("Chapter 2", 0, 1)]
+    tail = Block("para", text="The tail of page two's story, before the next chapter opens.", page=1, top=100.0)
+    doc.pages[1].blocks.insert(0, tail)  # page two's first block, ahead of the new chapter's heading
+    report = write_epub(doc, str(tmp_path / "m.epub"), "A Book")
+    spans = [(entry["from_page"], entry["to_page"]) for entry in report["page_map"]]
+    assert spans == [(1, 2), (2, 3)]
+    with zipfile.ZipFile(tmp_path / "m.epub") as zf:
+        assert '<span id="pg2">' in zf.read("OEBPS/text/c001.xhtml").decode()
+        assert '<span id="pg2">' in zf.read("OEBPS/text/c002.xhtml").decode()
 
 
 def test_a_pass_writes_the_artifact_and_a_stamp_that_names_its_source(book, helper):

@@ -762,45 +762,52 @@ def _source(tmp_path):
     return source
 
 
-def _doc(tmp_path, pages: int = 5) -> Document:
+def _doc(tmp_path, pages: int = 5, figure: bool = False) -> Document:
     doc = Document(source=str(_source(tmp_path)))
+    figure_bytes = b"\xff\xd8\xff\xd9" if figure else None
     for i in range(pages):
-        doc.pages.append(
-            PageResult(
-                index=i,
-                chars=500,
-                top=792.0,
-                bottom=0.0,
-                blocks=[
-                    Block("heading", text=f"Chapter {i + 1}", level=1, page=i, top=700.0),
-                    Block("para", text="Body text on this page, and enough of it to read.", page=i, top=600.0),
-                ],
+        blocks = [
+            Block("heading", text=f"Chapter {i + 1}", level=1, page=i, top=700.0),
+            Block("para", text="Body text on this page, and enough of it to read.", page=i, top=600.0),
+        ]
+        if figure and i == 0:
+            blocks.append(
+                Block(
+                    "figure", page=i, top=690.0, bottom=500.0, left=80.0, right=500.0,
+                    image=figure_bytes, image_width=420, image_height=190, image_type="jpeg",
+                )
             )
-        )
+        doc.pages.append(PageResult(index=i, chars=500, top=792.0, bottom=0.0, blocks=blocks))
     return doc
 
 
 def test_every_zip_entry_carries_a_fixed_date(tmp_path):
     """Measured 2026-10-08: a str-named entry took the run's own second, so two
     runs a second apart differed and slice 2's byte-stability bar could not be
-    met."""
+    met. The figure is here because the images are the entry class that
+    measurement named — the four documents *and every image* carried the clock —
+    so a suite that never writes one would not notice the image path regressing."""
     out = tmp_path / "one.epub"
-    write_epub(_doc(tmp_path), str(out), "A Book")
+    write_epub(_doc(tmp_path, figure=True), str(out), "A Book")
     with zipfile.ZipFile(out) as zf:
+        names = zf.namelist()
+        assert any(name.startswith("OEBPS/images/") for name in names)
         assert {info.date_time for info in zf.infolist()} == {(1980, 1, 1, 0, 0, 0)}
 
 
 def test_two_runs_over_one_source_are_byte_identical(tmp_path):
-    """The sleep crosses the second the removed clock had as its resolution."""
-    doc = _doc(tmp_path)
+    """The sleep has to cross a *bucket*: a zip entry's DOS timestamp has
+    two-second granularity, so a shorter gap can leave two runs in the same one
+    and this test would pass against the clock it is here to catch."""
+    doc = _doc(tmp_path, figure=True)
     first, second = tmp_path / "one.epub", tmp_path / "two.epub"
     write_epub(doc, str(first), "A Book")
-    time.sleep(1.1)
+    time.sleep(2.5)
     write_epub(doc, str(second), "A Book")
     assert first.read_bytes() == second.read_bytes()
 
 
-def test_the_report_maps_every_page_to_the_file_that_holds_it(tmp_path):
+def test_the_report_maps_each_file_to_the_pages_it_holds(tmp_path):
     """D5: a position in the reflow can name the PDF page it came from without
     re-extracting anything. Two depth-0 entries split the book into two files."""
     doc = _doc(tmp_path, pages=5)
@@ -811,14 +818,31 @@ def test_the_report_maps_every_page_to_the_file_that_holds_it(tmp_path):
         {"href": "text/c001.xhtml", "title": "Chapter 1", "from_page": 1, "to_page": 2},
         {"href": "text/c002.xhtml", "title": "Chapter 3", "from_page": 3, "to_page": 5},
     ]
-    assert max(entry["to_page"] for entry in report["page_map"]) == len(doc.pages)
+
+
+def test_a_page_two_files_share_names_both(tmp_path):
+    """The map is a span per file, not a partition: a chapter that opens in the
+    middle of a page puts that page in both files' spans, which is what the
+    artifact does too — c001 holds the page's tail and c002 its heading. The
+    exact witness for a page is the `pgN` anchor, and the span is the answer to
+    "which file holds page N"."""
+    doc = _doc(tmp_path, pages=3)
+    doc.entries = [Entry("Chapter 1", 0, 0), Entry("Chapter 2", 0, 1)]
+    tail = Block("para", text="The tail of page two's story, before the next chapter opens.", page=1, top=100.0)
+    doc.pages[1].blocks.insert(0, tail)  # page two's first block, ahead of the new chapter's heading
+    report = write_epub(doc, str(tmp_path / "m.epub"), "A Book")
+    spans = [(entry["from_page"], entry["to_page"]) for entry in report["page_map"]]
+    assert spans == [(1, 2), (2, 3)]
+    with zipfile.ZipFile(tmp_path / "m.epub") as zf:
+        assert '<span id="pg2">' in zf.read("OEBPS/text/c001.xhtml").decode()
+        assert '<span id="pg2">' in zf.read("OEBPS/text/c002.xhtml").decode()
 ```
 
 ```bash
 $PY -m pytest sidecar/tests -k reflow -q
 ```
 
-Expected: `98 passed` with the helper built (`96 passed, 2 skipped` without it) — 95 after Task 1, plus this file's three. Then the same three tests must pass twice in a row, and neither run may be a fluke of the clock:
+Expected: `101 passed` with the helper built (`99 passed, 2 skipped` without it) — 98 after Task 1, plus this file's four. Then the same tests must pass twice in a row, and neither run may be a fluke of the clock:
 
 ```bash
 $PY -m pytest sidecar/tests/test_reflow_produce.py -q
@@ -1746,9 +1770,10 @@ PASSED_IN_RUN_2 = {
 }
 
 # Slice 2's own bar, per text book: written, byte-stable across two runs,
-# cached on the next open, re-run on a touched source, and nothing but
-# `derived/` written into the book folder.
-BAR = ("produced", "byte_stable", "cached", "stamp_reran", "only_derived_changed")
+# cached on the next open, never serving a stale stamp after the source moved,
+# re-running the pass for the moved source, and nothing but `derived/` written
+# into the book folder.
+BAR = ("produced", "byte_stable", "cached", "stamp_not_stale", "stamp_reran", "only_derived_changed")
 
 
 def _sha(path: str) -> str:
@@ -1835,13 +1860,22 @@ def production_book(title: str, why: str, book_dir: str, pdf: str, golden: dict)
     rec["residue"] = [name for name in _listing(os.path.dirname(epub_path)) if name.endswith(".tmp")]
     rec["only_derived_changed"] = _listing(book_dir) == sorted([*before, "derived"])
 
-    # A touched source is a different document (D9), so it re-runs and the fresh
-    # stamp is current again afterwards.
+    # A touched source is a different document (D9), so the next pass may never
+    # serve the old stamp — and the pass itself has to be able to re-run it. Two
+    # calls, because a pass can legitimately *refuse* a book it cannot lay out
+    # that time (D6, and 1R's record already names the helper failing pages on a
+    # second run); what must never happen is a `cached` answer for a moved
+    # source, and what has to be shown is that the pass does re-run.
     later = int(os.stat(pdf).st_mtime) + 60
     os.utime(pdf, (later, later))
-    rec["stamp_reran"] = _run(book_dir, pdf)["status"] == "produced"
-    rec["stamp_reran_again"] = _run(book_dir, pdf)["status"] == "cached"
-    rec["stamp_mtime"] = read_stamp(stamp_path)["source"]["mtime"] if read_stamp(stamp_path) else None
+    touched = [_run(book_dir, pdf), _run(book_dir, pdf)]
+    rec["touched"] = [
+        {"status": call["status"], "verdict": call["verdict"], "reason": call["reason"]} for call in touched
+    ]
+    rec["stamp_not_stale"] = touched[0]["status"] != "cached"
+    rec["stamp_reran"] = any(call["status"] == "produced" for call in touched)
+    stamp = read_stamp(stamp_path)
+    rec["stamp_mtime"] = stamp["source"]["mtime"] if stamp else None
     rec["source_mtime"] = later
     rec["gate"] = gate_artifact(title, pdf, epub_path, golden, rec)
     return rec
@@ -1860,6 +1894,11 @@ def production_failed(records: list[dict]) -> list[str]:
             bad.append(f"{title}: wrote an artifact, and its correct outcome is the fallback")
             continue
         bad.extend(f"{title}: {key} is false" for key in BAR if not rec.get(key))
+        if not rec.get("stamp_reran") or not rec.get("stamp_not_stale"):
+            # Name what the pass actually said for the moved source: a refusal is
+            # D6's own posture and a `cached` answer is the defect the stamp
+            # exists to prevent, and they are not the same finding.
+            bad.append(f"{title}: after the source moved the pass said {rec.get('touched')}")
         if rec.get("residue"):
             bad.append(f"{title}: {rec['residue']} left behind")
         if rec.get("stamp_mtime") != rec.get("source_mtime"):
@@ -1905,7 +1944,8 @@ def print_production(records: list[dict], report: str) -> None:
         f"production: {len(written)}/{len(text_books)} written, "
         f"{sum(1 for r in written if r.get('byte_stable'))} byte-stable across two runs, "
         f"{sum(1 for r in written if r.get('cached'))} cached on the next open, "
-        f"{sum(1 for r in written if r.get('stamp_reran'))} re-ran on a touched source, "
+        f"{sum(1 for r in written if r.get('stamp_not_stale'))} never served a stale stamp, "
+        f"{sum(1 for r in written if r.get('stamp_reran'))} re-ran the pass on a touched source, "
         f"{sum(1 for r in written if r.get('only_derived_changed'))} wrote only derived/"
     )
     for line in production_failed(records) + gate_regression(records):

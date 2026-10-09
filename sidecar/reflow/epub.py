@@ -22,7 +22,11 @@ at depth-0 entries; deeper entries are anchors inside them.
 **The source-page map lives in the file.** Each page's first block in a file
 is preceded by `<span id="pg{n}">`, so a position in the reflow can name the
 PDF page it came from (D5). `write_epub`'s report carries the other half of that
-map: one `page_map` entry per spine file, with the range of PDF pages it holds.
+map: one `page_map` entry per spine file, with the span of PDF pages that file
+holds. The span is not a partition — a chapter that opens mid-page puts that page
+in two files' spans, and a page whose blocks are all figures can fall outside
+every span — so the anchor is a page's exact witness and the span is what answers
+"which file holds page N" without unzipping the artifact.
 
 **Deterministic on purpose.** The identifier and `dcterms:modified` derive from
 the source file's size and mtime, not from the clock, and every zip entry is
