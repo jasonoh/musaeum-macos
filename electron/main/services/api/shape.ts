@@ -65,6 +65,8 @@ export const API_ERRORS = {
   offline: 'library offline',
   /** 416 — a range this file cannot satisfy. */
   rangeNotSatisfiable: 'range not satisfiable',
+  /** 422 — the reflow pass refused this book; the body also carries `reason`. */
+  cannotReflow: 'cannot reflow',
   /** 500 — a handler threw; the server keeps serving (invariant 12). */
   internal: 'internal'
 } as const
@@ -161,6 +163,20 @@ export interface WireReading {
   updatedAt: string | null
 }
 
+/**
+ * Whether the book can be read as a reflowed EPUB — D1's trigger, stated once.
+ * **Eligibility, never presence** (owner decision, 2026-10-09): the artifact
+ * is a file on the share, and this module reads no files (AC16). Order is
+ * irrelevant, so no `formats[0]` (invariant 3).
+ */
+export function isReflowEligible(book: Pick<Book, 'formats'>): boolean {
+  return book.formats.includes('pdf') && !book.formats.includes('epub')
+}
+
+export interface WireReflow {
+  available: boolean
+}
+
 export interface WireBook {
   id: string
   title: string
@@ -191,6 +207,7 @@ export interface WireBook {
    * changes no book payload.
    */
   shelves: string[]
+  reflow: WireReflow
 }
 
 /**
@@ -240,7 +257,8 @@ export function bookPayload(book: Book, shelves: string[]): WireBook {
       percent: book.readingState?.percent ?? null,
       updatedAt: book.readingState?.updatedAt ?? null
     },
-    shelves
+    shelves,
+    reflow: { available: isReflowEligible(book) }
   }
 }
 
@@ -450,4 +468,29 @@ export interface MembershipPayload {
  */
 export function membershipPayload(input: { book: Book; shelves: string[] }): MembershipPayload {
   return { book: bookPayload(input.book, input.shelves) }
+}
+
+// ---------------------------------------------------------------------------
+// The reflow route's two non-byte answers (D8)
+// ---------------------------------------------------------------------------
+
+export interface ReflowPendingPayload {
+  phase: string
+  completed: number
+  total: number
+}
+
+/** 202's body — the three members of the pass's own progress frame, named here. */
+export function reflowPendingPayload(status: ReflowPendingPayload): ReflowPendingPayload {
+  return { phase: status.phase, completed: status.completed, total: status.total }
+}
+
+export interface CannotReflowPayload {
+  error: string
+  reason: string
+}
+
+/** 422's body — the one refusal with a second member (the pipeline's sentence). */
+export function cannotReflowPayload(reason: string): CannotReflowPayload {
+  return { ...errorPayload('cannotReflow'), reason }
 }

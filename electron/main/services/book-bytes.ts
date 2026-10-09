@@ -137,9 +137,10 @@ const REFLOW_NAME = 'reflow.epub'
  * through `resolveBookFile`.** That function's second consumer is the HTTP
  * surface (`api/rest.ts` passes the caller's `format` straight through), so a
  * `reflow` arm there would open `GET /api/books/{id}/file?format=reflow` in the
- * same commit that no document describes — and D8 puts the contract first, in
- * this repo, in slice 4. This route is therefore the renderer's alone, and the
- * wire stays closed until slice 4 opens it on purpose.
+ * same commit that no document describes. The wire's reflow arm in `api/rest.ts`
+ * (slice 4, documented in `docs/rest-api.md`) resolves through this function, and
+ * `resolveBookFile` still refuses `reflow` on purpose: the wire opens deliberately,
+ * in the one place that owns its 202/422/404/503 vocabulary.
  *
  * A *fixed* name rather than an extension scan, for the mirror-image reason:
  * `derived/` is not a format (D3, `docs/invariants/files-and-deletion.md`), so

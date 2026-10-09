@@ -10,13 +10,16 @@ import {
   DEFAULT_PAGE_LIMIT,
   MAX_PAGE_LIMIT,
   bookPayload,
+  cannotReflowPayload,
   errorPayload,
   facetsPayload,
   healthPayload,
   importPayload,
+  isReflowEligible,
   libraryPayload,
   membershipPayload,
   readingPayload,
+  reflowPendingPayload,
   shelvesPayload
 } from './shape'
 
@@ -220,6 +223,24 @@ describe('the contract document and the goldens (AC19)', () => {
     expect(DOC).toContain(String(MAX_PAGE_LIMIT))
   })
 
+  it('names the reflow words where a client looks for them (slice 4)', () => {
+    // Scoped to the section or table row that owns each word, so a word that
+    // survives only in the changelog-style header paragraph does not pass.
+    const section = DOC.split(/^#### `format=reflow`$/m)[1]?.split(/^#{1,4} /m)[0] ?? ''
+    expect(DOC).toContain('#### `format=reflow`')
+    expect(DOC).toContain('GET /api/books/{id}/file?format=reflow')
+    expect(section).toContain('**422**')
+    expect(section).toContain(`"error": "${API_ERRORS.cannotReflow}"`)
+    expect(section).toContain('reflow.available')
+
+    const row = DOC.split('\n').find((l) => l.includes(`\`${API_ERRORS.cannotReflow}\``)) ?? ''
+    expect(row).toMatch(/^\| 422\s+\|/)
+
+    // The payload side: the member is documented as a field of the book payload
+    expect(DOC).toMatch(/- \*\*`reflow`\*\* says whether/)
+    expect(DOC).toContain('"reflow": {')
+  })
+
   it('states the HTTP method policy instead of leaving HEAD unstated', () => {
     // 1a's health route matched GET only, so a URLSession probe — HEAD — met a
     // 404 where the connect check belongs. Whatever the policy is, the document
@@ -410,5 +431,35 @@ describe('the shelves payload (slice 5)', () => {
     }
     expect(shelvesPayload([row])).toEqual({ shelves: [row] })
     expect(Object.keys(PAYLOADS.shelves as object)).toEqual(['shelves'])
+  })
+})
+
+describe('reflow on the wire (D1, D8)', () => {
+  it('reflow is available for a PDF with no EPUB, and for nothing else (D1)', () => {
+    expect(isReflowEligible({ formats: ['pdf'] })).toBe(true)
+    expect(isReflowEligible({ formats: ['mobi', 'pdf'] })).toBe(true) // the paper shelf
+    expect(isReflowEligible({ formats: ['pdf', 'epub'] })).toBe(false) // order is irrelevant
+    expect(isReflowEligible({ formats: ['epub'] })).toBe(false)
+    expect(isReflowEligible({ formats: ['mobi'] })).toBe(false)
+    expect(isReflowEligible({ formats: [] })).toBe(false)
+  })
+
+  it('the book payload reports reflow without touching formats', () => {
+    const pdfOnly = bookPayload({ ...GOLDEN, formats: ['pdf'] }, [])
+    expect(pdfOnly.reflow).toEqual({ available: true })
+    expect(pdfOnly.formats).toEqual(['pdf']) // never a synthetic 'epub'
+    expect(bookPayload(GOLDEN, []).reflow).toEqual({ available: false })
+  })
+
+  it('the pending and refusal bodies are exactly their documented members', () => {
+    expect(reflowPendingPayload({ phase: 'layout', completed: 12, total: 24 })).toEqual({
+      phase: 'layout',
+      completed: 12,
+      total: 24
+    })
+    expect(cannotReflowPayload('no page carries a text layer')).toEqual({
+      error: 'cannot reflow',
+      reason: 'no page carries a text layer'
+    })
   })
 })

@@ -9,7 +9,15 @@ import { makeBook } from '../../../test/helpers/book'
 import { closeDb, insertBook } from './db'
 import * as events from './events'
 import * as nas from './nas-manager'
-import { REFLOW_TIMEOUT_MS, RETRY_VERDICTS, ensure, resetForTests } from './reflow'
+import {
+  REFLOW_TIMEOUT_MS,
+  REFUSAL_TTL_MS,
+  RETRY_VERDICTS,
+  ensure,
+  recentRefusal,
+  resetForTests,
+  wireStatus
+} from './reflow'
 import * as sidecar from './sidecar'
 
 /**
@@ -269,5 +277,64 @@ describe('the frames', () => {
     await ensure('b14')
     await ensure('b15')
     expect(vi.mocked(sidecar.onNotification)).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the service’s view of a pass (D8)', () => {
+  it('wireStatus is null when idle, the latest frame while a pass runs, null after', async () => {
+    await seedPdf('b16')
+    let release: (value: Record<string, unknown>) => void = () => {}
+    vi.mocked(sidecar.call).mockImplementation(
+      () => new Promise((resolve) => (release = resolve)) as never
+    )
+
+    expect(wireStatus('b16')).toBeNull()
+    const pending = ensure('b16')
+    expect(wireStatus('b16')).toEqual({ phase: 'start', completed: 0, total: 0 })
+
+    // `ensure` subscribed synchronously, so the handler is there before the call is.
+    const handler = vi.mocked(sidecar.onNotification).mock.calls[0][1] as (params: unknown) => void
+    handler({ book_id: 'b16', phase: 'layout', completed: 12, total: 24 })
+    expect(wireStatus('b16')).toEqual({ phase: 'layout', completed: 12, total: 24 })
+    // Another book's frame is not this book's status.
+    handler({ book_id: 'other', phase: 'layout', completed: 1, total: 2 })
+    expect(wireStatus('b16')).toEqual({ phase: 'layout', completed: 12, total: 24 })
+
+    await vi.waitFor(() => expect(vi.mocked(sidecar.call)).toHaveBeenCalled())
+    release(PRODUCED)
+    await pending
+    expect(wireStatus('b16')).toBeNull()
+  })
+
+  it('a refusal is remembered for 60 s and a success clears it', async () => {
+    await seedPdf('b17')
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      answerWith({
+        status: 'fallback',
+        reason: 'no page carries a text layer',
+        verdict: 'no_text_layer'
+      })
+      await ensure('b17')
+      expect(recentRefusal('b17')).toBe('no page carries a text layer')
+      vi.advanceTimersByTime(REFUSAL_TTL_MS + 1)
+      expect(recentRefusal('b17')).toBeNull()
+
+      // A fresh refusal, then a pass that succeeds: the success forgets it.
+      await ensure('b17')
+      expect(recentRefusal('b17')).toBe('no page carries a text layer')
+      answerWith(PRODUCED)
+      await ensure('b17')
+      expect(recentRefusal('b17')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a pass that rejects before it runs records no refusal', async () => {
+    insertBook({ ...makeBook('b18'), formats: ['epub'] })
+    await expect(ensure('b18')).rejects.toThrow()
+    expect(recentRefusal('b18')).toBeNull()
+    expect(wireStatus('b18')).toBeNull()
   })
 })
