@@ -16,7 +16,7 @@
 
 ## Resume here (2026-10-09)
 
-No task has started. Measured on this clone at 09:10, before the plan was written:
+**All six tasks landed 2026-10-09** on `feat/pdf-reflow-slice-3` (six commits — Tasks 0–5, plus one fix that Task 5's live pass forced); the full record with the live-pass numbers is `tasks.md`'s C2 entry. **One file beyond this plan's own table: `electron/main/index.ts`** — the protocol handler is the caller `resolveReflowFile` never had, and without it `musaeum://book/{id}/reflow` answered **404** and every PDF-only book opened the reader and said _"This book's file could not be read."_ (measured in the running app; Task 1's table named the route but not its applier). The gates: `npm test` **1919 passed across 88 files** (1887 + 32: 6 Task 1, 14 Task 2, 4 + 8 Task 4), typecheck and eslint clean, and `pytest` **388 passed / 129 reflow — unchanged**, which is this slice's own proof that it added a caller and not a converter. Measured on this clone at 09:10, before the plan was written:
 
 | Gate      | Command                                                   | Today                                 |
 | --------- | --------------------------------------------------------- | ------------------------------------- |

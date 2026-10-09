@@ -2,6 +2,12 @@
 
 All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https://keepachangelog.com); versions follow semver once the app is packaged.
 
+## [Unreleased] — 2026-10-09
+
+### Added
+
+- **PDF-only books now open in Musaeum's own reader.** The app prepares a reflowed book once, showing progress while it works, and a book it cannot lay out opens in Preview with a line saying why. This is the last slice of the PDF reflow design (`docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md`, plan `docs/superpowers/plans/2026-10-09-pdf-reflow-slice-3.md`) that the reader can reach: a PDF-only book opens as `reflow`, the app asks the sidecar for the pass and broadcasts its progress, the finished book is served over a route of its own and rendered by the engine each client already owns, and the original is one gesture away — the contents panel, find-in-book and typography all work on it exactly as they do on an EPUB. Measured in the running app on 2026-10-09: a 24-page paper was ready at **5.0 s** (frames `start` → `1 … 24 of 24 pages` → `writing`) and reopening a prepared book was **0.42 s**; an image-only book refused in **103 ms** and Preview opened the original PDF with _"no page carries a text layer"_ on the toast. The artifact is **not** a format: no book gains an EPUB, and `GET /api/books/{id}/file?format=reflow` still answers 404 until the wire's slice documents it. What the slice deliberately left: the phone's own route, and the 45 `mobi`+`pdf` papers, which the Mac still reads as a `mobi`.
+
 ## [Unreleased] — 2026-09-28
 
 ### Added
