@@ -16,13 +16,16 @@ import {
 } from '../services/api/routes'
 import {
   bookPayload,
+  cannotReflowPayload,
   errorPayload,
   facetsPayload,
   healthPayload,
   importPayload,
+  isReflowEligible,
   libraryPayload,
   membershipPayload,
   readingPayload,
+  reflowPendingPayload,
   shelvesPayload,
   type ApiError
 } from '../services/api/shape'
@@ -31,6 +34,7 @@ import {
   parseByteRange,
   resolveBookFile,
   resolveCoverFile,
+  resolveReflowFile,
   bookContentType
 } from '../services/book-bytes'
 import {
@@ -45,6 +49,7 @@ import {
   shelfIdsForBooks
 } from '../services/db'
 import * as nas from '../services/nas-manager'
+import * as reflow from '../services/reflow'
 import { addBooks, isShelfGone, removeBooks } from '../services/shelves'
 import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/settings'
 
@@ -313,6 +318,8 @@ interface RouteDeps {
 interface ByteSource {
   path: string
   contentType: string
+  /** Extra response headers (the reflow route's `ETag`). */
+  headers?: Record<string, string>
 }
 
 /** The 503s, which differ only in their wait and their word. */
@@ -355,7 +362,8 @@ async function sendBytes(
     const shared = {
       'content-type': source.contentType,
       'cache-control': 'no-store',
-      'accept-ranges': 'bytes'
+      'accept-ranges': 'bytes',
+      ...source.headers
     }
 
     // **The range is decided before the empty-file branch, because the two interact.**
@@ -401,6 +409,100 @@ async function sendBytes(
   } finally {
     deps.gate.release()
   }
+}
+
+// ---------------------------------------------------------------------------
+// The reflow route (PDF-reflow slice 4, D8)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a `format=reflow` request waits for the pass before answering 202. A
+ * cached artifact, or a quick pass, is served in the same request; a long one is
+ * polled. The pass is never cancelled by the window closing.
+ */
+export const REFLOW_GRACE_MS = 2000
+
+/**
+ * `GET /api/books/{id}/file?format=reflow` — a PDF-only book's reflowed EPUB.
+ *
+ * Order matters: eligibility (404), a running pass (202, joined never doubled),
+ * a remembered refusal (422, no new pass), then start-or-join the pass and race
+ * it against the grace window. A 202 holds no byte-gate slot — only `sendBytes`
+ * acquires one. The offline 503 was answered by the caller.
+ */
+async function serveReflow(
+  req: IncomingMessage,
+  res: ServerResponse,
+  bookId: string,
+  deps: RouteDeps
+): Promise<void> {
+  const found = getBook(bookId)
+  if (!found || !isReflowEligible(found)) {
+    sendJson(res, 404, errorPayload('notFound'))
+    return
+  }
+
+  const running = reflow.wireStatus(bookId)
+  if (running) {
+    sendJson(res, 202, reflowPendingPayload(running), { 'retry-after': '2' })
+    return
+  }
+
+  const refused = reflow.recentRefusal(bookId)
+  if (refused !== null) {
+    sendJson(res, 422, cannotReflowPayload(refused))
+    return
+  }
+
+  const pass = reflow.ensure(bookId)
+  // Attached before the race: a pass that rejects after the grace window has
+  // closed must not surface as an unhandled rejection (invariant 12).
+  pass.catch(() => {})
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const grace = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), REFLOW_GRACE_MS)
+  })
+  let winner
+  try {
+    winner = await Promise.race([
+      pass.then(
+        (result) => result,
+        (err: unknown) => ({ status: 'error' as const, reason: describeError(err) })
+      ),
+      grace
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+
+  if (winner === null) {
+    sendJson(
+      res,
+      202,
+      reflowPendingPayload(reflow.wireStatus(bookId) ?? { phase: 'start', completed: 0, total: 0 }),
+      { 'retry-after': '2' }
+    )
+    return
+  }
+  if (winner.status === 'fallback' || winner.status === 'error') {
+    sendJson(res, 422, cannotReflowPayload(winner.reason))
+    return
+  }
+
+  const path = await resolveReflowFile(bookId)
+  let stat
+  try {
+    stat = path ? await fs.stat(path) : null
+  } catch {
+    stat = null
+  }
+  if (!path || !stat) {
+    sendJson(res, 404, errorPayload('notFound'))
+    return
+  }
+  const etag = `"${stat.size}-${Math.trunc(stat.mtimeMs)}"`
+  await sendBytes(req, res, { path, contentType: bookContentType('epub'), headers: { etag } }, deps)
 }
 
 // ---------------------------------------------------------------------------
@@ -979,6 +1081,10 @@ async function handleRequest(
         }
         if (!nas.isOnline()) {
           sendUnavailable(res, 'offline')
+          return
+        }
+        if (format === 'reflow') {
+          await serveReflow(req, res, book.id, deps)
           return
         }
         const path = await resolveBookFile(book.id, format)

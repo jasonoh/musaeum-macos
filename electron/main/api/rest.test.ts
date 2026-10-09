@@ -13,6 +13,9 @@ import { type InterfaceMap } from '../services/api/bind'
 import * as db from '../services/db'
 import { subscribe } from '../services/events'
 import * as nas from '../services/nas-manager'
+import * as reflow from '../services/reflow'
+import { resolveBookFile } from '../services/book-bytes'
+import type { ReflowResult } from '@shared/book.types'
 import * as shelves from '../services/shelves'
 import { readShelvesFile } from '../services/shelves-file'
 import {
@@ -24,6 +27,7 @@ import {
   type ResolvedRestApiConfig
 } from '../services/settings'
 import {
+  REFLOW_GRACE_MS,
   createRestApiServer,
   getRestApiStatus,
   startRestApiIfEnabled,
@@ -72,6 +76,8 @@ vi.mock('../services/nas-manager', async (importOriginal) => {
   // unreachable without a real share to unmount (part 5b's review, finding 4).
   return { ...actual, isOnline: vi.fn(() => false), assertOnline: vi.fn(actual.assertOnline) }
 })
+
+vi.mock('../services/reflow')
 
 vi.mock('../services/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/db')>()
@@ -1935,5 +1941,178 @@ describe('the byte routes', () => {
       releases.forEach((release) => release())
       await new Promise<void>((resolve) => broken.close(() => resolve()))
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /api/books/{id}/file?format=reflow (PDF-reflow slice 4, D8)
+// ---------------------------------------------------------------------------
+
+describe('the reflow route', () => {
+  let server: Server
+  let base: string
+  let root: string
+  let reflowEpub: string
+
+  const EPUB_BYTES = Buffer.alloc(2048)
+  for (let i = 0; i < EPUB_BYTES.length; i++) EPUB_BYTES[i] = (i * 5 + 3) % 249
+
+  const produced = (): ReflowResult => ({
+    status: 'produced',
+    reason: '',
+    verdict: 'ok',
+    epub: 'derived/reflow.epub',
+    stampFile: 'derived/reflow.json',
+    pages: 3,
+    bytes: EPUB_BYTES.length,
+    seconds: 1
+  })
+
+  beforeEach(async () => {
+    vi.mocked(reflow.ensure).mockReset()
+    vi.mocked(reflow.wireStatus).mockReset().mockReturnValue(null)
+    vi.mocked(reflow.recentRefusal).mockReset().mockReturnValue(null)
+
+    root = mkdtempSync(join(tmpdir(), 'musaeum-rest-reflow-'))
+    await nas.setLibraryRoot(root)
+    vi.mocked(nas.isOnline).mockReturnValue(true)
+
+    const dir = join(root, 'books', 'b1', 'derived')
+    mkdirSync(dir, { recursive: true })
+    reflowEpub = join(dir, 'reflow.epub')
+    writeFileSync(reflowEpub, EPUB_BYTES)
+    db.insertBook({ ...makeBook('b1'), formats: ['pdf'] })
+    db.insertBook({ ...makeBook('has-epub'), formats: ['epub', 'pdf'] })
+
+    server = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  afterEach(async () => {
+    vi.useRealTimers()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  function get(path: string, headers: Record<string, string> = {}) {
+    return fetch(`${base}${path}`, { headers: { authorization: `Bearer ${TOKEN}`, ...headers } })
+  }
+  const URL_REFLOW = '/api/books/b1/file?format=reflow'
+
+  it('404s a book that holds an EPUB, an unknown book, and never calls the pass', async () => {
+    expect((await get('/api/books/has-epub/file?format=reflow')).status).toBe(404)
+    expect((await get('/api/books/nope/file?format=reflow')).status).toBe(404)
+    expect(reflow.ensure).not.toHaveBeenCalled()
+  })
+
+  it('503s with Retry-After 5 when the share is offline, before any pass', async () => {
+    vi.mocked(nas.isOnline).mockReturnValue(false)
+    const res = await get(URL_REFLOW)
+    expect([res.status, res.headers.get('retry-after')]).toEqual([503, '5'])
+    expect(reflow.ensure).not.toHaveBeenCalled()
+  })
+
+  it("202s with the pass's progress while one is running, and starts nothing", async () => {
+    vi.mocked(reflow.wireStatus).mockReturnValue({ phase: 'page', completed: 12, total: 24 })
+    const res = await get(URL_REFLOW)
+    expect([res.status, res.headers.get('retry-after')]).toEqual([202, '2'])
+    expect(await res.json()).toEqual({ phase: 'page', completed: 12, total: 24 })
+    expect(reflow.ensure).not.toHaveBeenCalled()
+  })
+
+  it('422s a remembered refusal without a new pass', async () => {
+    vi.mocked(reflow.recentRefusal).mockReturnValue('no page carries a text layer')
+    const res = await get(URL_REFLOW)
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({
+      error: 'cannot reflow',
+      reason: 'no page carries a text layer'
+    })
+    expect(reflow.ensure).not.toHaveBeenCalled()
+  })
+
+  it('200s the artifact when the pass finishes inside the grace, with ETag and Range', async () => {
+    vi.mocked(reflow.ensure).mockResolvedValue(produced())
+    const res = await get(URL_REFLOW)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/epub+zip')
+    expect(res.headers.get('etag')).toMatch(/^"\d+-\d+"$/)
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(EPUB_BYTES)
+    const ranged = await get(URL_REFLOW, { range: 'bytes=4-' })
+    expect(ranged.status).toBe(206)
+    expect(ranged.headers.get('etag')).toBe(res.headers.get('etag'))
+  })
+
+  it('404s a finished pass whose artifact is gone', async () => {
+    vi.mocked(reflow.ensure).mockResolvedValue({ ...produced(), status: 'cached' })
+    rmSync(reflowEpub)
+    expect((await get(URL_REFLOW)).status).toBe(404)
+  })
+
+  it('202s when the pass outlives the grace, and a later settle is harmless', async () => {
+    let fail!: (e: Error) => void
+    let entered!: () => void
+    const called = new Promise<void>((r) => (entered = r))
+    vi.mocked(reflow.ensure).mockImplementation(() => {
+      entered()
+      return new Promise<ReflowResult>((_resolve, reject) => {
+        fail = reject
+      })
+    })
+    const unhandled: unknown[] = []
+    const onUnhandled = (e: unknown): number => unhandled.push(e)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const pending = get(URL_REFLOW)
+      await called
+      await vi.advanceTimersByTimeAsync(REFLOW_GRACE_MS + 1)
+      const res = await pending
+      expect(res.status).toBe(202)
+      expect(await res.json()).toEqual({ phase: 'start', completed: 0, total: 0 })
+      fail(new Error('late failure'))
+      await new Promise((r) => setImmediate(r))
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+  })
+
+  it('clears the grace timer when the pass wins', async () => {
+    vi.mocked(reflow.ensure).mockResolvedValue(produced())
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const before = vi.getTimerCount()
+    const res = await get(URL_REFLOW)
+    await res.arrayBuffer()
+    expect(res.status).toBe(200)
+    expect(vi.getTimerCount()).toBe(before)
+  })
+
+  it('422s a fallback result and a pre-flight rejection, 500s neither', async () => {
+    vi.mocked(reflow.ensure).mockResolvedValue({
+      ...produced(),
+      status: 'fallback',
+      reason: 'unreadable'
+    })
+    const fb = await get(URL_REFLOW)
+    expect(fb.status).toBe(422)
+    expect(await fb.json()).toEqual({ error: 'cannot reflow', reason: 'unreadable' })
+    vi.mocked(reflow.ensure).mockRejectedValue(new Error('The metadata engine is unavailable'))
+    const res = await get(URL_REFLOW)
+    expect(res.status).toBe(422)
+    expect(((await res.json()) as { reason: string }).reason).toContain('unavailable')
+  })
+
+  it('holds no byte-gate slot for a 202', async () => {
+    vi.mocked(reflow.wireStatus).mockReturnValue({ phase: 'page', completed: 1, total: 2 })
+    for (let i = 0; i < 5; i++) expect((await get(URL_REFLOW)).status).toBe(202)
+    vi.mocked(reflow.wireStatus).mockReturnValue(null)
+    vi.mocked(reflow.ensure).mockResolvedValue(produced())
+    expect((await get(URL_REFLOW)).status).toBe(200)
+  })
+
+  it('resolveBookFile still refuses reflow, so the wire opens only here', async () => {
+    expect(await resolveBookFile('b1', 'reflow')).toBeNull()
   })
 })
