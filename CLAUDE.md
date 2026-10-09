@@ -47,13 +47,15 @@ Musaeum is a macOS Electron application for personal ebook library management, d
 
 ## Status
 
-Phase 1 (MVP) was implemented and verified end-to-end on 2026-07-12: import → hydration → conflict queue → covers → FTS all confirmed against live APIs. Phase 1.5 PDF support shipped 2026-07-27 (PDF as a first-class format + Calibre PDF top-up, now run against the real library). The in-app reader shipped 2026-08-13 for EPUB/MOBI/AZW3, with reading position that survives a restart and follows you between machines; PDF in the reader is the next phase. See `tasks.md` for the roadmap and known gaps, `README.md` for setup, and `CHANGELOG.md` for history.
+Phase 1 (MVP) was implemented and verified end-to-end on 2026-07-12: import → hydration → conflict queue → covers → FTS all confirmed against live APIs. Phase 1.5 PDF support shipped 2026-07-27 (PDF as a first-class format + Calibre PDF top-up, now run against the real library). The in-app reader shipped 2026-08-13 for EPUB/MOBI/AZW3, with reading position that survives a restart and follows you between machines; PDF in the reader is the next phase. The **PDF reflow pipeline** landed 2026-10-08 (`b165d8e` slice 1R, then `4140b3e` slice 2): the sidecar's `reflow_pdf` RPC lays a PDF out through Apple Vision and writes `{book}/derived/reflow.epub` beside its `reflow.json` stamp, cached and falling back to the original when a book cannot be laid out confidently — **nothing in the reader reaches it yet**, which is slice 3 (`tasks.md` → C2). See `tasks.md` for the roadmap and known gaps, `README.md` for setup, and `CHANGELOG.md` for history.
 
 Dev quickstart:
 
 ```bash
 npm install                                  # postinstall rebuilds better-sqlite3
 python3.12 -m venv sidecar/.venv && sidecar/.venv/bin/pip install -r sidecar/requirements.txt
+./scripts/build-layout-helper.sh             # the reflow's Vision helper (Xcode toolchain);
+                                             # without it 3 pytest cases skip
 npm run dev                                  # launch with hot reload
 npm run typecheck && npm run lint            # keep clean; both pass on main
 npm test                                     # vitest main-process suite —

@@ -21,6 +21,19 @@ Covers and metadata.json have fixed names and are untouched. Renaming does not r
 
 ---
 
+## The `derived/` folder
+
+`{book}/derived/` holds a book's **derived, fallible rendering cache** — today the PDF reflow: `reflow.epub` beside its `reflow.json` stamp, written by the sidecar's `reflow_pdf` (slice 2, 2026-10-08) and read by the reader once slice 3 routes to it. The rule the feature hangs on (spec D3) is that **a directory name carries no extension**, so every rule above skips it with no change: `renameToTitle` cannot rename it onto a format file, `computeFileSizeBytes` does not count it, `findFormatFile`/`deleteFormats` never match it, and `fs.rm` of the book's folder takes it with the book.
+
+**A derived artifact is never added to `formats` or `file_size_bytes`.** It is not a file the book *holds*: a PDF-only book must not claim an EPUB, or the phone's `preferredFormat`, the Mac's format chips and the `formats` facet counts all inherit a rendering cache as if a device could read it (the precedent that cuts the other way is deliberate — a Calibre-free converted AZW3 *is* added, because it is a real ebook file another device reads).
+
+Two consequences a later change has to respect, both stated because the extension-keyed rules are what make this safe today:
+
+- **A walk that sweeps "all files" in a book folder must skip `derived/` by name.** Today nothing walks recursively; a future sweep that does is the one place this namespace can be broken.
+- **A derived artifact is disposable.** Deleting `derived/` loses a cache and never a book: the pass re-runs on the next open, and a reader that finds a missing or unreadable artifact falls back to the original with one line of reason (D6/D9).
+
+---
+
 ## Deletion
 
 `services/book-delete.ts` owns both paths; the IPC handlers are thin wrappers.

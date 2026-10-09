@@ -93,6 +93,11 @@ npm install                                  # also rebuilds better-sqlite3 for 
 python3.12 -m venv sidecar/.venv             # the Python metadata sidecar
 sidecar/.venv/bin/pip install -r sidecar/requirements.txt
 
+./scripts/build-layout-helper.sh             # the PDF reflow's Swift helper, if you work on
+                                             # that side of the app: needs the Xcode
+                                             # toolchain, writes helpers/bin/ (gitignored).
+                                             # Without it 3 pytest cases skip
+
 npm run dev                                  # launch with hot reload
 ```
 

@@ -19,6 +19,10 @@ npm install                                  # postinstall rebuilds better-sqlit
 python3.12 -m venv sidecar/.venv             # the Python sidecar
 sidecar/.venv/bin/pip install -r sidecar/requirements.txt
 
+./scripts/build-layout-helper.sh             # the PDF reflow's Vision helper (Xcode
+                                             # toolchain) — only if you work on that side;
+                                             # without it 3 pytest cases skip
+
 npm run dev                                  # launch with hot reload
 npm run typecheck && npm run lint            # keep clean; both pass on main
 npm test                                     # vitest — main process AND renderer, run
@@ -27,7 +31,7 @@ npm test                                     # vitest — main process AND rende
                                             # invoke only through this script
 ```
 
-The sidecar's own suite lives in `sidecar/tests/` and runs with `sidecar/.venv/bin/python -m pytest sidecar/tests` (after `pip install -r sidecar/requirements-dev.txt`).
+The sidecar's own suite lives in `sidecar/tests/` and runs with `sidecar/.venv/bin/python -m pytest sidecar/tests` (after `pip install -r sidecar/requirements-dev.txt`). Three of those cases need the reflow's layout helper — `./scripts/build-layout-helper.sh`, and a macOS 26 machine, since `RecognizeDocumentsRequest` does not exist below it — and skip without it; CI runs on macOS 14, where they skip by design.
 
 First launch shows a banner to choose the library folder — **a folder on this Mac, an external drive, or a mounted share**. The app records which _kind_ it is when you pick it (re-picking re-derives it, so a wrong answer is also fixable), because the two fail differently, and **Settings → Library shows it**: _Local folder_ or _Network share_, with a line naming the cloud client when the folder sits inside one (iCloud Drive, Dropbox, Google Drive, OneDrive, Box, Proton Drive — named with the last-write-wins hazard, never refused). That is also the section that renders the **SMB URL** field, and it appears only when the library really is a share — it no longer fills its own placeholder with a machine you do not own. An unreachable share is retried on a 5/15/60-second backoff and re-mounted, and could genuinely come back on its own; an unreachable folder is **never retried and never mounted**, because nothing is coming back — the banner says the folder is missing and offers _Locate Library Folder…_, which opens the picker at the folder that went missing (or at its nearest surviving parent). Either way the library stays browsable from the local cache and editing stays disabled until it is back; the status row and the banner use the same words because both read them from one place; and the empty pane says nothing at all while the library cannot take a book, where it used to offer three ways to add one that the app would refuse. Books dropped onto the window, or into `{library_root}/imports/`, are imported and hydrated automatically, and **＋ Add Books** in the toolbar or `File ▸ Add Books…` (⌘O) opens a file picker.
 

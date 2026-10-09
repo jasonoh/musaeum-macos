@@ -53,8 +53,14 @@
       cover_full.jpg               # 600px
       cover_thumb.jpg              # 200px
       metadata.json
+      derived/                     # derived, fallible renderings — NOT a book format
+        reflow.epub                #   the PDF reflow (spec C2/D3), written by the sidecar
+        reflow.json                #   its stamp: source size + mtime, converter + helper
+                                   #   versions, D5's page map, and the pass's measures
   exports/                         # ephemeral; cleared post-transfer
   imports/                         # drag-drop landing zone (watched)
 ```
+
+`derived/` is the one folder inside a book that is not the book: a directory name carries no extension, so every extension-keyed lookup skips it, and nothing in it is ever added to `formats` or `file_size_bytes` (`docs/invariants/files-and-deletion.md`, *The `derived/` folder*). It exists so a reflow can be a real file on the share — produced once by the Mac's sidecar, cached for both clients — without being mistaken for something a device can read.
 
 ---

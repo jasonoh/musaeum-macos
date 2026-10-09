@@ -83,12 +83,17 @@ Musaeum/
 ├── helpers/musaeum-layout/       # the PDF reflow's Swift helper (spec D4R): Vision's
 │                                 # regions and reading order, one JSON line per page.
 │                                 # Built by scripts/build-layout-helper.sh into
-│                                 # helpers/bin/ (gitignored, no bundle ships it yet)
+│                                 # helpers/bin/ (gitignored). Still in no bundle: the
+│                                 # `extraResources` entry that ships it is slice 3's
+│                                 # first step, and until then a packaged build
+│                                 # reports no_layout for every book (149 KB)
 ├── scripts/
 │   ├── api-smoke.sh              # every REST route against a live app: PASS/FAIL per check
 │   ├── dev-app-branding.mjs      # postinstall: name + icon the dev Electron bundle
 │   ├── make-icons.mjs            # build/icon.png → build/icon.icns (npm run icons)
-│   ├── pdf-reflow-probe.py       # the reflow spike's CLI: one book → EPUB, or --gate-only DIR
+│   ├── pdf-reflow-probe.py       # the reflow CLI: one book → EPUB, --gate-only DIR for
+│   │                             # existing artifacts, --production for the production
+│   │                             # pass over the corpus (slice 2's own bar)
 │   └── build-layout-helper.sh    # xcrun swiftc → helpers/bin/musaeum-layout (Xcode toolchain)
 │
 ├── electron/
@@ -198,12 +203,15 @@ Musaeum/
     │                             # topup.py (Calibre PDF top-up)
     ├── conversion/               # converter.py (ebook-convert wrapper), azw3/ (the
     │                             # in-house EPUB → AZW3 writer)
-    ├── reflow/                   # PDF → EPUB (spec C2, slice 1R): chars.py (the
-    │                             # pdfium characters), vision.py (the helper's
-    │                             # stream), regions.py (Vision's order filled with
-    │                             # the PDF's words), layout.py (roles, furniture,
-    │                             # figures, plates), outline.py, epub.py, model.py,
-    │                             # gate.py (the corpus gate's checks G1–G8)
+    ├── reflow/                   # PDF → EPUB (spec C2): produce.py (the production pass
+    │                             # behind `reflow_pdf` — the D9 stamp and its re-run
+    │                             # triggers, one lock per artifact, temp-verify-rename,
+    │                             # the D6 fallback, reflow_progress), chars.py (the
+    │                             # pdfium characters), vision.py (the helper's stream),
+    │                             # regions.py (Vision's order filled with the PDF's
+    │                             # words), layout.py (roles, furniture, figures, plates),
+    │                             # outline.py, epub.py, model.py, gate.py (the corpus
+    │                             # gate's checks G1–G8)
     └── tests/                    # pytest — pdf_metadata, hydration_pdf, topup,
                                   # the reflow suite (test_reflow_*)
 ```
