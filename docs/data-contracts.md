@@ -226,6 +226,7 @@ JSON-RPC over stdio, newline-delimited JSON. All calls are async from Node's per
 | `convert_format`        | Wrap ebook-convert for format conversion         |
 | `migrate_library`       | Full Calibre migration; streams `migration_progress` notifications |
 | `topup_pdfs`            | Re-runnable Calibre PDF top-up; streams `migration_progress` |
+| `reflow_pdf`            | Reflow a book's PDF into `{book}/derived/reflow.epub` + `reflow.json` (cached; temp-write-and-rename); streams `reflow_progress` notifications |
 
 Python resolution order (`services/python-env.ts`, and see `docs/invariants/packaging-and-python.md`): `app_config.python_path` → bundled runtime → `sidecar/.venv/bin/python` → `userData/sidecar-venv/bin/python` → a system `python3.12`/`3.11`/`3` found by name *or absolute path* and version-checked against 3.11. The sidecar auto-restarts on crash (max 3 attempts); when unavailable the app degrades gracefully (imports fall back to filename metadata).
 

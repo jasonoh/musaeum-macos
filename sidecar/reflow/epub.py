@@ -21,12 +21,20 @@ at depth-0 entries; deeper entries are anchors inside them.
 
 **The source-page map lives in the file.** Each page's first block in a file
 is preceded by `<span id="pg{n}">`, so a position in the reflow can name the
-PDF page it came from (D5).
+PDF page it came from (D5). `write_epub`'s report carries the other half of that
+map: one `page_map` entry per spine file, with the span of PDF pages that file
+holds. The span is not a partition — a chapter that opens mid-page puts that page
+in two files' spans, and a page whose blocks are all figures can fall outside
+every span — so the anchor is a page's exact witness and the span is what answers
+"which file holds page N" without unzipping the artifact.
 
 **Deterministic on purpose.** The identifier and `dcterms:modified` derive from
-the source file's size and mtime, not from the clock, so two runs over the same
-PDF produce the same document — which is what makes "is this artifact stale?"
-a comparable question (D9) and what slice 2's byte-stability gate asks for.
+the source file's size and mtime, not from the clock, and every zip entry is
+written with a fixed date — `writestr` would stamp one with *now* otherwise,
+which made two runs a second apart differ (measured 2026-10-08: identical
+within a second, different across one). Two runs over one source therefore
+produce the same bytes, which is what makes "is this artifact stale?" a
+comparable question (D9) and what slice 2's byte-stability bar measures.
 """
 
 from __future__ import annotations
@@ -273,6 +281,21 @@ def _container() -> str:
     )
 
 
+# Every zip entry gets the same fixed date. `writestr` stamps an entry with the
+# clock when it is given a name, so two runs over one PDF a second apart wrote
+# different bytes — which is what slice 2's own bar ("every corpus book's
+# artifact byte-stable across two runs") exists to catch. Measured 2026-10-08:
+# the mimetype entry, made from a ZipInfo, was already 1980; the four documents
+# and every image carried the run's second.
+_ZIP_DATE = (1980, 1, 1, 0, 0, 0)
+
+
+def _entry(name: str, *, stored: bool = False) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(name, date_time=_ZIP_DATE)
+    info.compress_type = zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED
+    return info
+
+
 def write_epub(doc: Document, out_path: str, title: str) -> dict:
     """Write `doc` as an EPUB 3 at `out_path`. Returns a small report."""
     targets = link_entries(doc)
@@ -286,6 +309,20 @@ def write_epub(doc: Document, out_path: str, title: str) -> dict:
             if not blocks[0].anchor:
                 blocks[0].anchor = f"f{i + 1}"
             items.append((name, 0, f"text/c{i + 1:03d}.xhtml#{blocks[0].anchor}"))
+
+    # D5's map, the half a page anchor cannot carry: which spine file holds which
+    # PDF pages. It is what lets a later "open the original at the page I was on"
+    # (or a pdf.js view of the original) work without re-extracting anything.
+    page_map = [
+        {
+            "href": f"text/c{i + 1:03d}.xhtml",
+            "title": name,
+            "from_page": min(b.page for b in blocks) + 1,
+            "to_page": max(b.page for b in blocks) + 1,
+        }
+        for i, (name, blocks) in enumerate(files)
+        if blocks
+    ]
 
     try:
         stat = os.stat(doc.source)
@@ -311,21 +348,19 @@ def write_epub(doc: Document, out_path: str, title: str) -> dict:
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        info = zipfile.ZipInfo("mimetype")
-        info.compress_type = zipfile.ZIP_STORED
-        zf.writestr(info, "application/epub+zip")
-        zf.writestr("META-INF/container.xml", _container())
+        zf.writestr(_entry("mimetype", stored=True), "application/epub+zip")
+        zf.writestr(_entry("META-INF/container.xml"), _container())
         zf.writestr(
-            "OEBPS/content.opf",
+            _entry("OEBPS/content.opf"),
             _opf(uid, title, os.path.basename(doc.source), modified, len(files), [(n, m) for n, _, m in images]),
         )
-        zf.writestr("OEBPS/nav.xhtml", _nav(items))
-        zf.writestr("OEBPS/toc.ncx", _ncx(items, uid, title))
-        zf.writestr("OEBPS/style.css", STYLESHEET)
+        zf.writestr(_entry("OEBPS/nav.xhtml"), _nav(items))
+        zf.writestr(_entry("OEBPS/toc.ncx"), _ncx(items, uid, title))
+        zf.writestr(_entry("OEBPS/style.css"), STYLESHEET)
         for i, (name, blocks) in enumerate(files):
-            zf.writestr(f"OEBPS/text/c{i + 1:03d}.xhtml", _xhtml(name, blocks, image_names))
+            zf.writestr(_entry(f"OEBPS/text/c{i + 1:03d}.xhtml"), _xhtml(name, blocks, image_names))
         for name, data, _ in images:
-            zf.writestr(f"OEBPS/images/{name}", data)
+            zf.writestr(_entry(f"OEBPS/images/{name}"), data)
 
     words = sum(
         len(b.text.split()) for _, blocks in files for b in blocks if b.kind in ("para", "heading", "footnote", "table")
@@ -337,4 +372,5 @@ def write_epub(doc: Document, out_path: str, title: str) -> dict:
         "words": words,
         "bytes": os.path.getsize(out_path),
         "uid": uid,
+        "page_map": page_map,
     }
