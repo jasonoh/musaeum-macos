@@ -21,3 +21,6 @@ release/
 
 # Obsidian vault config and third-party themes stay local (theme files carry their authors' contact details)
 .obsidian/
+
+# The PDF reflow layout helper, built by scripts/build-layout-helper.sh
+helpers/bin/
