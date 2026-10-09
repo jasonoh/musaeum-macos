@@ -270,3 +270,11 @@ def test_a_table_of_contents_that_cannot_fit_even_one_entry_raises_instead_of_lo
     monkeypatch.setattr(writer, "MAX_TOC_TITLE_CHARS", 10**9)
     with pytest.raises(IndexOverflow):
         build_azw3(str(toc_book(tmp_path, [("x" * 300_000, "c.xhtml", [])])))
+
+
+# --- the creator-software fields: the Oasis does not need them (slice 2 device experiment)
+
+
+def test_no_creator_software_fields_are_written(book):
+    """The Oasis does not need them (slice 2 device experiment), and they would name another maker's tool."""
+    assert not {204, 205, 206, 207, 535} & set(read_kf8(build_azw3(str(book)).data).exth)

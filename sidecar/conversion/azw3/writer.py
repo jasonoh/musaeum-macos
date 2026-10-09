@@ -33,14 +33,6 @@ KEPT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif"}
 NONE = 0xFFFFFFFF
 FLIS = b"FLIS" + struct.pack(">IHHIIHHIII", 8, 65, 0, 0, NONE, 1, 3, 3, 1, NONE)
 EOF_RECORD = b"\xe9\x8e\r\n"
-# EXTH 204-207 and 535 name the *creator software*. These are the values Calibre
-# writes: they say Amazon's kindlegen (Mac, 2.9, build 0730-890adc2), not Musaeum.
-# The device has opened every file carrying them and nothing measured says it reads
-# them, but no file without them has been tried; the gate keeps them and slice 2
-# tests zeroing them. Musaeum signs itself in EXTH 108 (contributor), where Calibre
-# signs itself.
-CREATOR = [(204, 202), (205, 2), (206, 9), (207, 0)]
-CREATOR_BUILD = b"0730-890adc2"
 
 
 @dataclass
@@ -290,7 +282,6 @@ def build_azw3(epub_path: str) -> Conversion:
     exth_records += [(108, b"Musaeum"), (113, book_uuid.encode()), (125, u32(len(resources.images))), (131, u32(0))]
     if cover is not None:
         exth_records += [(201, u32(cover)), (203, u32(0))]
-    exth_records += [(kind, u32(value)) for kind, value in CREATOR] + [(535, CREATOR_BUILD)]
     exth_records += [(501, b"EBOK"), (503, title.encode()), (524, language.encode())]
 
     rec0 = record_zero(
