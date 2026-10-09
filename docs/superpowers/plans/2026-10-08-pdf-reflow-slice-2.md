@@ -614,7 +614,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 $PY -m pytest sidecar/tests -q
 ```
 
-Expected: `349 passed` (or `347 passed, 2 skipped` with no helper built). Then dispatch the reviewer with: this plan, `sidecar/reflow/vision.py`, `sidecar/reflow/layout.py`, `sidecar/tests/test_reflow_vision.py`, `docs/invariants/packaging-and-python.md` (the helper's own cost and build) and `helpers/musaeum-layout/main.swift` — the last because the stream's contract (page order, one error line per failing page, exit 0 even when a page fails) is the Swift program's, not this module's.
+Expected: `357 passed` (or `355 passed, 2 skipped` with no helper built) — 349 before Task 1, plus its eight tests. Then dispatch the reviewer with: this plan, `sidecar/reflow/vision.py`, `sidecar/reflow/layout.py`, `sidecar/tests/test_reflow_vision.py`, `docs/invariants/packaging-and-python.md` (the helper's own cost and build) and `helpers/musaeum-layout/main.swift` — the last because the stream's contract (page order, one error line per failing page, exit 0 even when a page fails) is the Swift program's, not this module's.
 
 ---
 
@@ -712,7 +712,7 @@ per spine file, with the range of PDF pages it holds (D5).
 $PY -m pytest sidecar/tests -k reflow -q
 ```
 
-Expected: `90 passed` — nothing reads `page_map` yet, and `sections` (the count) is untouched.
+Expected: `98 passed` — nothing reads `page_map` yet, and `sections` (the count) is untouched.
 
 ```bash
 git add sidecar/reflow/epub.py
@@ -842,7 +842,7 @@ def test_a_page_two_files_share_names_both(tmp_path):
 $PY -m pytest sidecar/tests -k reflow -q
 ```
 
-Expected: `101 passed` with the helper built (`99 passed, 2 skipped` without it) — 98 after Task 1, plus this file's four. Then the same tests must pass twice in a row, and neither run may be a fluke of the clock:
+Expected: `102 passed` with the helper built (`100 passed, 2 skipped` without it) — 98 after Task 1, plus this file's four. Then the same tests must pass twice in a row, and neither run may be a fluke of the clock:
 
 ```bash
 $PY -m pytest sidecar/tests/test_reflow_produce.py -q
@@ -1268,7 +1268,7 @@ In `docs/data-contracts.md`, add this row to the sidecar method table after `top
 $PY -m pytest sidecar/tests -q
 ```
 
-Expected: `349 passed` — import of `main` now pulls `reflow.produce` (and pypdfium2 with it) into the sidecar's start-up, which `test_main_dispatch.py` exercises; nothing else changes.
+Expected: `361 passed` — import of `main` now pulls `reflow.produce` (and pypdfium2 with it) into the sidecar's start-up, which `test_main_dispatch.py` exercises; nothing else changes.
 
 ```bash
 git add sidecar/reflow/produce.py sidecar/main.py docs/data-contracts.md
@@ -1721,7 +1721,7 @@ $PY -m pytest sidecar/tests/test_reflow_produce.py -q
 $PY -m pytest sidecar/tests -q
 ```
 
-Expected for the last: `379 passed` with the helper built (`377 passed, 2 skipped` without it) — 357 before this task, plus its 22 tests. (The plan's counts are the actual ones as each task ran: Task 1's five tests precede this file's three, so the plan's later steps carry the running total.)
+Expected for the last: `383 passed` with the helper built (`381 passed, 2 skipped` without it) — 361 before this task, plus its 22 tests. (The plan's counts are the running totals as each step actually measured them.)
 
 ```bash
 git add sidecar/tests/test_reflow_produce.py
@@ -2099,7 +2099,7 @@ and a sentence to the docstring's "writes only to the output directory" paragrap
 $PY scripts/pdf-reflow-probe.py --production --book "Sequence to Sequence" --out /tmp/reflow-production-smoke
 ```
 
-Expected in a couple of minutes: one book written, `production: 1/1 written, 1 byte-stable across two runs, 1 cached on the next open, 1 re-ran on a touched source, 1 wrote only derived/`, its gate line, and exit 0.
+Expected in a couple of minutes: one book written, `production: 1/1 written, 1 byte-stable across two runs, 1 cached on the next open, 1 never served a stale stamp, 1 re-ran the pass on a touched source, 1 wrote only derived/`, its gate line, and exit 0.
 
 ```bash
 git add scripts/pdf-reflow-probe.py
@@ -2125,7 +2125,7 @@ This is the slice's own gate, and it is slow: four full passes and one layout pe
 $PY scripts/pdf-reflow-probe.py --production 2>&1 | tee /tmp/reflow-production.txt
 ```
 
-Expected: `production: 5/5 written, 5 byte-stable across two runs, 5 cached on the next open, 5 re-ran on a touched source, 5 wrote only derived/`, exit 0, and `gate: 4/6 books pass` — the same four. **Then compare the per-check lines with Annex C.7 run 2 by hand**, book by book: the content rules are frozen, so *Universe*'s G3 (7 rotated words) and G5 (222 of 255), *Politics*' G5 (21 of 31) and the three passes should read the same numbers, and *Asterix* should read `G8 pass — no artifact`. A book that passed run 2 and fails here stops the slice: report it rather than tuning it. `dist/reflow-production/report.json` carries every measure.
+Measured 2026-10-08, `exit 0`: `production: 5/5 written, 5 byte-stable across two runs, 5 cached on the next open, 5 never served a stale stamp, 5 re-ran the pass on a touched source, 5 wrote only derived/`, and `gate: 4/6 books pass` — the same four. **Then compare the per-check lines with Annex C.7 run 2 by hand**, book by book: the content rules are frozen, so *Universe*'s G3 (7 rotated words) and G5 (222 of 255), *Politics*' G5 (21 of 31) and the three passes should read the same numbers, and *Asterix* should read `G8 pass — no artifact`. A book that passed run 2 and fails here stops the slice: report it rather than tuning it. `dist/reflow-production/report.json` carries every measure.
 
 - [ ] **Step 3: Record the outcome in `tasks.md`**
 
