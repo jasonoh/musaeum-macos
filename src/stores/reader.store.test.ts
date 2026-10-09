@@ -594,11 +594,28 @@ describe('openBook — the reflow path', () => {
     )
   })
 
-  it('drops an answer for a book the reader has left', async () => {
+  /**
+   * The stale-answer guard — and the case has to answer with a **fallback** to
+   * decide it. The default `cached` answer's only effect is `set({ reflow: null })`,
+   * which after a `close()` is a no-op, so the mutation campaign found this case
+   * **green with the guard removed** (measured 2026-10-09): it was passing for the
+   * wrong reason. With a refusal for a book the reader has left, the guard is the
+   * only thing standing between a departed session and Preview.
+   */
+  it('drops a refusal for a book the reader has left', async () => {
+    answer = {
+      status: 'fallback',
+      reason: '3 of 5 text pages could not be laid out',
+      verdict: 'unstable_layout',
+      epub: '',
+      stampFile: '',
+      pages: 5,
+      bytes: 0,
+      seconds: 1.2
+    }
     open(pdfBook('b6'))
     useReaderStore.getState().close()
-    await Promise.resolve()
-    await Promise.resolve()
+    for (let i = 0; i < 5; i++) await Promise.resolve()
     expect(opened).toEqual([])
     expect(useUIStore.getState().notify).not.toHaveBeenCalled()
   })
