@@ -55,15 +55,8 @@ export function bookContentType(format: string): string {
 export async function resolveBookFile(bookId: string, format: string): Promise<string | null> {
   if (!FORMATS.has(format)) return null
 
-  const root = nas.getLibraryRoot()
-  const book = db.getBook(bookId)
-  if (!root || !book?.nasPath) return null
-
-  // nasPath comes from a catalog any machine can write; a traversing entry
-  // must not turn a renderer URL into arbitrary filesystem read access
-  const dir = resolve(root, book.nasPath)
-  const rel = relative(resolve(root), dir)
-  if (rel.startsWith('..') || rel === '') return null
+  const dir = await bookFolder(bookId)
+  if (!dir) return null
 
   let entries: string[]
   try {
@@ -76,14 +69,46 @@ export async function resolveBookFile(bookId: string, format: string): Promise<s
   // deleteFormats, so a book renamed after import still opens
   const match = entries.find((f) => extname(f).toLowerCase() === `.${format}`)
   if (!match) return null
-  const candidate = join(dir, match)
 
-  // The lexical check above stops a traversing nasPath, but not a symlink —
-  // the matched file, or the book folder itself, can point outside the
-  // library root and still pass it. realpath resolves that, but macOS makes
-  // the library root's own ancestry a symlink too (/tmp -> /private/tmp,
-  // /var -> /private/var), so BOTH sides must be realpath'd before comparing
-  // — resolving only the candidate would 404 every legitimate book.
+  return contained(join(dir, match))
+}
+
+/**
+ * The book's folder, when the library holds one for it — or null.
+ *
+ * The lexical check is `nasPath`'s own defence: the path comes from a catalog
+ * any machine can write, so a traversing entry must not turn a renderer URL
+ * into arbitrary filesystem read access. The realpath half is in `contained` —
+ * a symlink passes this test.
+ */
+async function bookFolder(bookId: string): Promise<string | null> {
+  const root = nas.getLibraryRoot()
+  const book = db.getBook(bookId)
+  if (!root || !book?.nasPath) return null
+
+  const dir = resolve(root, book.nasPath)
+  const rel = relative(resolve(root), dir)
+  if (rel.startsWith('..') || rel === '') return null
+  return dir
+}
+
+/**
+ * `candidate` inside the library root — realpath'd on **both** sides, or null.
+ *
+ * The lexical check the callers do first stops a traversing `nasPath`, but not a
+ * symlink: the file, or the book folder itself, can point outside the library
+ * root and still pass it. realpath resolves that, but macOS makes the library
+ * root's own ancestry a symlink too (`/tmp` → `/private/tmp`, `/var` →
+ * `/private/var`), so **both** sides must be realpath'd before comparing —
+ * resolving only the candidate would 404 every legitimate book. The *value*
+ * returned is the caller's own path and not the realpath, so the name in a
+ * response is the one that was asked for; the check is the comparison, not the
+ * value.
+ */
+async function contained(candidate: string): Promise<string | null> {
+  const root = nas.getLibraryRoot()
+  if (!root) return null
+
   let realRoot: string
   let realCandidate: string
   try {
@@ -96,6 +121,37 @@ export async function resolveBookFile(bookId: string, format: string): Promise<s
   if (realRel.startsWith('..') || realRel === '') return null
 
   return candidate
+}
+
+// ---------------------------------------------------------------------------
+// The reflow — a derived rendering, on a route of its own (D3, D8)
+// ---------------------------------------------------------------------------
+
+const DERIVED = 'derived'
+const REFLOW_NAME = 'reflow.epub'
+
+/**
+ * The file behind `musaeum://book/{bookId}/reflow` — `{book}/derived/reflow.epub`.
+ *
+ * **Deliberately not a member of `FORMATS`, and deliberately not reachable
+ * through `resolveBookFile`.** That function's second consumer is the HTTP
+ * surface (`api/rest.ts` passes the caller's `format` straight through), so a
+ * `reflow` arm there would open `GET /api/books/{id}/file?format=reflow` in the
+ * same commit that no document describes — and D8 puts the contract first, in
+ * this repo, in slice 4. This route is therefore the renderer's alone, and the
+ * wire stays closed until slice 4 opens it on purpose.
+ *
+ * A *fixed* name rather than an extension scan, for the mirror-image reason:
+ * `derived/` is not a format (D3, `docs/invariants/files-and-deletion.md`), so
+ * there is no "which file is the book's" question here — the artifact's name is
+ * the sidecar's (`reflow/produce.py`'s `EPUB_NAME`), and this is its second
+ * declaration. A scan would also happily serve a stray file the pipeline never
+ * wrote.
+ */
+export async function resolveReflowFile(bookId: string): Promise<string | null> {
+  const dir = await bookFolder(bookId)
+  if (!dir) return null
+  return contained(join(dir, DERIVED, REFLOW_NAME))
 }
 
 // ---------------------------------------------------------------------------
