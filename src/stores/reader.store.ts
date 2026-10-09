@@ -378,7 +378,13 @@ export const useReaderStore = create<ReaderState>()(
             bookId: book.id,
             format,
             status: reload ? 'loading' : s.status,
-            error: null,
+            // A reload clears the old failure; a non-reload **keeps** it, because
+            // nothing re-ran and the session it describes is still the one on
+            // screen. Nulling it left the error state's own surface — one message
+            // and two buttons — drawing the buttons above nothing (measured in the
+            // live pass on 2026-10-09: reopening a book that had failed showed
+            // "Open externally" with no reason over it).
+            error: reload ? null : s.error,
             toc: [],
             percent: reload ? (book.readingState?.percent ?? 0) : s.percent,
             tocOpen: false,

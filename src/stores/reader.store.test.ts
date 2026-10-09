@@ -436,6 +436,25 @@ describe('the reader’s one side slot (D4)', () => {
     get().openBook(makeBook('b2'))
     expect(get().status).toBe('loading')
   })
+
+  /**
+   * The other half of that rule, and the message is the half that was missing: a
+   * session that is *in* an error keeps the reason it is showing, because nothing
+   * re-ran. Nulling it left the error state's own surface drawing "Open
+   * externally" with no reason above it (measured 2026-10-09 by the live pass's
+   * probe, which had reopened a failed book to re-drive it).
+   */
+  it('keeps the reason a non-reload open is still showing', () => {
+    get().openBook(makeBook('b1'))
+    get().setStatus('error', 'This book’s file could not be read.')
+    get().openBook(makeBook('b1'))
+    expect(get().status).toBe('error')
+    expect(get().error).toBe('This book’s file could not be read.')
+
+    // …and a real reload still clears it, because a new load has no reason yet
+    get().openBook(makeBook('b2'))
+    expect(get().error).toBeNull()
+  })
 })
 
 describe('a book is a new conversation', () => {
