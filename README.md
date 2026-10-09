@@ -31,16 +31,16 @@ Import once, let the metadata fill itself in, read the books, and send them to a
 
 ## ✨ Features
 
-|                          |                                |                                                                                                                                        |
-| ------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| 📥 **Import**            | EPUB, MOBI, AZW3 and PDF       | Drag onto the window, drop in `imports/`, or ⌘O. A duplicate pauses the import and asks.                                               |
-| 🔎 **Metadata**          | Hydrated automatically         | The file itself, Google Books, OpenLibrary and Goodreads. Disagreements go to a review queue; a field you edit stays yours.            |
-| 🗂️ **Library**           | Built for 7,000+ books         | Virtualized grid and list, full-text search in about 18 ms, facets, six sorts, bulk actions.                                           |
-| 📖 **Reader**            | EPUB, MOBI and AZW3 in-app     | Search inside the book, an optional Ask panel pointed at a model you choose, and a reading position that follows you between machines. |
-| 📲 **Kindle**            | Over USB                       | Knows what's already on the device, converts to AZW3 on demand, and says what a send actually did.                                     |
-| 💾 **Storage**           | A share, a drive or a folder   | A NAS gets mount recovery and an offline read-only cache; a plain folder doesn't pretend a server exists.                              |
-| 🎨 **Theming**           | A dark library, in your colors | Import a base16, iTerm2 or Obsidian palette. Contrast floors are enforced, and a palette that can't hold them is refused.              |
-| 📚 **Calibre migration** | Read-only                      | Copy a Calibre library across with progress. Nothing in Calibre is ever deleted.                                                       |
+|                          |                                 |                                                                                                                                                                                                                                              |
+| ------------------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 📥 **Import**            | EPUB, MOBI, AZW3 and PDF        | Drag onto the window, drop in `imports/`, or ⌘O. A duplicate pauses the import and asks.                                                                                                                                                     |
+| 🔎 **Metadata**          | Hydrated automatically          | The file itself, Google Books, OpenLibrary and Goodreads. Disagreements go to a review queue; a field you edit stays yours.                                                                                                                  |
+| 🗂️ **Library**           | Built for 7,000+ books          | Virtualized grid and list, full-text search in about 18 ms, facets, six sorts, bulk actions.                                                                                                                                                 |
+| 📖 **Reader**            | EPUB, MOBI, AZW3 and PDF in-app | Search inside the book, an optional Ask panel pointed at a model you choose, and a reading position that follows you between machines. A PDF-only book is prepared into a readable EPUB on demand, and its original PDF is one gesture away. |
+| 📲 **Kindle**            | Over USB                        | Knows what's already on the device, converts to AZW3 on demand, and says what a send actually did.                                                                                                                                           |
+| 💾 **Storage**           | A share, a drive or a folder    | A NAS gets mount recovery and an offline read-only cache; a plain folder doesn't pretend a server exists.                                                                                                                                    |
+| 🎨 **Theming**           | A dark library, in your colors  | Import a base16, iTerm2 or Obsidian palette. Contrast floors are enforced, and a palette that can't hold them is refused.                                                                                                                    |
+| 📚 **Calibre migration** | Read-only                       | Copy a Calibre library across with progress. Nothing in Calibre is ever deleted.                                                                                                                                                             |
 
 Every one of these has a measurement behind it. [`docs/project-overview.md`](docs/project-overview.md) is the full inventory.
 
@@ -62,21 +62,21 @@ Per-book files are canonical and `catalog.json` is derived, so there is no share
 
 Musaeum is one person's Mac app, so the servers beat it on reach and Calibre beats it on depth. This is the short version; [`docs/comparison.md`](docs/comparison.md) has the full chart, sources for every cell, and where each tool is the better pick. ❔ means not verified, not "no". Checked 2026-10-06.
 
-|                            | **Musaeum**               | **Calibre**            | **Calibre-Web-Automated** | **BookOrbit**  | **Kavita**       | **Komga**     |
-| -------------------------- | ------------------------- | ---------------------- | ------------------------- | -------------- | ---------------- | ------------- |
-| **Shape**                  | Mac app                   | Desktop app            | Docker server             | Docker server  | Docker or binary | Docker or JAR |
-| **No server to run**       | ✅                        | ✅                     | ❌                        | ❌             | ❌               | ❌            |
-| **Library on a NAS**       | ✅ The design target      | ❌ Docs advise against | ⚠️ With a workaround      | ❌ Unsupported | ❔               | ❔            |
-| **Multi-user**             | ❌                        | ⚠️ Content server      | ✅                        | ✅             | ✅               | ✅            |
-| **Automatic metadata**     | ✅ With a review queue    | ✅                     | ✅                        | ✅             | ⚠️ Paid Kavita+  | ❔            |
-| **Reads in-app**           | ✅ EPUB, MOBI, AZW3       | ✅                     | ✅ Browser                | ✅             | ✅               | ✅            |
-| **Annotations**            | ❌                        | ✅                     | ❔                        | ✅             | ✅               | ❔            |
-| **Comics and manga**       | ❌                        | ⚠️                     | ❔                        | ✅             | ✅               | ✅            |
-| **Audiobooks**             | ❌                        | ❔                     | ❔                        | ✅             | ❌               | ❌            |
-| **Kindle**                 | ✅ USB, judged by content | ✅                     | ✅ Auto-send              | ❔             | ❔               | ❔            |
-| **Kobo / KOReader / OPDS** | ❌                        | ❔                     | ✅                        | ✅             | ✅               | ✅            |
-| **iPhone app**             | ⚠️ Build from source      | ❔                     | ❔                        | ✅ App Store   | ❔               | ❔            |
-| **Licence**                | MIT                       | GPL-3.0                | GPL-3.0                   | AGPL-3.0       | GPL-3.0          | MIT           |
+|                            | **Musaeum**                         | **Calibre**            | **Calibre-Web-Automated** | **BookOrbit**  | **Kavita**       | **Komga**     |
+| -------------------------- | ----------------------------------- | ---------------------- | ------------------------- | -------------- | ---------------- | ------------- |
+| **Shape**                  | Mac app                             | Desktop app            | Docker server             | Docker server  | Docker or binary | Docker or JAR |
+| **No server to run**       | ✅                                  | ✅                     | ❌                        | ❌             | ❌               | ❌            |
+| **Library on a NAS**       | ✅ The design target                | ❌ Docs advise against | ⚠️ With a workaround      | ❌ Unsupported | ❔               | ❔            |
+| **Multi-user**             | ❌                                  | ⚠️ Content server      | ✅                        | ✅             | ✅               | ✅            |
+| **Automatic metadata**     | ✅ With a review queue              | ✅                     | ✅                        | ✅             | ⚠️ Paid Kavita+  | ❔            |
+| **Reads in-app**           | ✅ EPUB, MOBI, AZW3, PDF (reflowed) | ✅                     | ✅ Browser                | ✅             | ✅               | ✅            |
+| **Annotations**            | ❌                                  | ✅                     | ❔                        | ✅             | ✅               | ❔            |
+| **Comics and manga**       | ❌                                  | ⚠️                     | ❔                        | ✅             | ✅               | ✅            |
+| **Audiobooks**             | ❌                                  | ❔                     | ❔                        | ✅             | ❌               | ❌            |
+| **Kindle**                 | ✅ USB, judged by content           | ✅                     | ✅ Auto-send              | ❔             | ❔               | ❔            |
+| **Kobo / KOReader / OPDS** | ❌                                  | ❔                     | ✅                        | ✅             | ✅               | ✅            |
+| **iPhone app**             | ⚠️ Build from source                | ❔                     | ❔                        | ✅ App Store   | ❔               | ❔            |
+| **Licence**                | MIT                                 | GPL-3.0                | GPL-3.0                   | AGPL-3.0       | GPL-3.0          | MIT           |
 
 **BookLore** has no column because it is entering maintenance mode, with [BookOrbit as its official successor](https://github.com/booklore-app/booklore). Its community fork, **Grimmory**, is covered in the full comparison.
 
@@ -93,10 +93,10 @@ npm install                                  # also rebuilds better-sqlite3 for 
 python3.12 -m venv sidecar/.venv             # the Python metadata sidecar
 sidecar/.venv/bin/pip install -r sidecar/requirements.txt
 
-./scripts/build-layout-helper.sh             # the PDF reflow's Swift helper, if you work on
-                                             # that side of the app: needs the Xcode
-                                             # toolchain, writes helpers/bin/ (gitignored).
-                                             # Without it 3 pytest cases skip
+./scripts/build-layout-helper.sh             # the PDF reader's Swift helper (Apple Vision):
+                                             # needs the Xcode toolchain, writes
+                                             # helpers/bin/ (gitignored). Without it PDF
+                                             # reflow falls back and 3 pytest cases skip
 
 npm run dev                                  # launch with hot reload
 ```
@@ -121,7 +121,8 @@ Musaeum is the app its author uses daily, against a real 7,000-book library and 
 
 - ✅ The full loop works: **import → hydrate → curate → read → send**, plus the iOS companion.
 - ⚠️ It is an **Electron** app, not a native one: macOS-only (arm64 build), single-user, and **unsigned** for now.
-- ⚠️ No annotations or highlights, no PDF in the reader yet (PDFs open in Preview), no bulk metadata edit, no OPDS, no auto-update.
+- ⚠️ No annotations or highlights, no bulk metadata edit, no OPDS, no auto-update.
+- ✅ **Kindle sends convert in-house.** EPUB → AZW3 is the app's own writer, so no Calibre binary is installed, detected or required; Calibre's *library* is still readable for a migration, and nothing is ever deleted from it.
 - 🔬 Verification is layered: well over a thousand vitest cases, a pytest suite for the sidecar, strict TypeScript, and CI on every push.
 
 [`tasks.md`](tasks.md) is the honest backlog; [`docs/roadmap-history.md`](docs/roadmap-history.md) is the record of everything already landed behind it. [`docs/project-overview.md`](docs/project-overview.md) has the full "not built" list and a sourced comparison with Calibre, Calibre-Web, Kavita and Komga, including where they plainly win.

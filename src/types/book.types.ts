@@ -79,6 +79,44 @@ export interface ProgressReport {
 }
 
 /**
+ * What one reflow came to, in the app's spelling rather than the sidecar's.
+ *
+ * `status` is the pipeline's own three answers (D2/D9): `produced` wrote an
+ * artifact on this call, `cached` found a current one, `fallback` wrote nothing
+ * and `reason` is the one sentence to show (D6). `epub` and `stampFile` are
+ * relative to the book folder and `''` when nothing was written; `pages`,
+ * `bytes` and `seconds` are the pass's own measurements.
+ */
+export interface ReflowResult {
+  status: 'produced' | 'cached' | 'fallback'
+  reason: string
+  verdict: string
+  epub: string
+  stampFile: string
+  pages: number
+  bytes: number
+  seconds: number
+}
+
+/**
+ * One `reflow_progress` frame, in the app's spelling.
+ *
+ * `phase` is the pipeline's — `start`, `layout`, `reading`, `writing`, `done`,
+ * `cached`, `fallback` — plus one this app adds, `retrying`, and the two page
+ * phases carry `completed` of `total` against the same page count. The sidecar
+ * sends `book_id`; this is `bookId`, because it crosses into the renderer here
+ * and every renderer type in this repo is camelCase.
+ */
+export interface ReflowProgress {
+  bookId: string
+  phase: string
+  completed: number
+  total: number
+  /** The pipeline's own sentence — on `fallback`, and on this app's `retrying`. */
+  reason?: string
+}
+
+/**
  * What a manual Refresh or Rebuild reports back. Both return the same *shape*
  * because either can become the other: `library-sync.refreshLibrary` walks and
  * rebuilds when the catalog is missing, so a caller cannot tell which ran
@@ -159,6 +197,43 @@ export const READABLE_FORMATS: BookFormat[] = ['epub', 'azw3', 'mobi']
 
 export function readableFormat(book: Book): BookFormat | null {
   return READABLE_FORMATS.find((f) => book.formats.includes(f)) ?? null
+}
+
+/**
+ * A format the in-app reader can be asked for.
+ *
+ * `'reflow'` is not a `BookFormat` and never becomes one (D3, AC2): it names a
+ * *rendering* of the book's PDF, served from `{book}/derived/reflow.epub`, and
+ * adding it to `formats` would make a PDF-only book claim an EPUB — changing its
+ * format chip, its facet count, the phone's `preferredFormat` and what a Kindle
+ * is offered.
+ */
+export type ReaderFormat = BookFormat | 'reflow'
+
+/**
+ * Whether the reader opens this book itself, and as what — or `null`, meaning
+ * nothing the reader or the OS can open.
+ *
+ * The order is the feature (D1): a book with an EPUB, AZW3 or MOBI is read
+ * exactly as it always was, and **a PDF-only book** opens the reader, which
+ * produces a reflowed EPUB on demand (D7) and hands the book to the system
+ * opener only if the pass refuses (D6).
+ *
+ * Deliberately narrower than the *feature's* trigger, which D1 sets at "holds a
+ * PDF and no EPUB" (1,534 books) for the wire's benefit. This is the rule for
+ * **when this Mac spends a pass**, and it asks only for a book the reader has no
+ * other way to show: reflowing a `mobi`+`pdf` paper costs seconds and reads
+ * worse when it fails, because a textless book that also holds a `mobi` would
+ * forfeit a view this engine can render for Preview. The residual — those 45
+ * books need an artifact before the phone can read them — is slice 4's, and R6
+ * of `plans/2026-10-09-pdf-reflow-slice-3.md` records the trade.
+ */
+export function readerTarget(
+  book: Book
+): { kind: 'format'; format: BookFormat } | { kind: 'reflow' } | null {
+  const readable = readableFormat(book)
+  if (readable) return { kind: 'format', format: readable }
+  return book.formats.includes('pdf') ? { kind: 'reflow' } : null
 }
 
 /**

@@ -7,14 +7,25 @@ import type {
   FoliateView
 } from '@vendor/foliate-js/view.js'
 import '@vendor/foliate-js/view.js'
-import type { BookFormat, ReadingState } from '@shared/book.types'
+import type { ReadingState, ReaderFormat } from '@shared/book.types'
 import { readerPageCss, resolveReaderPalette } from '@/lib/theme/reader-palette'
 import type { ReaderPrefs, ReaderSection, ReaderTocItem } from '@/stores/reader.store'
 import { useThemeStore } from '@/stores/theme.store'
 
 interface Props {
   bookId: string
-  format: BookFormat
+  /**
+   * The format the URL carries, and the extension the `File` is named with.
+   * `'reflow'` is not a `BookFormat` (D3): it is the route segment for the
+   * book's derived EPUB, which `book-bytes.resolveReflowFile` serves.
+   *
+   * `book.reflow` is safe as a *name* because `makeBook` decides a zip by its
+   * content — `isZip` reads the first four bytes, and the name is consulted
+   * only to exclude `.cbz`/`.fb2` (`vendor/foliate-js/view.js:8-28`, `:101`).
+   * The PDF branch is the opposite case (`isPDF` reads the magic and `./pdf.js`
+   * is external), which is why `'pdf'` must never reach here.
+   */
+  format: ReaderFormat
   initial: ReadingState | null
   prefs: ReaderPrefs
   onReady(toc: ReaderTocItem[]): void

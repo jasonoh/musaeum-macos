@@ -12,7 +12,10 @@ import {
   seriesDisplay,
   sortableAuthor,
   sortableTitle,
-  sortLabel
+  sortLabel,
+  readerTarget,
+  type Book,
+  type BookFormat
 } from './book.types'
 
 /**
@@ -211,5 +214,35 @@ describe('shelf_added — the sort that only exists inside a shelf (bookshelves 
     expect(sortLabel({ field: 'shelf_added', direction: 'asc' })).toBe(
       'Date Added to Shelf, Oldest First'
     )
+  })
+})
+
+describe('readerTarget', () => {
+  const book = (formats: BookFormat[]): Book => ({ ...makeBook('b1'), formats })
+
+  it('reads a book the engine can open as it always did', () => {
+    expect(readerTarget(book(['epub']))).toEqual({ kind: 'format', format: 'epub' })
+    expect(readerTarget(book(['mobi', 'pdf']))).toEqual({ kind: 'format', format: 'mobi' })
+    // Preference order, not array order (invariant 3)
+    expect(readerTarget(book(['pdf', 'azw3']))).toEqual({ kind: 'format', format: 'azw3' })
+  })
+
+  it('reflows a book the reader has no other way to show', () => {
+    expect(readerTarget(book(['pdf']))).toEqual({ kind: 'reflow' })
+  })
+
+  /**
+   * R6's boundary: the feature's trigger is wider than this rule, and the
+   * comment above `readerTarget` says why. If this case is ever the *other*
+   * answer, D1's trigger has been adopted for the Mac's reader and that is a
+   * decision rather than a refactor.
+   */
+  it('does not spend a pass on a book that already has a readable file', () => {
+    expect(readerTarget(book(['mobi', 'pdf']))?.kind).toBe('format')
+    expect(readerTarget(book(['azw3', 'pdf']))?.kind).toBe('format')
+  })
+
+  it('is null for a book with nothing to open', () => {
+    expect(readerTarget(book([]))).toBeNull()
   })
 })

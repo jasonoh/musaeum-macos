@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FoliateView } from '@vendor/foliate-js/view.js'
-import type { ReadingState } from '@shared/book.types'
+import type { ReadingState, ReflowProgress } from '@shared/book.types'
+import { primaryFormat } from '@shared/book.types'
 import { TITLEBAR_STRIP_HEIGHT, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 import { isTypingTarget } from '@/hooks/useBookNavigation'
 import { useLibraryStore } from '@/stores/library.store'
@@ -40,6 +41,8 @@ export function ReaderView() {
   const status = useReaderStore((s) => s.status)
   const error = useReaderStore((s) => s.error)
   const percent = useReaderStore((s) => s.percent)
+  const reflow = useReaderStore((s) => s.reflow)
+  const setReflow = useReaderStore((s) => s.setReflow)
   const tocOpen = useReaderStore((s) => s.tocOpen)
   const prefsOpen = useReaderStore((s) => s.prefsOpen)
   const prefs = useReaderStore((s) => s.prefs)
@@ -110,6 +113,15 @@ export function ReaderView() {
   /** `undefined` means "still asking" — the engine is not mounted, and says so. */
   const resumeState: ReadingState | null | undefined =
     resume?.id !== bookId ? undefined : resume.ok ? resume.state : (book?.readingState ?? null)
+
+  /**
+   * The pass's frames, wired once. `ReaderView` is mounted unconditionally by
+   * `App.tsx`, so this is one subscription for the process — the property
+   * `src/hooks/useAi.ts` documents for the ask stream — without a hook of its
+   * own and without an `App.tsx` mount line. A frame for a book that is not
+   * open is dropped by `setReflow`'s own guard, not by this listener.
+   */
+  useEffect(() => window.Musaeum.on.reflowProgress(setReflow), [setReflow])
 
   // Modals and dialogs render *after* the reader in App.tsx at the same z-50,
   // so they sit on top of an open book and own the keyboard while they do.
@@ -380,7 +392,12 @@ export function ReaderView() {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    void window.Musaeum.files.openBookFile(book.id, format).catch(() => {})
+                    void window.Musaeum.files
+                      .openBookFile(
+                        book.id,
+                        format === 'reflow' ? (primaryFormat(book) ?? 'pdf') : format
+                      )
+                      .catch(() => {})
                     closeReader()
                   }}
                   className="rounded-md border border-ink-600 px-3 py-1.5 text-[12px] text-parchment-dim hover:border-gold-500/50 hover:text-gold-300"
@@ -397,12 +414,21 @@ export function ReaderView() {
             </div>
           ) : (
             <>
-              {status === 'loading' && (
+              {/*
+                While a pass is running the pane below *is* the loading state
+                ("Preparing this book…"), and the reader's own "Opening…" would
+                paint an italic line straight over it — two loading messages for
+                one wait. The reflow panel owns the screen until the artifact
+                arrives; this line returns when the engine has something to open.
+              */}
+              {status === 'loading' && !reflow && (
                 <p className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-[13px] italic text-parchment-faint">
                   Opening…
                 </p>
               )}
-              {resumeState === undefined ? null : (
+              {resumeState === undefined ? null : reflow ? (
+                <ReflowProgressPanel progress={reflow} />
+              ) : (
                 <ReaderEngine
                   bookId={book.id}
                   format={format}
@@ -435,4 +461,37 @@ export function ReaderView() {
       {prefsOpen && <ReaderPrefsPopover onClose={closePrefs} />}
     </div>
   )
+}
+
+/**
+ * The pass, while it runs (D7, AC6).
+ *
+ * A pane of its own rather than a spinner over the book: the artifact is not
+ * there yet, so there is no page to sit a spinner on — and the two page phases
+ * share one page count (slice 2), so the bar is the same measure in both.
+ */
+function ReflowProgressPanel({ progress }: { progress: ReflowProgress }) {
+  const fraction = progress.total > 0 ? progress.completed / progress.total : 0
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+      <p className="font-display text-[15px] text-parchment">Preparing this book…</p>
+      <div className="h-1 w-64 overflow-hidden rounded bg-ink-800">
+        <div
+          className="h-full bg-gold-500 transition-[width] duration-200"
+          style={{ width: `${Math.round(fraction * 100)}%` }}
+        />
+      </div>
+      <p className="text-[12px] text-parchment-faint">{reflowLabel(progress)}</p>
+    </div>
+  )
+}
+
+/** The line under the bar — pages when the phase has them, the phase otherwise. */
+function reflowLabel(progress: ReflowProgress): string {
+  if (progress.phase === 'retrying') return 'Trying again…'
+  if (progress.phase === 'start') return 'Measuring the book…'
+  if (progress.phase === 'writing') return 'Writing the book…'
+  if (progress.phase === 'cached') return 'Already prepared'
+  if (progress.total > 0) return `${progress.completed} of ${progress.total} pages`
+  return 'Working…'
 }

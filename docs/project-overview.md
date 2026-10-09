@@ -224,8 +224,8 @@ Electron Main (Node)                     Renderer (React)              Python Si
 
 ### 5.6 Reading
 
-- **EPUB, MOBI and AZW3** in a full-window reader over the vendored foliate-js. Four entry points: double-click, the detail panel's Read button, the context menu, the selection panel.
-- **PDF opens in Preview** for now (PDF in the reader is the next phase); whatever the engine can't render falls through the same gesture, so every book responds to a double-click.
+- **EPUB, MOBI and AZW3** in a full-window reader over the vendored foliate-js, and **PDF through a reflowed EPUB**: a PDF-only book opens the reader, which prepares the artifact on demand and hands the book to Preview with one line of reason if the pass refuses it. Four entry points: double-click, the detail panel's Read button, the context menu, the selection panel.
+- **A PDF the reflow will not lay out** — an image-only scan, a page with no text layer — still opens in Preview, with the pipeline's own sentence on a toast; whatever the engine can't render falls through the same gesture, so every book responds to a double-click.
 - TOC panel, typography popover (typeface, size, line height, spacing, paper/ink page theme) remembered per machine.
 - **Position follows you** across restarts and machines (§3.4).
 - **Read status is automatic and monotonic:** opening starts a book, passing 98% finishes it, and the transition only ever moves forward — so marking a book read by hand sticks even if you open it again.
@@ -315,7 +315,8 @@ Four things about it are decisions rather than features:
 Stated plainly, because a feature list without this section is marketing:
 
 - **No annotations, highlights or bookmarks.** Deliberately out of the reader, and still waiting on a storage decision: highlights are the first thing that would make a book's record grow without bound, so they need somewhere to live before there is UI.
-- **PDF does not open in the reader** — PDFs open in Preview. Everything else about PDF is first-class: import, hydration, covers, transfer (copied, never converted), the Calibre top-up, and the wire (`format=pdf` is served).
+- **A PDF the reflow refuses opens in Preview.** Everything else about PDF is first-class: import, hydration, covers, transfer (copied, never converted), the Calibre top-up, the wire (`format=pdf` is served), and the reader for the books whose layout the pipeline can establish confidently.
+- **Calibre is still required to send a book to a Kindle.** The in-house EPUB → AZW3 writer passed its device gate on 2026-10-07 (three converted books opened on a real Oasis with cover, TOC, internal links and a kept reading position) and lives in `sidecar/conversion/azw3/`, but `convert_format` still runs Calibre's `ebook-convert`; the slice that wires the writer in is planned (`docs/superpowers/plans/2026-10-08-calibre-free-conversion-slice2.md`), and deleting the dependency, its Settings field and its error path follows it.
 - **No manual cover picker.** The candidates are gathered and one can be set underneath; the picker is the one slice of that design still unbuilt, and its annex is written.
 - **No bulk metadata edit** across a selection (add tags, set series, set read status) — the one group-meaningful action left out of the selection work.
 - **No collections UI.** The schema has `collections` / `book_collections`; the UI does not.
@@ -365,7 +366,7 @@ Stated plainly, because a feature list without this section is marketing:
 
 **5. The hydration pipeline argues with itself in public — and learns.** Fetching is table stakes (Calibre-Web and Kavita both scrape online metadata). What is unusual is the explicit policy: reviewed fields vs quiet fields, embedded and Calibre identifiers always winning over fetched ones, a cover score with a published formula, and a resolver that biases future scoring toward the source you keep choosing.
 
-**6. It reads the books, in the app, over the same protocol that serves covers — with the sandbox kept.** One gesture opens any book: EPUB/MOBI/AZW3 in the reader, PDF in Preview. The renderer is never handed a `file://` path, book content can't execute, and CSP admits no remote host, so a book can't phone home. Bringing the reader in-house is also what makes "reading position follows you" possible at all.
+**6. It reads the books, in the app, over the same protocol that serves covers — with the sandbox kept.** One gesture opens any book: EPUB/MOBI/AZW3 in the reader, a PDF as a reflowed EPUB, and a PDF the reflow refuses in Preview. The renderer is never handed a `file://` path, book content can't execute, and CSP admits no remote host, so a book can't phone home. Bringing the reader in-house is also what makes "reading position follows you" possible at all.
 
 **7. It is fast at the size where the alternatives get slow, and it reports its numbers.** ~40 rendered items and ~1,000 DOM nodes at any scroll offset in a 7,000-book library; 115ms to load, 18ms to search. Those figures exist because the virtualization is hand-rolled to keep the grid a CSS grid and the list a real `<table>`.
 

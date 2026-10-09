@@ -52,6 +52,19 @@ extraResources:
       - '!tests/**'
       - '!requirements-dev.txt'
 
+  # The reflow's page-layout helper (spec D4R, Annex C.5). It is a compiled Swift
+  # binary rather than Python source, so it travels as an entry of its own — and
+  # `to:` is `helpers/bin`, not `helpers`, because that is the path
+  # `find_helper()` resolves: `sidecar/reflow/vision.py`'s
+  # `parents[2] / "helpers" / "bin"` is `Contents/Resources/helpers/bin` in a
+  # packaged app (measured 2026-10-09: `Contents/Resources/sidecar/` is there and
+  # `helpers/` is not). A wrong `to:` is silent — every PDF-only book answers
+  # `no_layout` and nothing in the code is wrong. Built by
+  # `scripts/build-layout-helper.sh` (Xcode toolchain); gitignored, so a build
+  # from a fresh clone fails here until it is run. 149 KB against AC9's ≤ 1 MB.
+  - from: helpers/bin
+    to: helpers/bin
+
 mac:
   category: public.app-category.productivity
   darkModeSupport: true

@@ -11,7 +11,8 @@ import {
   bookContentType,
   parseByteRange,
   resolveBookFile,
-  resolveCoverFile
+  resolveCoverFile,
+  resolveReflowFile
 } from './book-bytes'
 import { closeDb, deleteConfig, insertBook } from './db'
 import * as nas from './nas-manager'
@@ -36,6 +37,14 @@ async function seed(id: string, fileName: string) {
   await fs.mkdir(dir, { recursive: true })
   await fs.writeFile(join(dir, fileName), 'bytes')
   return join(dir, fileName)
+}
+
+/** The artifact a pass would have written, for a book folder. */
+async function seedReflow(id: string, bytes = 'epub-bytes'): Promise<string> {
+  const dir = join(root, 'books', id, 'derived')
+  await fs.mkdir(dir, { recursive: true })
+  await fs.writeFile(join(dir, 'reflow.epub'), bytes)
+  return join(dir, 'reflow.epub')
 }
 
 describe('resolveBookFile', () => {
@@ -321,5 +330,59 @@ describe('bookContentType', () => {
     // is a total function's fallback rather than a case a client can hit
     expect(Object.keys(BOOK_CONTENT_TYPES)).toHaveLength(4)
     expect(bookContentType('sh')).toBe('application/octet-stream')
+  })
+})
+
+describe('resolveReflowFile', () => {
+  it('serves the artifact from the book’s own derived folder', async () => {
+    insertBook(makeBook('r1'))
+    const path = await seedReflow('r1')
+    expect(await resolveReflowFile('r1')).toBe(path)
+  })
+
+  it('answers null when there is no artifact', async () => {
+    insertBook(makeBook('r2'))
+    await fs.mkdir(join(root, 'books', 'r2'), { recursive: true })
+    expect(await resolveReflowFile('r2')).toBeNull()
+  })
+
+  it('answers null for a book the library does not hold', async () => {
+    expect(await resolveReflowFile('nobody')).toBeNull()
+  })
+
+  /**
+   * `book-bytes` is the security boundary between a renderer URL and the
+   * filesystem, and the reflow's route is a second *path shape* through it
+   * rather than a second implementation of it — which is the whole reason the
+   * containment rule moved into `contained` instead of being copied.
+   */
+  it('refuses a folder that escapes the library root', async () => {
+    insertBook({ ...makeBook('r3'), nasPath: '../outside' })
+    expect(await resolveReflowFile('r3')).toBeNull()
+  })
+
+  it('refuses a derived folder that is a symlink out of the library root', async () => {
+    insertBook(makeBook('r4'))
+    const outside = join(root, '..', 'outside-derived')
+    await fs.mkdir(outside, { recursive: true })
+    await fs.writeFile(join(outside, 'reflow.epub'), 'x')
+    await fs.mkdir(join(root, 'books', 'r4'), { recursive: true })
+    await fs.symlink(outside, join(root, 'books', 'r4', 'derived'))
+    expect(await resolveReflowFile('r4')).toBeNull()
+  })
+
+  /**
+   * **The wire stays closed (D8).** `GET /api/books/{id}/file` hands its
+   * `format` straight to `resolveBookFile`, so an arm there would serve the
+   * artifact to the phone in the same commit that no document describes. This
+   * case is what fails the day someone folds the two resolvers together without
+   * landing slice 4 — and the content-type half is why `'reflow'` must not be
+   * added to the format union either.
+   */
+  it('is not reachable through resolveBookFile, even with the artifact present', async () => {
+    insertBook(makeBook('r5'))
+    await seedReflow('r5')
+    expect(await resolveBookFile('r5', 'reflow')).toBeNull()
+    expect(bookContentType('reflow')).toBe('application/octet-stream')
   })
 })

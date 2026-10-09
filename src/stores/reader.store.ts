@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { AiChunkEvent, AiDoneEvent, AiErrorEvent } from '@shared/ai.types'
-import type { Book, BookFormat } from '@shared/book.types'
-import { primaryFormat, readableFormat } from '@shared/book.types'
+import type { Book, ReaderFormat, ReflowProgress, ReflowResult } from '@shared/book.types'
+import { primaryFormat, readerTarget } from '@shared/book.types'
 import type { AskRung } from '@/lib/ask-context'
 import {
   appendProbeDelta,
@@ -18,6 +18,8 @@ import type { RecallVerdict } from '@/lib/recall'
 // resolver and the two rows cannot drift into three spellings of one union.
 import type { ReaderPageTheme } from '@/lib/theme/reader-palette'
 import { EMPTY_SEARCH, type SearchGroup } from '@/lib/reader-search'
+import { useLibraryStore } from '@/stores/library.store'
+import { useUIStore } from '@/stores/ui.store'
 
 export interface ReaderTocItem {
   label: string
@@ -129,11 +131,21 @@ export function sanitizePrefs(value: unknown): ReaderPrefs {
 
 interface ReaderState {
   bookId: string | null
-  format: BookFormat | null
+  format: ReaderFormat | null
   status: ReaderStatus
   error: string | null
   toc: ReaderTocItem[]
   percent: number
+  /**
+   * The reflow pass, while one is running for the open book.
+   *
+   * `null` is how the view knows there is nothing to wait for — either this is
+   * not a reflow book, or the artifact is in hand and the engine may mount. Kept
+   * as state rather than as a ref because the progress surface reads it, and
+   * written only by `setReflow` so the identity guard below is the single place
+   * a frame can or cannot move it.
+   */
+  reflow: ReflowProgress | null
   tocOpen: boolean
   /** Typography panel — session state like `tocOpen`, never persisted. */
   prefsOpen: boolean
@@ -193,6 +205,10 @@ interface ReaderState {
   activeCfi: string | null
 
   openBook(book: Book): void
+  /** Ask the app for the open book's reflow and land what comes back (D6, D7). */
+  beginReflow(bookId: string): Promise<void>
+  /** One progress frame, or `null` when the artifact is in hand. */
+  setReflow(progress: ReflowProgress | null): void
   close(): void
   setStatus(status: ReaderStatus, error?: string | null): void
   setToc(toc: ReaderTocItem[]): void
@@ -292,15 +308,42 @@ export function persistedReaderState(s: ReaderState): Partial<ReaderState> {
   return { prefs: s.prefs }
 }
 
+/**
+ * The original path (D6, AC4): the reader closes, the book goes to the OS's own
+ * app for its format, and the pipeline's own sentence goes on screen.
+ *
+ * `notify` rather than `notifyError`: a refused reflow is a normal outcome — the
+ * ~10% of PDF-only books with no text layer are D6's whole justification — and
+ * the toast kind is what says so. The message is short and the measurement is
+ * the `detail`, so a long reason reads as detail rather than as a wall.
+ *
+ * Deliberately does not touch `book.readingState` or `reading_state`: a book that
+ * fell back was never read here, and the reader's own position rules are not this
+ * path's to bend.
+ */
+function handOffToSystem(book: Book | null, reason: unknown, close: () => void): void {
+  const format = book ? primaryFormat(book) : null
+  const detail =
+    typeof reason === 'string' ? reason : reason instanceof Error ? reason.message : String(reason)
+  close()
+  if (book && format) void window.Musaeum.files.openBookFile(book.id, format).catch(() => {})
+  useUIStore.getState().notify({
+    kind: 'info',
+    message: 'This book could not be prepared as a reflowed book.',
+    detail
+  })
+}
+
 export const useReaderStore = create<ReaderState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       bookId: null,
       format: null,
       status: 'idle',
       error: null,
       toc: [],
       percent: 0,
+      reflow: null,
       tocOpen: false,
       prefsOpen: false,
       prefs: DEFAULT_PREFS,
@@ -308,43 +351,55 @@ export const useReaderStore = create<ReaderState>()(
       ...SEARCH_IDLE,
 
       /**
-       * A book the engine can't render is handed to the OS instead of opening
-       * a reader that only apologises — so PDFs land in Preview today and
-       * quietly stop falling through when C2 ships.
+       * The readability rule, and the two doors it opens (D1, D6, D7).
+       *
+       * A book with a format the engine can open is unchanged. A **PDF-only**
+       * book opens the reader and the reader asks for a reflow — which is the
+       * whole of C2 on this side. A book with no format at all is still handed
+       * to the OS, because there is nothing here to read and nothing to
+       * reflow — and that is now the *only* branch that reaches
+       * `openBookFile` synchronously, which is why the branch stays rather than
+       * disappearing with the PDF case.
        */
       openBook: (book) => {
-        const format = readableFormat(book)
-        if (!format) {
-          // By preference, not by array position (invariant 3): the array holds
-          // whatever order the writer left, so `formats[0]` is not a preference
+        const target = readerTarget(book)
+        if (!target) {
+          // By preference, not by array position (invariant 3)
           const fallback = primaryFormat(book)
           if (fallback) void window.Musaeum.files.openBookFile(book.id, fallback).catch(() => {})
           return
         }
+        const format: ReaderFormat = target.kind === 'reflow' ? 'reflow' : target.format
         set((s) => {
-          // A book that is already open is not a load. The engine keys its effect
-          // on `(bookId, format)`, so a second `openBook` for the same book runs
-          // nothing that could report ready — and stamping `loading` here left the
-          // reader under "Opening…" with a blank percentage, permanently (measured
-          // by opening the same book twice from a probe). Unreachable from the UI
-          // today: the overlay covers every other entry point. The guard is here so
-          // the first entry point that is *not* covered cannot strand it.
+          // A book that is already open is not a load (see the note this
+          // replaced): the engine keys its effect on `(bookId, format)`.
           const reload = s.bookId !== book.id || s.format !== format
           return {
             bookId: book.id,
             format,
             status: reload ? 'loading' : s.status,
-            error: null,
+            // A reload clears the old failure; a non-reload **keeps** it, because
+            // nothing re-ran and the session it describes is still the one on
+            // screen. Nulling it left the error state's own surface — one message
+            // and two buttons — drawing the buttons above nothing (measured in the
+            // live pass on 2026-10-09: reopening a book that had failed showed
+            // "Open externally" with no reason over it).
+            error: reload ? null : s.error,
             toc: [],
             percent: reload ? (book.readingState?.percent ?? 0) : s.percent,
             tocOpen: false,
             prefsOpen: false,
+            reflow:
+              target.kind === 'reflow'
+                ? { bookId: book.id, phase: 'start', completed: 0, total: 0 }
+                : null,
             // A book is a new conversation: transcript, verdict, pointer and all
             ...ASK_IDLE,
             // …and a new search: results for another book's text are not results
             ...SEARCH_IDLE
           }
         })
+        if (target.kind === 'reflow') void get().beginReflow(book.id)
       },
 
       // Every panel belongs to the session, not to the app: a book opened next
@@ -356,6 +411,7 @@ export const useReaderStore = create<ReaderState>()(
           status: 'idle',
           error: null,
           toc: [],
+          reflow: null,
           tocOpen: false,
           prefsOpen: false,
           ...ASK_IDLE,
@@ -500,6 +556,63 @@ export const useReaderStore = create<ReaderState>()(
             message: event.message
           })
           return askSession === s.askSession ? s : { askSession }
+        }),
+
+      /**
+       * Ask for the open book's reflow and land what comes back.
+       *
+       * The waiting lives here rather than in a component for the same reason the
+       * trigger does: the answer decides three different things — the book
+       * becomes readable, or it goes to the system opener with a sentence, or
+       * nothing happens because the reader has moved on — and one function that
+       * reads all three is the only place that can be seen to agree with itself.
+       *
+       * Progress does **not** come through here. The frames are broadcast and
+       * land in `setReflow`, because a bar fed by this closure would freeze the
+       * moment React re-rendered anything (R5).
+       */
+      beginReflow: async (bookId) => {
+        const book = useLibraryStore.getState().books.find((b) => b.id === bookId) ?? null
+        let result: ReflowResult
+        try {
+          result = await window.Musaeum.reader.reflow(bookId)
+        } catch (err) {
+          // A pre-flight failure — no metadata engine, or no PDF on disk. The
+          // book is still a book: it goes to the system opener, and the sentence
+          // is the app's own (`metadata.rehydrateBook`'s contract, same shape).
+          if (get().bookId === bookId) handOffToSystem(book, err, get().close)
+          return
+        }
+        // The reader may have been closed, or another book opened, while the
+        // pass ran: the answer is about a session that is over.
+        if (get().bookId !== bookId) return
+        if (result.status !== 'fallback') {
+          // The artifact is there: the engine may mount and fetch it.
+          set({ reflow: null })
+          return
+        }
+        // D6: no artifact, the original path, one line of reason (R3).
+        handOffToSystem(book, result.reason, get().close)
+      },
+
+      /**
+       * One progress frame, or the artefact's arrival.
+       *
+       * Two guards, both of which are the difference between a bar and a bug: a
+       * frame for another book is dropped (the sidecar's four threads can be
+       * running two passes), and a repeat of the frame already held is returned
+       * as *the same state*, so a long `reading` phase does not notify a
+       * subscriber per page. `null` always clears — that is the terminal signal.
+       */
+      setReflow: (progress) =>
+        set((s) => {
+          if (progress === null) return s.reflow === null ? s : { reflow: null }
+          if (s.reflow?.bookId !== progress.bookId) return s
+          const same =
+            s.reflow.phase === progress.phase &&
+            s.reflow.completed === progress.completed &&
+            s.reflow.total === progress.total
+          return same ? s : { reflow: progress }
         }),
 
       // Sanitized on the way in as well as on the way out of storage, so the
