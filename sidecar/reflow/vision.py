@@ -14,7 +14,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from .model import Box
 
@@ -76,13 +76,34 @@ def _box(value) -> Box:
     return (float(value[0]), float(value[1]), float(value[2]), float(value[3]))
 
 
-def parse_stream(lines: Iterable[str]) -> dict[int, PageLayout]:
-    it = iter(lines)
+@dataclass(frozen=True)
+class HelperHeader:
+    """The helper's first line: the protocol version and the document's pages."""
+
+    version: int
+    pages: Optional[int]
+
+
+@dataclass(frozen=True)
+class HelperStream:
+    """What the helper said: its header, and a layout for each page it answered."""
+
+    header: HelperHeader
+    pages: dict[int, PageLayout]
+
+
+def parse_header(line: str) -> HelperHeader:
+    """The helper's first line, or the one reason it cannot help (D6).
+
+    Read as a function of its own because the page count it carries is what
+    turns a short stream into a diagnosable one: without it, a helper that died
+    on page 100 of 535 was indistinguishable from a 100-page book.
+    """
     try:
-        header = json.loads(next(it))
-    except (StopIteration, json.JSONDecodeError):
+        header = json.loads(line)
+    except (TypeError, ValueError):
         raise LayoutUnavailable("the layout helper wrote no header") from None
-    if header.get("helper") != "musaeum-layout":
+    if not isinstance(header, dict) or header.get("helper") != "musaeum-layout":
         raise LayoutUnavailable("the layout helper wrote no header")
     if not header.get("supported", False):
         raise LayoutUnavailable("page layout needs macOS 26 or later")
@@ -90,46 +111,81 @@ def parse_stream(lines: Iterable[str]) -> dict[int, PageLayout]:
         raise LayoutUnavailable(f"layout helper version {header.get('version')} (expected {HELPER_VERSION})")
     if header.get("error"):
         raise LayoutUnavailable(f"the layout helper: {header['error']}")
+    pages = header.get("pages")
+    return HelperHeader(HELPER_VERSION, int(pages) if isinstance(pages, int) else None)
 
+
+def _page_line(line: str) -> Optional[PageLayout]:
+    """One page's line, or `None` when it carries nothing this module can use."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        obj = json.loads(line)
+        number = int(obj.get("page", 0))
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return None
+    if number < 1:
+        return None
+    if obj.get("error"):
+        return PageLayout(page=number, error=str(obj["error"]))
+    try:
+        regions = sorted(
+            (Region(int(r["order"]), _box(r["bbox"]), str(r.get("text", ""))) for r in obj.get("regions", [])),
+            key=lambda r: r.order,
+        )
+        tables = [
+            Table(
+                _box(t["bbox"]),
+                tuple(
+                    TableCell(
+                        int(c["row"]), int(c["col"]), int(c.get("rowspan", 1)), int(c.get("colspan", 1)),
+                        _box(c["bbox"]), str(c.get("text", "")),
+                    )
+                    for c in t.get("cells", [])
+                ),
+            )
+            for t in obj.get("tables", [])
+        ]
+        return PageLayout(
+            number, _box(obj["box"]), int(obj.get("rotation", 0)), regions, tables, int(obj.get("ms", 0))
+        )
+    except (KeyError, TypeError, ValueError, IndexError) as err:
+        return PageLayout(page=number, error=f"malformed page line ({type(err).__name__})")
+
+
+def read_stream(lines: Iterable[str], on_page: Optional[Callable[[int], None]] = None) -> HelperStream:
+    """The helper's whole stream: its header first, then one line per page.
+
+    `lines` is iterated lazily, so a caller can hand it the helper's pipe and get
+    `on_page(done)` as each page's line arrives — the helper answers in page
+    order while it works, which is what a progress surface needs (D7).
+    """
+    it = iter(lines)
+    try:
+        first = next(it)
+    except StopIteration:
+        first = ""
+    header = parse_header(first)
     pages: dict[int, PageLayout] = {}
     for line in it:
-        line = line.strip()
-        if not line:
+        layout = _page_line(line)
+        if layout is None:
             continue
-        try:
-            obj = json.loads(line)
-            number = int(obj.get("page", 0))
-        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
-            continue
-        if number < 1:
-            continue
-        if obj.get("error"):
-            pages[number] = PageLayout(page=number, error=str(obj["error"]))
-            continue
-        try:
-            regions = sorted(
-                (Region(int(r["order"]), _box(r["bbox"]), str(r.get("text", ""))) for r in obj.get("regions", [])),
-                key=lambda r: r.order,
-            )
-            tables = [
-                Table(
-                    _box(t["bbox"]),
-                    tuple(
-                        TableCell(
-                            int(c["row"]), int(c["col"]), int(c.get("rowspan", 1)), int(c.get("colspan", 1)),
-                            _box(c["bbox"]), str(c.get("text", "")),
-                        )
-                        for c in t.get("cells", [])
-                    ),
-                )
-                for t in obj.get("tables", [])
-            ]
-            pages[number] = PageLayout(
-                number, _box(obj["box"]), int(obj.get("rotation", 0)), regions, tables, int(obj.get("ms", 0))
-            )
-        except (KeyError, TypeError, ValueError, IndexError) as err:
-            pages[number] = PageLayout(page=number, error=f"malformed page line ({type(err).__name__})")
-    return pages
+        pages[layout.page] = layout
+        if on_page is not None:
+            on_page(len(pages))
+    return HelperStream(header, pages)
+
+
+def parse_stream(lines: Iterable[str]) -> dict[int, PageLayout]:
+    """The pages in a whole helper stream, for callers that want only the map.
+
+    Kept beside `read_stream` because the two are the same reader: this is its
+    one-shot face, and the probe's `--gate-only` and this module's own tests use
+    it where the header's page count is not the question.
+    """
+    return read_stream(lines).pages
 
 
 def run_helper(
