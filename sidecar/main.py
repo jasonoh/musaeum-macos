@@ -23,6 +23,7 @@ from pipeline.cover import fetch_cover, previews_for, set_cover_from_file, write
 from pipeline.hydration import cover_candidates, hydrate_metadata, search_candidates
 from pipeline.migrate import migrate_library
 from pipeline.topup import topup_pdfs
+from reflow.produce import reflow_pdf
 
 _stdout_lock = threading.Lock()
 
@@ -109,6 +110,18 @@ METHODS = {
         calibre_path=p["calibre_path"],
         target_root=p["target_root"],
         library_index=p.get("library_index") or [],
+        notify=notify,
+    ),
+    # The reflow pipeline (spec D7/D9). Long, loud about its progress and quiet
+    # about its failures: a book that cannot be laid out returns one line of
+    # reason, never an error, and nothing is written outside `{book}/derived/`.
+    # `book_id` is echoed back in every progress frame so the caller can tell two
+    # books' passes apart on one notification channel.
+    "reflow_pdf": lambda p: reflow_pdf(
+        book_dir=p["book_dir"],
+        pdf_path=p["pdf_path"],
+        book_id=p.get("book_id", ""),
+        force=bool(p.get("force")),
         notify=notify,
     ),
 }
