@@ -1,7 +1,7 @@
 # Design: Calibre-free Kindle conversion — an in-house EPUB → AZW3 writer (kindle transfer, v1)
 
 **Date:** 2026-10-02
-**Status:** Signed off 2026-10-06 (D1 run: the Oasis does not take a native EPUB). **Nothing built yet.** Slice 1 is a spike with a hard pass/fail gate on the owner's device; slices 2–4 are scheduled only if it passes.
+**Status:** Signed off 2026-10-06 (D1 run: the Oasis does not take a native EPUB). **Slices 1, 1b and 2 are built and on `main`** — slice 2's merge is `7f5b5e3`: the writer is `sidecar/conversion/azw3/`, `convert_format` runs it in a child process and no longer shells out to Calibre, and the creator-software fields are dropped after the 2026-10-09 device reading (**Annex C**). **Not built: slice 3** — the Electron side still resolves a Calibre path and refuses a send when it is missing (`transfer-queue.ts:96-101`), which is why the README's Kindle row is still untrue; its annex is `docs/superpowers/plans/2026-10-09-calibre-free-conversion-slice3.md` and its gate is `AC8`. Slice 4 (the record) follows it. The slice 1 device gate passed 2026-10-07, which is what authorised slices 2–4 (D6).
 **Scope:** Replace the one place Musaeum runs a Calibre binary — `ebook-convert`, EPUB → AZW3 on a Kindle send — with a writer inside the Python sidecar, then remove the Calibre detection, the Settings field and the error path that exist only to serve it. It deliberately does **not** touch the Calibre *migration* wizard (that reads `metadata.db` as plain SQLite and needs no Calibre install), the PDF rule (PDFs are never converted), the presence rule, the cover-cache writer, the database schema or the `metadata.json` shape.
 **Depends on:** `docs/superpowers/specs/2026-09-17-device-presence-design.md` (the MOBI header layout, with the offsets derived) and `docs/superpowers/specs/2026-09-26-device-covers-design.md` (the device keys its cover cache on two fields *inside the file* — a converted file must carry them).
 **Interacts with:** `transfer-queue.ts`'s convert branch (the only caller), `services/sidecar.ts` (detection), `services/settings.ts` + `ipc/settings.ts` + `SettingsModal.tsx` (the `ebook_convert_path` field).
@@ -185,7 +185,7 @@ Three files derived from a book the Oasis already holds — *The Transparency So
 | *Darwin's Devices* | pass | pass | pass | pass | pass | |
 | *Raspberry Pi for Secret Agents* | pass | pass | pass | pass | pass | |
 
-**Verdict: pass.** Slices 2–4 are authorised (D6). Still unmeasured on the device and therefore carried into slice 2: a TOC over about 2,000 entries (multi-record CNCX), NCX labels wider than two hex digits, the creator-software fields (EXTH 204–207, 535), and any book with embedded fonts, fixed layout or SVG pages.
+**Verdict: pass.** Slices 2–4 are authorised (D6). **The creator-software fields (EXTH 204–207, 535) are settled** — dropped in slice 2 after a file without them passed all five readings on the Oasis, 2026-10-09 (Annex C). Still unmeasured on the device: a TOC over about 2,000 entries (multi-record CNCX), NCX labels wider than two hex digits, and fixed layout or SVG pages; embedded fonts are exercised by the oracle (three of its fifteen books drop `@font-face` rules with a warning) but have not been read on the device.
 
 ---
 
