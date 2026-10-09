@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReadStatus } from '@shared/book.types'
-import { readableFormat, seriesDisplay } from '@shared/book.types'
+import { readerTarget, seriesDisplay } from '@shared/book.types'
 import { sendErrorFor, sendStateFor, useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
@@ -315,8 +315,12 @@ export function BookDetail() {
           )
         })}
         {/* Gold-outlined rather than solid: the way into a book, but not in
-            competition with sending it to a device. A book the engine can't
-            render still belongs here — `openBook` hands those to the OS.
+            competition with sending it to a device. Every book with a format
+            belongs here: the reader opens the readable ones as it always did,
+            and a **PDF-only** book now opens the reader too — which produces a
+            reflowed EPUB on demand (slice 3) and hands the book to the OS only
+            if that pass refuses it. Only a book with no files at all falls
+            through to `openBookFile`, and the button is disabled for those.
             Deliberately *not* gated on `online` like its neighbours: those are
             writes, this is a read. Offline the bytes are unreachable whichever
             entry point is used, and the reader's error state says so and offers
@@ -325,7 +329,7 @@ export function BookDetail() {
         <button
           disabled={busy !== null || book.formats.length === 0}
           onClick={() => useReaderStore.getState().openBook(book)}
-          title={readableFormat(book) ? 'Read in Musaeum' : 'Open in the default app'}
+          title={readerTarget(book) ? 'Read in Musaeum' : 'Open in the default app'}
           className="flex w-full items-center justify-center gap-2 rounded-md border border-gold-500/40 px-3 py-2 text-[13px] font-semibold text-gold-300 hover:border-gold-500 hover:bg-gold-500/10 disabled:opacity-40"
         >
           <ReaderIcon className="h-4 w-4" />

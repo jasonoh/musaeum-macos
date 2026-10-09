@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_PREFS,
   PREF_RANGES,
@@ -8,7 +8,10 @@ import {
   useReaderStore,
   type SearchPatch
 } from './reader.store'
+import type { BookFormat, ReflowResult } from '@shared/book.types'
 import { countHits } from '@/lib/reader-search'
+import { useLibraryStore } from '@/stores/library.store'
+import { useUIStore } from '@/stores/ui.store'
 import { makeBook } from '../../test/helpers/book'
 
 /**
@@ -480,5 +483,143 @@ describe('a book is a new conversation', () => {
     // The empty answer is dropped rather than left as a blank bubble, and the
     // question survives the panel — it belongs to the book, not to the panel
     expect(get().askSession.turns).toEqual([{ role: 'user', text: 'Who is Alice?' }])
+  })
+})
+
+/**
+ * The reflow path (D1, D6, D7). `window.Musaeum` is stubbed because there is no
+ * preload under vitest — the pattern `src/lib/add-books.test.ts` uses.
+ *
+ * The books are seeded into the *library* store as well as handed to
+ * `openBook`, because that is where `beginReflow` finds the book it hands to the
+ * system opener: in the app the book a card opens is always a library row, and
+ * the store looks it up by id rather than trusting a caller's copy.
+ */
+describe('openBook — the reflow path', () => {
+  let opened: [string, string][]
+  let asked: string[]
+  let answer: ReflowResult | Error
+  const reflow = (id: string) => {
+    asked.push(id)
+    return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer)
+  }
+
+  const pdfBook = (id = 'b1', formats: BookFormat[] = ['pdf']) => ({ ...makeBook(id), formats })
+
+  const open = (book: ReturnType<typeof pdfBook>): void => {
+    useLibraryStore.setState({ books: [book] })
+    useReaderStore.getState().openBook(book)
+  }
+
+  beforeEach(() => {
+    opened = []
+    asked = []
+    answer = {
+      status: 'cached',
+      reason: '',
+      verdict: 'ok',
+      epub: 'derived/reflow.epub',
+      stampFile: 'derived/reflow.json',
+      pages: 3,
+      bytes: 10,
+      seconds: 0.1
+    }
+    vi.stubGlobal('window', {
+      Musaeum: {
+        reader: { reflow: (id: string) => reflow(id) },
+        files: {
+          openBookFile: (id: string, format: string) => {
+            opened.push([id, format])
+            return Promise.resolve()
+          }
+        }
+      }
+    })
+    vi.spyOn(useUIStore.getState(), 'notify')
+    useReaderStore.getState().close()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('opens a PDF-only book as a reflow and asks for one', () => {
+    open(pdfBook())
+    expect(useReaderStore.getState().format).toBe('reflow')
+    expect(useReaderStore.getState().reflow).toMatchObject({ bookId: 'b1', phase: 'start' })
+    expect(asked).toEqual(['b1'])
+  })
+
+  it('leaves a book the engine can read alone', () => {
+    open({ ...makeBook('b2'), formats: ['mobi', 'pdf'] })
+    expect(useReaderStore.getState().format).toBe('mobi')
+    expect(useReaderStore.getState().reflow).toBeNull()
+    expect(asked).toEqual([])
+  })
+
+  it('leaves the reader on the artifact a cached pass found', async () => {
+    open(pdfBook('b3'))
+    await vi.waitFor(() => expect(useReaderStore.getState().reflow).toBeNull())
+    expect(useReaderStore.getState().bookId).toBe('b3')
+    expect(opened).toEqual([])
+  })
+
+  it('hands the book to the system opener, with the reason, when the pass refuses', async () => {
+    answer = {
+      status: 'fallback',
+      reason: '3 of 5 text pages could not be laid out',
+      verdict: 'unstable_layout',
+      epub: '',
+      stampFile: '',
+      pages: 5,
+      bytes: 0,
+      seconds: 1.2
+    }
+    open(pdfBook('b4'))
+    await vi.waitFor(() => expect(useReaderStore.getState().bookId).toBeNull())
+    expect(opened).toEqual([['b4', 'pdf']])
+    expect(useUIStore.getState().notify).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'info', detail: '3 of 5 text pages could not be laid out' })
+    )
+  })
+
+  it('hands the book over when the pre-flight fails, too', async () => {
+    answer = new Error('Python sidecar is unavailable')
+    open(pdfBook('b5'))
+    await vi.waitFor(() => expect(useReaderStore.getState().bookId).toBeNull())
+    expect(opened).toEqual([['b5', 'pdf']])
+    expect(useUIStore.getState().notify).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: 'Python sidecar is unavailable' })
+    )
+  })
+
+  it('drops an answer for a book the reader has left', async () => {
+    open(pdfBook('b6'))
+    useReaderStore.getState().close()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(opened).toEqual([])
+    expect(useUIStore.getState().notify).not.toHaveBeenCalled()
+  })
+
+  it('keeps a frame for another book out of this session', () => {
+    open(pdfBook('b7'))
+    const before = useReaderStore.getState().reflow
+    useReaderStore
+      .getState()
+      .setReflow({ bookId: 'other', phase: 'layout', completed: 1, total: 2 })
+    expect(useReaderStore.getState().reflow).toBe(before)
+    useReaderStore.getState().setReflow({ bookId: 'b7', phase: 'layout', completed: 1, total: 2 })
+    expect(useReaderStore.getState().reflow).toMatchObject({ phase: 'layout', completed: 1 })
+  })
+
+  it('holds identity for a repeated frame', () => {
+    open(pdfBook('b8'))
+    const frame = { bookId: 'b8', phase: 'reading', completed: 4, total: 9 }
+    useReaderStore.getState().setReflow(frame)
+    const held = useReaderStore.getState().reflow
+    useReaderStore.getState().setReflow({ ...frame })
+    expect(useReaderStore.getState().reflow).toBe(held)
   })
 })
