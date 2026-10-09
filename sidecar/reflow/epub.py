@@ -306,6 +306,20 @@ def write_epub(doc: Document, out_path: str, title: str) -> dict:
                 blocks[0].anchor = f"f{i + 1}"
             items.append((name, 0, f"text/c{i + 1:03d}.xhtml#{blocks[0].anchor}"))
 
+    # D5's map, the half a page anchor cannot carry: which spine file holds which
+    # PDF pages. It is what lets a later "open the original at the page I was on"
+    # (or a pdf.js view of the original) work without re-extracting anything.
+    page_map = [
+        {
+            "href": f"text/c{i + 1:03d}.xhtml",
+            "title": name,
+            "from_page": min(b.page for b in blocks) + 1,
+            "to_page": max(b.page for b in blocks) + 1,
+        }
+        for i, (name, blocks) in enumerate(files)
+        if blocks
+    ]
+
     try:
         stat = os.stat(doc.source)
         stamp = f"{stat.st_size}:{int(stat.st_mtime)}"
@@ -354,4 +368,5 @@ def write_epub(doc: Document, out_path: str, title: str) -> dict:
         "words": words,
         "bytes": os.path.getsize(out_path),
         "uid": uid,
+        "page_map": page_map,
     }
