@@ -83,10 +83,11 @@ Musaeum/
 ├── helpers/musaeum-layout/       # the PDF reflow's Swift helper (spec D4R): Vision's
 │                                 # regions and reading order, one JSON line per page.
 │                                 # Built by scripts/build-layout-helper.sh into
-│                                 # helpers/bin/ (gitignored). Still in no bundle: the
-│                                 # `extraResources` entry that ships it is slice 3's
-│                                 # first step, and until then a packaged build
-│                                 # reports no_layout for every book (149 KB)
+│                                 # helpers/bin/ (gitignored), and shipped in the
+│                                 # packaged app by electron-builder.yml's
+│                                 # extraResources entry (149 KB). A wrong `to:`
+│                                 # makes every book answer no_layout with no code
+│                                 # defect to find.
 ├── scripts/
 │   ├── api-smoke.sh              # every REST route against a live app: PASS/FAIL per check
 │   ├── dev-app-branding.mjs      # postinstall: name + icon the dev Electron bundle
@@ -202,7 +203,9 @@ Musaeum/
     ├── pipeline/                 # hydration.py, conflict.py, cover.py, migrate.py,
     │                             # topup.py (Calibre PDF top-up)
     ├── conversion/               # converter.py (ebook-convert wrapper), azw3/ (the
-    │                             # in-house EPUB → AZW3 writer)
+    │                             # in-house EPUB → AZW3 writer — built and gated on
+    │                             # the real Kindle 2026-10-07, not yet wired into
+    │                             # convert_format)
     ├── reflow/                   # PDF → EPUB (spec C2): produce.py (the production pass
     │                             # behind `reflow_pdf` — the D9 stamp and its re-run
     │                             # triggers, one lock per artifact, temp-verify-rename,

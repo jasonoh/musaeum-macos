@@ -8,6 +8,22 @@ All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https:
 
 - **PDF-only books now open in Musaeum's own reader.** The app prepares a reflowed book once, showing progress while it works, and a book it cannot lay out opens in Preview with a line saying why. This is the last slice of the PDF reflow design (`docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md`, plan `docs/superpowers/plans/2026-10-09-pdf-reflow-slice-3.md`) that the reader can reach: a PDF-only book opens as `reflow`, the app asks the sidecar for the pass and broadcasts its progress, the finished book is served over a route of its own and rendered by the engine each client already owns, and the original is one gesture away — the contents panel, find-in-book and typography all work on it exactly as they do on an EPUB. Measured in the running app on 2026-10-09: a 24-page paper was ready at **5.0 s** (frames `start` → `1 … 24 of 24 pages` → `writing`) and reopening a prepared book was **0.42 s**; an image-only book refused in **103 ms** and Preview opened the original PDF with _"no page carries a text layer"_ on the toast. The artifact is **not** a format: no book gains an EPUB, and `GET /api/books/{id}/file?format=reflow` still answers 404 until the wire's slice documents it. What the slice deliberately left: the phone's own route, and the 45 `mobi`+`pdf` papers, which the Mac still reads as a `mobi`.
 
+### Notes
+
+- **What else landed behind the surface, and what is not wired to it.** The reflow pipeline arrived in two slices — the Apple-Vision layout helper with a rebuilt gate (2026-10-08), then the production pass behind the `reflow_pdf` RPC: `{book}/derived/reflow.epub` beside its version stamp, page-map progress frames, a confidence gate that refuses a book rather than laying it out badly, and one lock per artifact (2026-10-08/09). The layout helper also ships in packaged builds as of that work, which is what lets the reader work outside a dev tree. Separately, an in-house EPUB → AZW3 writer landed (2026-10-06/07) and opened three converted books on a real Kindle Oasis on 2026-10-07 — cover, TOC, internal links and a kept reading position — but **the app still calls Calibre's `ebook-convert` on a Kindle send**: wiring the writer in is the next slice, planned 2026-10-08 (`docs/superpowers/plans/2026-10-08-calibre-free-conversion-slice2.md`).
+
+## [Unreleased] — 2026-10-01
+
+### Added
+
+- **An explicit MIT licence.** `package.json` declared MIT and the README's own licence section said the tree still needed the file before it went public; it exists now. Machine-specific addresses, interface notes and device names in the docs, the comments and the test fixtures were generalised in the same pass — the fixtures still exercise the cases they were written for — and the verification figures in `docs/how-this-was-built.md` were refreshed to what the suite reports.
+
+## [Unreleased] — 2026-09-30
+
+### Changed
+
+- **A cover on the grid opens when you point at it, instead of the whole card lifting.** The cover rotates a few degrees about its spine — the spine does not move, the fore edge swings toward you — while a page block hinged on that edge swings into view, so the book opens under the cursor rather than rising off the shelf. Two measured defects went with the old effect and are why this one is built the way it is: the perspective origin landed 46 px _under_ the artwork (the cover slid up under the cursor while the delete control, a sibling with its own plane, rode a box 14 px taller than the cover — artwork 143.88 × 222.42 against the control's plane at 149.83 × 236.58), and the rest shadow never painted at all because a `box-shadow` written in the components layer loses to Tailwind's `ring-*` on the same element.
+
 ## [Unreleased] — 2026-09-28
 
 ### Added
