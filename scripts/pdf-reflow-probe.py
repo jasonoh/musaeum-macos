@@ -364,6 +364,21 @@ def _run(book_dir: str, pdf: str, *, force: bool = False) -> dict:
     return result
 
 
+def _record_is_clean(doc) -> bool:
+    """Is this layout record whole enough to judge an artifact against?
+
+    `analyse` calls a layout `ok` when at most a quarter of the text pages
+    degraded (D6's tolerance), but a gate verdict needs *every* page: an
+    exclusion list with holes in it moves G4 and G6 on a book whose own pass was
+    fine. And when the helper answers nothing at all, `analyse` returns
+    `no_layout` with no pages — `layout_errors == 0` on an empty record, which a
+    guard keyed on the error count alone would read as perfect (measured by Task
+    4's review: a degenerate record scored a clean artifact as "fails G4 now").
+    One predicate, used by the retry and the guard, so the two cannot disagree.
+    """
+    return doc.verdict == "ok" and doc.layout_errors == 0
+
+
 def gate_artifact(title: str, pdf: str, epub_path: str, golden: dict, rec: dict) -> dict[str, list[str]]:
     """G1–G7 on the artifact the production pass wrote (Annex C.4).
 
@@ -374,16 +389,14 @@ def gate_artifact(title: str, pdf: str, epub_path: str, golden: dict, rec: dict)
     this probe. Gating the artifact with a fresh record is a cross-check as well:
     if the artifact had come from some other pass, G2 and G6 would move.
 
-    That re-layout is retried while it is degraded, and a degraded one is
-    recorded: measured 2026-10-08, a layout whose helper answered no pages at all
-    (8 of 9 pages lost) moved G4 and G6 on a book whose own pass had 0 layout
-    errors, so a verdict from a degraded record is noise rather than evidence.
+    That re-layout is retried while it is not `_record_is_clean`, and a degraded
+    one fails the run rather than being reported as a content regression.
     """
     attempts = []
     for _ in range(3):
         doc = analyse(pdf)
         attempts.append({"verdict": doc.verdict, "layout_errors": doc.layout_errors})
-        if doc.verdict == "ok":
+        if _record_is_clean(doc):
             break
     rec["gate_layouts"] = attempts
     rec["gate_layout_errors"] = doc.layout_errors
@@ -443,6 +456,14 @@ def production_book(title: str, why: str, book_dir: str, pdf: str, golden: dict)
     rec["produced"] = True
     first_digest = (_sha(epub_path), _sha(stamp_path))
     first_content = _content_digest(epub_path)
+    # The artifact the comparison below measures, kept beside the report: the pass
+    # that follows the touch rewrites `derived/`, so the bytes these digests name
+    # would otherwise be gone by the time a reader checks them.
+    out_dir = os.path.dirname(os.path.dirname(book_dir))
+    measured = os.path.join(out_dir, "measured", f"{os.path.basename(book_dir)}.epub")
+    os.makedirs(os.path.dirname(measured), exist_ok=True)
+    shutil.copy2(epub_path, measured)
+    rec["measured"] = os.path.relpath(measured, out_dir)
     # The forced second pass is the byte-stability probe. A pass can legitimately
     # *refuse* a book it laid out minutes earlier — D6's posture, and 1R's own
     # record names the helper failing pages on a later run — so a refusal is
@@ -464,17 +485,20 @@ def production_book(title: str, why: str, book_dir: str, pdf: str, golden: dict)
     rec["only_derived_changed"] = _listing(book_dir) == sorted([*before, "derived"])
 
     # A touched source is a different document (D9), so the next pass may never
-    # serve the old stamp — and the pass itself has to be able to re-run it. Two
-    # calls, because a pass can legitimately *refuse* a book it cannot lay out
-    # that time (D6, and 1R's record already names the helper failing pages on a
-    # second run); what must never happen is a `cached` answer for a moved
-    # source, and what has to be shown is that the pass does re-run.
+    # serve the old stamp — and the pass itself has to be able to re-run it. Up to
+    # three calls, because a pass can legitimately *refuse* a book it cannot lay
+    # out that time (D6, and 1R's own record names the helper failing pages on a
+    # later run); what must never happen is a `cached` answer for a moved source,
+    # and what has to be shown is that the pass does re-run.
     later = int(os.stat(pdf).st_mtime) + 60
     os.utime(pdf, (later, later))
-    touched = [_run(book_dir, pdf), _run(book_dir, pdf)]
-    rec["touched"] = [
-        {"status": call["status"], "verdict": call["verdict"], "reason": call["reason"]} for call in touched
-    ]
+    touched: list[dict] = []
+    for _ in range(3):
+        call = _run(book_dir, pdf)
+        touched.append({"status": call["status"], "verdict": call["verdict"], "reason": call["reason"]})
+        if call["status"] == "produced":
+            break
+    rec["touched"] = touched
     rec["stamp_not_stale"] = touched[0]["status"] != "cached"
     rec["stamp_reran"] = any(call["status"] == "produced" for call in touched)
     stamp = read_stamp(stamp_path)
@@ -540,12 +564,13 @@ def gate_regression(records: list[dict]) -> list[str]:
         title = rec["title"]
         if title in EXPECT_FALLBACK or not rec.get("gate"):
             continue
-        if rec.get("gate_layout_errors"):
+        if rec.get("gate_layout_errors") or rec.get("gate_verdict") != "ok":
             # Not a finding about the artifact: the record the checks need is the
             # one the source could not give this time, so the run has to be
-            # repeated rather than read.
+            # repeated rather than read. Same predicate as the retry above, so a
+            # run cannot call a book degraded and then judge it anyway.
             bad.append(
-                f"{title}: the gate's own layout was degraded {rec['gate_layouts']} — re-run this book, "
+                f"{title}: the gate's own layout was not clean {rec['gate_layouts']} — re-run this book, "
                 "its verdict is not evidence"
             )
             continue
