@@ -202,7 +202,7 @@ def _fit_ncx(nav: list[NavPoint], flow_length: int, warnings: list[str]) -> list
     return records
 
 
-def build_azw3(epub_path: str) -> Conversion:
+def build_azw3(epub_path: str, *, creator_fields: bool = True) -> Conversion:
     epub = read_epub(epub_path)
     meta = epub.metadata
     resources = Resources(epub)
@@ -290,7 +290,8 @@ def build_azw3(epub_path: str) -> Conversion:
     exth_records += [(108, b"Musaeum"), (113, book_uuid.encode()), (125, u32(len(resources.images))), (131, u32(0))]
     if cover is not None:
         exth_records += [(201, u32(cover)), (203, u32(0))]
-    exth_records += [(kind, u32(value)) for kind, value in CREATOR] + [(535, CREATOR_BUILD)]
+    if creator_fields:
+        exth_records += [(kind, u32(value)) for kind, value in CREATOR] + [(535, CREATOR_BUILD)]
     exth_records += [(501, b"EBOK"), (503, title.encode()), (524, language.encode())]
 
     rec0 = record_zero(
@@ -319,9 +320,9 @@ def build_azw3(epub_path: str) -> Conversion:
     return Conversion(data, book_uuid, title, cover_bytes, warnings)
 
 
-def write_azw3(epub_path: str, out_path: str) -> Conversion:
+def write_azw3(epub_path: str, out_path: str, *, creator_fields: bool = True) -> Conversion:
     """Convert, then write beside the target and rename into place (spec D5)."""
-    conversion = build_azw3(epub_path)
+    conversion = build_azw3(epub_path, creator_fields=creator_fields)
     temp = out_path + ".tmp"
     try:
         with open(temp, "wb") as f:

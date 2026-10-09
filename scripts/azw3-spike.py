@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Convert one EPUB to AZW3 with the in-house writer, for the slice 1 device gate.
 
-    sidecar/.venv/bin/python scripts/azw3-spike.py "/path/to/Book.epub" /tmp/azw3-gate
+    sidecar/.venv/bin/python scripts/azw3-spike.py [--no-creator] "/path/to/Book.epub" /tmp/azw3-gate
 
 Writes `<title>.azw3` and the device's cover-cache entry
 `thumbnail_<EXTH 113>_EBOK_portrait.jpg` (fitted inside 330x500, the size
 `docs/invariants/device-transfer.md` records) into the output folder, and prints
-the size, the time taken and every warning. Copy the .azw3 into the Kindle's
+the size, the time taken and every warning. `--no-creator` leaves out the
+creator-software fields (EXTH 204-207, 535) for the slice 2 device experiment. Copy the .azw3 into the Kindle's
 `documents/` and the .jpg into `system/thumbnails/`. Never touches a device or
 the library itself.
 """
@@ -24,14 +25,16 @@ from conversion.azw3.writer import write_azw3  # noqa: E402
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
+    creator_fields = "--no-creator" not in argv
+    args = [a for a in argv[1:] if a != "--no-creator"]
+    if len(args) != 2:
         print(__doc__, file=sys.stderr)
         return 2
-    source, out_dir = Path(argv[1]), Path(argv[2])
+    source, out_dir = Path(args[0]), Path(args[1])
     out_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     target = out_dir / f"{source.stem}.azw3"
-    conversion = write_azw3(str(source), str(target))
+    conversion = write_azw3(str(source), str(target), creator_fields=creator_fields)
     elapsed = time.monotonic() - started
     print(f"{target}: {len(conversion.data):,} B in {elapsed:.2f} s, uuid {conversion.uuid}")
     if conversion.cover is not None:

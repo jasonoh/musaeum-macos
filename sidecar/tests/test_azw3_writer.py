@@ -270,3 +270,22 @@ def test_a_table_of_contents_that_cannot_fit_even_one_entry_raises_instead_of_lo
     monkeypatch.setattr(writer, "MAX_TOC_TITLE_CHARS", 10**9)
     with pytest.raises(IndexOverflow):
         build_azw3(str(toc_book(tmp_path, [("x" * 300_000, "c.xhtml", [])])))
+
+
+# --- slice 2: the creator-software fields are an experiment until the Oasis says whether it needs them
+
+CREATOR_TYPES = {204, 205, 206, 207, 535}
+
+
+def test_creator_software_fields_are_written_by_default_and_can_be_left_out(book):
+    default = read_kf8(build_azw3(str(book)).data)
+    assert CREATOR_TYPES <= set(default.exth)
+    bare = read_kf8(build_azw3(str(book), creator_fields=False).data)
+    assert not CREATOR_TYPES & set(bare.exth)
+    assert {100, 113, 501, 503, 524} <= set(bare.exth)  # identity and language are untouched
+
+
+def test_a_file_without_the_creator_fields_still_reads_back_as_written(book):
+    conversion = build_azw3(str(book), creator_fields=False)
+    identity = read_identity(conversion.data)
+    assert (identity.title, identity.uuid, identity.cdetype) == ("Test Book", conversion.uuid, "EBOK")
