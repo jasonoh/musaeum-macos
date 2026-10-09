@@ -20,7 +20,7 @@
 | Main Process      | Node.js (Electron)               |
 | Local Database    | SQLite via better-sqlite3        |
 | Metadata/Convert  | Python 3.11+ sidecar             |
-| Format Conversion | Calibre CLI (ebook-convert)      |
+| Format Conversion | In-house AZW3 writer (sidecar)   |
 | IPC               | Electron contextBridge + ipcMain |
 
 ---
@@ -51,7 +51,7 @@ Python Sidecar (spawned by main process)
 ├── Cover image scorer + downloader
 ├── Goodreads series scraper
 ├── Calibre migration orchestrator
-└── ebook-convert wrapper
+└── AZW3 conversion (in-house writer)
 ```
 
 ---
@@ -201,7 +201,7 @@ Musaeum/
     ├── fetchers/                 # google_books.py, openlibrary.py, goodreads.py
     ├── pipeline/                 # hydration.py, conflict.py, cover.py, migrate.py,
     │                             # topup.py (Calibre PDF top-up)
-    ├── conversion/               # converter.py (ebook-convert wrapper), azw3/ (the
+    ├── conversion/               # converter.py (the convert_format RPC), azw3/ (the
     │                             # in-house EPUB → AZW3 writer)
     ├── reflow/                   # PDF → EPUB (spec C2): produce.py (the production pass
     │                             # behind `reflow_pdf` — the D9 stamp and its re-run
@@ -238,7 +238,7 @@ Both library views are virtualized (see `docs/invariants/library-views.md`); mea
 
 ## External Dependencies
 
-- **Calibre** (host install) — for `ebook-convert` only; detected at `/Applications/calibre.app/Contents/MacOS/ebook-convert`, overridable via `app_config.ebook_convert_path`. No Calibre GUI is launched.
+- **Calibre** — **not a dependency.** Conversion is the sidecar's own EPUB → AZW3 writer (`sidecar/conversion/azw3/`), and nothing in the app runs a Calibre binary. A Calibre _library_ stays readable for the migration wizard, which opens its `metadata.db` as plain SQLite and needs no Calibre install.
 - **Python 3.11+** — sidecar venv at `sidecar/.venv` (see `docs/getting-started.md`).
 - Sidecar deps: `sidecar/requirements.txt` (isbnlib, requests, bs4, lxml, Pillow, pypdf, pypdfium2). Dev deps: `sidecar/requirements-dev.txt` (pytest).
 - Node deps: see `package.json`.

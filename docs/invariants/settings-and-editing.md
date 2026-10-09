@@ -19,12 +19,12 @@ Both stores `merge` through a validator rather than trusting storage: it was wri
 
 ## Settings
 
-`components/settings/SettingsModal.tsx` over `services/settings.ts` — the only way to change the *editable* `app_config` fields (`smb_url`, `python_path`, `ebook_convert_path`, `google_books_api_key`) from the UI. The theming keys are edited by the Appearance picker instead (see the theme section below). Reached from the sidebar's NAS status row (or **⌘,**), so "Not configured" leads to where it's fixed.
+`components/settings/SettingsModal.tsx` over `services/settings.ts` — the only way to change the *editable* `app_config` fields (`smb_url`, `python_path`, `google_books_api_key`) from the UI. The theming keys are edited by the Appearance picker instead (see the theme section below). Reached from the sidebar's NAS status row (or **⌘,**), so "Not configured" leads to where it's fixed.
 
 The dialog's own list is longer than that sentence and grew with the features: the Ask trio (§ *The Ask (AI) group*), and the four `rest_api_*` keys (§ *The phone API's four keys*, slice 2, 2026-09-22). Each group is documented with its rules rather than just named, because a list of names without them is what let `docs/data-contracts.md`'s editability sentence go stale for three slices.
 
 Two rules shape the service:
-- **It never re-implements detection.** What python and ebook-convert resolve to is asked of `sidecar.ts` (`resolvePython` / `resolveEbookConvert`, which return a `ToolResolution` carrying `configured | auto | none`) — the module that actually spawns them. Settings reporting a path the app doesn't use would be worse than showing nothing.
+- **It never re-implements detection.** What python resolves to is asked of `sidecar.ts` (`resolvePython`, which returns a `ToolResolution` carrying `configured | auto | none`) — the module that actually spawns the sidecar. Settings reporting a path the app doesn't use would be worse than showing nothing.
 - **A bad value is rejected at save time**, before anything is written, so a failed save changes nothing. Blank always means "back to auto-detection": the field is `deleteConfig`'d rather than stored as `''`, because every reader treats *missing* as the signal to auto-detect. Each field's placeholder is what it resolves to today, so clearing one visibly falls back instead of breaking a feature.
 
 `python_path` and `google_books_api_key` are read at **spawn** time, so changing either calls `sidecar.restart()` — skipped when the value didn't actually change, so a no-op re-save can't bounce the sidecar mid-hydration. `restart()` is why the exit handler checks `proc !== p` before tearing state down: the old process's exit event arrives *after* its replacement is running and would otherwise null out the successor.

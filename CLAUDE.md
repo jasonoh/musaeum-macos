@@ -80,7 +80,7 @@ Dev database: `~/Library/Application Support/Musaeum/musaeum.db` (WAL — safe t
 | Main Process     | Node.js (Electron)                |
 | Local Database   | SQLite via better-sqlite3         |
 | Metadata/Convert | Python 3.11+ sidecar              |
-| Format Conversion| Calibre CLI (ebook-convert)       |
+| Format Conversion| In-house AZW3 writer (sidecar)    |
 | IPC              | Electron contextBridge + ipcMain  |
 
 Fixed; do not substitute. Process model, directory layout and path aliases are in `docs/architecture.md`.
@@ -210,6 +210,6 @@ The Phase 1 staging claims below are what made that client cheap; all six held.
 
 1. **App name**: **Musaeum** — confirmed 2026-07-12
 2. **Goodreads scraping**: accepted for personal use; best-effort with silent degradation, never exposed as a networked service
-3. **Calibre CLI**: require user installation; path detected, configurable, clear error when missing (no bundling)
+3. **Calibre CLI**: **no longer used.** The EPUB → AZW3 writer lives in the sidecar (`sidecar/conversion/azw3/`) behind the existing `convert_format` RPC; nothing in the app detects, configures or runs a Calibre binary, and the `ebook_convert_path` setting is gone. Calibre is still _read_ as a library by the migration wizard (`metadata.db`, plain SQLite) and is never required. Reversed 2026-10-09 by `docs/superpowers/specs/2026-10-02-calibre-free-conversion-design.md` after its slice-3 gate passed on the real Kindle; the original read "require user installation; path detected, configurable, clear error when missing (no bundling)".
 4. **Google Books API key**: `GOOGLE_BOOKS_API_KEY` env var; obtain before running the 7000-book migration
 5. **Update mechanism**: still open — tracked in tasks.md (manual for now)

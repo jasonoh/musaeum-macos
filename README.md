@@ -84,7 +84,7 @@ Musaeum is one person's Mac app, so the servers beat it on reach and Calibre bea
 
 ## 🚀 Getting started
 
-**You need:** macOS (arm64), Node 22.12+, Python 3.11+, and somewhere to keep the library. [Calibre](https://calibre-ebook.com) is optional, for format conversion on send. A Google Books API key is optional too.
+**You need:** macOS (arm64), Node 22.12+, Python 3.11+, and somewhere to keep the library. **No Calibre** — EPUB → AZW3 conversion on a Kindle send is built into the app. A Google Books API key is optional too.
 
 ```bash
 git clone https://github.com/jasonoh/musaeum-macos.git && cd musaeum-macos

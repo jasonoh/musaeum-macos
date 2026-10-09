@@ -2,6 +2,17 @@
 
 All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https://keepachangelog.com); versions follow semver once the app is packaged.
 
+## [Unreleased] — 2026-10-09
+
+### Changed
+
+- **Sending an EPUB-only book to a Kindle no longer needs Calibre.** The conversion to AZW3 is done by the app's own writer inside its Python sidecar, so a machine with no Calibre at all sends exactly the same way — nothing to install, nothing to point at. The `ebook-convert` field is gone from Settings, and an install that had set one keeps a harmless leftover value that nothing reads. Calibre's _library_ is still readable for a migration; only the dependency on its converter is gone.
+- A send that converts and caches a copy now records it in the library's own `metadata.json` and in `catalog.json`, not only in the app's local database — so a catalog rebuild, or a second Mac adopting the same library, keeps the already-converted copy instead of forgetting it.
+
+### Fixed
+
+- A cached AZW3 could silently drop out of a book's format list: the send recorded the new format only in the local cache, and the next catalog adoption then pushed the older list back over it, library-wide, while the file stayed on the share. Measured on the real library (a book sent two days earlier had its AZW3 on disk while `metadata.json`, `catalog.json` and its database row all said EPUB).
+
 ## [Unreleased] — 2026-09-28
 
 ### Added

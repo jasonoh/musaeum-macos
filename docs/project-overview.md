@@ -163,7 +163,7 @@ Electron Main (Node)                     Renderer (React)              Python Si
 ├── storage kind + health (30s)          ├── Device panel + queue      ├── Goodreads series scraper
 ├── chokidar watcher on imports/         ├── Migration wizard          ├── Cover scorer + downloader
 ├── USB device polling (5s)              ├── Settings + Appearance     ├── Hydration pipeline
-├── Transfer queue (serial)              ├── In-book search + Ask      ├── ebook-convert wrapper
+├── Transfer queue (serial)              ├── In-book search + Ask      ├── AZW3 writer (in-house)
 ├── REST surface, api/ (tailnet, off)    └── Zustand stores            └── Calibre migration + PDF top-up
 └── Sidecar process manager
 
@@ -253,7 +253,7 @@ Electron Main (Node)                     Renderer (React)              Python Si
 ### 5.9 Device delivery (Kindle) and Apple Books
 
 - USB device detection by polling `/Volumes` (5s); Kindle identified, Documents folder scanned.
-- **Serial transfer queue** with per-book copy progress and `device_history` logging. On-demand **azw3 conversion** via `ebook-convert` when the device wants a format the library doesn't have — **PDF is never converted** (Kindles render PDFs natively), it is copied directly.
+- **Serial transfer queue** with per-book copy progress and `device_history` logging. On-demand **azw3 conversion** by the app's own writer when the device wants a format the library doesn't have — **PDF is never converted** (Kindles render PDFs natively), it is copied directly.
 - **Robustness that came from real failures:** macOS's SMB client can fail `close()` on a file it has just read in full (seen on a 50MB azw3 whose copy on the device was byte-identical), so the copy owns its source fd, logs a close error instead of raising, and **verifies the destination size** before calling a book sent. Free space is read only from a real mount point and re-read every poll — a stale `/Volumes/Kindle` was reporting the boot disk's 73.2GB for a device with 21.3GB.
 - Failed transfers are dismissible, show the full error, and offer _Try again_; successful ones auto-clear.
 - **On-device presence** per §3.3, with badges on cards, an "On {device}" send state, and removal that deletes the file's own title/author match plus `.sdr` sidecars.
@@ -263,7 +263,7 @@ Electron Main (Node)                     Renderer (React)              Python Si
 
 - **Read-only scan** of a Calibre library, then sidecar-orchestrated copy with streamed progress, optional rate-limited hydration (the 0.6s rate limit puts a 7,000-book run at ~90+ minutes on top of copy time), and an explicit cutover step — nothing is deleted from Calibre for you.
 - **PDF top-up** (`topup_pdfs`) — a re-runnable tool that attaches PDFs from a Calibre library to existing book folders (idempotent; `.part` atomic copy) or imports PDF-only books as new, matching by Goodreads ID → ISBN-13 → normalized title+author and **skipping ambiguous matches rather than guessing**. Run against the real library on 2026-07-27.
-- Converts and _adopts_ rather than requiring Calibre afterwards: `ebook-convert` is the only Calibre binary the app uses, its path is configurable, and a missing Calibre produces a clear error instead of a broken feature.
+- Converts and _adopts_ rather than requiring Calibre afterwards: the app runs **no Calibre binary at all** — EPUB → AZW3 conversion is its own writer — and Calibre's library is read only as a database. Nothing detects or configures a Calibre install, so a machine without one has nothing to report.
 
 ### 5.11 Theming
 
@@ -273,7 +273,7 @@ Electron Main (Node)                     Renderer (React)              Python Si
 
 ### 5.12 Settings, platform integration and packaging
 
-- **Settings** for library root (with catalog-adoption prompt), `smb_url`, Python path, `ebook-convert` path and the Google Books API key. Values are validated _before_ anything is written, so a failed save leaves the previous settings intact; clearing a field deletes the key so auto-detection resumes; each field's placeholder is the value actually in force, distinguishing "set here" from "auto-detected" from "not found".
+- **Settings** for library root (with catalog-adoption prompt), `smb_url`, the Python path and the Google Books API key. Values are validated _before_ anything is written, so a failed save leaves the previous settings intact; clearing a field deletes the key so auto-detection resumes; each field's placeholder is the value actually in force, distinguishing "set here" from "auto-detected" from "not found".
 - **Native application menu** carrying ⌘, for Settings and ⌘1/⌘2 for views. Menu items emit a command and the renderer decides what it means, so a menu item and its in-app control can't drift apart.
 - **View mode and sort persist** across restarts; filters and the search query deliberately don't. A restored sort is validated on rehydrate.
 - **Packaging:** `npm run pack` → a 117MB DMG (arm64, `productivity`). The bundle ships the sidecar as source but not the venv; on first launch the app finds a system Python 3.11+, builds a venv in Application Support and installs dependencies into it (~20s, once, with progress in the status bar), skipping later launches via a requirements hash — and searching interpreters by absolute path too, because a double-clicked app inherits launchd's minimal `PATH`. The build is **unsigned** today (tracked in `tasks.md`).
