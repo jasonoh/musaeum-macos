@@ -3,9 +3,8 @@
  *
  * Every field is the *configured* value: null means "not set", which is not
  * the same as "not in use". What the app actually runs with is reported
- * separately as a `ResolvedSetting`, because most of these fall back to
- * auto-detection (a venv interpreter, the standard Calibre install) or, for
- * the API key, to the environment.
+ * separately as a `ResolvedSetting`, because some of these fall back to
+ * auto-detection (a venv interpreter) or, for the API key, to the environment.
  */
 import type { StorageKind } from './metadata.types'
 
@@ -37,7 +36,6 @@ export interface AppSettings {
   aiModel: string | null
   aiApiKey: string | null
   pythonPath: string | null
-  ebookConvertPath: string | null
   googleBooksApiKey: string | null
 }
 
@@ -52,7 +50,7 @@ export type EditableSettings = Omit<AppSettings, 'libraryRoot' | 'libraryKind'>
 export type SettingSource =
   /** Set explicitly in Settings. */
   | 'configured'
-  /** Found by the app's own detection (venv python, standard Calibre path). */
+  /** Found by the app's own detection (a venv python, the folder's storage kind). */
   | 'auto'
   /** Inherited from the process environment (`infisical run -- npm run dev`). */
   | 'env'
@@ -155,13 +153,12 @@ export interface SettingsView {
     aiModel: ResolvedSetting
     aiApiKey: ResolvedSetting
     pythonPath: ResolvedSetting
-    ebookConvertPath: ResolvedSetting
     googleBooksApiKey: ResolvedSetting
   }
 }
 
 /** Executables the settings modal can browse for. */
-export type ExecutableKind = 'python' | 'ebookConvert'
+export type ExecutableKind = 'python'
 
 /**
  * Progress of the one-time Python environment bootstrap a packaged build runs

@@ -42,7 +42,6 @@ interface FormState {
   aiModel: string
   aiApiKey: string
   pythonPath: string
-  ebookConvertPath: string
   googleBooksApiKey: string
 }
 
@@ -54,7 +53,6 @@ const EMPTY_FORM: FormState = {
   aiModel: '',
   aiApiKey: '',
   pythonPath: '',
-  ebookConvertPath: '',
   googleBooksApiKey: ''
 }
 
@@ -70,7 +68,6 @@ function toForm(view: SettingsView): FormState {
     aiModel: view.values.aiModel ?? '',
     aiApiKey: view.values.aiApiKey ?? '',
     pythonPath: view.values.pythonPath ?? '',
-    ebookConvertPath: view.values.ebookConvertPath ?? '',
     googleBooksApiKey: view.values.googleBooksApiKey ?? ''
   }
 }
@@ -571,15 +568,6 @@ export function SettingsModal() {
                 onBrowse={() => void browse('python', 'pythonPath')}
                 fallbackNote="Auto-detected — the sidecar venv, or the newest Python 3 on PATH"
                 missingNote="No Python 3.11+ found — metadata hydration is disabled"
-              />
-              <PathField
-                label="ebook-convert"
-                value={form.ebookConvertPath}
-                onChange={set('ebookConvertPath')}
-                resolved={view.resolved.ebookConvertPath}
-                onBrowse={() => void browse('ebookConvert', 'ebookConvertPath')}
-                fallbackNote="Auto-detected from the standard Calibre install"
-                missingNote="Calibre not found — Kindle transfers can’t convert EPUB to AZW3"
               />
             </Section>
 

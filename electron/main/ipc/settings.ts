@@ -6,11 +6,7 @@ import { handle } from './handle'
 
 /** Where each executable picker starts, and what it calls the thing it wants. */
 const PICKERS: Record<ExecutableKind, { title: string; defaultPath: string }> = {
-  python: { title: 'Choose Python Interpreter', defaultPath: '/usr/local/bin' },
-  ebookConvert: {
-    title: 'Choose ebook-convert',
-    defaultPath: '/Applications/calibre.app/Contents/MacOS'
-  }
+  python: { title: 'Choose Python Interpreter', defaultPath: '/usr/local/bin' }
 }
 
 export function registerSettingsHandlers(): void {

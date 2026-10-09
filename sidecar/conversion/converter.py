@@ -14,12 +14,8 @@ TIMEOUT = 300
 SIDECAR_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def convert_format(input_path: str, output_path: str, ebook_convert_path: str | None = None) -> dict:
-    """Convert an EPUB to an AZW3 beside it.
-
-    `ebook_convert_path` is accepted and ignored: the Electron side still sends it
-    until the Calibre plumbing is removed there (spec slice 3).
-    """
+def convert_format(input_path: str, output_path: str) -> dict:
+    """Convert an EPUB to an AZW3 beside it."""
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Source file not found: {input_path}")
     if not input_path.lower().endswith(".epub") or not output_path.lower().endswith(".azw3"):

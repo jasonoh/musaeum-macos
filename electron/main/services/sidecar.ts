@@ -1,7 +1,6 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process'
-import { existsSync } from 'fs'
 import { getConfig } from './db'
-import { resolvePython, sidecarDir, type ToolResolution } from './python-env'
+import { resolvePython, sidecarDir } from './python-env'
 
 // Interpreter resolution lives in ./python-env, which also owns the managed
 // venv a packaged build creates on first launch. It is re-exported here
@@ -202,18 +201,4 @@ export function call<T = unknown>(
     pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer })
     proc!.stdin.write(JSON.stringify({ id, method, params }) + '\n')
   })
-}
-
-const STANDARD_EBOOK_CONVERT = '/Applications/calibre.app/Contents/MacOS/ebook-convert'
-
-/** Locate ebook-convert; configurable, defaults to the standard Calibre install path. */
-export function resolveEbookConvert(): ToolResolution {
-  const configured = getConfig('ebook_convert_path')
-  if (configured && existsSync(configured)) return { path: configured, source: 'configured' }
-  if (existsSync(STANDARD_EBOOK_CONVERT)) return { path: STANDARD_EBOOK_CONVERT, source: 'auto' }
-  return { path: null, source: 'none' }
-}
-
-export function ebookConvertPath(): string | null {
-  return resolveEbookConvert().path
 }

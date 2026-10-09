@@ -182,8 +182,7 @@ describe('saveSettings', () => {
     ['smbUrl', 'nas', /Not an SMB URL/],
     ['smbUrl', 'http://nas', /Not an SMB URL/],
     ['pythonPath', '/nope/python', /No Python interpreter at/],
-    ['pythonPath', tmpdir(), /Not a file/],
-    ['ebookConvertPath', '/nope/ebook-convert', /No ebook-convert at/]
+    ['pythonPath', tmpdir(), /Not a file/]
   ])('rejects %s = %s', (field, value, message) => {
     expect(() => saveSettings({ [field]: value })).toThrow(message)
   })
@@ -218,7 +217,7 @@ describe('saveSettings', () => {
   })
 
   it('does not restart the sidecar for settings it never reads', () => {
-    saveSettings({ smbUrl: 'smb://nas.local', ebookConvertPath: '' })
+    saveSettings({ smbUrl: 'smb://nas.local' })
     expect(sidecar.restart).not.toHaveBeenCalled()
   })
 })

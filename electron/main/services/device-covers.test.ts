@@ -77,7 +77,7 @@ describe('the entry’s name', () => {
   it('is the file’s, not the book’s — one book, two formats, two entries', async () => {
     const mobi = join(bookDir, 'Fixture Codex.mobi')
     await fs.writeFile(mobi, mobiFile({ title: 'Fixture Codex', uuid: UUID, cdetype: CDETYPE }))
-    // The same book, converted: ebook-convert writes its own uuid, and that is
+    // The same book, converted: a conversion writes its own uuid, and that is
     // the identity the device will look the second entry up under
     const azw3 = join(bookDir, 'Fixture Codex2.azw3')
     const otherUuid = '1b3e27dc-8ba1-4c74-9920-838a02c3c444'

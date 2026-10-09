@@ -38,12 +38,12 @@ import * as sidecar from './sidecar'
  *
  * Two things this file is careful about:
  *
- * 1. It never re-implements detection. What python or ebook-convert resolve to
- *    is asked of `sidecar.ts`, which is what actually runs them — otherwise
- *    Settings could confidently report a path the app doesn't use.
+ * 1. It never re-implements detection. What python resolves to is asked of
+ *    `sidecar.ts`, which is what actually runs it — otherwise Settings could
+ *    confidently report a path the app doesn't use.
  * 2. A bad path is rejected at save time rather than stored and discovered
- *    later as a failed conversion or a dead sidecar. Clearing a field is
- *    always allowed: it means "go back to auto-detection".
+ *    later as a dead sidecar. Clearing a field is always allowed: it means
+ *    "go back to auto-detection".
  */
 
 /**
@@ -94,7 +94,6 @@ const CONFIG_KEYS: Record<keyof EditableSettings, string> = {
   aiModel: ai.AI_CONFIG_KEYS.model,
   aiApiKey: ai.AI_CONFIG_KEYS.apiKey,
   pythonPath: 'python_path',
-  ebookConvertPath: 'ebook_convert_path',
   googleBooksApiKey: 'google_books_api_key'
 }
 
@@ -121,14 +120,12 @@ export function getSettings(): SettingsView {
     aiModel: getConfig(CONFIG_KEYS.aiModel),
     aiApiKey: getConfig(CONFIG_KEYS.aiApiKey),
     pythonPath: getConfig(CONFIG_KEYS.pythonPath),
-    ebookConvertPath: getConfig(CONFIG_KEYS.ebookConvertPath),
     googleBooksApiKey: getConfig(CONFIG_KEYS.googleBooksApiKey)
   }
 
   const aiStatus = ai.getStatus()
   const aiKey = ai.resolveKey()
   const python = sidecar.resolvePython()
-  const ebookConvert = sidecar.resolveEbookConvert()
   const googleKey = sidecar.resolveGoogleBooksKey()
 
   return {
@@ -184,14 +181,6 @@ export function getSettings(): SettingsView {
           python.source === 'none'
             ? 'No interpreter found — metadata features are disabled'
             : describeVersion(python.path)
-      },
-      ebookConvertPath: {
-        value: ebookConvert.path,
-        source: ebookConvert.source,
-        detail:
-          ebookConvert.source === 'none'
-            ? 'Calibre not found — format conversion is unavailable'
-            : undefined
       },
       // Never echoed back in `resolved`: an env-provided key isn't the user's
       // to edit here, and the configured one already rides along in `values`
@@ -298,9 +287,6 @@ function validate(field: keyof EditableSettings, value: string): void {
     case 'pythonPath':
       assertExecutable(value, 'Python interpreter')
       assertPythonVersion(value)
-      return
-    case 'ebookConvertPath':
-      assertExecutable(value, 'ebook-convert')
       return
     case 'googleBooksApiKey':
       // Only a live request could tell a good key from a bad one, and a

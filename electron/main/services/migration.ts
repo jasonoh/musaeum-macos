@@ -147,8 +147,7 @@ export function startMigration(options: MigrationOptions): MigrationJob {
           job_id: jobId,
           calibre_path: options.calibrePath,
           target_root: options.targetLibraryRoot,
-          hydrate: options.hydrate,
-          ebook_convert_path: sidecar.ebookConvertPath()
+          hydrate: options.hydrate
         },
         // Migrating thousands of books takes hours
         1000 * 60 * 60 * 12

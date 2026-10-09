@@ -18,12 +18,11 @@ import * as sidecar from './sidecar'
 import { getTransferProgress, sendToDevice } from './transfer-queue'
 
 /**
- * Stubbed for the same reason as importer's suite: `ebookConvertPath` probes
- * the machine for a real Calibre install, and `call` would start a Python
- * process. Which one of the two the queue reaches — and whether it reaches
- * either — is exactly what these tests are asking about.
+ * Stubbed for the same reason as importer's suite: `call` would start a Python
+ * process, and whether the queue reaches it — and with which arguments — is
+ * exactly what these tests are asking about.
  */
-vi.mock('./sidecar', () => ({ call: vi.fn(), ebookConvertPath: vi.fn() }))
+vi.mock('./sidecar', () => ({ call: vi.fn() }))
 
 /**
  * The device half is stubbed rather than staged: `getDevice` reads a map that
@@ -103,7 +102,6 @@ beforeEach(async () => {
   insertBook(makeBook('a', TITLE))
 
   vi.mocked(sidecar.call).mockReset()
-  vi.mocked(sidecar.ebookConvertPath).mockReturnValue('/opt/homebrew/bin/ebook-convert')
   vi.mocked(deviceManager.getDevice).mockReturnValue({
     id: DEVICE_ID,
     kind: 'kindle',
@@ -170,11 +168,7 @@ describe('format choice', () => {
     expect(job).toMatchObject({ status: 'done', format: 'azw3' })
     expect(sidecar.call).toHaveBeenCalledWith(
       'convert_format',
-      {
-        input_path: join(bookDir, `${STEM}.epub`),
-        output_path: join(bookDir, `${STEM}.azw3`),
-        ebook_convert_path: '/opt/homebrew/bin/ebook-convert'
-      },
+      { input_path: join(bookDir, `${STEM}.epub`), output_path: join(bookDir, `${STEM}.azw3`) },
       300_000
     )
     // Cached on the NAS beside the epub, and recorded, so the next send skips
@@ -199,10 +193,9 @@ describe('format choice', () => {
     expect(job).toMatchObject({ status: 'done', format: 'pdf' })
     expect(await documents()).toEqual([`${TITLE}.pdf`])
     expect(await delivered(`${TITLE}.pdf`)).toBe('%PDF-1.4 bytes')
-    // Kindles render PDF natively and ebook-convert's output is unacceptable,
-    // so the converter is not merely skipped — it is never consulted
+    // Kindles render PDF natively and conversion output is unacceptable, so the
+    // converter is not merely skipped — it is never consulted
     expect(sidecar.call).not.toHaveBeenCalled()
-    expect(sidecar.ebookConvertPath).not.toHaveBeenCalled()
     expect(getBook('a')?.formats).toEqual(['pdf'])
   })
 
@@ -212,17 +205,6 @@ describe('format choice', () => {
     const job = await transfer()
 
     expect(job).toMatchObject({ status: 'error', error: 'No source file available for conversion' })
-  })
-
-  it('fails with an actionable message when a conversion is needed but Calibre is missing', async () => {
-    await put(`${STEM}.epub`, 'epub bytes')
-    vi.mocked(sidecar.ebookConvertPath).mockReturnValue(null)
-
-    const job = await transfer()
-
-    expect(job.status).toBe('error')
-    expect(job.error).toMatch(/Calibre not found/)
-    expect(sidecar.call).not.toHaveBeenCalled()
   })
 })
 

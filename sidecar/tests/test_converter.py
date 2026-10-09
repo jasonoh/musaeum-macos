@@ -25,9 +25,11 @@ def test_it_returns_the_old_contract_plus_warnings_and_the_file_reads_back(epub,
     assert (identity.title, identity.author, identity.cdetype) == ("Test Book", "Ann Author", "EBOK")
 
 
-def test_a_calibre_path_from_an_older_caller_is_accepted_and_ignored(epub, tmp_path):
+def test_a_third_argument_is_refused(epub, tmp_path):
+    """The Calibre path went with slice 3 — the signature has no room for it now."""
     out = str(tmp_path / "Book.azw3")
-    assert convert_format(str(epub), out, "/no/such/ebook-convert")["output_path"] == out
+    with pytest.raises(TypeError):
+        convert_format(str(epub), out, "/no/such/ebook-convert")
 
 
 def test_writer_warnings_come_back_with_the_result(tmp_path):

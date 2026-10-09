@@ -93,20 +93,10 @@ async function runTransfer(job: TransferJob): Promise<void> {
     if (!sourceFile) {
       const epub = await findFormatFile(bookDir, 'epub')
       if (epub) {
-        const convertPath = sidecar.ebookConvertPath()
-        if (!convertPath) {
-          throw new Error(
-            'Calibre not found — install Calibre or set the ebook-convert path in Settings'
-          )
-        }
         format = 'azw3'
         emit(job, { status: 'converting', format })
         const target = epub.replace(/\.epub$/i, '.azw3')
-        await sidecar.call(
-          'convert_format',
-          { input_path: epub, output_path: target, ebook_convert_path: convertPath },
-          300_000
-        )
+        await sidecar.call('convert_format', { input_path: epub, output_path: target }, 300_000)
         sourceFile = target
         const formats = [...new Set([...book.formats, format])]
         // The converted file is cached on the NAS permanently, so it belongs in
