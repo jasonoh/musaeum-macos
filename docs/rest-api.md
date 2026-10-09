@@ -1,6 +1,6 @@
 # The Musaeum REST API — the client contract
 
-**Version 1** (`apiVersion` in the health payload; a payload change bumps it). **Status:** the read surface, the one write, and the upload — slices 1b, 1c and 2 of the iOS companion workstream (`docs/superpowers/specs/2026-09-22-ios-companion-design.md`; `docs/superpowers/specs/2026-09-23-phone-upload-design.md` for `POST /api/books`). **The shelf surface** — `GET /api/shelves`, the `shelf` scope on the library and its facets, the `shelves` member on every book payload, and the membership writes — landed 2026-09-28 as slice 5 of the bookshelves workstream (`docs/superpowers/specs/2026-09-27-bookshelves-design.md`). The client lives in its own repository — `jasonoh/musaeum-ios`, locally `../musaeum-ios` — and is written against this document without restating it: it extracts its test fixtures from the `json payload=` blocks below by script (`scripts/vendor-contract-fixtures.sh` there), so a field this document does not name and the wire does not carry fails its suite.
+**Version 1** (`apiVersion` in the health payload; a payload change bumps it). **Status:** `reflow` (slice 4 of the PDF-reflow workstream, 2026-10-09) is additive and does not bump `apiVersion`, as `shelves` did not. the read surface, the one write, and the upload — slices 1b, 1c and 2 of the iOS companion workstream (`docs/superpowers/specs/2026-09-22-ios-companion-design.md`; `docs/superpowers/specs/2026-09-23-phone-upload-design.md` for `POST /api/books`). **The shelf surface** — `GET /api/shelves`, the `shelf` scope on the library and its facets, the `shelves` member on every book payload, and the membership writes — landed 2026-09-28 as slice 5 of the bookshelves workstream (`docs/superpowers/specs/2026-09-27-bookshelves-design.md`). The client lives in its own repository — `jasonoh/musaeum-ios`, locally `../musaeum-ios` — and is written against this document without restating it: it extracts its test fixtures from the `json payload=` blocks below by script (`scripts/vendor-contract-fixtures.sh` there), so a field this document does not name and the wire does not carry fails its suite.
 
 This file, the golden payloads in `electron/main/services/api/shape.test.ts` and `scripts/api-smoke.sh` are the contract, and they are each other's decider: the goldens are parsed from the `json payload=…` blocks below and compared field for field with what the server builds, so a field added to one and not the other fails the suite (AC19). A contract change is a change to all three in one slice — a field the document does not name, or names and the wire does not carry, is the drift this pair exists to catch.
 
@@ -121,7 +121,10 @@ One page of the library, or of a search when `q` is present.
         "percent": 0.42,
         "updatedAt": "2026-09-21T09:12:00.000Z"
       },
-      "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
+      "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"],
+      "reflow": {
+        "available": false
+      }
     }
   ],
   "total": 1,
@@ -244,7 +247,10 @@ Answers **200 from the cache while the library is offline**, like every other JS
       "percent": 0.42,
       "updatedAt": "2026-09-21T09:12:00.000Z"
     },
-    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
+    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"],
+    "reflow": {
+      "available": false
+    }
   }
 }
 ```
@@ -296,16 +302,20 @@ One book, in the same shape as a member of `books` above (the `payload=book` gol
     "percent": 0.42,
     "updatedAt": "2026-09-21T09:12:00.000Z"
   },
-  "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
+  "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"],
+  "reflow": {
+    "available": false
+  }
 }
 ```
 
-Every field is always present; a value the row does not hold is `null` (never absent, never `0`), so a client's decoding is unconditional. Four members deserve their own sentence:
+Every field is always present; a value the row does not hold is `null` (never absent, never `0`), so a client's decoding is unconditional. Five members deserve their own sentence:
 
 - **`formats`** is in preference order — `epub`, `azw3`, `mobi`, `pdf` — so `formats[0]` is the file the reader would open. The stored order is whatever the writing source left and is deliberately not on the wire.
 - **`cover`** reports whether each size exists, plus the row's `lastModified` as a **version**. The client appends it to its own cache key (`…/cover?size=full&v=<version>`, an extra query parameter the route ignores): covers are fixed filenames, so without a version a replaced cover is answered from a cache — measured in the app on 2026-09-21, the same URL kept painting the old image after the file on disk had changed.
 - **`reading`** is the phone's whole view of where the book is: `status` (`unread`/`reading`/`read`), `percent` (a fraction, `0.42` = 42%), and `updatedAt` (when this machine last recorded state — `null` if it never has, which is _not_ the same as 0%). A `percent` of `null` means the book has never been opened. The Mac's own position (an EPUB CFI) is **not** on the wire: it is a coordinate no other engine can use, which is why the fraction is the member that travels.
 - **`shelves`** is the shelves this book is on, as **ids only** — the names come from `GET /api/shelves`, so a rename changes the shelf list and no book payload. It is always present and is `[]` when the book is on none.
+- **`reflow`** says whether the book can be read as a reflowed EPUB: `available` is true exactly when the book holds a PDF and **no EPUB** (the one rule both clients share — an EPUB is the only format both engines render). It is a statement about the book's formats, **not** about whether the file already exists: the first request for it may take minutes, and see `GET /api/books/{id}/file?format=reflow` for how that is answered. A book with `reflow.available` is read by asking for `format=reflow` instead of `formats[0]`, and `reflow` is **never** a member of `formats` — that array still means the files the book holds.
 
 ### `GET /api/books/{id}/cover?size=thumb|full`
 
@@ -324,7 +334,7 @@ The cover image's bytes, with `content-type: image/jpeg`.
 
 ### `GET /api/books/{id}/file?format=epub`
 
-The book's bytes. `format` is required and is one of `epub`, `mobi`, `azw3`, `pdf`; the file served is the book's file **of that extension** — a book renamed after import still serves, because nothing resolves by canonical filename.
+The book's bytes. `format` is required and is one of `epub`, `mobi`, `azw3`, `pdf`, `reflow` (see below); the file served is the book's file **of that extension** — a book renamed after import still serves, because nothing resolves by canonical filename.
 
 The media type follows the format:
 
@@ -334,6 +344,7 @@ The media type follows the format:
 | `mobi` | `application/x-mobipocket-ebook` |
 | `azw3` | `application/vnd.amazon.ebook`   |
 | `pdf`  | `application/pdf`                |
+| `reflow` | `application/epub+zip`         |
 
 | Answer  | When                                                                                                                                                                                                   |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -343,6 +354,20 @@ The media type follows the format:
 | **404** | An unknown book, a format the server does not serve, a format this book does not hold, or a book whose stored folder escapes the library root. All of these are one answer, uniformly and reason-free. |
 | **416** | A `Range` this file cannot satisfy.                                                                                                                                                                    |
 | **503** | The share is not mounted, or the byte-transfer budget is spent.                                                                                                                                        |
+
+#### `format=reflow`
+
+The book's PDF laid out as an EPUB (`{book}/derived/reflow.epub`, produced by the Mac on first request and cached beside the book). Only a book whose payload says `reflow.available` answers it; every other book — one with an EPUB, an unknown id, a traversing folder — is the same uniform `404` as an unknown format. Answers:
+
+| Answer | When |
+| ------- | ---- |
+| **200** | The artifact is ready (found in the cache, or produced within this request's grace of 2 s). Same headers and `Range` rules as any file, plus `ETag` (`"<size>-<mtimeMs>"`). |
+| **202** | A pass is running for this book. `{"phase": "<phase>", "completed": N, "total": M}` with `Retry-After: 2`. `completed`/`total` are pages (0/0 before the first frame). Poll the same URL; **starting is idempotent**, so two clients or two polls run one pass. For example `{"phase": "page", "completed": 12, "total": 24}`. |
+| **422** | The pipeline refused this book: `{"error": "cannot reflow", "reason": "<one sentence>"}` — no text layer, a layout it is not confident in, or the converter being unavailable. The answer is remembered for 60 s, so a poll does not re-run a doomed pass; after that a request tries again. |
+| **404** | Not eligible (see above), or the PDF is gone. |
+| **503** | The share is not mounted (`Retry-After: 5`), or the byte budget is spent (`Retry-After: 1`) — a 202 holds no byte slot. |
+
+A pass can take minutes (a 535-page book measured 176 s); the client keeps polling. Hanging up does not cancel it.
 
 ### `PUT /api/books/{id}/reading`
 
@@ -393,7 +418,10 @@ The body is read by its own field list: an unknown member is ignored, and a `pos
       "percent": 0.42,
       "updatedAt": "2026-09-21T09:12:00.000Z"
     },
-    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
+    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"],
+    "reflow": {
+      "available": false
+    }
   }
 }
 ```
@@ -476,7 +504,10 @@ The body is **the book's own bytes** — not JSON, and not `multipart/form-data`
       "percent": 0.42,
       "updatedAt": "2026-09-21T09:12:00.000Z"
     },
-    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"]
+    "shelves": ["b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901"],
+    "reflow": {
+      "available": false
+    }
   },
   "duplicate": {
     "existingBookId": "a1b2c3d4-0000-4000-8000-000000000001",
@@ -540,6 +571,7 @@ The server is never a dependency of the app, and the client should expect all of
 | A shelf-scoped read for an unknown shelf                  | **404** — the uniform refusal, answered from the cache whether the share is mounted or not.                                                                                                                                                                                                                 |
 | A shelf write while the share is not mounted              | **503** `library offline` with `Retry-After: 5` — refused before anything is written, like every shelf mutation (D3's `assertOnline`).                                                                                                                                                                      |
 | `shelves.json` cannot be read                             | The shelf writes answer **500** with the reason in the Mac's log; the file is never overwritten and the cache keeps the last good view (D3).                                                                                                                                                                 |
+| A reflow pass is running or has been refused | 202 while running, 422 with the reason for 60 s after a refusal (see format=reflow) |
 | A book's bytes are gone, a cover is gone                  | **404** — the same answer as an unknown book, so a client cannot map what this machine holds.                                                                                                                                                                                                                                                                              |
 | Too many transfers in flight                              | **503** with `Retry-After: 1` and `{"error":"busy"}`. An upload contends for the same budget and is answered the same way — it takes a slot while its body is read.                                                                                                                                                                                                        |
 | The share drops mid-transfer                              | The read fails: the connection is closed after the status has already been sent, and the client resumes with a `Range` request. If the read _stalls_ instead — a mount that stops answering without failing — nothing is notified and the request waits on the kernel; the client's timeout is what ends it, and new transfers still start while fewer than two are stuck. |
@@ -563,6 +595,7 @@ Every refusal is JSON with one member:
 | 404    | `not found`             | An unknown path, a known path behind a method it does not answer (including any method but `POST` on `/api/books`, and any method but `PUT` or `DELETE` on `/api/shelves/{id}/books/{bookId}`), an unknown shelf, an unknown book (including an unknown book id on the reading route), an unknown format, a format the book does not hold, a cover the book does not have, or a file that is gone.                                                                                                                                                       |
 | 413    | `content too large`     | An upload's body past the 1 GiB it may carry. Answered **at the breach, while the client is still sending**, and the client must read the response rather than assume a reset — see `POST /api/books`.                                                                                                                                                                                                                                                     |
 | 416    | `range not satisfiable` | A `Range` this file cannot satisfy — including a malformed one. Carries `Content-Range: bytes */<length>`.                                                                                                                                                                                                                                                                                                                                                 |
+| 422    | `cannot reflow`         | The PDF could not be laid out as an EPUB (`format=reflow`). The only refusal with a second member, `reason` — one sentence saying why. Remembered for 60 s. |
 | 500    | `internal`              | A handler failed — including a shelf write against a `shelves.json` that cannot be read, which is refused rather than overwritten, with the reason in the Mac's log. The server keeps serving.                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 503    | `busy`                  | Too many byte transfers in flight. Carries `Retry-After: 1`.                                                                                                                                                                                                                                                                                                                                                                                               |
 | 503    | `library offline`       | The library share is not mounted, so there are no bytes to serve. Carries `Retry-After: 5`.                                                                                                                                                                                                                                                                                                                                                                |
