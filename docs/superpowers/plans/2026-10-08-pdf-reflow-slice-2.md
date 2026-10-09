@@ -339,8 +339,13 @@ def _stream_helper(
         try:
             stream = read_stream(proc.stdout, on_page)
         except LayoutUnavailable:
-            proc.kill()
-            raise
+            if not late:
+                proc.kill()
+                raise
+            # The kill is why the stream stopped where it did, so the timeout
+            # below is the reason to report: a half-written stream has no header
+            # to be judged on.
+            stream = None
     finally:
         if killer is not None:
             killer.cancel()
@@ -349,6 +354,8 @@ def _stream_helper(
         raise LayoutUnavailable("the layout helper ran too long")
     return stream, proc.returncode
 ```
+
+The `if not late` branch is the plan's own correction, found by the timeout test in Step 4: without it a killed-by-timeout helper raised *"wrote no header"*, because the kill ends the stream before the header line finishes arriving and `parse_header` sees an empty line.
 
 and add `threading` to the imports at the top of the file (`import json` / `import os` / `import subprocess` / `import threading`).
 

@@ -275,8 +275,13 @@ def _stream_helper(
         try:
             stream = read_stream(proc.stdout, on_page)
         except LayoutUnavailable:
-            proc.kill()
-            raise
+            if not late:
+                proc.kill()
+                raise
+            # The kill is why the stream stopped where it did, so the timeout
+            # below is the reason to report: a half-written stream has no header
+            # to be judged on.
+            stream = None
     finally:
         if killer is not None:
             killer.cancel()
