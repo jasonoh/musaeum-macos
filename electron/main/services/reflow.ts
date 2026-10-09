@@ -70,6 +70,12 @@ interface SidecarReflow {
 }
 
 const inflight = new Map<string, Promise<ReflowResult>>()
+/** The latest frame per running pass — what the wire's 202 reports. */
+const latest = new Map<string, { phase: string; completed: number; total: number }>()
+/** A refused book's reason and when to forget it, so a poll does not re-run a doomed pass. */
+const refusals = new Map<string, { reason: string; until: number }>()
+/** How long a refusal answers for the book before a request may try again. */
+export const REFUSAL_TTL_MS = 60_000
 let subscribed = false
 
 function text(value: unknown): string {
@@ -100,6 +106,9 @@ function subscribeOnce(): void {
     const phase = text(frame.phase)
     if (!bookId || !phase) return
     const reason = text(frame.reason)
+    if (inflight.has(bookId)) {
+      latest.set(bookId, { phase, completed: count(frame.completed), total: count(frame.total) })
+    }
     events.broadcast('reflowProgress', {
       bookId,
       phase,
@@ -113,6 +122,8 @@ function subscribeOnce(): void {
 /** Drop the in-flight map and the subscription. For tests only. */
 export function resetForTests(): void {
   inflight.clear()
+  latest.clear()
+  refusals.clear()
   subscribed = false
 }
 
@@ -129,9 +140,45 @@ export function resetForTests(): void {
 export function ensure(bookId: string): Promise<ReflowResult> {
   const existing = inflight.get(bookId)
   if (existing) return existing
-  const run = pass(bookId).finally(() => inflight.delete(bookId))
+  latest.set(bookId, { phase: 'start', completed: 0, total: 0 })
+  const run = pass(bookId)
+    .then((result) => {
+      // Only a pass that ran has an outcome to remember; a pre-flight rejection
+      // skips this and is surfaced by the caller.
+      if (result.status === 'fallback') {
+        refusals.set(bookId, { reason: result.reason, until: Date.now() + REFUSAL_TTL_MS })
+      } else {
+        refusals.delete(bookId)
+      }
+      return result
+    })
+    .finally(() => {
+      inflight.delete(bookId)
+      latest.delete(bookId)
+    })
   inflight.set(bookId, run)
   return run
+}
+
+/**
+ * The running pass's latest frame, or null when none is running — non-null
+ * exactly while `ensure(bookId)` is in flight, `start` before the first frame.
+ */
+export function wireStatus(
+  bookId: string
+): { phase: string; completed: number; total: number } | null {
+  return inflight.has(bookId) ? (latest.get(bookId) ?? null) : null
+}
+
+/** The reason of a refusal in the last `REFUSAL_TTL_MS`, else null. */
+export function recentRefusal(bookId: string): string | null {
+  const hit = refusals.get(bookId)
+  if (!hit) return null
+  if (Date.now() >= hit.until) {
+    refusals.delete(bookId)
+    return null
+  }
+  return hit.reason
 }
 
 async function pass(bookId: string): Promise<ReflowResult> {

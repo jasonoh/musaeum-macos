@@ -10,13 +10,16 @@ import {
   DEFAULT_PAGE_LIMIT,
   MAX_PAGE_LIMIT,
   bookPayload,
+  cannotReflowPayload,
   errorPayload,
   facetsPayload,
   healthPayload,
   importPayload,
+  isReflowEligible,
   libraryPayload,
   membershipPayload,
   readingPayload,
+  reflowPendingPayload,
   shelvesPayload
 } from './shape'
 
@@ -410,5 +413,35 @@ describe('the shelves payload (slice 5)', () => {
     }
     expect(shelvesPayload([row])).toEqual({ shelves: [row] })
     expect(Object.keys(PAYLOADS.shelves as object)).toEqual(['shelves'])
+  })
+})
+
+describe('reflow on the wire (D1, D8)', () => {
+  it('reflow is available for a PDF with no EPUB, and for nothing else (D1)', () => {
+    expect(isReflowEligible({ formats: ['pdf'] })).toBe(true)
+    expect(isReflowEligible({ formats: ['mobi', 'pdf'] })).toBe(true) // the paper shelf
+    expect(isReflowEligible({ formats: ['pdf', 'epub'] })).toBe(false) // order is irrelevant
+    expect(isReflowEligible({ formats: ['epub'] })).toBe(false)
+    expect(isReflowEligible({ formats: ['mobi'] })).toBe(false)
+    expect(isReflowEligible({ formats: [] })).toBe(false)
+  })
+
+  it('the book payload reports reflow without touching formats', () => {
+    const pdfOnly = bookPayload({ ...GOLDEN, formats: ['pdf'] }, [])
+    expect(pdfOnly.reflow).toEqual({ available: true })
+    expect(pdfOnly.formats).toEqual(['pdf']) // never a synthetic 'epub'
+    expect(bookPayload(GOLDEN, []).reflow).toEqual({ available: false })
+  })
+
+  it('the pending and refusal bodies are exactly their documented members', () => {
+    expect(reflowPendingPayload({ phase: 'page', completed: 12, total: 24 })).toEqual({
+      phase: 'page',
+      completed: 12,
+      total: 24
+    })
+    expect(cannotReflowPayload('no page carries a text layer')).toEqual({
+      error: 'cannot reflow',
+      reason: 'no page carries a text layer'
+    })
   })
 })
