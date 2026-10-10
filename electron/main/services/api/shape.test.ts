@@ -1,3 +1,4 @@
+import { reflowAvailable } from '@shared/book.types'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
@@ -15,7 +16,6 @@ import {
   facetsPayload,
   healthPayload,
   importPayload,
-  isReflowEligible,
   libraryPayload,
   membershipPayload,
   readingPayload,
@@ -381,7 +381,7 @@ describe('the read path does not touch the NAS (AC16)', () => {
 
     expect(imports).toEqual([
       "import type { Book, DuplicateContext, LibraryFacets, ReadStatus } from '@shared/book.types'",
-      "import { orderedFormats } from '@shared/book.types'"
+      "import { orderedFormats, reflowAvailable } from '@shared/book.types'"
     ])
   })
 })
@@ -436,12 +436,12 @@ describe('the shelves payload (slice 5)', () => {
 
 describe('reflow on the wire (D1, D8)', () => {
   it('reflow is available for a PDF with no EPUB, and for nothing else (D1)', () => {
-    expect(isReflowEligible({ formats: ['pdf'] })).toBe(true)
-    expect(isReflowEligible({ formats: ['mobi', 'pdf'] })).toBe(true) // the paper shelf
-    expect(isReflowEligible({ formats: ['pdf', 'epub'] })).toBe(false) // order is irrelevant
-    expect(isReflowEligible({ formats: ['epub'] })).toBe(false)
-    expect(isReflowEligible({ formats: ['mobi'] })).toBe(false)
-    expect(isReflowEligible({ formats: [] })).toBe(false)
+    expect(reflowAvailable({ formats: ['pdf'] })).toBe(true)
+    expect(reflowAvailable({ formats: ['mobi', 'pdf'] })).toBe(true) // the paper shelf
+    expect(reflowAvailable({ formats: ['pdf', 'epub'] })).toBe(false) // order is irrelevant
+    expect(reflowAvailable({ formats: ['epub'] })).toBe(false)
+    expect(reflowAvailable({ formats: ['mobi'] })).toBe(false)
+    expect(reflowAvailable({ formats: [] })).toBe(false)
   })
 
   it('the book payload reports reflow without touching formats', () => {

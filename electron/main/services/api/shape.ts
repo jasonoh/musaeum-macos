@@ -1,5 +1,5 @@
 import type { Book, DuplicateContext, LibraryFacets, ReadStatus } from '@shared/book.types'
-import { orderedFormats } from '@shared/book.types'
+import { orderedFormats, reflowAvailable } from '@shared/book.types'
 
 /**
  * The wire's shape, in one place (D10, invariant 8).
@@ -163,16 +163,6 @@ export interface WireReading {
   updatedAt: string | null
 }
 
-/**
- * Whether the book can be read as a reflowed EPUB — D1's trigger, stated once.
- * **Eligibility, never presence** (owner decision, 2026-10-09): the artifact
- * is a file on the share, and this module reads no files (AC16). Order is
- * irrelevant, so no `formats[0]` (invariant 3).
- */
-export function isReflowEligible(book: Pick<Book, 'formats'>): boolean {
-  return book.formats.includes('pdf') && !book.formats.includes('epub')
-}
-
 export interface WireReflow {
   available: boolean
 }
@@ -258,7 +248,7 @@ export function bookPayload(book: Book, shelves: string[]): WireBook {
       updatedAt: book.readingState?.updatedAt ?? null
     },
     shelves,
-    reflow: { available: isReflowEligible(book) }
+    reflow: { available: reflowAvailable(book) }
   }
 }
 

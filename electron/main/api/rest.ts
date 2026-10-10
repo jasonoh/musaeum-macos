@@ -1,3 +1,4 @@
+import { reflowAvailable } from '@shared/book.types'
 import { app } from 'electron'
 import { createReadStream, promises as fs } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
@@ -21,7 +22,6 @@ import {
   facetsPayload,
   healthPayload,
   importPayload,
-  isReflowEligible,
   libraryPayload,
   membershipPayload,
   readingPayload,
@@ -440,7 +440,7 @@ async function serveReflow(
   deps: RouteDeps
 ): Promise<void> {
   const found = getBook(bookId)
-  if (!found || !isReflowEligible(found)) {
+  if (!found || !reflowAvailable(found)) {
     sendJson(res, 404, errorPayload('notFound'))
     return
   }
@@ -478,7 +478,7 @@ async function serveReflow(
     winner = await Promise.race([
       pass.then(
         (result) => result,
-        (err: unknown) => ({ status: 'error' as const, reason: describeError(err) })
+        (err: unknown) => ({ status: 'error' as const, error: err })
       ),
       grace
     ])
@@ -502,7 +502,15 @@ async function serveReflow(
     )
     return
   }
-  if (winner.status === 'fallback' || winner.status === 'error') {
+  if (winner.status === 'error') {
+    // Pre-flight (no sidecar, no PDF file): this module's own failure, logged
+    // where a person can read it. The message is the filesystem's or the
+    // runtime's and never goes on the wire (invariant 12).
+    console.warn(`[rest] reflow for ${bookId} failed: ${describeError(winner.error)}`)
+    sendJson(res, 500, errorPayload('internal'))
+    return
+  }
+  if (winner.status === 'fallback') {
     sendJson(res, 422, cannotReflowPayload(winner.reason))
     return
   }

@@ -237,6 +237,21 @@ export function readerTarget(
 }
 
 /**
+ * Whether the wire advertises this book as reflowable (D1): it **holds a PDF and
+ * no EPUB**.
+ *
+ * Deliberately broader than `readerTarget`: this is the trigger the *phone*
+ * reads, and the EPUB is the only format both engines render, so a paper holding
+ * a `mobi` beside its PDF is one the Mac reads today and the phone cannot. Both
+ * rules read `formats` as a set, never by position (invariant 3). Shared by the
+ * payload's `reflow.available` and the reflow route's refusal, so the member a
+ * client reads and the answer it then gets cannot disagree.
+ */
+export function reflowAvailable(book: Pick<Book, 'formats'>): boolean {
+  return book.formats.includes('pdf') && !book.formats.includes('epub')
+}
+
+/**
  * Format preference order: what the reader would open first, PDF last — it
  * has no in-app reader and is never converted, so it is the odd one out rather
  * than anyone's first choice.

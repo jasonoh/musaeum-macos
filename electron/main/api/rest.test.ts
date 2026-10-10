@@ -2090,7 +2090,7 @@ describe('the reflow route', () => {
     expect(vi.getTimerCount()).toBe(before)
   })
 
-  it('422s a fallback result and a pre-flight rejection, 500s neither', async () => {
+  it('422s a fallback result; a pre-flight rejection is a 500 that leaks no message', async () => {
     vi.mocked(reflow.ensure).mockResolvedValue({
       ...produced(),
       status: 'fallback',
@@ -2101,8 +2101,8 @@ describe('the reflow route', () => {
     expect(await fb.json()).toEqual({ error: 'cannot reflow', reason: 'unreadable' })
     vi.mocked(reflow.ensure).mockRejectedValue(new Error('The metadata engine is unavailable'))
     const res = await get(URL_REFLOW)
-    expect(res.status).toBe(422)
-    expect(((await res.json()) as { reason: string }).reason).toContain('unavailable')
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'internal' })
   })
 
   it('404s a traversing row and a missing PDF without starting a pass', async () => {

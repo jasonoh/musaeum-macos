@@ -26,7 +26,7 @@
 ## Global Constraints
 
 - Invariant 8: logic in `services/`; `rest.ts` stays a router. Invariant 9 / 2: the new arm resolves through `book-bytes.ts` (`resolveReflowFile`), by its fixed name, realpath'd on both sides — never a second resolver.
-- Invariant 12: nothing throws out of a request; a pre-flight rejection (`sidecar.assertAvailable`, "no PDF file") is a 422, not a 500.
+- Invariant 12: nothing throws out of a request; a pre-flight rejection (`sidecar.assertAvailable`, "no PDF file") is a logged 500 `internal` that leaks no message (amended on merging the two machines' slice 4 work, 2026-10-10), not a 422.
 - `resolveBookFile` must **still** answer `null` for `reflow` (its `FORMATS` is untouched) — the wire opens deliberately, in `rest.ts`, not by accident in the shared resolver.
 - `shape.ts` imports nothing from the filesystem, the NAS or Electron (its import list is pinned by a case).
 - `docs/rest-api.md` and `shape.ts` change together; `shape.test.ts` holds them field for field (AC19). Prose in `.md` is not hard-wrapped.
