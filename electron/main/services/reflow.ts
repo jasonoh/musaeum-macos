@@ -72,6 +72,32 @@ interface SidecarReflow {
 const inflight = new Map<string, Promise<ReflowResult>>()
 let subscribed = false
 
+/** Where a running pass is, for a caller that has to *describe* it rather than await it. */
+export interface ReflowProgressFrame {
+  phase: string
+  completed: number
+  total: number
+}
+
+/**
+ * The last frame each running pass reported — what the wire's `202` answers with
+ * (D8, slice 4).
+ *
+ * It exists because **a pass is minutes and an HTTP request cannot hold a socket
+ * that long**: the route answers `202` with the frame it has, and the client
+ * asks again, which joins the same `ensure` promise under a second request. The
+ * map is filled by the frames the sidecar already streams (the subscription
+ * below re-broadcasts them either way) and cleared when a pass settles, so a
+ * book with nothing in flight answers `null` rather than a frame from the last
+ * time it was opened.
+ */
+const latest = new Map<string, ReflowProgressFrame>()
+
+/** Where a book's running pass is, or `null` when none is in flight. */
+export function currentProgress(bookId: string): ReflowProgressFrame | null {
+  return latest.get(bookId) ?? null
+}
+
 function text(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
@@ -100,11 +126,17 @@ function subscribeOnce(): void {
     const phase = text(frame.phase)
     if (!bookId || !phase) return
     const reason = text(frame.reason)
+    const completed = count(frame.completed)
+    const total = count(frame.total)
+    // Kept **beside** the broadcast rather than derived from it: the event bus is
+    // fire-and-forget, and a second subscriber reading the same stream for one
+    // route's benefit would be a second reader of a single frame.
+    latest.set(bookId, { phase, completed, total })
     events.broadcast('reflowProgress', {
       bookId,
       phase,
-      completed: count(frame.completed),
-      total: count(frame.total),
+      completed,
+      total,
       ...(reason ? { reason } : {})
     } satisfies ReflowProgress)
   })
@@ -113,6 +145,7 @@ function subscribeOnce(): void {
 /** Drop the in-flight map and the subscription. For tests only. */
 export function resetForTests(): void {
   inflight.clear()
+  latest.clear()
   subscribed = false
 }
 
@@ -129,7 +162,12 @@ export function resetForTests(): void {
 export function ensure(bookId: string): Promise<ReflowResult> {
   const existing = inflight.get(bookId)
   if (existing) return existing
-  const run = pass(bookId).finally(() => inflight.delete(bookId))
+  const run = pass(bookId).finally(() => {
+    inflight.delete(bookId)
+    // The frame goes with the pass it described: a settled book has no progress
+    // to report, and a `202` must never answer with where it *was*.
+    latest.delete(bookId)
+  })
   inflight.set(bookId, run)
   return run
 }
@@ -146,6 +184,7 @@ async function pass(bookId: string): Promise<ReflowResult> {
   if (first.status !== 'fallback' || !RETRY_VERDICTS.has(first.verdict)) return first
 
   // Announced, so a bar that restarts has said why rather than looking stuck.
+  latest.set(bookId, { phase: 'retrying', completed: 0, total: 0 })
   events.broadcast('reflowProgress', {
     bookId,
     phase: 'retrying',

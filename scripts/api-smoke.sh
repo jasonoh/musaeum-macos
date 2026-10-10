@@ -668,6 +668,76 @@ else
   fail 'GET /api/books/{id}/file answers 200' 'no book in the first 100 declares a format'
 fi
 
+# ---------------------------------------------------------------------------
+# The reflow (slice 4): the member, and the artifact a PDF-only book answers
+# ---------------------------------------------------------------------------
+
+printf '\n--- the reflow (PDF-only books)\n'
+
+# The member is on *every* book payload and is a boolean on both kinds of book —
+# the one this run uploaded (an EPUB, so `false`) and a PDF-only one, below.
+code=$(request "/api/books/${UPLOAD_ID:-not-a-book}")
+check 'book detail carries reflow.available as a boolean' 'boolean' \
+  "$(jq -r '.reflow.available | type' "$BODY")"
+
+if [ -n "${UPLOAD_ID:-}" ]; then
+  # D1's rule, from the other side: a book that already holds an EPUB is not
+  # offered a reflow, so this is the uniform 404 and not a second rendering
+  code=$(request "/api/books/$UPLOAD_ID/file?format=reflow")
+  check 'format=reflow on a book with an EPUB answers 404' 404 "$code"
+else
+  note 'the run imported no book — the EPUB-holding 404 was not exercised'
+fi
+
+# A PDF-only book: one that holds a pdf and no epub, which is D1's own rule and
+# the rule the member above reports. The profile has to hold one — any library of
+# papers will, and the route is what is being exercised rather than this script's
+# ability to make a PDF.
+request '/api/library?formats=pdf&limit=500' >/dev/null
+REFLOW_ID="$(jq -r '[.books[] | select((.formats | index("pdf")) != null)
+  | select((.formats | index("epub")) == null)][0].id // empty' "$BODY")"
+
+if [ -z "$REFLOW_ID" ]; then
+  note 'the profile holds no PDF-only book — the reflow route itself was not exercised'
+else
+  # Polled the way a client polls it: `202` means the Mac is still laying the
+  # book out, and the loop stops at the first answer that is not one. Bounded, so
+  # a pass that outlives the bound fails rather than hangs the run.
+  STATUS=""
+  STATUSES=""
+  i=0
+  while [ "$i" -lt 30 ]; do
+    STATUS="$(request "/api/books/$REFLOW_ID/file?format=reflow")"
+    STATUSES="$STATUSES$STATUS "
+    [ "$STATUS" = "202" ] || break
+    sleep 1
+    i=$((i + 1))
+  done
+  note "reflow poll: statuses $STATUSES"
+
+  case "$STATUS" in
+    200)
+      check 'the reflow answers 200 once the pass is done' 200 "$STATUS"
+      check 'its type is an EPUB' 'application/epub+zip' "$(header content-type)"
+      check 'it carries an ETag' 'yes' "$([ -n "$(header etag)" ] && echo yes || echo no)"
+      check 'its first bytes are a zip' 'PK' "$(head -c 2 "$BODY")"
+      ;;
+    422)
+      # A settled refusal — an image-only scan, or a book whose pages carry no
+      # text layer. The route answered exactly what the contract says; there is
+      # simply no artifact to check, so the bytes above are not asserted.
+      check 'a refused pass answers 422 in the contract body' 'cannot reflow' \
+        "$(jq -r '.error' "$BODY")"
+      check 'the refusal carries the pipeline own sentence' 'yes' \
+        "$([ -n "$(jq -r '.reason' "$BODY")" ] && echo yes || echo no)"
+      note "the Mac refused this PDF-only book: $(jq -r '.reason' "$BODY")"
+      ;;
+    *)
+      fail 'the reflow answers 200 or 422' "got ${STATUS:-nothing}"
+      ;;
+  esac
+fi
+
 printf '\n--- the shape of a refusal\n'
 
 code=$(request '/api/library?sort=athor')

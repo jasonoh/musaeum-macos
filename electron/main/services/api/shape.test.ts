@@ -17,6 +17,8 @@ import {
   libraryPayload,
   membershipPayload,
   readingPayload,
+  reflowPendingPayload,
+  reflowRefusedPayload,
   shelvesPayload
 } from './shape'
 
@@ -211,6 +213,10 @@ describe('the contract document and the goldens (AC19)', () => {
     // Slice 5's membership writes, asserted in the method+path form for the same
     // reason: the read route's own path is a prefix of it
     expect(DOC).toContain('/api/shelves/{id}/books/{bookId}')
+    // Slice 4's reflow arm, asserted in the form a client types it — the plain
+    // file path above is a *prefix* of this one, so the short one would pass
+    // whatever the document said about the reflow
+    expect(DOC).toContain('/api/books/{id}/file?format=reflow')
   })
 
   it('names every refusal word, every media type and the page bounds', () => {
@@ -360,8 +366,12 @@ describe('the read path does not touch the NAS (AC16)', () => {
 
     expect(imports).toEqual([
       "import type { Book, DuplicateContext, LibraryFacets, ReadStatus } from '@shared/book.types'",
-      "import { orderedFormats } from '@shared/book.types'"
+      "import { orderedFormats, reflowAvailable } from '@shared/book.types'"
     ])
+    // Slice 4 added `reflowAvailable`, and it is the *same module* — a pure rule
+    // over `formats` — so the claim above is intact: the read path still reaches
+    // no filesystem and no NAS. That is also why the reflow's *pass* is not here;
+    // it lives in the route, where a byte route belongs.
   })
 })
 
@@ -410,5 +420,46 @@ describe('the shelves payload (slice 5)', () => {
     }
     expect(shelvesPayload([row])).toEqual({ shelves: [row] })
     expect(Object.keys(PAYLOADS.shelves as object)).toEqual(['shelves'])
+  })
+})
+
+describe('the reflow member and its two bodies (slice 4, D8)', () => {
+  /** `formats` is `BookFormat[]`, so each fixture is typed where it is written. */
+  const book = (formats: Book['formats']): ReturnType<typeof bookPayload> =>
+    bookPayload({ ...GOLDEN, formats }, [])
+
+  it('reports a book that holds a PDF and no EPUB as available', () => {
+    expect(book(['pdf']).reflow).toEqual({ available: true })
+    // D1's rule is "no EPUB", so a Kindle format beside the PDF does not
+    // disqualify it — and those are exactly the papers the phone cannot read
+    // while the Mac reads them happily
+    expect(book(['mobi', 'pdf']).reflow).toEqual({ available: true })
+  })
+
+  it('reports an EPUB-holding book as unavailable, whatever else it holds', () => {
+    const held: Book['formats'][] = [['epub'], ['epub', 'pdf'], ['pdf', 'epub'], ['azw3']]
+    for (const formats of held) expect(book(formats).reflow).toEqual({ available: false })
+  })
+
+  it('is one member, with the same field list on every book', () => {
+    // A key present only on some books is the shape a client reads as undefined
+    // and crashes on, so the PDF-only book's field list is the EPUB-holding
+    // book's, member for member
+    expect(keyPaths(book(['pdf'])).sort()).toEqual(keyPaths(PAYLOADS.book).sort())
+  })
+
+  it('shapes the 202 and the 422 by their own field lists', () => {
+    expect(reflowPendingPayload({ phase: 'layout', completed: 12, total: 24 })).toEqual({
+      phase: 'layout',
+      completed: 12,
+      total: 24
+    })
+    // The word is stated here in full rather than read off `API_ERRORS`, so this
+    // case decides its *value*; the document's error table and this body are
+    // held together by `names every refusal word` above
+    expect(reflowRefusedPayload('no page carries a text layer')).toEqual({
+      error: 'cannot reflow',
+      reason: 'no page carries a text layer'
+    })
   })
 })

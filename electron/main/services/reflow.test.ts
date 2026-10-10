@@ -9,7 +9,7 @@ import { makeBook } from '../../../test/helpers/book'
 import { closeDb, insertBook } from './db'
 import * as events from './events'
 import * as nas from './nas-manager'
-import { REFLOW_TIMEOUT_MS, RETRY_VERDICTS, ensure, resetForTests } from './reflow'
+import { REFLOW_TIMEOUT_MS, RETRY_VERDICTS, currentProgress, ensure, resetForTests } from './reflow'
 import * as sidecar from './sidecar'
 
 /**
@@ -269,5 +269,59 @@ describe('the frames', () => {
     await ensure('b14')
     await ensure('b15')
     expect(vi.mocked(sidecar.onNotification)).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * The wire's `202` reads where a pass is while it runs (slice 4): a reflow is
+ * minutes and a request cannot hold a socket that long, so the route answers the
+ * last frame and the client asks again.
+ */
+describe('currentProgress', () => {
+  it('holds the last frame while a pass runs, and nothing once it settles', async () => {
+    await seedPdf('b16')
+    let release: (value: Record<string, unknown>) => void = () => {}
+    vi.mocked(sidecar.call).mockImplementation(
+      () => new Promise((resolve) => (release = resolve)) as never
+    )
+
+    const running = ensure('b16')
+    await vi.waitFor(() => expect(vi.mocked(sidecar.call)).toHaveBeenCalled())
+
+    // Nothing yet, deliberately: a pass with no frame answers `null`, so the
+    // route writes its own `start 0 0` rather than a frame from a previous open
+    expect(currentProgress('b16')).toBeNull()
+
+    const handler = vi.mocked(sidecar.onNotification).mock.calls[0][1] as (params: unknown) => void
+    handler({ book_id: 'b16', phase: 'layout', completed: 3, total: 9 })
+    expect(currentProgress('b16')).toEqual({ phase: 'layout', completed: 3, total: 9 })
+
+    release(PRODUCED)
+    await running
+    // The frame goes with the pass it described: a settled book has no progress
+    // to report, and a later `202` must never answer with where it *was*
+    expect(currentProgress('b16')).toBeNull()
+  })
+
+  it('reports the retry while it is happening', async () => {
+    await seedPdf('b17')
+    let release: (value: Record<string, unknown>) => void = () => {}
+    vi.mocked(sidecar.call)
+      .mockResolvedValueOnce({
+        status: 'fallback',
+        verdict: 'unstable_layout',
+        reason: '3 of 5 text pages could not be laid out'
+      } as never)
+      .mockImplementationOnce(() => new Promise((resolve) => (release = resolve)) as never)
+
+    const running = ensure('b17')
+    // `retrying` is this app's own phase (the sidecar never sends it), and a bar
+    // that restarts has to be able to say so
+    await vi.waitFor(() =>
+      expect(currentProgress('b17')).toEqual({ phase: 'retrying', completed: 0, total: 0 })
+    )
+    release(PRODUCED)
+    await running
+    expect(currentProgress('b17')).toBeNull()
   })
 })

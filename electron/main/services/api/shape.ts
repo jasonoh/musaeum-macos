@@ -1,5 +1,5 @@
 import type { Book, DuplicateContext, LibraryFacets, ReadStatus } from '@shared/book.types'
-import { orderedFormats } from '@shared/book.types'
+import { orderedFormats, reflowAvailable } from '@shared/book.types'
 
 /**
  * The wire's shape, in one place (D10, invariant 8).
@@ -65,6 +65,15 @@ export const API_ERRORS = {
   offline: 'library offline',
   /** 416 — a range this file cannot satisfy. */
   rangeNotSatisfiable: 'range not satisfiable',
+  /**
+   * 422 — the Mac looked at this PDF and cannot lay it out (D8, the wire's
+   * slice 4). A **settled** answer rather than a transient one: the request is
+   * well-formed, the book is one this API offers, and the pipeline has refused
+   * it — which is why a client does not retry it automatically. The body
+   * carries the pipeline's own sentence as `reason` beside this word
+   * (`reflowRefusedPayload`, its one shaper).
+   */
+  cannotReflow: 'cannot reflow',
   /** 500 — a handler threw; the server keeps serving (invariant 12). */
   internal: 'internal'
 } as const
@@ -161,6 +170,22 @@ export interface WireReading {
   updatedAt: string | null
 }
 
+/**
+ * What the Mac says about laying this book's PDF out as an EPUB (D8 — the
+ * wire's slice 4).
+ *
+ * `available` is the **server's** eligibility, D1's own rule: the book holds a
+ * PDF and no EPUB. The client does not re-derive it from `formats`, for the
+ * same reason it does not re-derive their preference order — the rule is the
+ * Mac's, and a phone that guessed at it could disagree with the pass it is
+ * about to ask for. One member, deliberately: D8 also named a *version*, and
+ * it is absent because nothing reads it (R1 of
+ * `plans/2026-10-09-pdf-reflow-slice-4.md`, with the reversal condition).
+ */
+export interface WireReflow {
+  available: boolean
+}
+
 export interface WireBook {
   id: string
   title: string
@@ -191,6 +216,12 @@ export interface WireBook {
    * changes no book payload.
    */
   shelves: string[]
+  /**
+   * Whether the Mac can lay this book out as an EPUB (D8, slice 4) — D1's rule,
+   * "holds a PDF and no EPUB". Always present like every other member, so a
+   * client's decoding stays unconditional (the document's own sentence).
+   */
+  reflow: WireReflow
 }
 
 /**
@@ -240,8 +271,58 @@ export function bookPayload(book: Book, shelves: string[]): WireBook {
       percent: book.readingState?.percent ?? null,
       updatedAt: book.readingState?.updatedAt ?? null
     },
-    shelves
+    shelves,
+    // **The shared rule, never a second copy here.** `reflowAvailable` is D1's
+    // trigger, and the route below refuses on that same call — so the member a
+    // client reads and the answer it then gets cannot disagree about which books
+    // this API will lay out.
+    reflow: { available: reflowAvailable(book) }
   }
+}
+
+// ---------------------------------------------------------------------------
+// The reflow route's two non-book bodies — a pass still running, and a refusal
+// (D8, the wire's slice 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * The `202`'s body: the pass is running, and this is where.
+ *
+ * `phase` is the pipeline's own word — `start`, `layout`, `reading`, `writing`
+ * — and `completed`/`total` are the page counts its frames carry, which is the
+ * same pair the Mac's own reader draws a bar from (D7). A pass with no frame
+ * yet answers `start 0 0`, the client's own default, so a client can render the
+ * bar unconditionally.
+ */
+export interface ReflowPendingPayload {
+  phase: string
+  completed: number
+  total: number
+}
+
+/**
+ * The `202`'s body, built by its field list — a stray member on the progress
+ * frame the service hands in cannot leak onto the wire by spreading.
+ */
+export function reflowPendingPayload(progress: ReflowPendingPayload): ReflowPendingPayload {
+  return { phase: progress.phase, completed: progress.completed, total: progress.total }
+}
+
+/**
+ * The `422`'s body: the Mac looked, and cannot lay this book out.
+ *
+ * `reason` is **the pipeline's own sentence** (`no page carries a text layer`),
+ * which is the one thing a person can act on and the same string the Mac's own
+ * reader puts on its toast (D6) — so the phone and the desktop explain one
+ * refusal one way. `error` is `API_ERRORS.cannotReflow`, its single home.
+ */
+export interface ReflowRefusedPayload {
+  error: string
+  reason: string
+}
+
+export function reflowRefusedPayload(reason: string): ReflowRefusedPayload {
+  return { error: API_ERRORS.cannotReflow, reason }
 }
 
 // ---------------------------------------------------------------------------

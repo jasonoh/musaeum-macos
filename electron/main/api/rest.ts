@@ -1,3 +1,4 @@
+import { reflowAvailable, type ReflowResult } from '@shared/book.types'
 import { app } from 'electron'
 import { createReadStream, promises as fs } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
@@ -23,6 +24,8 @@ import {
   libraryPayload,
   membershipPayload,
   readingPayload,
+  reflowPendingPayload,
+  reflowRefusedPayload,
   shelvesPayload,
   type ApiError
 } from '../services/api/shape'
@@ -31,7 +34,10 @@ import {
   parseByteRange,
   resolveBookFile,
   resolveCoverFile,
-  bookContentType
+  resolveReflowFile,
+  bookContentType,
+  REFLOW_CONTENT_TYPE,
+  REFLOW_FORMAT
 } from '../services/book-bytes'
 import {
   bookExists,
@@ -45,6 +51,7 @@ import {
   shelfIdsForBooks
 } from '../services/db'
 import * as nas from '../services/nas-manager'
+import { currentProgress, ensure } from '../services/reflow'
 import { addBooks, isShelfGone, removeBooks } from '../services/shelves'
 import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/settings'
 
@@ -91,8 +98,10 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  * **Route by route (docs/rest-api.md is the contract; this is the wiring):**
  * `GET /api/health`, `GET /api/library`, `GET /api/library/facets`,
  * `GET /api/shelves`, `GET /api/books/{id}`, `GET /api/books/{id}/cover`,
- * `GET /api/books/{id}/file`, `PUT /api/books/{id}/reading` — slice 1c's, which
- * reads a JSON body — `POST /api/books`, which takes a book's bytes as its body
+ * `GET /api/books/{id}/file` and `GET /api/books/{id}/file?format=reflow` (the
+ * derived artifact, slice 4 of the reflow design), `PUT /api/books/{id}/reading`
+ * — slice 1c's, which reads a JSON body — `POST /api/books`, which takes a book's
+ * bytes as its body
  * (the phone-upload design, D1), and the bookshelves slice's membership pair,
  * `PUT`/`DELETE /api/shelves/{id}/books/{bookId}`, which send no body at all.
  *
@@ -208,6 +217,28 @@ const BUSY_RETRY_AFTER_SECONDS = 1
 const OFFLINE_RETRY_AFTER_SECONDS = 5
 
 /**
+ * How long a `format=reflow` request waits for a pass before answering `202`.
+ *
+ * Read off the two measurements this repo already has rather than picked: the
+ * 4-page fixture laid out in **0.39 s** — so a small book has to answer 200 on
+ * its first request, or a client polls for nothing — and *Universe*, 535 pages,
+ * measured **176 s** — so the grace must be nowhere near a poll interval either.
+ * Two seconds is both, by two orders of magnitude on the small side and by two
+ * on the large one.
+ */
+const REFLOW_GRACE_MS = 2000
+
+/**
+ * What a `202` asks a client to wait before it asks again.
+ *
+ * This route's own number rather than `sendUnavailable`'s: those are the share's
+ * reconnect backoff (5 s) and the transfer budget (1 s), and a layout pass is
+ * neither. Two seconds is also what the client defaults to for this poll, so the
+ * header agrees with the behaviour it is describing.
+ */
+const REFLOW_POLL_SECONDS = 2
+
+/**
  * At most this many byte transfers in flight (D9).
  *
  * **Why a cap at all:** the default libuv threadpool is four slots for the whole
@@ -307,12 +338,29 @@ interface RouteDeps {
    * route passes them through untouched (`ServerOptions.upload` is the seam).
    */
   upload: UploadOptions
+  /** How long `format=reflow` waits for a pass before it answers `202`. */
+  reflowGraceMs: number
 }
 
-/** A file to serve, and the type its bytes are labelled with. */
+/**
+ * A file to serve, and the type its bytes are labelled with.
+ *
+ * `etag` asks the writer for an `ETag` computed from the `stat` it takes anyway
+ * — `"<size>-<mtimeMs>"`, the identity the reflow route's own live reading
+ * recorded (`../musaeum-ios/docs/evidence/slice8/reflow-curl.txt`). It is
+ * **opt-in, and one caller uses it**: the derived artifact, whose identity *is*
+ * its own clock rather than a row's `lastModified`. The stored book and cover
+ * routes have answered without one since slice 1b and their documents do not
+ * name it, so this is a member of the byte writer rather than a change to what
+ * every byte route sends. Inert today — `cache-control: no-store` means no
+ * client here revalidates — and written because the other repo's committed
+ * reading of this route names it, and a check that record carries is not this
+ * slice's to drop (R3 of the slice-4 annex).
+ */
 interface ByteSource {
   path: string
   contentType: string
+  etag?: boolean
 }
 
 /** The 503s, which differ only in their wait and their word. */
@@ -345,8 +393,11 @@ async function sendBytes(
 
   try {
     let size: number
+    let modified: number
     try {
-      size = (await fs.stat(source.path)).size
+      const stat = await fs.stat(source.path)
+      size = stat.size
+      modified = stat.mtimeMs
     } catch {
       sendJson(res, 404, errorPayload('notFound'))
       return
@@ -355,7 +406,11 @@ async function sendBytes(
     const shared = {
       'content-type': source.contentType,
       'cache-control': 'no-store',
-      'accept-ranges': 'bytes'
+      'accept-ranges': 'bytes',
+      // Whole milliseconds, because `mtimeMs` carries sub-millisecond digits and
+      // an `ETag` that changed between two reads of an untouched file would be
+      // worse than none
+      ...(source.etag ? { etag: `"${size}-${Math.trunc(modified)}"` } : {})
     }
 
     // **The range is decided before the empty-file branch, because the two interact.**
@@ -401,6 +456,127 @@ async function sendBytes(
   } finally {
     deps.gate.release()
   }
+}
+
+// ---------------------------------------------------------------------------
+// The reflow — a PDF-only book's derived EPUB (D3, D8; the wire's slice 4)
+// ---------------------------------------------------------------------------
+
+/** What one reflow request's race came to. */
+type ReflowRace =
+  | { kind: 'running' }
+  | { kind: 'settled'; result: ReflowResult }
+  | { kind: 'failed'; error: unknown }
+
+/**
+ * Join — or start — a book's pass, and wait for it **at most** `graceMs`.
+ *
+ * **This race is the whole reason the reflow is its own arm and not a fifth
+ * format.** A pass is minutes — *Universe*, 535 pages, measured 176 s — and an
+ * HTTP request cannot hold a socket that long, so the route answers `202` with
+ * where the pass is and the client asks again; the next request calls this again
+ * and joins the *same* `reflow.ensure` promise, which is what makes a poll one
+ * pass rather than one per request (and what `ensure` promises from its side).
+ *
+ * **The pass is detached from the request deliberately.** A request that has
+ * already answered `202` has no business failing on a pass it stopped waiting
+ * for, so `.then`'s rejection handler consumes it whatever the race did — an
+ * unhandled rejection in the main process is the one thing invariant 12 says
+ * this module never produces. The timer is cleared when the pass wins, so a book
+ * that finishes inside the grace leaves nothing pending behind it.
+ */
+async function runReflow(bookId: string, graceMs: number): Promise<ReflowRace> {
+  const pass = ensure(bookId).then(
+    (result): ReflowRace => ({ kind: 'settled', result }),
+    (error: unknown): ReflowRace => ({ kind: 'failed', error })
+  )
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const grace = new Promise<'running'>((resolve) => {
+    timer = setTimeout(() => resolve('running'), graceMs)
+  })
+
+  const first = await Promise.race([pass, grace])
+  clearTimeout(timer)
+  return first === 'running' ? { kind: 'running' } : first
+}
+
+/**
+ * `GET /api/books/{id}/file?format=reflow` — the book's reflowed EPUB (D8).
+ *
+ * **Eligibility is the payload's own rule**, read from `reflowAvailable` — the
+ * same call `bookPayload` shapes `reflow.available` with — so the member a
+ * client read and the answer it then gets here cannot disagree. A book that
+ * holds an EPUB is refused exactly like an unknown one, uniformly and
+ * reason-free (D11): `formats[0]` already *is* an EPUB, so a reflow for it would
+ * be a second and worse rendering of a book the phone can read as it stands.
+ *
+ * The answers are the contract's:
+ *
+ * - **404** — an unknown book, or one this API does not offer a reflow for.
+ * - **503** `library offline` — the share is not mounted. Checked by the router
+ *   before this is entered, exactly as both other byte routes check it.
+ * - **202** — the pass is still running. The body is the last frame it reported
+ *   (`start 0 0` when none has arrived yet, which is the client's own default),
+ *   and `Retry-After` is this route's own 2 s.
+ * - **422** — the pass ran and refused; the body is the pipeline's own sentence.
+ * - **200** — the artifact, labelled `application/epub+zip` and carrying the
+ *   ETag its own `stat` gives it, through the same byte writer as every other
+ *   file here — so a `Range`, a spent transfer budget and a file that vanished
+ *   keep their ordinary answers rather than growing a second table.
+ */
+async function handleReflowFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+  bookId: string,
+  deps: RouteDeps
+): Promise<void> {
+  const book = getBook(bookId)
+  if (!book || !reflowAvailable(book)) {
+    sendJson(res, 404, errorPayload('notFound'))
+    return
+  }
+
+  const race = await runReflow(bookId, deps.reflowGraceMs)
+
+  if (race.kind === 'running') {
+    const frame = currentProgress(bookId) ?? { phase: 'start', completed: 0, total: 0 }
+    sendJson(res, 202, reflowPendingPayload(frame), {
+      'retry-after': String(REFLOW_POLL_SECONDS)
+    })
+    return
+  }
+
+  if (race.kind === 'failed') {
+    // Pre-flight: the book has no PDF for the pipeline, or the sidecar is not
+    // running. This module's own failure, logged where a person can read it and
+    // answered like every other one (invariant 12) — the message is the
+    // filesystem's or the runtime's and never goes on the wire.
+    console.warn(`[rest] reflow for ${bookId} failed: ${describeError(race.error)}`)
+    sendJson(res, 500, errorPayload('internal'))
+    return
+  }
+
+  if (race.result.status === 'fallback') {
+    // The Mac looked and cannot lay this book out. A **settled** answer, and the
+    // pipeline's own sentence is the one thing a person can act on (D6).
+    sendJson(res, 422, reflowRefusedPayload(race.result.reason))
+    return
+  }
+
+  const path = await resolveReflowFile(bookId)
+  if (!path) {
+    // A pass that reported an artifact the share does not hold — a half-written
+    // `derived/`, or a book folder moved under it. Unreachable in the ordinary
+    // case, so it is this module's own failure rather than a 404: a 404 here
+    // would tell a client the book is not reflowable, which is the one thing
+    // that just proved false.
+    console.warn(`[rest] reflow for ${bookId} settled without an artifact`)
+    sendJson(res, 500, errorPayload('internal'))
+    return
+  }
+
+  await sendBytes(req, res, { path, contentType: REFLOW_CONTENT_TYPE, etag: true }, deps)
 }
 
 // ---------------------------------------------------------------------------
@@ -981,6 +1157,16 @@ async function handleRequest(
           sendUnavailable(res, 'offline')
           return
         }
+        // **The reflow is its own arm, ahead of the by-extension resolver** (D3,
+        // AC2 of the reflow design): `reflow` is not a `BookFormat`, its file is
+        // derived rather than stored, and a request for it can *start* a
+        // minutes-long pass — none of which `resolveBookFile` can express. Its
+        // own eligibility check is what keeps `format=reflow` on an EPUB-holding
+        // book the same uniform 404 as every other refusal here.
+        if (format === REFLOW_FORMAT) {
+          await handleReflowFile(req, res, book.id, deps)
+          return
+        }
         const path = await resolveBookFile(book.id, format)
         if (!path) {
           // Unknown format, a format the book does not hold, an unknown book, a
@@ -1036,6 +1222,14 @@ export interface ServerOptions {
    * scratch directory its own) without a 1 GiB file or a thirty-second wait.
    */
   upload?: UploadOptions
+
+  /**
+   * How long a reflow request waits for a pass before it answers `202`; default
+   * `REFLOW_GRACE_MS`. The seam exists for the reason the three above do — so a
+   * case decides **both** arms of the race in milliseconds, without waiting two
+   * seconds to assert the `202` and without a real layout pass to assert the 200.
+   */
+  reflowGraceMs?: number
 }
 
 /**
@@ -1059,7 +1253,9 @@ export function createRestApiServer(
     gate: createByteGate(),
     bodyTimeoutMs: options.bodyTimeoutMs ?? BODY_TIMEOUT_MS,
     // The upload's own bounds: the module's defaults unless a case replaced them
-    upload: options.upload ?? {}
+    upload: options.upload ?? {},
+    // The reflow's own clock: the module's default unless a case replaced it
+    reflowGraceMs: options.reflowGraceMs ?? REFLOW_GRACE_MS
   }
 
   const server = createServer((req, res) => {

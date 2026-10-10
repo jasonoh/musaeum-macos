@@ -237,6 +237,24 @@ export function readerTarget(
 }
 
 /**
+ * Whether the wire advertises this book as reflowable (D1, the wire's rule —
+ * slice 4): it **holds a PDF and no EPUB**.
+ *
+ * **Deliberately broader than `readerTarget` above, and that is the point of
+ * keeping two rules.** This is the trigger the *phone* reads, and the reason it
+ * is broader: the EPUB is the only format both engines render, so a paper
+ * holding a `mobi` beside its PDF is one the Mac reads happily today and the
+ * phone cannot read at all. `readerTarget` decides when *this Mac* spends a
+ * pass (a book it has another way to show does not need one); this decides what
+ * the wire offers, and the wire has to admit those 45 papers or the phone can
+ * never ask for them. Both read `formats` as a **set** — never by position
+ * (invariant 3), which is why this is `.includes` and not `formats[0]`.
+ */
+export function reflowAvailable(book: Book): boolean {
+  return book.formats.includes('pdf') && !book.formats.includes('epub')
+}
+
+/**
  * Format preference order: what the reader would open first, PDF last — it
  * has no in-app reader and is never converted, so it is the odd one out rather
  * than anyone's first choice.

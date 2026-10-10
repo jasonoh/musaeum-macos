@@ -131,15 +131,38 @@ const DERIVED = 'derived'
 const REFLOW_NAME = 'reflow.epub'
 
 /**
- * The file behind `musaeum://book/{bookId}/reflow` — `{book}/derived/reflow.epub`.
+ * The `format` that asks for the derived artifact — **not a `BookFormat`** (D3,
+ * AC2), which is why it is a constant here rather than a member of `FORMATS`.
+ *
+ * `musaeum://book/{id}/reflow` has answered to it since slice 3 and
+ * `GET /api/books/{id}/file?format=reflow` since the wire's slice 4 (D8); the
+ * two share this spelling so the renderer's URL and the phone's query cannot
+ * drift apart. It is intercepted in `api/rest.ts` **before** `resolveBookFile`,
+ * so it never becomes a format this module resolves by extension: the folder it
+ * lives in is `derived/`, which is not a format (D3).
+ */
+export const REFLOW_FORMAT = 'reflow'
+
+/**
+ * What the artifact is served as. The reflow's output **is** an EPUB — the
+ * sidecar writes EPUB 3 — so it is the EPUB media type and not a type of its
+ * own; a client that already opens a book needs no branch for it.
+ */
+export const REFLOW_CONTENT_TYPE = BOOK_CONTENT_TYPES.epub
+
+/**
+ * The file behind `musaeum://book/{bookId}/reflow` — and, since the wire's slice
+ * 4, behind `GET /api/books/{id}/file?format=reflow` too:
+ * `{book}/derived/reflow.epub`.
  *
  * **Deliberately not a member of `FORMATS`, and deliberately not reachable
- * through `resolveBookFile`.** That function's second consumer is the HTTP
- * surface (`api/rest.ts` passes the caller's `format` straight through), so a
- * `reflow` arm there would open `GET /api/books/{id}/file?format=reflow` in the
- * same commit that no document describes — and D8 puts the contract first, in
- * this repo, in slice 4. This route is therefore the renderer's alone, and the
- * wire stays closed until slice 4 opens it on purpose.
+ * through `resolveBookFile`.** The wire reaches it through the router's own
+ * arm, which owns the pass and the `202`/`422` a run can answer **before** it
+ * calls this — so what is left here is a plain path decision, exactly as it is
+ * for the renderer. That is the whole reason the arm is a branch in
+ * `api/rest.ts` and not a fifth format in this file: a `reflow` arm in
+ * `resolveBookFile` would answer a book whose pass has never run with a stale
+ * artifact or a bare 404, and would have no way to say *a pass is running*.
  *
  * A *fixed* name rather than an extension scan, for the mirror-image reason:
  * `derived/` is not a format (D3, `docs/invariants/files-and-deletion.md`), so
