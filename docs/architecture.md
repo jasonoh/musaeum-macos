@@ -161,7 +161,7 @@ Musaeum/
 │   │       ├── 004_device_file_identity.sql
 │   │       ├── 005_device_history_outlives_book.sql
 │   │       ├── 006_shelves.sql
-│   │       └── 007_owned_fields.sql  # books.owned_fields (the user's claims) + the one-time seed from app_config
+│   │       └── 007_owned_fields.sql  # books.owned_fields (the user's claims); the seed from app_config is a db.ts step beside the migration, not in the .sql
 │   └── preload/
 │       └── index.ts              # window.Musaeum contextBridge surface
 │
