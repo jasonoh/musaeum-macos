@@ -31,10 +31,16 @@ export function startWatcher(): void {
   })
 }
 
-async function importAndRemove(path: string): Promise<void> {
+/**
+ * Import a dropped file and, only if the book is now in the library, remove it.
+ * A duplicate is refused rather than asked about — the watcher runs whether or
+ * not a window is open to answer — and a refused file stays in `imports/` for
+ * the person to look at. Nothing but a settled import may delete a source.
+ */
+export async function importAndRemove(path: string): Promise<void> {
   try {
-    const [result] = await importer.addFiles([path])
-    if (result.success || result.skipped) {
+    const [result] = await importer.addFiles([path], { duplicate: 'reject' })
+    if (result?.success) {
       await fs.rm(path, { force: true })
     }
   } catch (err) {

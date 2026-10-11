@@ -130,9 +130,16 @@ function titleFromFilename(filePath: string): string {
  * gate some *other* import is legitimately waiting on (the watcher fans imports
  * out concurrently). Answering the gate without asking anybody is a distinct
  * outcome, so it is a distinct policy.
+ *
+ * `'reject'` is for a caller with nobody to ask and no right to add a second
+ * book — the `imports/` watcher. The collision is found by the same gate, but
+ * the import then settles as a failure that names the book it collided with:
+ * nothing is copied, nothing is suspended (there may be no window to answer),
+ * and — the point — nothing about the failure looks like the user's own Skip,
+ * so the caller does not mistake it for a file it may delete.
  */
 export interface ImportOptions {
-  duplicate?: 'ask' | 'add-new'
+  duplicate?: 'ask' | 'add-new' | 'reject'
 }
 
 export async function addFiles(
@@ -212,6 +219,11 @@ async function importOne(filePath: string, options: ImportOptions = {}): Promise
         existingTitle: existing.title,
         existingAuthor: existing.author,
         matchType
+      }
+      if (options.duplicate === 'reject') {
+        const error = `Already in the library as "${existing.title}"`
+        emit(job, 'error', { error })
+        return { jobId, fileName, success: false, error, duplicate: duplicateContext }
       }
       if ((options.duplicate ?? 'ask') === 'add-new') {
         // D3: detection and context unchanged, suspension skipped. The context

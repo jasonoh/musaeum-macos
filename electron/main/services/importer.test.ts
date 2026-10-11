@@ -700,6 +700,39 @@ describe('the import duplicate gate', () => {
     })
   })
 
+  describe('refused by policy (duplicate: reject)', () => {
+    it('settles without suspending, copies nothing, and says what it collided with', async () => {
+      await seed({ ...makeBook('existing', 'Dune'), author: 'Frank Herbert' })
+      const src = join(inbox, 'Dune.epub')
+      await fs.writeFile(src, 'ebook bytes')
+
+      const [result] = await addFiles([src], { duplicate: 'reject' })
+
+      expect(result).toMatchObject({ fileName: 'Dune.epub', success: false })
+      expect(result.skipped).toBeUndefined()
+      expect(result.error).toMatch(/already in the library/i)
+      expect(result.duplicate).toMatchObject({ existingBookId: 'existing' })
+      expect(getBooks()).toHaveLength(1)
+      expect(await fs.readdir(join(root, 'books'))).toEqual(['existing'])
+      // Nobody is asked: there may be no window to ask.
+      expect(progress.map((p) => p.step)).not.toContain('awaiting_dedup_decision')
+      // The refusal reaches the surface that already reports import errors.
+      expect(progress.at(-1)).toMatchObject({ step: 'error' })
+    })
+
+    it('imports a file that collides with nothing', async () => {
+      await seed(makeBook('existing', 'A Different Book'))
+      const src = join(inbox, 'Dune.epub')
+      await fs.writeFile(src, 'ebook bytes')
+
+      const [result] = await addFiles([src], { duplicate: 'reject' })
+      await settleHydration()
+
+      expect(result).toMatchObject({ success: true })
+      expect(getBooks()).toHaveLength(2)
+    })
+  })
+
   describe('skip', () => {
     it('aborts the import: no book, no folder, and a result that says it was skipped', async () => {
       await seed(makeBook('existing', 'Dune'))
