@@ -37,6 +37,20 @@ afterEach(() => {
 })
 
 describe('writeMetadataJson', () => {
+  it('writes owned_fields when the book has claims, and omits the key when it has none', async () => {
+    await writeMetadataJson(bookDir, {
+      ...makeBook('a'),
+      ownedFields: { author: '2026-10-11T10:00:00.000Z' }
+    })
+    expect(
+      JSON.parse(await fs.readFile(join(bookDir, 'metadata.json'), 'utf8')).owned_fields
+    ).toEqual({ author: '2026-10-11T10:00:00.000Z' })
+    await writeMetadataJson(bookDir, makeBook('a'))
+    expect(
+      JSON.parse(await fs.readFile(join(bookDir, 'metadata.json'), 'utf8'))
+    ).not.toHaveProperty('owned_fields')
+  })
+
   it('leaves no .part file behind after writing', async () => {
     await writeMetadataJson(bookDir, makeBook('a'))
     const leftovers = (await fs.readdir(bookDir)).filter((f) => f.includes('.part'))

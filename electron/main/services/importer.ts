@@ -632,6 +632,9 @@ export async function writeMetadataJson(
           updated_at: book.readingState.updatedAt
         }
       : null,
+    // Additive and optional: omitted when empty, so a book nobody has claimed
+    // a field on writes the same file it always did
+    ...(Object.keys(book.ownedFields).length ? { owned_fields: book.ownedFields } : {}),
     date_added: book.dateAdded,
     last_modified: book.lastModified,
     ...(sources ? { metadata_sources: sources } : {})

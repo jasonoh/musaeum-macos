@@ -4,6 +4,7 @@ import { join } from 'path'
 import type { Book, BookFormat, ReadingState, ReadStatus } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
 import { computeFileSizeBytes } from './book-files'
+import { parseOwnedFields } from './owned-fields'
 
 export const CATALOG_FILENAME = 'catalog.json'
 export const CATALOG_VERSION = 1
@@ -77,14 +78,18 @@ function validateReadingState(raw: UntrustedReadingState): ReadingState | null {
  * so it needs the same guards the cold path (`metadataJsonToBook`) applies to
  * metadata.json: it lives on a share any machine can write, and an
  * out-of-range percent or non-string position reaching the reader is the same
- * bug from either file. Entries with no reading state — nearly all of them —
- * skip the allocation.
+ * bug from either file. `ownedFields` is validated the same way, always: a
+ * corrupt claim map degrades to no locks rather than reaching the reconcile.
+ * Entries with no reading state — nearly all of them — leave it as it was.
  */
 function fromCatalogEntry(book: Book): Book {
   const normalized = withSortKeys(book)
+  const ownedFields = parseOwnedFields(normalized.ownedFields)
   const readingState = validateReadingState(normalized.readingState)
-  if (readingState === null && normalized.readingState == null) return normalized
-  return { ...normalized, readingState }
+  if (readingState === null && normalized.readingState == null) {
+    return { ...normalized, ownedFields }
+  }
+  return { ...normalized, readingState, ownedFields }
 }
 
 export async function readCatalogDetailed(root: string): Promise<CatalogReadState> {
@@ -249,6 +254,8 @@ export interface MetadataJson {
     percent?: number | null
     updated_at?: string | null
   } | null
+  /** The per-field claim map, `{ field: ISO timestamp }`; typed `unknown` because it is validated on read (`parseOwnedFields`). */
+  owned_fields?: unknown
   date_added?: string | null
   last_modified?: string | null
 }
@@ -306,8 +313,7 @@ export async function metadataJsonToBook(
       : 'unread') as ReadStatus,
     nasPath: join('books', dirName),
     readingState: toReadingState(json.reading_state),
-    // Placeholder: reading `owned_fields` off the record is portable-decisions Task 3
-    ownedFields: {}
+    ownedFields: parseOwnedFields(json.owned_fields)
   }
 }
 

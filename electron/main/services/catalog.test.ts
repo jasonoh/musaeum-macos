@@ -572,3 +572,51 @@ describe('reading state propagation', () => {
     expect(restored.readingState).toEqual({ position: null, percent: 1, updatedAt: '' })
   })
 })
+
+describe('owned_fields on the record', () => {
+  it('reads owned_fields from metadata.json', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'musaeum-of-'))
+    const book = await metadataJsonToBook(
+      { id: 'a', title: 'T', owned_fields: { author: '2026-10-11T10:00:00.000Z' } },
+      'a',
+      dir
+    )
+    expect(book.ownedFields).toEqual({ author: '2026-10-11T10:00:00.000Z' })
+  })
+
+  it('reads as no locks when metadata.json predates owned_fields', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'musaeum-of-'))
+    const book = await metadataJsonToBook({ id: 'a', title: 'T' }, 'a', dir)
+    expect(book.ownedFields).toEqual({})
+  })
+
+  it.each([
+    ['a string', 'x'],
+    ['an array', ['author']],
+    ['null', null],
+    ['a bad member', { author: 5, nope: 'x' }]
+  ])('degrades a corrupt owned_fields (%s) to no locks (Review Focus 1)', async (_name, bad) => {
+    const dir = mkdtempSync(join(tmpdir(), 'musaeum-of-'))
+    const book = await metadataJsonToBook({ id: 'a', title: 'T', owned_fields: bad }, 'a', dir)
+    expect(book.ownedFields).toEqual({})
+  })
+
+  it('validates owned_fields on a catalog entry too', async () => {
+    await writeCatalog(root, [{ ...makeBook('a'), ownedFields: 'garbage' as never }])
+    expect((await readCatalog(root))!.books[0].ownedFields).toEqual({})
+  })
+
+  it('keeps a well-formed owned_fields on a catalog entry', async () => {
+    const ownedFields = { author: '2026-10-11T10:00:00.000Z' }
+    await writeCatalog(root, [{ ...makeBook('a'), ownedFields }])
+    expect((await readCatalog(root))!.books[0].ownedFields).toEqual(ownedFields)
+  })
+
+  it('survives a metadata.json round-trip', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'musaeum-of-'))
+    const book = { ...makeBook('a'), ownedFields: { author: '2026-10-11T10:00:00.000Z' } }
+    await writeMetadataJson(dir, book)
+    const json = JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')) as MetadataJson
+    expect((await metadataJsonToBook(json, 'a', dir)).ownedFields).toEqual(book.ownedFields)
+  })
+})
