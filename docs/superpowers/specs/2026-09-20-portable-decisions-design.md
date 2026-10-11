@@ -1,7 +1,7 @@
 # Design: a decision travels with the book — locks, read status, and what a merge owns (metadata + reading, v1)
 
 **Date:** 2026-09-20
-**Status:** Proposed — written at Jason's direction for another session to implement. Every fork below is settled except **D3's second clause**, which is marked *open* with a recommendation and one line of his to confirm.
+**Status:** **Slice 1 built 2026-10-11** (see *Built — slice 1*, below); slices 2 and 3 open. Written at Jason's direction for another session to implement. Every fork below is settled except **D3's second clause**, which is marked *open* with a recommendation and one line of his to confirm.
 **Scope:** two facts this machine currently keeps to itself — which fields the *user* has claimed, and when the *user* last set a read status — move into the book's own record so the other machine can honour them; and a refresh stops treating "no source supplies this field" as "keep what was there". It does not touch what a lock means for a *value* (that is D1–D6 of `2026-09-20-field-overrides-design.md`, unchanged), and it does not make the merge smarter about *matching* — see *Rejected and deferred*.
 **Depends on:** `docs/superpowers/specs/2026-09-20-field-overrides-design.md` (D1's own reversal condition, and D2/D3/D6 which stay as they are), the reading-state policy (`docs/invariants/reader.md`), the catalog ⇄ cache sync (`docs/invariants/nas-and-catalog.md`), the hydration merge (`docs/invariants/metadata-hydration.md`)
 **Interacts with:** `metadata.json` — the canonical contract, documented and read by the iOS companion (`docs/data-contracts.md`) — `catalog.json`, the schema (migration 006, after `003_reading_state.sql`), `importer.hydrate`, `library:updateBook`, `metadata:resolveConflict`, `library-sync.preserveLocalReadingState`, `sidecar/pipeline/conflict.py` (see D7)
@@ -111,6 +111,55 @@ Thesis: a fact about *this machine's user* is still a fact about *the book*, and
 13. A locked field is blanked when nothing supplies it (D3 as written) — or not, if D3's open clause inverts; whichever way the confirm lands, the case exists with its name on it.
 
 Numbered continuously so a build report can say "AC1–AC13 hold".
+
+## Built — slice 1 (2026-10-11)
+
+Branch `feat/portable-decisions-slice1`; plan `docs/superpowers/plans/2026-10-11-portable-decisions-slice1.md`. AC1–AC6 hold; the numbers are below, each one observed rather than expected. Suite: 1998 passed | 4 skipped, against 1950 | 4 before the slice (+48).
+
+**Departures from the spec as written, all approved by the owner:**
+
+1. **The migration is `007_owned_fields.sql`, not 006.** Migration 006 was taken by `006_shelves.sql` (bookshelves) after this spec was written.
+2. **The absent-entry rule is tombstone-free, and the spec did not state it.** D2 says a release "removes the entry"; it never says how the *other* machine tells a release from a claim it has not seen. The rule built (`reconcileOwnedFields` in `electron/main/services/owned-fields.ts`, stated once there): where both sides hold the field the strictly newer time wins and a tie keeps the incoming one; a field only the incoming record holds is taken; a field only this machine holds is ordered against the incoming record's `last_modified` — it stands unless it is *older* than that, because an older claim means the record was rewritten without it. An unparseable or absent `last_modified` keeps the claim (dropping a decision is the worse error). A release therefore bumps `last_modified`, which is why it is **online-only**: it must reach `metadata.json`, or the next adoption of the other machine's record would re-impose the claim. If the owner prefers explicit tombstones, that is a record-shape change and a new decision.
+3. **`metadata.json` catches up lazily for a seeded or reconciled claim.** A claim seeded by the upgrade, or won by a reconcile, is in SQLite and `catalog.json` at once, but a book's `metadata.json` gains it on that book's next write (an edit, a hydrate, a reading flush). The alternative — writing every affected book's `metadata.json` during adoption — puts a per-book SMB write inside `adopt` and was declined for slice 1. The residue: if the catalog were deleted and rebuilt from folders before that write, the claim would be lost (Risk 1 of the plan; bounded to a handful of books).
+4. **The file count is over the "~10 files" line.** 24 TypeScript files changed (10 of them tests) plus the migration, against "~9 imagined, honestly 12+": the type that carries the claim reaches every `Book` literal, and the stored-shape walk touches db, catalog, importer, migration and sync.
+
+**Facts learned during the build:**
+
+- The plan's tie test did not kill the `>` → `>=` mutation in the reconcile (a tie keeps the incoming entry, and with equal strings the two are indistinguishable), so a same-instant-different-spelling case was added (`2026-10-11T10:00:00Z` against `2026-10-11T10:00:00.000Z`: the same instant, and the incoming spelling must come back).
+- `db-shelves.test.ts`'s migration-006 replay test needed `rewindTo005()` to drop the `owned_fields` column before replaying. Every future migration needs the same upkeep in that test, or it fails on a duplicate-column error that has nothing to do with shelves.
+- `parseOwnedFields` accepts a JSON-encoded *string* as well as an object, because the column is JSON text and one validator serves the row and both files. The side effect, recorded as a known quirk: a `metadata.json` whose `owned_fields` is a JSON string of a valid map yields locks. Harmless — a hand-edited file can only claim fields, which blocks a fetch and nothing else — and not worth a second validator.
+- `app_config.field_overrides` is left in place after the seed. It is the rollback path, nothing reads or writes it, and a later cleanup may delete it.
+- The upgrade seed stamps each carried claim at the book's own `last_modified` (the old store has no time), so the reconcile rule above keeps it against a record written at that same moment and drops it against a later one.
+
+**AC1 — the migration on a copy of the live database** (`sqlite3 .backup` of the live file, which was only read; the migration file applied to the copy):
+
+| | before | after |
+| --- | --- | --- |
+| `SELECT COUNT(*) FROM books` | 6738 | 6738 |
+| `SELECT COUNT(*) FROM books WHERE owned_fields IS NOT NULL` | (column absent: `no such column: owned_fields`) | 0 |
+| `SELECT owned_fields FROM books LIMIT 1` | failed | succeeded (NULL) |
+| `PRAGMA user_version` | 6 | 6 |
+| `PRAGMA integrity_check` | — | ok |
+
+`user_version` did not move because the migration SQL was applied through the `sqlite3` CLI, which does not run the app's versioning; the app bumps it to 7 (observed on the two scratch profiles below, both created by a real launch: `user_version` 7 and an `owned_fields` column present).
+
+**AC4 and AC5 — the two-profile probe** (live, isolated; the instrument this spec said did not exist). Two Electron instances, `MUSAEUM_USER_DATA` profiles A (CDP 9222) and B (9223), one scratch library, each profile's `app_config.library_root` pointing at it; the listening pid's start time was checked against each launch (A 10:28:28, B 10:29:58) before any port was trusted. The sidecar venv does not exist in this checkout, and the import still worked: the importer's own extraction made the book from a hand-built EPUB dropped in `imports/` (title *Probe Book*, author *Original Author*); the hydration leg could not run, which is why nothing below involves a fetch. B was stopped during the import so its inbox watcher could not race A for the same file, then relaunched.
+
+| Step | Observed |
+| --- | --- |
+| B adopts (Reload Library) | B holds the book, `owned_fields` NULL, `getFieldOverrides` → `[]` |
+| A: editor → author only → *Save changes* | A's `owned_fields` = `{"author":"2026-10-11T14:30:46.434Z"}`; `json_each` lists exactly one key, `author`; `metadata.json` `owned_fields` identical; `catalog.json` `ownedFields` identical; author `Edited Author` (before: `Original Author`) |
+| **AC4** B: Reload Library | B's `owned_fields` = `{"author":"2026-10-11T14:30:46.434Z"}` (A's timestamp, to the millisecond); `getFieldOverrides` on 9223 → `["author"]`; B's editor shows the chip `Release the override on Author`, text *Overridden*, and the author input reads `Edited Author` |
+| B: `releaseFieldOverride(id, 'author')` | returns `[]`; B's `owned_fields` NULL, `last_modified` 2026-10-11T14:31:23.330Z; `metadata.json` has no `owned_fields`; `catalog.json` `ownedFields` `{}` |
+| **AC5** A: Reload Library | A's `owned_fields` NULL (`typeof` null), `getFieldOverrides` → `[]`, no chip in A's editor, author still `Edited Author`, `last_modified` adopted from B (14:31:23.330Z) |
+
+The A-side claim (14:30:46.434Z) was older than the incoming record's `last_modified` (14:31:23.330Z), which is the rule in departure 2 doing its job on a live adoption.
+
+**Risk 3 — the mis-lock gate.** After an author-only save, A's `owned_fields` held exactly `author` and no other key (row, `metadata.json` and `catalog.json` agree). The mid-edit-fetch cause was fixed in `c498d46` (`editsSince`, measured against the book as the editor opened); the half of the scenario in which a fetch *lands while the editor is open* could not be re-run here, because the sidecar is absent in this checkout — that half stays carried by the unit tests on `editsSince` (`src/lib/book-form.test.ts`). "B's own re-fetch does not move the field" likewise cannot be run live; it is carried by the importer's lock-through-the-record case (`importer.test.ts`), which exercises the same enforcement site (`importer.hydrate`'s lock list and the reply filter).
+
+**Slice 2 and slice 3 are untouched** and each can land alone, as designed.
+
+---
 
 ## Slices, and why they are cut this way
 

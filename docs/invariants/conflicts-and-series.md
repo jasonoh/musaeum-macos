@@ -21,7 +21,7 @@
 
 Measured *after* the report, on the real library, which is how the mechanism was settled rather than guessed: 42 conflict rows, **all resolved**, zero unresolved and **zero orphans** — so the number on screen had never been the database's, and the delete had in fact cleaned up after itself.
 
-**A book's deletion takes its field overrides with it too.** `field_overrides` is one JSON map in `app_config`, not a `books` table, so nothing cascades it — and the map was found holding an id no `books` row matched (six fields, from the book deleted in that same report). `fieldOverrides.forget(id)` rides the same funnel. A conflict is the other dependent, and it is deleted inside `db.deleteBook` (the `books` FK would otherwise block the delete).
+**A book's deletion takes its field overrides with it too — by construction, since 2026-10-11.** They used to live in one JSON map in `app_config` (`field_overrides`), which nothing cascades, and the map was found holding an id no `books` row matched (six fields, from the book deleted in that same report); `fieldOverrides.forget(id)` rode this funnel to clean it up. The claims are now a column on the row (`books.owned_fields`, portable decisions slice 1), so they die with it and `forget` is gone. A conflict is the other dependent, and it is deleted inside `db.deleteBook` (the `books` FK would otherwise block the delete).
 
 A conflict's candidate list can never offer the same value twice: `sidecar/pipeline/conflict.py` normalizes the candidates and queues a review only when at least two of them differ, so two choices that look like the same wrong author are genuinely different strings — a *matching* problem (which book the fetch found), not a queue defect.
 

@@ -157,7 +157,11 @@ Musaeum/
 │   │   └── schema/migrations/
 │   │       ├── 001_initial.sql   # includes FTS5 sync triggers + indices
 │   │       ├── 002_sort_keys.sql # backfills sort_title / author_sort
-│   │       └── 003_reading_state.sql # reading_position/percent/updated_at
+│   │       ├── 003_reading_state.sql # reading_position/percent/updated_at
+│   │       ├── 004_device_file_identity.sql
+│   │       ├── 005_device_history_outlives_book.sql
+│   │       ├── 006_shelves.sql
+│   │       └── 007_owned_fields.sql  # books.owned_fields (the user's claims) + the one-time seed from app_config
 │   └── preload/
 │       └── index.ts              # window.Musaeum contextBridge surface
 │
