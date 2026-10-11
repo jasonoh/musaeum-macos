@@ -8,6 +8,7 @@ import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { LockIcon, SpinnerIcon } from '@/components/shared/icons'
 import { useDialogFocus } from '@/hooks/useDialogFocus'
+import { EMPTY_FORM, editsSince, toForm, type FormState } from '@/lib/book-form'
 
 /**
  * Direct metadata editing — the manual counterpart to hydration, for the cases
@@ -25,121 +26,6 @@ import { useDialogFocus } from '@/hooks/useDialogFocus'
  * changing its value (see `docs/superpowers/specs/2026-09-20-field-overrides-design.md`).
  */
 
-interface FormState {
-  title: string
-  sortTitle: string
-  author: string
-  authorSort: string
-  seriesName: string
-  seriesIndex: string
-  seriesTotal: string
-  publisher: string
-  publishedDate: string
-  language: string
-  description: string
-  tags: string
-  isbn10: string
-  isbn13: string
-  goodreadsId: string
-  openlibraryId: string
-}
-
-const EMPTY_FORM: FormState = {
-  title: '',
-  sortTitle: '',
-  author: '',
-  authorSort: '',
-  seriesName: '',
-  seriesIndex: '',
-  seriesTotal: '',
-  publisher: '',
-  publishedDate: '',
-  language: '',
-  description: '',
-  tags: '',
-  isbn10: '',
-  isbn13: '',
-  goodreadsId: '',
-  openlibraryId: ''
-}
-
-/**
- * A sort key that merely matches the derived form isn't a user choice, so it
- * starts blank — the placeholder tracks the title/author being typed and the
- * save re-derives it. Renaming a book therefore fixes its sort key instead of
- * stranding the old one. A genuinely custom key is shown and left alone.
- */
-function customOnly(stored: string | null, derived: string | null): string {
-  return stored && stored !== derived ? stored : ''
-}
-
-function toForm(book: Book): FormState {
-  return {
-    title: book.title,
-    sortTitle: customOnly(book.sortTitle, sortableTitle(book.title)),
-    author: book.author ?? '',
-    authorSort: customOnly(book.authorSort, sortableAuthor(book.author)),
-    seriesName: book.seriesName ?? '',
-    seriesIndex: book.seriesIndex == null ? '' : String(book.seriesIndex),
-    seriesTotal: book.seriesTotal == null ? '' : String(book.seriesTotal),
-    publisher: book.publisher ?? '',
-    publishedDate: book.publishedDate ?? '',
-    language: book.language ?? '',
-    description: book.description ?? '',
-    tags: book.tags.join(', '),
-    isbn10: book.isbn10 ?? '',
-    isbn13: book.isbn13 ?? '',
-    goodreadsId: book.goodreadsId ?? '',
-    openlibraryId: book.openlibraryId ?? ''
-  }
-}
-
-const trimmed = (s: string): string | null => (s.trim() ? s.trim() : null)
-
-/** Form values → the Book fields they map to, with blanks normalized to null. */
-function toBookFields(form: FormState): Partial<Book> {
-  const title = form.title.trim()
-  const author = trimmed(form.author)
-  const seriesName = trimmed(form.seriesName)
-  const index = Number.parseFloat(form.seriesIndex)
-  const total = Number.parseInt(form.seriesTotal, 10)
-  return {
-    title,
-    sortTitle: trimmed(form.sortTitle) ?? sortableTitle(title),
-    author,
-    authorSort: trimmed(form.authorSort) ?? sortableAuthor(author),
-    // A book with no series name has no index or total either
-    seriesName,
-    seriesIndex: seriesName && Number.isFinite(index) ? index : null,
-    seriesTotal: seriesName && Number.isFinite(total) ? total : null,
-    publisher: trimmed(form.publisher),
-    publishedDate: trimmed(form.publishedDate),
-    language: trimmed(form.language),
-    description: trimmed(form.description),
-    tags: form.tags
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean),
-    isbn10: trimmed(form.isbn10),
-    isbn13: trimmed(form.isbn13),
-    goodreadsId: trimmed(form.goodreadsId),
-    openlibraryId: trimmed(form.openlibraryId)
-  }
-}
-
-/** Only the fields whose value differs from the book as loaded. */
-function changedFields(book: Book, next: Partial<Book>): Partial<Book> {
-  const updates: Partial<Book> = {}
-  for (const [key, value] of Object.entries(next) as [keyof Book, unknown][]) {
-    const current = book[key]
-    const same = Array.isArray(value)
-      ? JSON.stringify(value) === JSON.stringify(current)
-      : value === current
-    if (!same) Object.assign(updates, { [key]: value })
-  }
-  return updates
-}
-
 export function BookEditor() {
   const dialogRef = useDialogFocus()
   const bookId = useUIStore((s) => s.editingBookId)
@@ -150,10 +36,10 @@ export function BookEditor() {
 
   const book = useMemo(() => books.find((b) => b.id === bookId) ?? null, [books, bookId])
   // Mounted under a per-book key, so this initializer re-runs for each book
-  const [form, setForm] = useState<FormState>(() => {
-    const b = books.find((x) => x.id === bookId)
-    return b ? toForm(b) : EMPTY_FORM
-  })
+  // The book as it was when the panel opened. A save is measured against this,
+  // not against `book`, which the store keeps moving (see `editsSince`).
+  const [opened] = useState<Book | null>(() => books.find((x) => x.id === bookId) ?? null)
+  const [form, setForm] = useState<FormState>(() => (opened ? toForm(opened) : EMPTY_FORM))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   /**
@@ -195,8 +81,8 @@ export function BookEditor() {
   }
 
   const save = async () => {
-    if (!book) return
-    const updates = changedFields(book, toBookFields(form))
+    if (!book || !opened) return
+    const updates = editsSince(opened, form)
     if (!Object.keys(updates).length) {
       close()
       return

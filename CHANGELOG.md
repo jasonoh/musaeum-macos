@@ -17,6 +17,7 @@ All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https:
 
 ### Fixed
 
+- **Saving one edit in the metadata editor could lock — and blank — fields you never touched.** If a metadata fetch finished while the editor was open, the editor treated everything the fetch had filled in as your edits: saving only the author locked the publisher, description and date too, and wrote the editor's stale empty values over what the fetch found. It now compares your form with the book as it was when you opened the panel, so only what you changed is saved and locked. Measured on an isolated profile before and after: four fields locked and three values lost, then only the author.
 - **A duplicate dropped in `imports/` no longer hangs, and is no longer deleted.** The inbox watcher waited on the duplicate prompt even when no window was open to answer it, and deleted the file if you chose Skip. It now refuses the duplicate with a message naming the book it matches and leaves the file in `imports/`; only a file that actually became a book is removed.
 - A cached AZW3 could silently drop out of a book's format list: the send recorded the new format only in the local cache, and the next catalog adoption then pushed the older list back over it, library-wide, while the file stayed on the share. Measured on the real library (a book sent two days earlier had its AZW3 on disk while `metadata.json`, `catalog.json` and its database row all said EPUB).
 
