@@ -87,6 +87,9 @@ export type HydratedField =
   | 'identifiers'
   | 'tags'
 
+/** Fields the user has claimed, with the time of the claim. A fetch must not move them. */
+export type OwnedFields = Partial<Record<HydratedField, string>>
+
 /**
  * Display labels **and their order**, most noticeable first — a refresh
  * reports its changes as "Title, cover and series", so the record's key order
