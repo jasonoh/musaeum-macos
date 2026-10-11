@@ -5,7 +5,7 @@ from PIL import Image
 
 from reflow import gate, layout
 from reflow.epub import write_epub
-from reflow.layout import _crop, _figure_regions, analyse, render_plate
+from reflow.layout import _crop, _figure_regions, analyze, render_plate
 from reflow.vision import PageLayout, Region
 from reflow.model import Block, Document, PageResult
 from tests.reflow_pdfs import Page, Rect, Text, write_pdf
@@ -31,7 +31,7 @@ def test_crop_renders_the_box_it_is_given(tmp_path):
     assert _dark_share(crop.data) > 0.8
 
 
-def test_crop_honours_a_crop_box_origin(tmp_path):
+def test_crop_honors_a_crop_box_origin(tmp_path):
     pdf, page = _page(tmp_path, Page(rects=[Rect(300, 300, 120, 90)], crop=(33, 33, 581, 759)))
     crop = _crop(page, (300, 300, 420, 390), page.get_bbox())
     assert crop is not None and _dark_share(crop.data) > 0.8
@@ -73,7 +73,7 @@ def test_a_faint_band_that_crops_to_a_sliver_is_not_a_figure(tmp_path):
         [Page(texts=texts, rects=[Rect(33, 44, 500, 8, gray=0.94), Rect(300, 300, 120, 90)])],
     )
     layouts = {1: PageLayout(page=1, box=(0, 0, 612, 792), regions=[Region(0, (70, 670, 450, 730), "")])}
-    doc = analyse(path, layouts=layouts)
+    doc = analyze(path, layouts=layouts)
     images = [b for b in doc.pages[0].blocks if b.kind == "figure"]
     assert len(images) == 1 and images[0].image_width > 200
     assert doc.slivers and "is 1008x24" in doc.slivers[0]
@@ -98,7 +98,7 @@ def test_a_blank_page_has_no_plate(tmp_path):
     assert render_plate(page) is None
 
 
-LABELLED = BODY + [Text(320, 340, "Label inside the figure")]
+LABELED = BODY + [Text(320, 340, "Label inside the figure")]
 LABEL_LAYOUT = {
     1: PageLayout(
         page=1, box=(0, 0, 612, 792),
@@ -108,24 +108,24 @@ LABEL_LAYOUT = {
 
 
 def test_a_failed_crop_keeps_the_figures_labels(tmp_path, monkeypatch):
-    path = write_pdf(tmp_path / "l.pdf", [Page(texts=LABELLED, rects=[Rect(300, 300, 200, 90, 0.8)])])
+    path = write_pdf(tmp_path / "l.pdf", [Page(texts=LABELED, rects=[Rect(300, 300, 200, 90, 0.8)])])
     monkeypatch.setattr(layout, "_crop", lambda *a, **k: None)
-    doc = analyse(path, layouts=LABEL_LAYOUT)
+    doc = analyze(path, layouts=LABEL_LAYOUT)
     assert "Label inside the figure" in " ".join(b.text for b in doc.pages[0].blocks)
     assert len(doc.crop_failures) == 1 and not any(b.kind == "figure" for b in doc.pages[0].blocks)
 
 
 def test_a_written_crop_swallows_its_labels(tmp_path):
-    path = write_pdf(tmp_path / "w.pdf", [Page(texts=LABELLED, rects=[Rect(300, 300, 200, 90, 0.8)])])
-    doc = analyse(path, layouts=LABEL_LAYOUT)
+    path = write_pdf(tmp_path / "w.pdf", [Page(texts=LABELED, rects=[Rect(300, 300, 200, 90, 0.8)])])
+    doc = analyze(path, layouts=LABEL_LAYOUT)
     assert "Label inside the figure" not in " ".join(b.text for b in doc.pages[0].blocks)
     assert [b.image_type for b in doc.pages[0].blocks if b.kind == "figure"] == ["png"]
     assert "Label inside the figure" in doc.dropped_text
 
 
 def test_a_textless_page_becomes_a_plate(tmp_path):
-    path = write_pdf(tmp_path / "p.pdf", [Page(texts=LABELLED), Page(rects=[Rect(0, 0, 612, 792, 0.3)])])
-    doc = analyse(path, layouts={1: LABEL_LAYOUT[1]})
+    path = write_pdf(tmp_path / "p.pdf", [Page(texts=LABELED), Page(rects=[Rect(0, 0, 612, 792, 0.3)])])
+    doc = analyze(path, layouts={1: LABEL_LAYOUT[1]})
     assert [b.plate for b in doc.pages[1].blocks] == [True]
 
 

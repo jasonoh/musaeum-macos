@@ -48,7 +48,7 @@ export async function findHydratableFile(bookDir: string): Promise<string | null
 }
 
 let running = false
-let cancelled = false
+let canceled = false
 let current: Promise<void> = Promise.resolve()
 
 /**
@@ -76,7 +76,7 @@ export function isBulkHydrateRunning(): boolean {
 
 /** Stops the loop; the book in flight still finishes and is counted. */
 export function cancelBulkHydrate(): void {
-  if (running) cancelled = true
+  if (running) canceled = true
 }
 
 /**
@@ -91,7 +91,7 @@ export function startBulkHydrate(ids: string[]): void {
   // channel is progress events, and every book would report as a bare failure
   sidecar.assertAvailable()
   running = true
-  cancelled = false
+  canceled = false
   current = run(ids)
 }
 
@@ -110,8 +110,8 @@ async function run(ids: string[]): Promise<void> {
 
   try {
     for (const id of ids) {
-      if (cancelled) {
-        progress.stopped = 'cancelled'
+      if (canceled) {
+        progress.stopped = 'canceled'
         break
       }
       // Every remaining write would fail anyway; stopping and saying so beats
@@ -159,7 +159,7 @@ async function run(ids: string[]): Promise<void> {
     }
   } finally {
     running = false
-    cancelled = false
+    canceled = false
     progress.running = false
     if (hydrated > 0) {
       librarySync.writeFullCatalog()
@@ -175,6 +175,6 @@ export function flushForTests(): Promise<void> {
 }
 export function resetForTests(): void {
   running = false
-  cancelled = false
+  canceled = false
   current = Promise.resolve()
 }

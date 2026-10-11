@@ -56,9 +56,9 @@ export const AI_ENV_KEYS = {
  * No chunk for this long ends the request.
  *
  * There is deliberately no *total* deadline: a cold local model can legitimately
- * take a minute to produce its first token, and cancelling a request that is
+ * take a minute to produce its first token, and canceling a request that is
  * about to answer is worse than waiting. Reachable through `AskOptions` so the
- * behaviour is testable without a two-minute test.
+ * behavior is testable without a two-minute test.
  */
 const IDLE_TIMEOUT_MS = 120_000
 
@@ -482,7 +482,7 @@ export function ask(request: AskRequest, options: AskOptions = {}): { requestId:
 /**
  * Stop a request. Returns false when it is not in flight — which is also how a
  * settled request reports that it released its slot, so the renderer can tell
- * "cancelled" from "already finished".
+ * "canceled" from "already finished".
  */
 export function cancel(requestId: string): boolean {
   const entry = pending.get(requestId)
@@ -516,12 +516,12 @@ async function run(request: AskRequest, entry: Pending, idleTimeoutMs: number): 
       signal: entry.controller.signal
     })
   } catch (err) {
-    if (entry.controller.signal.aborted) return done(requestId, entry, 'cancelled')
+    if (entry.controller.signal.aborted) return done(requestId, entry, 'canceled')
     return fail(requestId, entry, describeConnectionError(err, endpoint.value))
   }
 
   if (!response.ok) {
-    if (entry.controller.signal.aborted) return done(requestId, entry, 'cancelled')
+    if (entry.controller.signal.aborted) return done(requestId, entry, 'canceled')
     return fail(requestId, entry, await describeHttpError(response, endpoint.value, model.value))
   }
   if (!response.body) {
@@ -570,7 +570,7 @@ async function run(request: AskRequest, entry: Pending, idleTimeoutMs: number): 
     // the parser — dropping it would drop the last tokens of an answer.
     if (!idle && !failure) consume(parser.flush())
   } catch (err) {
-    if (entry.controller.signal.aborted) return done(requestId, entry, 'cancelled')
+    if (entry.controller.signal.aborted) return done(requestId, entry, 'canceled')
     failure = describeConnectionError(err, endpoint.value)
   } finally {
     // Releases the socket on every path, including the idle abort. A reader
@@ -618,7 +618,7 @@ export function createSseParser(): { push(chunk: string): SseEvent[]; flush(): S
   let buffer = ''
   const take = (): SseEvent[] => {
     const events: SseEvent[] = []
-    // Normalising the whole buffer each time is safe because it is drained on
+    // Normalizing the whole buffer each time is safe because it is drained on
     // every push: a `\r` at the end of one chunk and the `\n` that starts the
     // next are only ever adjacent in the accumulating buffer.
     buffer = buffer.replace(/\r\n/g, '\n')
@@ -675,9 +675,9 @@ export type ChunkOutcome =
 /**
  * One SSE payload, read as an OpenAI-compatible chat chunk.
  *
- * Deliberately forgiving: an unrecognised or malformed line is `ignore`, not a
+ * Deliberately forgiving: an unrecognized or malformed line is `ignore`, not a
  * failure. A stream that drops one odd event is still a good answer, and
- * killing it would be the more surprising behaviour.
+ * killing it would be the more surprising behavior.
  */
 export function readChunk(data: string): ChunkOutcome {
   const payload = data.trim()

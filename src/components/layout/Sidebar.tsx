@@ -21,7 +21,7 @@ export function Sidebar() {
   const canReload = canStartCatalogSync(nasStatus?.state, catalogSync)
   const syncRunning = catalogSync?.outcome === 'running'
 
-  // State → token, not state → word: D4 owns the copy, and a colour is a
+  // State → token, not state → word: D4 owns the copy, and a color is a
   // presentation choice this component keeps. It cannot disagree with the label
   // beside it, because both are exhaustive over the same five states.
   const nasDot =
@@ -34,13 +34,13 @@ export function Sidebar() {
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-ink-800 bg-ink-900">
       {/* Traffic-light clearance; the wordmark row doubles as a drag handle.
-          The wordmark is centred in the space the dots leave — between them and
-          the column's right edge — on the line through their centres, which is
+          The wordmark is centered in the space the dots leave — between them and
+          the column's right edge — on the line through their centers, which is
           why the row is a positioning context rather than a padded flex line
           (see window-chrome.ts for where those numbers come from). The
           translate is half the trailing letter-space, which no eye reads.
 
-          The box, not the caps, is what can be centred: a line box centres its
+          The box, not the caps, is what can be centered: a line box centers its
           leading, and text paints on a whole-pixel grid here (measured — `top`
           anywhere from 25.5 to 26.25 paints identically, +1px moves a full
           pixel), so the caps' own half pixel is not reachable from CSS.

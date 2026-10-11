@@ -55,7 +55,7 @@ Thesis: "the user decided this" is the strongest source of truth the app has, an
 ## D3 — A locked field is not proposed at all
 
 **Decision:** the locked field is excluded from the candidate list, so no conflict is queued for it and nothing is applied to it. Chosen by Jason over "still propose it, never write it".
-**Why:** the alternative keeps asking the user to re-decide something they have already decided, and the queue is a review surface for *open* questions — filling it with answered ones is how a review queue stops being read. Switching judgement stays available through D2: release the field, re-fetch.
+**Why:** the alternative keeps asking the user to re-decide something they have already decided, and the queue is a review surface for *open* questions — filling it with answered ones is how a review queue stops being read. Switching judgment stays available through D2: release the field, re-fetch.
 **Consequence:** a locked field goes quiet — including in the cases where the fetch is genuinely right. The app will not tell the user that Google has a better title while their lock is on; that is the intended trade, and it is why D2's control has to be discoverable.
 
 ## D4 — The lockable vocabulary *is* `HydratedField`
@@ -129,10 +129,10 @@ fieldOverrides.markFromPatch(id, updates)   // compares the patch against… the
 
 Three of the seventeen were not in the plan, and each for a reason worth keeping — and two files the plan *did* name turned out not to need touching:
 
-1. **`src/types/book.types.ts`** (unplanned, and the one that must be recorded): the marking needs the "is this patch a change?" equality rule, which `db.updateBook` has privately and the editor has in its own `changedFields`. It is now exported as `sameBookValue` and used by the marking and by `importer`'s reply filter. `db.updateBook`'s own comparison was **not** folded into it — that would edit the DB writer for no change in behaviour, and the helper's job here is to make the *rule* shared, not to unify every copy of it.
+1. **`src/types/book.types.ts`** (unplanned, and the one that must be recorded): the marking needs the "is this patch a change?" equality rule, which `db.updateBook` has privately and the editor has in its own `changedFields`. It is now exported as `sameBookValue` and used by the marking and by `importer`'s reply filter. `db.updateBook`'s own comparison was **not** folded into it — that would edit the DB writer for no change in behavior, and the helper's job here is to make the *rule* shared, not to unify every copy of it.
 2. **`components/shared/icons.tsx`** — the chip needs a padlock, and the repo hand-rolls its icons. No library was added.
 3. **`sidecar/tests/test_hydration_locks.py`** rather than the planned additions to `test_conflict.py`: AC9 is merge-level but AC10–AC11 are hydration-level and need a fixture EPUB and stubbed fetchers, and the two halves of one rule read better in one file than appended to a file about conflicts.
-4. **`services/db.ts` was planned and is untouched** — the map lives entirely behind `services/field-overrides.ts`, which reads and writes it through the existing `db.getConfig`/`db.setConfig`. No column, no migration, and the plan's `db.ts` (+test) pair never materialised. So did the planned `test_conflict.py` edit. `services/conflicts.test.ts` and `services/importer.test.ts` were *not* in the plan's list and both gained cases.
+4. **`services/db.ts` was planned and is untouched** — the map lives entirely behind `services/field-overrides.ts`, which reads and writes it through the existing `db.getConfig`/`db.setConfig`. No column, no migration, and the plan's `db.ts` (+test) pair never materialized. So did the planned `test_conflict.py` edit. `services/conflicts.test.ts` and `services/importer.test.ts` were *not* in the plan's list and both gained cases.
 
 **One already-false sentence had to go** — the editor's own footer told the user "a later re-fetch can still overwrite them", which this slice makes untrue (and the file's doc comment said the same). Both now describe the override and where it is released.
 

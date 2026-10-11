@@ -14,7 +14,7 @@ a refused upload writes **nothing**. The guard runs before the writer, so
 that cover's bytes rather than a 100 px image's.
 
 Every case is offline — no network, no encoder of its own — and the images are
-flat-coloured PNGs built in memory, so a rendition's dimensions are the only
+flat-colored PNGs built in memory, so a rendition's dimensions are the only
 thing a case has to measure.
 """
 
@@ -34,7 +34,7 @@ CHOSEN = (1200, 1600)
 
 
 def _png(size: tuple, color: tuple = (30, 60, 90)) -> bytes:
-    """A flat-coloured PNG: deterministic, tiny, and unmistakably itself."""
+    """A flat-colored PNG: deterministic, tiny, and unmistakably itself."""
     buf = io.BytesIO()
     Image.new("RGB", size, color).save(buf, "PNG")
     return buf.getvalue()
@@ -111,7 +111,7 @@ def test_a_chosen_image_becomes_the_two_fixed_renditions(tmp_path):
 def test_the_two_files_are_the_writers_own_renditions(tmp_path):
     """D6's "no second encoder", asserted against the one function that encodes.
 
-    `_renditions` is what `_write_cover` writes, what `summarise_candidates`
+    `_renditions` is what `_write_cover` writes, what `summarize_candidates`
     compares a candidate against to decide `applied`, and what this path writes —
     so a byte-for-byte match is the difference between an uploaded cover being
     indistinguishable downstream and merely looking like it.

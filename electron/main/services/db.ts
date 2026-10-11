@@ -254,7 +254,7 @@ const BOOK_COLUMN_MAP: Record<string, string> = {
 }
 
 /**
- * Sort expressions, parameterised by table prefix: the FTS search joins
+ * Sort expressions, parameterized by table prefix: the FTS search joins
  * `books_fts`, which also has `title`/`author` columns, so those references
  * must be qualified or SQLite rejects them as ambiguous.
  */
@@ -729,7 +729,7 @@ export function touchReadingState(id: string, updatedAt: string): void {
  * shelf membership is about the book and means nothing without it — with
  * one deliberate exception: `device_history` outlives the book, because it is
  * a log of what this machine sent rather than a child of the row (migration
- * 005; `replaceAllBooks` honours the same rule).
+ * 005; `replaceAllBooks` honors the same rule).
  */
 export function deleteBook(id: string): void {
   const d = getDb()

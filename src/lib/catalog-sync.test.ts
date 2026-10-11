@@ -34,7 +34,7 @@ describe('describeCatalogSync', () => {
   it('is busy only while running', () => {
     expect(describeCatalogSync(state({ outcome: 'running' })).tone).toBe('busy')
     expect(describeCatalogSync(state({ outcome: 'done', books: 1 })).tone).toBe('done')
-    expect(describeCatalogSync(state({ outcome: 'cancelled' })).tone).toBe('stopped')
+    expect(describeCatalogSync(state({ outcome: 'canceled' })).tone).toBe('stopped')
     expect(describeCatalogSync(state({ outcome: 'failed' })).tone).toBe('stopped')
   })
 
@@ -48,14 +48,14 @@ describe('describeCatalogSync', () => {
   })
 
   it('reports a cancel as a cancel, not as a missing result', () => {
-    const line = describeCatalogSync(state({ outcome: 'cancelled' }))
-    expect(line.text).toContain('cancelled')
+    const line = describeCatalogSync(state({ outcome: 'canceled' }))
+    expect(line.text).toContain('canceled')
     // The claim the walk's design rests on, said out loud
     expect(line.text).toContain('nothing was written')
     expect(line.progress).toBeNull()
   })
 
-  it('counts the books it reloaded, and singularises one', () => {
+  it('counts the books it reloaded, and singularizes one', () => {
     expect(describeCatalogSync(state({ outcome: 'done', books: 7101 })).text).toBe(
       'Catalog rebuilt — 7101 books'
     )
@@ -68,7 +68,7 @@ describe('describeCatalogSync', () => {
   })
 
   it('never claims a book count it does not have', () => {
-    // A cancelled run produced no count; a done one always has one, and a null
+    // A canceled run produced no count; a done one always has one, and a null
     // must not render as "— null books"
     expect(describeCatalogSync(state({ outcome: 'done', books: null })).text).toBe(
       'Catalog rebuilt'
@@ -115,12 +115,12 @@ describe('the transitions', () => {
   })
 
   it('settling drops the count when the run did not finish', () => {
-    // Otherwise a cancelled run's line could claim books that were never
+    // Otherwise a canceled run's line could claim books that were never
     // reloaded — the one claim the cancel path must not make
-    const cancelled = settleCatalogSync(startCatalogSync('rebuild'), 'rebuild', 'cancelled', 7101)
+    const canceled = settleCatalogSync(startCatalogSync('rebuild'), 'rebuild', 'canceled', 7101)
 
-    expect(cancelled.books).toBeNull()
-    expect(describeCatalogSync(cancelled).text).toContain('nothing was written')
+    expect(canceled.books).toBeNull()
+    expect(describeCatalogSync(canceled).text).toContain('nothing was written')
   })
 
   it('settling falls back to the caller’s kind when nothing was running', () => {
@@ -139,7 +139,7 @@ describe('canStartCatalogSync', () => {
   })
 
   it('allows a start once the previous job has settled', () => {
-    for (const outcome of ['done', 'cancelled', 'failed'] as const) {
+    for (const outcome of ['done', 'canceled', 'failed'] as const) {
       expect(canStartCatalogSync('connected', state({ outcome }))).toBe(true)
     }
   })

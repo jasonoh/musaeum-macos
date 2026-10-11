@@ -126,7 +126,7 @@ let encodeCover: CoverEncoder = encodeWithNativeImage
  * `npm test` runs Electron-as-Node, so `nativeImage` does not exist there and
  * the real codec cannot run. Rather than mock this module — which would take the
  * naming, the marker and the write with it — a test swaps the codec and leaves
- * everything else real. The codec's own behaviour is decided by
+ * everything else real. The codec's own behavior is decided by
  * `scripts/device-cover-probe.ts`, which runs under a real Electron against the
  * shipped function.
  */
@@ -315,7 +315,7 @@ export async function fillDeviceCovers(input: FillDeviceCoversInput): Promise<Co
   const cached = new Set(await fs.readdir(dir).catch((): string[] => []))
 
   // The file→book pairs, gathered by file, so a file the library attributes to
-  // two books can be recognised as ambiguous before anything is written
+  // two books can be recognized as ambiguous before anything is written
   const byPath = new Map<string, DeviceCoverOwner[]>()
   for (const owner of input.owners) {
     const claims = byPath.get(owner.path)

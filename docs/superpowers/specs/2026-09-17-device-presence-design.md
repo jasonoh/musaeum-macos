@@ -20,7 +20,7 @@ Measured on the real device (1,556 `.mobi`/`.azw3` files, 6,384 library titles):
 | C     | 1         | no title readable inside (odd header)                                            |
 | D     | 212       | its own title matches no library title (user guide, dictionaries, edition drift) |
 
-**The app sees 5.5% of what is on the device, and matching on the title each file carries inside it reaches 86% (1,343 of 1,556).** Consequences today, in the user's words and behaviour:
+**The app sees 5.5% of what is on the device, and matching on the title each file carries inside it reaches 86% (1,343 of 1,556).** Consequences today, in the user's words and behavior:
 
 - "Difficult to ascertain whether a book is on or off the Kindle" — it is, for everything Calibre put there.
 - "Send to {device}" is offered for ~1,400 books that are already there, and the bulk button would re-copy them.
@@ -55,7 +55,7 @@ A library book is **on the device** when some device file satisfies:
 
 1. **Title + author agree** — the file's normalized title equals the book's, and the file's author (normalized, order-insensitive) equals the book's, when the file carries one; or
 2. **Title agrees and is unique** — exactly one library book has that normalized title (6,384 distinct titles across 6,460 books, so collisions are ~1%); or
-3. **Fallback: the filename rule** — today's behaviour, for files whose metadata could not be read (KFX, the odd header, an unreadable book), plus the send receipts already shipped.
+3. **Fallback: the filename rule** — today's behavior, for files whose metadata could not be read (KFX, the odd header, an unreadable book), plus the send receipts already shipped.
 
 Rule 2 is the guard against the one way this design can lie in the _other_ direction: a false positive makes the badge say a book is on the device when a different book is. When a title is ambiguous and no author is available, prefer absent — the user re-sending a book is cheap; being told a book is on the device when it is not is not.
 

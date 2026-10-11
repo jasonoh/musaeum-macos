@@ -80,7 +80,7 @@ def _binds(before: str, after: str) -> bool:
 
 
 def line_text(chars: Sequence[Char]) -> str:
-    """A baseline's characters (sorted by centre x) as text.
+    """A baseline's characters (sorted by center x) as text.
 
     A stored space survives only when the glyphs either side of it are at
     least 0.1× the font size apart: *Universe*'s text layer stores

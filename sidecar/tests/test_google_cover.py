@@ -141,7 +141,7 @@ def test_the_fetch_returns_the_big_rendition_with_its_bytes(monkeypatch):
 # --- the placeholder tile --------------------------------------------------
 
 
-def test_the_tile_is_discarded_in_favour_of_the_advertised_thumbnail(monkeypatch):
+def test_the_tile_is_discarded_in_favor_of_the_advertised_thumbnail(monkeypatch):
     tile, real = _image(seed=7), _image(seed=8)
     _sentinel(monkeypatch, tile)
 
@@ -152,7 +152,7 @@ def test_the_tile_is_discarded_in_favour_of_the_advertised_thumbnail(monkeypatch
 
 
 def test_a_real_image_that_happens_to_share_the_tiles_size_is_kept(monkeypatch):
-    """The false-drop guard: the tile is recognised by its bytes, never by its
+    """The false-drop guard: the tile is recognized by its bytes, never by its
     dimensions — a correct cover of the same size must survive."""
     tile, real = _image((575, 750), seed=3), _image((575, 750), seed=4)
     _sentinel(monkeypatch, tile)

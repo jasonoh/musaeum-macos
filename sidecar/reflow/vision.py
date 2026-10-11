@@ -214,7 +214,7 @@ def run_helper(
     pages count as layout errors, which is what the per-book verdict already
     weighs (D6 tolerates a quarter of the text pages). The range's upper bound is
     the page count the helper's own header reports, so a header that understates
-    the document bounds how much of the gap can be named here — `analyse` counts
+    the document bounds how much of the gap can be named here — `analyze` counts
     a page with no layout at all either way.
 
     `last` without `first` asks for pages 1–`last`; `first` alone has no syntax
@@ -292,7 +292,7 @@ def _stream_helper(
             # Whatever ended the read before it finished — a header this module
             # refuses, or `on_page` raising (Task 3's sink is the RPC's `notify`,
             # which can) — the helper must not be left alive holding a pipe that
-            # nobody drains: the timer that would have killed it was cancelled
+            # nobody drains: the timer that would have killed it was canceled
             # just above, and `wait()` would then block for good.
             proc.kill()
         proc.wait()

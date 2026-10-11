@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
  * window listener cannot be fired at a real window. What is asserted is the
  * shape the mechanism needs — the clear is on the **window**, because the
  * source element cannot be trusted to be alive at the end (both views are
- * virtualized), and the hook is mounted exactly once. The slot's own behaviour
+ * virtualized), and the hook is mounted exactly once. The slot's own behavior
  * is `src/lib/book-drag.test.ts`; the live half is the CDP probe.
  */
 const SOURCE = readFileSync(join(process.cwd(), 'src', 'hooks', 'useBookDrag.ts'), 'utf8')

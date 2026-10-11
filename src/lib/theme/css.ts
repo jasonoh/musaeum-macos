@@ -12,7 +12,7 @@ import type { GoldStep, InkStep, StatusFamily, ThemeTokens } from '@shared/theme
  * environment; both take the element they write to for exactly that reason).
  *
  * **The channel triplet is load-bearing.** `tailwind.config.js` composes every
- * colour as `rgb(var(--x) / <alpha-value>)`, and `rgb()` over a `#hex` value is
+ * color as `rgb(var(--x) / <alpha-value>)`, and `rgb()` over a `#hex` value is
  * invalid at computed-value time: every opacity-modified utility
  * (`bg-ink-950/80`, `bg-gold-500/40`, …) is then dropped silently, with the
  * build still green. So a hex reaching `documentElement.style` is a defect, and
@@ -65,17 +65,17 @@ function shadowAlpha(base: number, shadow: number): string {
 }
 
 /**
- * A `#rrggbb` colour → the space-separated channel triplet Tailwind composes
+ * A `#rrggbb` color → the space-separated channel triplet Tailwind composes
  * (`'#0d0b09'` → `'13 11 9'`).
  *
  * It throws on anything else rather than writing a hex through: the caller that
  * hands this a value it cannot use is the one that should be loud, and main
- * validates every stored colour against `^#[0-9a-f]{6}$` before it is ever sent,
+ * validates every stored color against `^#[0-9a-f]{6}$` before it is ever sent,
  * so reaching this throw means a caller bypassed that validation.
  */
 export function hexToChannels(hex: string): string {
   if (!/^#[0-9a-fA-F]{6}$/.test(hex)) {
-    throw new Error(`Not a #rrggbb colour: ${JSON.stringify(hex)}`)
+    throw new Error(`Not a #rrggbb color: ${JSON.stringify(hex)}`)
   }
   const channels = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16))
   return channels.join(' ')
@@ -89,9 +89,9 @@ export function hexToChannels(hex: string): string {
  *
  * Ownership is *fixed and total*, not "whatever this set decides": a switch is
  * only a switch if the previous set's declarations can be taken away again, and
- * `setProperty` alone can only add. The names are the 16 colours (7 ink + 3
+ * `setProperty` alone can only add. The names are the 16 colors (7 ink + 3
  * parchment + 4 gold + on-accent + scrim), the three derived shadow alphas and
- * the declared scheme — slice 5's, owned exactly like the colours so that a
+ * the declared scheme — slice 5's, owned exactly like the colors so that a
  * switch reconciles them, and so a stale alpha or a stale scheme cannot become a
  * class of bug in the way the twelve `--status-*` names once could — plus slice
  * 7a's twelve `--status-<family>-<step>`, frozen by A28, which are owned even by
@@ -112,10 +112,10 @@ export const OWNED_CSS_VARS: readonly string[] = [
 /**
  * Every custom property this token set decides. Pure; no DOM.
  *
- * The colour values are space-separated channel triplets because
+ * The color values are space-separated channel triplets because
  * `tailwind.config.js` composes them (`rgb(var(--x) / <alpha-value>)`); the
  * three shadow alphas are bare numbers and the scheme is a keyword, so neither
- * is a colour and neither goes through `hexToChannels`. `:root` keeps its
+ * is a color and neither goes through `hexToChannels`. `:root` keeps its
  * authored values for all four: they are the default for the frame before JS
  * runs, and this is what takes over once it does.
  *

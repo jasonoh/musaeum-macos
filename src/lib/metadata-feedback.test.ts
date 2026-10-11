@@ -175,12 +175,12 @@ describe('describeBulkHydrate', () => {
   })
 
   it('distinguishes a cancel from the library dropping out', () => {
-    const cancelled = describeBulkHydrate({
+    const canceled = describeBulkHydrate({
       ...BULK_BASE,
       completed: 2,
       total: 9,
       updated: 2,
-      stopped: 'cancelled'
+      stopped: 'canceled'
     })
     const offline = describeBulkHydrate({
       ...BULK_BASE,
@@ -189,7 +189,7 @@ describe('describeBulkHydrate', () => {
       updated: 2,
       stopped: 'offline'
     })
-    expect(cancelled!.kind).toBe('info')
+    expect(canceled!.kind).toBe('info')
     expect(offline!.kind).toBe('error')
     expect(offline!.detail).toBe('2 of 9 refreshed · 2 updated')
   })

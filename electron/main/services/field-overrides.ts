@@ -9,7 +9,7 @@ import * as db from './db'
  *
  * A manual edit and a resolved conflict are both decisions, and both used to be
  * overwritten by the next re-fetch: the merge never heard about either one, and
- * the source-priority arithmetic could not have honoured one even if it had
+ * the source-priority arithmetic could not have honored one even if it had
  * (`embedded` peaks at 1 + 2.5 against `google_books` at 4). What the user
  * decides is the strongest source of truth the app has, so it is recorded here
  * and enforced twice — the sidecar is told not to *propose* a locked field, and
@@ -17,7 +17,7 @@ import * as db from './db'
  *
  * The map is the book's own record: `{ field: ISO time }` in the row's
  * `owned_fields` column, mirrored into `metadata.json` and `catalog.json`, so a
- * fetch run from another machine honours it too and a claim dies with the row
+ * fetch run from another machine honors it too and a claim dies with the row
  * it belongs to (D1 of the portable-decisions design). The time is when the
  * claim was made, which is what orders it against another machine's release.
  * The pre-007 home, `app_config.field_overrides`, is read once by the migration

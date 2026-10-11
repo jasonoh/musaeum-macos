@@ -98,7 +98,7 @@ Rationale: `theme.set` must not depend on a file that may have moved (J4), and a
 - Business logic in `electron/main/services/`; IPC handlers stay thin (`CLAUDE.md` #8).
 - Non-fatal degradation: an unreadable theme is a value with a reason, never a throw (`CLAUDE.md` #12).
 - No new dependency (`package.json`), no migration (`MIGRATIONS` stays at three).
-- Colours in the new UI come from existing token utilities only (`ink`/`parchment`/`gold`). A stock Tailwind hue here would be slice 7b's sweep arriving early, in new code.
+- Colors in the new UI come from existing token utilities only (`ink`/`parchment`/`gold`). A stock Tailwind hue here would be slice 7b's sweep arriving early, in new code.
 
 ## 7. Verification plan (orchestrator, independent of the implementers' reports)
 

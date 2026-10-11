@@ -385,7 +385,7 @@ describe('AC4.3 — the drop-box directory works and is never written to', () =>
     expect(batch.rejected.some((row) => row.path.endsWith('notes.css'))).toBe(false)
   })
 
-  it('reports a supported file that fails to parse, and still imports its neighbours', async () => {
+  it('reports a supported file that fails to parse, and still imports its neighbors', async () => {
     mkdirSync(themeFolder(), { recursive: true })
     copyFileSync(NORD_ITERM, join(themeFolder(), 'nord.itermcolors'))
     writeFileSync(join(themeFolder(), 'half.itermcolors'), BROKEN_ITERM)
@@ -526,7 +526,7 @@ describe('D10 — an import answer carries the list it just changed', () => {
     expect(result.view.options.length).toBeGreaterThan(result.imported.length)
   })
 
-  it('also answers an empty batch with a view, so a cancelled dialog is harmless', async () => {
+  it('also answers an empty batch with a view, so a canceled dialog is harmless', async () => {
     const result = withThemeView({ imported: [], rejected: [] })
     expect(result.imported).toEqual([])
     expect(result.view.options.length).toBeGreaterThan(0)
@@ -534,7 +534,7 @@ describe('D10 — an import answer carries the list it just changed', () => {
 
   it('keeps the handlers composing through it, rather than an inline literal', async () => {
     // A source walk, deliberately: the regression this guards cannot be seen by a
-    // behaviour test (no handler harness), and an inline
+    // behavior test (no handler harness), and an inline
     // `{ view: getThemeView(), ...await importPaths(paths) }` reads the view first and
     // silently ships the bug again. Matching the *call* is the only instrument
     // that exists here; `withThemeView`'s own case above decides the ordering.
@@ -615,7 +615,7 @@ describe('D5 — importing never activates a theme', () => {
  * stylesheet is silent in a scan and a reason in a drag, and that an Obsidian row
  * survives an engine-version bump without being re-read.
  *
- * The palettes the fakes answer with are the vendored schemes, relabelled: an IR
+ * The palettes the fakes answer with are the vendored schemes, relabeled: an IR
  * that derives is what the row-builder requires, and a synthetic palette built
  * here would be a second thing to keep passing `deriveTheme`'s floors.
  */
@@ -625,7 +625,7 @@ describe('slice 6 — a .css is a folder, and the resolver is injected', () => {
     return { ...irOf(source), name, author: 'Obsidian theme', source: 'obsidian' }
   }
 
-  /** What the resolver answers with: the entries, in the order they are labelled. */
+  /** What the resolver answers with: the entries, in the order they are labeled. */
   function entries(irs: ThemeIr[]): ResolvedObsidianFile {
     const variants: ResolvedObsidianVariant[] = irs.map((ir) => ({ variant: ir.variant, ir }))
     return { ok: true, variants }

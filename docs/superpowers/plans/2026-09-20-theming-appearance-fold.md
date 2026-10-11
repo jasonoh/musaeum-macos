@@ -95,7 +95,7 @@ A45's rule is that the four extension sites must agree; the hint is the site tha
 | AC8.8 | The opened list's filter narrows the rows by name, and a query matching nothing says so instead of rendering an empty panel | live CDP (type into the input, count `li`s; then a no-match query) |
 | AC8.9 | The fold's default is **closed on every open**, and nothing about it is persisted | source walk (`useState(false)`, no `localStorage`) + live CDP: close and reopen the dialog, the list is closed and `localStorage` is byte-identical |
 | AC8.10 | The renderer still reads no file: `AppearanceSection` names `files.getPathForFile` and nothing else on `window.Musaeum` | source walk (existing) |
-| AC8.11 | The active theme's summary row exists while collapsed and shows that theme's own swatches | live CDP: the five swatch colours equal `--ink-950`/`--ink-800`/`--parchment`/`--gold-400`/`--gold-500` as resolved on `:root` |
+| AC8.11 | The active theme's summary row exists while collapsed and shows that theme's own swatches | live CDP: the five swatch colors equal `--ink-950`/`--ink-800`/`--parchment`/`--gold-400`/`--gold-500` as resolved on `:root` |
 
 ## 5. What must not move
 
@@ -104,7 +104,7 @@ A45's rule is that the four extension sites must agree; the hint is the site tha
 - **No key handling in this file** (AC4.5's walk).
 - **The theme request path** — `setTheme` on click, never `settings.save`.
 - **Everything the row already carries**: the notes disclosure, the per-row failure reason, `stale`, the active tick, the import report lines, the itemized rejections.
-- **Colour**: every value stays on a token. The one literal is the swatch strip's `backgroundColor` (the swatch *is* the data — slice 4's own note).
+- **Color**: every value stays on a token. The one literal is the swatch strip's `backgroundColor` (the swatch *is* the data — slice 4's own note).
 - **`docs/invariants/library-views.md`'s geometry** (`ROW_HEIGHT`, `CARD_META_HEIGHT`, `CARD_META_MARGIN`): a different subsystem, untouched. Nothing here is virtualized.
 
 ## 6. Verification plan

@@ -88,7 +88,7 @@ export interface BulkDeleteResult {
 }
 
 /**
- * What the cover-file dialog answered: the book as it now is, or a cancelled
+ * What the cover-file dialog answered: the book as it now is, or a canceled
  * pick.
  *
  * A cancellation is an **answer**, not a failure: nothing was written and there
@@ -97,7 +97,7 @@ export interface BulkDeleteResult {
  * about the file — the absolute path the dialog chose is written and digested in
  * the main process, and never crosses the boundary.
  */
-export type CoverUploadOutcome = Book | { cancelled: true }
+export type CoverUploadOutcome = Book | { canceled: true }
 
 /** The API surface exposed on window.Musaeum via contextBridge. */
 export interface MusaeumAPI {
@@ -130,7 +130,7 @@ export interface MusaeumAPI {
     /**
      * Re-read catalog.json into the local cache. Falls back to a full rebuild
      * when the catalog can't be read — the same call, minutes instead of
-     * seconds, which is what `cancelled` and the Settings copy both disclose.
+     * seconds, which is what `canceled` and the Settings copy both disclose.
      */
     refreshLibrary(): Promise<CatalogSyncOutcome>
     /** Recovery: walk books/&#42;/metadata.json, rewrite catalog.json, reload. */
@@ -167,8 +167,8 @@ export interface MusaeumAPI {
     addFiles(filePaths: string[]): Promise<ImportResult[]>
     /**
      * Native multi-select picker for book files. Empty when the dialog is
-     * cancelled — an empty list is already the no-op the caller wants, so
-     * "cancelled" needs no second representation.
+     * canceled — an empty list is already the no-op the caller wants, so
+     * "canceled" needs no second representation.
      */
     fromDialog(): Promise<string[]>
     getImportProgress(jobId: string): Promise<ImportProgress | null>
@@ -239,7 +239,7 @@ export interface MusaeumAPI {
      * jacket that is in no database, or in none this app can reach.
      *
      * The **dialog is the main process's** (D6-a): the renderer sends a bookId
-     * and receives either `{ cancelled: true }` or the updated book, so the
+     * and receives either `{ canceled: true }` or the updated book, so the
      * absolute path the dialog chose is never a value a renderer can name, and
      * `file://` reaches no component.
      *
@@ -271,7 +271,7 @@ export interface MusaeumAPI {
     reconnect(): Promise<boolean>
     setLibraryRoot(path: string): Promise<void>
     /**
-     * Choose a library folder, and adopt what is in it; null when cancelled.
+     * Choose a library folder, and adopt what is in it; null when canceled.
      *
      * `locateAt` is the *Locate* path (D6): a library whose folder went missing
      * recovers through this same picker, opened where the folder used to be. The
@@ -298,7 +298,7 @@ export interface MusaeumAPI {
      * own write.
      */
     save(updates: Partial<EditableSettings>): Promise<SettingsView>
-    /** Native file picker for a tool path; null when cancelled. */
+    /** Native file picker for a tool path; null when canceled. */
     chooseExecutable(kind: ExecutableKind): Promise<string | null>
     /**
      * The last unresolved Python-bootstrap state, or null when there is none.
@@ -398,7 +398,7 @@ export interface MusaeumAPI {
      * implied — importing adds rows, clicking one applies it (AC4.5).
      */
     importPaths(paths: string[]): Promise<ThemeImportResult>
-    /** Native multi-select picker. A cancelled dialog imports nothing. */
+    /** Native multi-select picker. A canceled dialog imports nothing. */
     importFromDialog(): Promise<ThemeImportResult>
     /**
      * Re-scan the drop-box directory and import whatever is new. Read-only:

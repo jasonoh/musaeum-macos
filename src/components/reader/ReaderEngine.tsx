@@ -75,7 +75,7 @@ function flattenToc(items: FoliateTocItem[] | undefined, depth = 0): ReaderTocIt
  * DOM, so React only mounts the host and hands it a Blob — book bytes arrive
  * over musaeum://, never file://.
  *
- * The page's colours are no longer a table in this file: they are derived from
+ * The page's colors are no longer a table in this file: they are derived from
  * the active theme's tokens in `src/lib/theme/reader-palette.ts`, which is also
  * where the injected stylesheet lives now. This component reads the theme store
  * beside the reader store — the same place it already reads prefs — and hands
@@ -125,7 +125,7 @@ export function ReaderEngine({
   const prefsRef = useRef(prefs)
   // The tokens ride with the prefs for the same reason: the open path reads
   // both at the moment the bytes arrive, and a theme that changed *while* a book
-  // was loading must colour the page it is about to show, not re-open it.
+  // was loading must color the page it is about to show, not re-open it.
   const tokensRef = useRef(tokens)
   useEffect(() => {
     cb.current = { onReady, onRelocate, onSection, onSelection, onError, onKeyDown }
@@ -288,7 +288,7 @@ function sectionText(doc: Document): string {
  * Where the rendered page starts, as a character offset into `sectionText(doc)`
  * — the anchor the ask panel windowed its passage around (measured
  * 2026-09-21: without it, a question about the second half of a long section
- * travelled with a passage that stopped thousands of characters before it).
+ * traveled with a passage that stopped thousands of characters before it).
  *
  * The whole computation is a range's own text: `Range.toString()` concatenates
  * the text nodes a range covers, which is the same model `sectionText()` uses,

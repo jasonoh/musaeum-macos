@@ -11,7 +11,7 @@ The fallback the owner asked for before any search existed: *"if the covers are 
 
 ## The shape, decided before the build
 
-**D6-a — the dialog is the main process's, and the path never crosses the boundary.** `dialog.showOpenDialog` runs in `ipc/metadata.ts` on the handler side, exactly as `import`'s, `theme`'s, `settings`'s and `library`'s do. The renderer sends a `bookId` and receives either `{cancelled: true}` or the updated book. The chosen path is never a value the renderer can name, so a compromised renderer cannot ask the main process to write an arbitrary file into a book folder, and invariant 9's `file://` rule is not strained by this slice at all.
+**D6-a — the dialog is the main process's, and the path never crosses the boundary.** `dialog.showOpenDialog` runs in `ipc/metadata.ts` on the handler side, exactly as `import`'s, `theme`'s, `settings`'s and `library`'s do. The renderer sends a `bookId` and receives either `{canceled: true}` or the updated book. The chosen path is never a value the renderer can name, so a compromised renderer cannot ask the main process to write an arbitrary file into a book folder, and invariant 9's `file://` rule is not strained by this slice at all.
 
 **D6-b — no new member of the source vocabulary.** `SOURCE_PRIORITY` (`pipeline/cover.py:33`) is keyed by *the sources the scoring step can produce*, and `_score` reads it; a fourth key would be a scoring change (which AC6 of the parent design forbids) and would make "a source the gather could have produced" — the thing `refusalFor`'s first refusal tests — mean something else. The upload is not a scored source: it is a write. So the sidecar gets a **separate method** with no `source` parameter, and the main process gets a sibling of `chooseCover` rather than a fourth `CoverChoice`.
 
@@ -41,7 +41,7 @@ The fallback the owner asked for before any search existed: *"if the covers are 
 | file | Δ | what |
 |---|---|---|
 | `src/components/library/CoverPicker.tsx` | edit | "Choose an image…" beside the search trigger, its line, its busy state, its refusal line, and a reload after a successful upload so the new jacket reads as applied |
-| `src/lib/cover-candidate-state.ts` | +~10 | the button's line and the refused/cancelled sentences, so the copy has a unit decider |
+| `src/lib/cover-candidate-state.ts` | +~10 | the button's line and the refused/canceled sentences, so the copy has a unit decider |
 | `src/lib/cover-candidate-state.test.ts` | +3–4 | those sentences, and that a cancel says nothing |
 | `src/components/library/cover-picker-wiring.test.ts` | +1 | the new IPC name is on the walk's allow-list |
 
@@ -55,7 +55,7 @@ The fallback the owner asked for before any search existed: *"if the covers are 
 
 - `SOURCE_PRIORITY`, `_score`, `score_candidates`, `select_cover` — byte-identical (§D6-b).
 - `schema/migrations/` — byte-identical (AC13).
-- `src/types/metadata.types.ts` — no new source, no new `CoverChoice` shape (§D6-b). If a build finds it *must* change, that is a stopping condition, not a judgement call.
+- `src/types/metadata.types.ts` — no new source, no new `CoverChoice` shape (§D6-b). If a build finds it *must* change, that is a stopping condition, not a judgment call.
 - The 120 px floor is `score_candidates:119`'s, quoted rather than re-chosen.
 
 ## Start here

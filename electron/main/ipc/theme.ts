@@ -19,7 +19,7 @@ import { handle } from './handle'
 const THEME_FILTERS = [
   { name: 'Theme files', extensions: ['yaml', 'yml', 'itermcolors', 'css'] },
   { name: 'base16 schemes', extensions: ['yaml', 'yml'] },
-  { name: 'iTerm2 colour schemes', extensions: ['itermcolors'] },
+  { name: 'iTerm2 color schemes', extensions: ['itermcolors'] },
   { name: 'Obsidian themes', extensions: ['css'] }
 ]
 
@@ -78,7 +78,7 @@ export function registerThemeHandlers(): void {
       properties: ['openFile', 'multiSelections'],
       filters: THEME_FILTERS
     })
-    // A cancelled dialog is not a failure: nothing was imported, and the view is
+    // A canceled dialog is not a failure: nothing was imported, and the view is
     // answered from storage so the caller gets the same shape either way.
     if (result.canceled || !result.filePaths.length) {
       return withThemeView({ imported: [], rejected: [] })

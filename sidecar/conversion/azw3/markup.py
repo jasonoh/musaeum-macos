@@ -117,7 +117,7 @@ def _decode(data: bytes) -> str:
         return data.decode("cp1252", "replace")
 
 
-def _normalise(root: etree._Element) -> None:
+def _normalize(root: etree._Element) -> None:
     """Plain tag names; no namespaced attributes (epub:type and friends); no `aid` of the source's own."""
     for el in root.iter():
         if not isinstance(el.tag, str):
@@ -152,14 +152,14 @@ def _parse(data: bytes, warnings: list[str], path: str) -> etree._Element:
     parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=False, huge_tree=False)
     try:
         root = etree.fromstring(xml_text.encode("utf-8"), parser)
-        _normalise(root)  # strips the XHTML namespace, so <body> can be found by its plain name
+        _normalize(root)  # strips the XHTML namespace, so <body> can be found by its plain name
         if root.find("body") is not None:
             return root
     except etree.XMLSyntaxError:
         pass
     warnings.append(f"{path}: not well-formed XHTML; parsed as HTML")
     root = lxml.html.document_fromstring(text)
-    _normalise(root)
+    _normalize(root)
     return root
 
 

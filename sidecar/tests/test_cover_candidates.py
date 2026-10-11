@@ -3,7 +3,7 @@
 `cover_candidates` is the picker's live gather: the same three requests a
 hydration makes (the file's own metadata, Google Books, OpenLibrary — D1 of
 `docs/superpowers/specs/2026-09-21-cover-choice-design.md`), scored by the same
-formula, summarised into something a renderer can actually display. Nothing is
+formula, summarized into something a renderer can actually display. Nothing is
 written and nothing is persisted, so there is no stored candidate list to go
 stale.
 
@@ -40,7 +40,7 @@ from pipeline import cover
 
 # The candidates the design was opened for, at the sizes the spec records: the
 # file's own jacket (1290x1950), OpenLibrary's (307x500) and Google's thumbnail
-# (128x198). Every colour is distinct, so a thumb can be traced back to the
+# (128x198). Every color is distinct, so a thumb can be traced back to the
 # candidate it came from.
 FULL_MAX = (600, 1200)
 
@@ -52,7 +52,7 @@ CONTAINER = """<?xml version="1.0"?>
 
 
 def _image(color: tuple, size: tuple) -> bytes:
-    """A flat-coloured PNG: deterministic, tiny, and unmistakably itself."""
+    """A flat-colored PNG: deterministic, tiny, and unmistakably itself."""
     buf = io.BytesIO()
     Image.new("RGB", size, color).save(buf, "PNG")
     return buf.getvalue()
@@ -180,7 +180,7 @@ def test_the_gather_is_the_files_own_image_and_both_online_ones(tmp_path):
 
 def test_the_files_own_jacket_is_a_candidate_with_no_url_and_its_own_thumb(tmp_path, monkeypatch):
     """AC4a. The one candidate a queued conflict can never carry, and the thumb
-    that proves it is *this* image and not a neighbour's."""
+    that proves it is *this* image and not a neighbor's."""
     _fetchers(
         monkeypatch,
         google={"cover_url": GOOGLE_URL, "cover_data": GOOGLE},
@@ -225,7 +225,7 @@ def test_the_gather_is_ranked_and_shaped_like_the_payload_the_picker_reads(tmp_p
     assert candidates[0]["source"] == "embedded", "the 1290x1950 jacket wins on the formula"
     assert all(c["thumb"].startswith("data:image/jpeg;base64,") for c in candidates)
     # ...and each one is *its own* image rather than the winner's, read off the
-    # pixels: a label would be right either way, so the colour is what decides it
+    # pixels: a label would be right either way, so the color is what decides it
     assert {c["source"]: _nearest_fixture(c["thumb"]) for c in candidates} == {
         "embedded": "embedded",
         "openlibrary": "openlibrary",
@@ -479,16 +479,16 @@ def test_the_sources_a_choice_may_name_are_the_scored_sources():
     assert set(cover.SOURCE_PRIORITY) == {"google_books", "openlibrary", "embedded"}
 
 
-def _thumb_colour(data_url: str) -> tuple:
-    """The flat colour inside a preview — read off its pixels, not its label."""
+def _thumb_color(data_url: str) -> tuple:
+    """The flat color inside a preview — read off its pixels, not its label."""
     raw = base64.b64decode(data_url.split(",", 1)[1])
     pixels = Image.open(io.BytesIO(raw)).convert("RGB").tobytes()
     return (pixels[0], pixels[1], pixels[2])
 
 
-# The three fixtures' own colours, hundreds of points apart, so a q80 JPEG —
-# which moves a flat colour by a point or two — cannot blur them together.
-FIXTURE_COLOURS = {
+# The three fixtures' own colors, hundreds of points apart, so a q80 JPEG —
+# which moves a flat color by a point or two — cannot blur them together.
+FIXTURE_COLORS = {
     "embedded": (20, 40, 60),
     "google_books": (200, 180, 20),
     "openlibrary": (10, 120, 90),
@@ -497,8 +497,8 @@ FIXTURE_COLOURS = {
 
 def _nearest_fixture(data_url: str) -> str:
     """Which candidate's image a thumb is actually showing."""
-    colour = _thumb_colour(data_url)
+    color = _thumb_color(data_url)
     return min(
-        FIXTURE_COLOURS,
-        key=lambda name: sum(abs(a - b) for a, b in zip(colour, FIXTURE_COLOURS[name])),
+        FIXTURE_COLORS,
+        key=lambda name: sum(abs(a - b) for a, b in zip(color, FIXTURE_COLORS[name])),
     )

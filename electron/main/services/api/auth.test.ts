@@ -89,7 +89,7 @@ describe('logRejectedAttempt', () => {
  * AC3 — the comparison is constant-time, and a refusal never logs a credential.
  *
  * **The limit of this case is stated here on purpose:** no unit case can observe
- * timing, so what follows proves the *code* rather than the behaviour. It is a
+ * timing, so what follows proves the *code* rather than the behavior. It is a
  * source walk over `auth.ts` — the file that would have to change for either
  * rule to be lost (the same instrument `theme/store.test.ts` and
  * `theme/importer.test.ts` use for wiring their tests cannot reach).

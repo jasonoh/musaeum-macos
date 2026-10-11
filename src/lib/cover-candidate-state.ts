@@ -251,7 +251,7 @@ export const UPLOAD_TRIGGER_LINE =
  * file it returned, so "in flight" spans both, and the longer half by far is the
  * person browsing their own disk. Measured on the running app: with the sheet
  * open, the dialog behind it read *"Writing that image as the cover…"* about a
- * write nobody had chosen yet — and cancelling then left it saying so until the
+ * write nobody had chosen yet — and canceling then left it saying so until the
  * press resolved.
  *
  * Nothing here can distinguish the two phases, on purpose: the whole boundary
@@ -270,16 +270,16 @@ export const UPLOAD_APPLIED = 'Your image is now the cover on this book.'
  * A cancellation is an **answer**, not a failure (`api.types.ts` spells the
  * union that way for exactly this reason): the person closed a dialog, nothing
  * was written and there is no book to report. So it must not read as one — no
- * refusal line, no error colour — and it must not re-read either, because
+ * refusal line, no error color — and it must not re-read either, because
  * nothing moved. This function exists so that reading is a rule with a case
- * rather than a branch nobody asserted: `cancelled` is the only answer that
+ * rather than a branch nobody asserted: `canceled` is the only answer that
  * changes nothing, and the difference between it and a refusal is the whole
  * content of the gesture's honesty.
  */
-export type CoverUploadReading = { kind: 'settled' } | { kind: 'cancelled' }
+export type CoverUploadReading = { kind: 'settled' } | { kind: 'canceled' }
 
 export function coverUploadReading(outcome: CoverUploadOutcome): CoverUploadReading {
-  return 'cancelled' in outcome ? { kind: 'cancelled' } : { kind: 'settled' }
+  return 'canceled' in outcome ? { kind: 'canceled' } : { kind: 'settled' }
 }
 
 /**

@@ -168,7 +168,7 @@ def test_a_helper_that_never_answers_is_a_reason_not_a_hang(tmp_path):
 def test_a_progress_sink_that_raises_does_not_wedge_the_helper(tmp_path):
     """Task 3 hands `on_page` to the RPC's `notify`, which can raise. The read has
     to end and the helper must not be left alive holding a pipe nobody drains —
-    the timer that would have killed it is cancelled in the same `finally`."""
+    the timer that would have killed it is canceled in the same `finally`."""
     script = _script(tmp_path, [_header(500)] + [page_line(n) for n in range(1, 501)])
 
     def sink(done: int) -> None:

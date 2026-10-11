@@ -91,7 +91,7 @@ export async function resolveConflict(conflictId: number, choices: ConflictChoic
  * origin (`img-src 'self' musaeum: data: blob:` — `index.html`), so the review
  * queue's tiles for a cover rendered as **empty boxes**: reported from the app
  * on 2026-09-21 as "the cover picker doesn't display the actual covers", with
- * two blank tiles labelled Google Books and OpenLibrary and no way to tell which
+ * two blank tiles labeled Google Books and OpenLibrary and no way to tell which
  * jacket was which before choosing it. The sidecar downloads each candidate and
  * hands back a ≤240 px JPEG as a data URL — an image crossing the boundary the
  * renderer cannot fetch across itself. Nothing is written, nothing is cached and

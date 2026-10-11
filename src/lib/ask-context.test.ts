@@ -96,7 +96,7 @@ describe('the payload rungs (AC13, AC14)', () => {
     ).toContain('your highlight truncated at 6000 characters')
   })
 
-  it('sends the highlight at the default rung, labelled as the referent', () => {
+  it('sends the highlight at the default rung, labeled as the referent', () => {
     const assembled = ask({ selection: HIGHLIGHT })
 
     expect(assembled.payload.members).toContain('highlight')
@@ -197,7 +197,7 @@ describe('the passage window (2026-09-21 defect)', () => {
     expect(passage).toContain(PAGE_TAIL)
     expect(passage).toContain(LONG_HIGHLIGHT)
     // The clearest statement of the defect, and the one that was false before:
-    // what travelled is not a prefix of the section.
+    // what traveled is not a prefix of the section.
     expect(LONG_SECTION.startsWith(passage)).toBe(false)
     expect(assembled.payload.windowed).toBe(true)
     expect(passage.length).toBeLessThanOrEqual(PASSAGE_CHAR_CAP)

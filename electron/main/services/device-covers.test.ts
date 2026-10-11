@@ -20,7 +20,7 @@ import {
  * `test/mocks/electron.ts`). Everything *else* is real: the identity is read out
  * of a real MOBI fixture by the shipped parser, the name is the shipped rule,
  * and the marker and the entry are written to a real filesystem. The codec's own
- * behaviour — the fitted size, the byte band — is decided by
+ * behavior — the fitted size, the byte band — is decided by
  * `scripts/device-cover-probe.ts` under a real Electron.
  */
 
@@ -397,7 +397,7 @@ describe('the connect pass', () => {
     })
   })
 
-  it('counts a book with no jacket and still writes its neighbour’s (AC16)', async () => {
+  it('counts a book with no jacket and still writes its neighbor’s (AC16)', async () => {
     const report = await fillDeviceCovers({
       mountPath: mount,
       owners: [

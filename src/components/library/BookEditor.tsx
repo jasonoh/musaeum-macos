@@ -325,7 +325,7 @@ export function BookEditor() {
  * The marker on a field the user holds, and the way out of it.
  *
  * Clicking hands the field back to Musaeum *without* touching its value, which
- * is why it is a padlock labelled "Overridden" rather than an ✕ or a "clear":
+ * is why it is a padlock labeled "Overridden" rather than an ✕ or a "clear":
  * the gesture releases a decision, it does not undo an edit.
  */
 function OverrideChip({

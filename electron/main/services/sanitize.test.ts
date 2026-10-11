@@ -116,7 +116,7 @@ describe('sanitizeTitle', () => {
     })
 
     it('applies the cut after the trim, so a cut title can end with a space', () => {
-      // Pinning real behaviour, not endorsing it: `.trim()` runs before
+      // Pinning real behavior, not endorsing it: `.trim()` runs before
       // `.slice(0, 80)`, so a title whose 80th character is a space keeps it.
       const cut = sanitizeTitle(`${'a'.repeat(79)} bbbb`)
       expect(cut).toBe(`${'a'.repeat(79)} `)

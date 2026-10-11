@@ -91,7 +91,7 @@ const DEFAULT_TOKENS = tokensFromRoot(rootVars())
 
 /**
  * A light palette, so "the reader follows the app theme" is decided against
- * something that differs from the default in every one of the four colours.
+ * something that differs from the default in every one of the four colors.
  */
 const LIGHT_TOKENS: ThemeTokens = {
   ink: { ...DEFAULT_TOKENS.ink, '900': '#fdf6e3' },
@@ -137,7 +137,7 @@ describe('readerPalette', () => {
     expect(light.link).toBe(LIGHT_TOKENS.gold['400'])
   })
 
-  it('differs from the ink row in all four colours on a light theme (AC5.1)', () => {
+  it('differs from the ink row in all four colors on a light theme (AC5.1)', () => {
     const light = readerPalette(LIGHT_TOKENS)
     const row = { bg: light.bg, fg: light.fg, dim: light.dim, link: light.link }
     for (const [name, value] of Object.entries(row)) {
@@ -150,7 +150,7 @@ describe('readerPalette', () => {
     expect(readerPalette(LIGHT_TOKENS).scheme).toBe('light')
   })
 
-  it('threads search as the derived link colour (D1)', () => {
+  it('threads search as the derived link color (D1)', () => {
     // A named field rather than a second read of `link`: it is the role S1 added
     // so that a themed app cannot outline hits in a hardcoded amber.
     expect(readerPalette(LIGHT_TOKENS).search).toBe(readerPalette(LIGHT_TOKENS).link)
@@ -161,7 +161,7 @@ describe('readerPalette', () => {
   it('composes the alpha onto the link rather than leaving it to the rule (AC5.8)', () => {
     // The *shape* is the assertion, because comparing this field to
     // `` `${palette.link}44` `` would restate the implementation and pass for any
-    // link at all — including one that is not a colour at all
+    // link at all — including one that is not a color at all
     // (`'var(--gold-400)44'` satisfies that comparison and is exactly the defect).
     // What has to hold is that the field is a composed literal with the link's own
     // six digits in front of the alpha; the source walk below decides that the
@@ -190,7 +190,7 @@ describe('resolveReaderPalette', () => {
   })
 
   it('is total: a set it cannot read becomes the ink row, never `undefined`', () => {
-    // The other direction of AC5.7. A page colour that is not a hex literal —
+    // The other direction of AC5.7. A page color that is not a hex literal —
     // `undefined` from a hand-edited `theme_tokens` row, say — would be an invalid
     // declaration the engine's read-back then treats as transparent, and it would
     // reach the stylesheet with nothing reporting it. Main validates everything it
@@ -216,7 +216,7 @@ describe('resolveReaderPalette', () => {
 describe('readerPageCss', () => {
   const css = readerPageCss(PREFS, readerPalette(LIGHT_TOKENS))
 
-  it('composes the selection colour as a literal, with the link’s own six digits (AC5.8)', () => {
+  it('composes the selection color as a literal, with the link’s own six digits (AC5.8)', () => {
     // The declaration the alpha-suffix pattern silently turns invalid: `${link}44`
     // is valid only while `link` is a hex literal, and a dropped `::selection`
     // rule is the UA's blue in the reader's most visible accent.
@@ -228,7 +228,7 @@ describe('readerPageCss', () => {
   it('contains no var( and only valid hex literals (AC5.7)', () => {
     // A custom property is defined on the *app's* `:root` and the book renders in
     // its own document: an unresolved value makes the paginator's own background
-    // transparent, so the page colour stops at the iframe edge.
+    // transparent, so the page color stops at the iframe edge.
     expect(css).not.toContain('var(')
     const hexes = css.match(/#[0-9a-f]+/gi) ?? []
     expect(hexes.length).toBeGreaterThan(0)
@@ -299,10 +299,10 @@ describe('readerPageCss', () => {
    * AC5.6 — the injected rules stay unprefixed, and this is where a blanket
    * "no `!important`" assertion would be wrong: the stylesheet legitimately
    * carries one, on the `pre` white-space rule, and it predates this slice.
-   * What must not appear is `!important` on a *colour* declaration, which is
+   * What must not appear is `!important` on a *color* declaration, which is
    * AC5.6's named mutation (a book that ships its own typography would lose it).
    */
-  it('leaves every colour declaration unprefixed, bar the pre-existing one (AC5.6)', () => {
+  it('leaves every color declaration unprefixed, bar the pre-existing one (AC5.6)', () => {
     const important = css.match(/[^;{}]*!important[^;{}]*/g) ?? []
     expect(important).toHaveLength(1)
     expect(important[0]).toContain('white-space: pre-wrap')
@@ -345,7 +345,7 @@ describe('the reader components read the theme through the palette (AC5.1)', () 
     // The restyle path — the one a theme change takes while a book is open.
     expect(ENGINE).toContain('resolveReaderPalette(prefs.theme, tokens)')
     // The open path, which reads the same two values through refs so a theme
-    // change mid-load colours the page it is about to show.
+    // change mid-load colors the page it is about to show.
     expect(ENGINE).toContain('resolveReaderPalette(prefsRef.current.theme, tokensRef.current)')
   })
 
@@ -355,21 +355,21 @@ describe('the reader components read the theme through the palette (AC5.1)', () 
     expect(ENGINE).toContain('}, [prefs, tokens, viewRef])')
   })
 
-  it('re-runs the search when the highlight colour moves', () => {
+  it('re-runs the search when the highlight color moves', () => {
     // The vendor draws annotations per run and keeps the options it was handed
     // (`view.js:545`'s `#searchDrawOptions`, re-applied on every section render),
-    // so without this the outlines keep the colour of the run that drew them —
+    // so without this the outlines keep the color of the run that drew them —
     // measured: flipping the theme with five hits up left ~1,780 orange pixels
     // orange against a page that had gone dark. The page follows the theme; the
     // highlighting has to follow it with the page.
-    expect(SEARCH).toContain('const searchColour = resolveReaderPalette(theme, tokens).search')
-    expect(SEARCH).toContain('color: searchColour')
-    expect(SEARCH).toMatch(/drawnColour\.current === searchColour/)
+    expect(SEARCH).toContain('const searchColor = resolveReaderPalette(theme, tokens).search')
+    expect(SEARCH).toContain('color: searchColor')
+    expect(SEARCH).toMatch(/drawnColor\.current === searchColor/)
     expect(SEARCH).toContain('if (ranQuery) void startRef.current()')
   })
 
   it('never reaches for an authored row directly, in either component', () => {
-    // The rows are what a stored `ink`/`paper` *resolves to*, never a colour a
+    // The rows are what a stored `ink`/`paper` *resolves to*, never a color a
     // component may pick up on its own — a second read of one is how a themed app
     // ends up with an unthemed page or an unthemed search outline.
     for (const source of [ENGINE, SEARCH]) {

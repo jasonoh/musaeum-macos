@@ -400,7 +400,7 @@ describe('ask', () => {
     expect(cancel('req-cancel')).toBe(true)
     const terminal = await waitForTerminal('req-cancel')
     expect(terminal.channel).toBe(EVENT_CHANNELS.aiDone)
-    expect((terminal.payload as AiDoneEvent).reason).toBe('cancelled')
+    expect((terminal.payload as AiDoneEvent).reason).toBe('canceled')
     expect(eventsFor('req-cancel', EVENT_CHANNELS.aiError)).toHaveLength(0)
     await vi.waitFor(() => expect(closed).toBe(true))
   })

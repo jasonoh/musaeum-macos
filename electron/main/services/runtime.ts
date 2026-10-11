@@ -7,7 +7,7 @@
  * That happened once — an attempt to relabel the Dock tile renamed
  * `Contents/MacOS/Electron`, which sent `sidecarDir()` down the packaged
  * branch, lost the venv, and crashed startup with `spawn python3.12 ENOENT`.
- * The Dock tile is labelled from the bundle *directory's* name instead (see
+ * The Dock tile is labeled from the bundle *directory's* name instead (see
  * `scripts/dev-app-branding.mjs`), so the executable keeps its stock name and
  * `app.isPackaged` is honest again — but this module stays as the one answer
  * to the question, so a future rename can't reintroduce that failure.

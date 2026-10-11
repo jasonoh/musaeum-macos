@@ -90,7 +90,7 @@ function rootVars(): Record<string, string> {
   return vars
 }
 
-/** A hex colour as the channel triplet `:root` stores it in. */
+/** A hex color as the channel triplet `:root` stores it in. */
 function asChannels(hex: string): string {
   const body = hex.replace(/^#/, '')
   return [0, 2, 4].map((at) => parseInt(body.slice(at, at + 2), 16)).join(' ')
@@ -175,7 +175,7 @@ describe('D6 — the inlined registry is the corpus on disk', () => {
   })
 })
 
-// --- AC3.1(a): the window colour follows the theme ----------------------------
+// --- AC3.1(a): the window color follows the theme ----------------------------
 
 describe('AC3.1(a) — the window background is a function of the tokens', () => {
   it('is the default canvas for the built-in default', () => {
@@ -199,7 +199,7 @@ describe('AC3.1(a) — the window background is a function of the tokens', () =>
 
 // --- AC3.1(b): createWindow() reads it ----------------------------------------
 
-describe('AC3.1(b) — createWindow() takes its colour from the theme service', () => {
+describe('AC3.1(b) — createWindow() takes its color from the theme service', () => {
   const source = readFileSync(MAIN_INDEX, 'utf8')
   const start = source.indexOf('new BrowserWindow(')
   const end = source.indexOf('win.on(', start)
@@ -371,7 +371,7 @@ describe('AC3.4 — storage is not trusted', () => {
    *
    * A row with complete metadata whose `tokens.gold` is incomplete would
    * otherwise validate, and the apply path would write no `--gold-500/600` at
-   * all — leaving those channels on `:root`'s values: a half-coloured theme,
+   * all — leaving those channels on `:root`'s values: a half-colored theme,
    * silently, with a green suite.
    *
    * **The subject has to be a family that is present but incomplete.** Deleting
@@ -512,7 +512,7 @@ describe('AC3.4 — an inherited object key is not a registered theme', () => {
   })
 
   it.each(INHERITED_KEYS)(
-    'does not throw on a stored theme_id of builtin:%s, and still has a window colour',
+    'does not throw on a stored theme_id of builtin:%s, and still has a window color',
     (stem) => {
       setTheme('builtin:gruvbox-dark-hard')
       const hand = handWrittenRow(`builtin:${stem}`, 0)
@@ -539,7 +539,7 @@ describe('AC3.4 — an inherited object key is not a registered theme', () => {
       expect(view.active.id).toBe(`builtin:${stem}`)
       expect(view.active.tokens).toEqual(hand.tokens)
       expect(theme.tokens).toEqual(hand.tokens)
-      // The boot path's whole requirement: `createWindow()` gets a colour.
+      // The boot path's whole requirement: `createWindow()` gets a color.
       expect(windowBackgroundColor(theme.tokens)).toBe(hand.tokens.ink['950'])
     }
   )
@@ -913,14 +913,14 @@ describe('D4 — the ladder resolves a library id, and re-derives the one it can
     expect(result.view.active.sourcePath).toBe(ITERM_GRUVBOX)
     expect(result.view.stale).toBe(false)
     expect(getConfig('theme_id')).toBe('iterm:gruvbox')
-    // Setting a row does not disturb its neighbours.
+    // Setting a row does not disturb its neighbors.
     expect(readLibrary()).toEqual([record])
   })
 
   it('re-derives a record whose engine version is old, and rewrites it in place', () => {
     const record = recordFromFile(ITERM_GRUVBOX, 'iterm:gruvbox')
-    const neighbour = recordFromFile(ITERM_NORD, 'iterm:nord')
-    upsertLibrary([{ ...record, engineVersion: 0 }, neighbour])
+    const neighbor = recordFromFile(ITERM_NORD, 'iterm:nord')
+    upsertLibrary([{ ...record, engineVersion: 0 }, neighbor])
 
     // Not applied yet: the row says its values are old and nothing has rewritten
     // them behind the user's back (D9) — building the list is not the moment to
@@ -1161,7 +1161,7 @@ describe('AC5.5(a) — nativeScheme is a pure decision about the tokens', () => 
     expect(nativeScheme(derivedTokens('gruvbox-dark-hard'))).toBe('dark')
   })
 
-  it('agrees with the window colour it is applied beside (D6)', () => {
+  it('agrees with the window color it is applied beside (D6)', () => {
     // The coupling that makes the native appearance a decision about the tokens
     // rather than a second guess at them: after a light theme is stored, the
     // canvas main paints and the scheme the platform paints come from one set.
@@ -1200,7 +1200,7 @@ describe('AC5.5(b) — main/index.ts applies it, and follows a change — a sour
     const handler = source.slice(start)
     expect(handler).toMatch(/themeChanged/)
     expect(handler).toMatch(/nativeTheme\.themeSource\s*=\s*nativeScheme\(/)
-    // The window's own colour, from the payload's tokens — the "not only at
+    // The window's own color, from the payload's tokens — the "not only at
     // boot" half (tasks.md:519-522).
     expect(handler).toMatch(/setBackgroundColor\(windowBackgroundColor\(/)
     // And the payload is *checked*, not merely cast: a tokens record without the

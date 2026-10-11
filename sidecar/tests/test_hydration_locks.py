@@ -129,7 +129,7 @@ def test_locked_identifiers_and_tags_are_not_unioned():
 
 def test_a_locked_identifiers_field_beats_the_files_own_identifiers(tmp_path, monkeypatch):
     # The file's identifiers (and the known ones) are merged in *after* the
-    # merge, which is why the lock has to be honoured here too
+    # merge, which is why the lock has to be honored here too
     path = _epub(tmp_path, "0306406152")
     _offline(monkeypatch)
     book_dir = str(tmp_path / "out")
@@ -177,7 +177,7 @@ def test_a_locked_cover_is_not_even_selected(tmp_path, monkeypatch):
 
 
 def test_no_locks_means_nothing_changes(tmp_path, monkeypatch):
-    # The default is the behaviour that existed before locks: omitted, empty and
+    # The default is the behavior that existed before locks: omitted, empty and
     # `None` all mean "propose everything"
     path = _epub(tmp_path, "9781707274123")
     _offline(monkeypatch)

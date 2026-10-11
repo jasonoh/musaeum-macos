@@ -260,7 +260,7 @@ def render_plate(page: pdfium.PdfPage) -> Optional[Crop]:
 
 
 # --- running heads ---------------------------------------------------------
-def _normalise(text: str) -> str:
+def _normalize(text: str) -> str:
     return _WS.sub(" ", re.sub(r"\d+", "#", text)).strip().lower()
 
 
@@ -273,7 +273,7 @@ def mark_running_heads(doc: Document) -> None:
     flowing text — the loudest possible reflow defect.
 
     The position and length tests are not decoration. Without them the digit
-    normalisation alone decides the question, so every numeric block normalises
+    normalization alone decides the question, so every numeric block normalizes
     to `#`, "appears" on every page, and is deleted: measured on *Universe*,
     442 blocks went that way on the first run, which is why its text was missing
     3,421 instances of the word `the` — those blocks were the pages' real prose,
@@ -287,7 +287,7 @@ def mark_running_heads(doc: Document) -> None:
     for page in text_pages:
         for block in page.blocks:
             if _is_furniture(block, page):
-                key = _normalise(block.text)
+                key = _normalize(block.text)
                 seen[key] = seen.get(key, 0) + 1
     threshold = max(RUNNING_HEAD_MIN, RUNNING_HEAD_PAGES * len(text_pages))
     repeats = {t for t, n in seen.items() if n >= threshold}
@@ -296,7 +296,7 @@ def mark_running_heads(doc: Document) -> None:
     for page in text_pages:
         kept: list[Block] = []
         for block in page.blocks:
-            if _is_furniture(block, page) and _normalise(block.text) in repeats:
+            if _is_furniture(block, page) and _normalize(block.text) in repeats:
                 doc.dropped_running_heads.append(block.text)
                 continue
             kept.append(block)
@@ -319,7 +319,7 @@ def _is_furniture(block: Block, page: PageResult) -> bool:
     if not in_band:
         return False
     # A bare page number is furniture; a bare number anywhere else is not.
-    apart_from_digits = re.sub(r"[\d#\s]", "", _normalise(block.text))
+    apart_from_digits = re.sub(r"[\d#\s]", "", _normalize(block.text))
     return bool(apart_from_digits) or len(block.text.strip()) <= 5
 
 
@@ -557,7 +557,7 @@ def _page(page: pdfium.PdfPage, index: int, layout: Optional[PageLayout], doc: D
     return result
 
 
-def analyse(
+def analyze(
     path: str,
     limit: Optional[int] = None,
     layouts: Optional[dict[int, PageLayout]] = None,

@@ -405,7 +405,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ### Task 4: `scripts/api-smoke.sh`
 
 **Files:**
-- Modify: `scripts/api-smoke.sh` (a new section after the file/Range section, using the script's `check`, `request`, `header`, `BODY`, `HEADERS` helpers; copy the neighbouring section's banner style)
+- Modify: `scripts/api-smoke.sh` (a new section after the file/Range section, using the script's `check`, `request`, `header`, `BODY`, `HEADERS` helpers; copy the neighboring section's banner style)
 
 - [ ] **Step 1: Add the section.**
 

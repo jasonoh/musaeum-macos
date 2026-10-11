@@ -76,7 +76,7 @@ export async function resolveBookFile(bookId: string, format: string): Promise<s
 /**
  * The book's folder, when the library holds one for it — or null.
  *
- * The lexical check is `nasPath`'s own defence: the path comes from a catalog
+ * The lexical check is `nasPath`'s own defense: the path comes from a catalog
  * any machine can write, so a traversing entry must not turn a renderer URL
  * into arbitrary filesystem read access. The realpath half is in `contained` —
  * a symlink passes this test.
@@ -163,7 +163,7 @@ export async function resolveReflowFile(bookId: string): Promise<string | null> 
  * What resolving a cover came to. **The refusal carries its own status**, because
  * one `null` cannot: the handler this was extracted from answers **400** for a
  * traversing row (`index.ts:72`) and **404** for a missing root, book or cover
- * (`:69`), and flattening that split would change the very behaviour the
+ * (`:69`), and flattening that split would change the very behavior the
  * extraction has to preserve (AC13).
  */
 export type CoverFileResult = { ok: true; path: string } | { ok: false; status: 400 | 404 }
@@ -174,7 +174,7 @@ const COVER_BAD_PATH: CoverFileResult = { ok: false, status: 400 }
 /**
  * The file behind `musaeum://cover/{bookId}/{size}`, or why there is none.
  *
- * **The size branch is deliberately lenient, and that is the behaviour being
+ * **The size branch is deliberately lenient, and that is the behavior being
  * pinned:** the handler resolves `size === 'thumb' ? coverThumbPath :
  * coverFullPath`, so any size that is not `thumb` serves the **full** cover and
  * `musaeum://cover/{id}/banana` has always answered an image (AC13b). The

@@ -66,7 +66,7 @@ export function parseBase16(text: string): Base16ParseResult {
     else found.set(key, '#' + value.toLowerCase())
   }
   // A scheme missing a slot is reported, never patched: the derivation would
-  // otherwise invent a colour the file never carried (D9).
+  // otherwise invent a color the file never carried (D9).
   if (missing.length > 0) {
     return { ok: false, reason: `base16 scheme missing ${missing.join(', ')}` }
   }

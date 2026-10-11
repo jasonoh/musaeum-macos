@@ -13,7 +13,7 @@ import { describeHydrate } from '@/lib/metadata-feedback'
  *
  * Deliberately not awaited by the buttons themselves: a refresh outlives the
  * panel it was started from, and the thin slice of it that is on screen (the
- * spinner) must be able to disappear without cancelling the work or losing the
+ * spinner) must be able to disappear without canceling the work or losing the
  * answer, which arrives as a toast.
  */
 export async function refreshBookMetadata(bookId: string): Promise<void> {

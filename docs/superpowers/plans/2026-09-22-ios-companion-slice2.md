@@ -16,7 +16,7 @@
 - `services/settings.ts`'s validation rules (a port outside `MIN`/`MAX`, a bind that does not parse) and the "blank means auto-detect" contract.
 - The server's own activation path: the row **calls** it, and re-implementing any part of it is the boundary this whole workstream has kept.
 - The token's shape (64 hex chars) and that it is generated on enable, never typed by hand.
-- The app's existing Settings suite (AC30) — and the row must not disturb the other sections' save behaviour.
+- The app's existing Settings suite (AC30) — and the row must not disturb the other sections' save behavior.
 
 ## The two documents AC29 names
 

@@ -93,7 +93,7 @@ function maxBy<T>(items: T[], value: (item: T) => number): T {
 }
 
 /**
- * The prototype's `best_on`: it maximises over `(ratio, hex)` *tuples*, so a
+ * The prototype's `best_on`: it maximizes over `(ratio, hex)` *tuples*, so a
  * ratio tie is broken by the hex string rather than by position — Python's
  * tuple comparison, which is not what `maxBy` above does.
  */
@@ -210,7 +210,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
     ['accents.green', accents.green]
   ]
   // `muted` may be *absent* — the status block falls back to `fg` — but a value the
-  // provider did supply still has to read as a colour, `null` included. It used to be
+  // provider did supply still has to read as a color, `null` included. It used to be
   // swallowed here while every other required field rejected it, so a caller that
   // spelled "no muted" as `null` got the `fg` status ramp and no rejection at all.
   if (ir.muted !== undefined) required.push(['muted', ir.muted])
@@ -218,12 +218,12 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
   for (const [role, value] of required) {
     const normalized = typeof value === 'string' ? normalizeHex(value) : null
     if (normalized === null) {
-      return reject(malformed(role, `expected a hex colour, got ${describeValue(value)}`))
+      return reject(malformed(role, `expected a hex color, got ${describeValue(value)}`))
     }
     norm[role] = normalized
   }
 
-  // `variant` was the one required field nothing inspected, and it is not a colour:
+  // `variant` was the one required field nothing inspected, and it is not a color:
   // it decides the *direction* of every ramp in this file (which way the surface
   // ladder rises, which way a text stop dims, which way a status step walks, the
   // shadow's alpha). Measured before this check: `variant: 42`, `'Dark'`, `'bogus'`
@@ -249,7 +249,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
   const offAxis = dark ? lstar(span) < lstar(bg) : lstar(span) > lstar(bg)
   if (offAxis || chroma(span) > Math.max(0.06, chroma(bg) * 3)) {
     span = mix(mix(bg, fg, 0.3), border, 0.35)
-    notes.push('border tone off-axis; span synthesised from bg->fg')
+    notes.push('border tone off-axis; span synthesized from bg->fg')
   }
   const ink = {} as Record<InkStep, string>
   INK_STOPS.forEach((name, i) => {
@@ -274,7 +274,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
       adjusted.push(`${key} raised to meet ${floor}:1`)
     }
     // The walk above caps out at 24 steps without re-checking. Verify the floor on
-    // the value that actually ships — the quantised hex, which is the same quantity
+    // the value that actually ships — the quantized hex, which is the same quantity
     // the audits below measure — and reject rather than return a broken theme.
     const stop = rgbToHex(c)
     const measured = contrast(hexToRgb(stop), backdrop)
@@ -565,7 +565,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
   // The finiteness arm is the other half of totality: every floor test in this file is
   // `<`, and `NaN < floor` is false, so a NaN row would pass the sweep and ship a table
   // of nulls. Measured, it is unreachable from today's rules — every row's ratio is a
-  // contrast between two colours that were validated before use, and 60,000 random IRs
+  // contrast between two colors that were validated before use, and 60,000 random IRs
   // produced no non-finite row — and it stays because it is the arm that keeps the
   // invariant true if a rule above ever changes.
   for (const row of audits) {

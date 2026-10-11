@@ -53,7 +53,7 @@ function report(name: string, value: unknown): void {
 }
 
 /**
- * AC6.3 as a property over a whole IR: every colour-shaped field is `#rrggbb`
+ * AC6.3 as a property over a whole IR: every color-shaped field is `#rrggbb`
  * and no leaf of the object carries CSS syntax.
  *
  * The first version of this check grepped `JSON.stringify(ir)` for `{` — the
@@ -76,7 +76,7 @@ function payloadProblem(ir: unknown): string | null {
   walk(ir)
 
   const record = ir as Record<string, unknown>
-  const colours = [
+  const colors = [
     'bg',
     'bg2',
     'bg3',
@@ -87,7 +87,7 @@ function payloadProblem(ir: unknown): string | null {
     'accent_hint',
     'on_acc_hint'
   ]
-  for (const field of colours) {
+  for (const field of colors) {
     const value = record[field]
     if (value === undefined) continue
     if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/.test(value)) {
@@ -292,7 +292,7 @@ body::before { content: url("${base}/pseudo.png"); }
     budgetMs: 3000
   })
 
-  // ---- AC6.4: a non-colour role is rejected, not coerced ------------------
+  // ---- AC6.4: a non-color role is rejected, not coerced ------------------
   const rejections: Record<string, unknown> = {}
   const cases: Record<string, string> = {
     'text-normal: none': `.theme-dark { --background-secondary: #101010;

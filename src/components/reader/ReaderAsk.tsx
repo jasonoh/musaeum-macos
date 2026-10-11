@@ -97,7 +97,7 @@ export function ReaderAsk({ onNavigate }: { onNavigate: (href: string) => void }
   }, [])
 
   /**
-   * A question is cancelled when the panel closes, and when the next one
+   * A question is canceled when the panel closes, and when the next one
    * starts — a second question while the first is still streaming is the reader
    * changing their mind, not a queue. `cancel` returns false for a request that
    * has already finished, so this needs no bookkeeping beyond the ids.

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Provenance rule (spec §Provenance):** allowed sources are the MobileRead wiki, the device-presence spec appendix, `electron/main/services/mobi-header.ts`, and the **bytes of real files**. **Do not read** Calibre's or KindleUnpack's source, or any other GPL implementation. Their *output* and *behaviour* are fair game.
+- **Provenance rule (spec §Provenance):** allowed sources are the MobileRead wiki, the device-presence spec appendix, `electron/main/services/mobi-header.ts`, and the **bytes of real files**. **Do not read** Calibre's or KindleUnpack's source, or any other GPL implementation. Their *output* and *behavior* are fair game.
 - **A structure with no annex entry does not ship** (spec §Provenance, rule 3). Every structure a task emits gets a row in Annex A (Task 5) naming its source.
 - **No new dependency.** `sidecar/requirements.txt` does not change.
 - **Calibre is a test oracle only**, never a dependency of `npm test` or `pytest` (spec §Provenance, rule 4).
@@ -538,7 +538,7 @@ def test_classify_names_the_records_the_annex_cares_about():
     assert classify(b"plain text") == "data"
 
 
-def test_describe_summarises_runs_and_dumps_header_words_and_tagx():
+def test_describe_summarizes_runs_and_dumps_header_words_and_tagx():
     lines = describe(_synthetic_file())
     assert lines[0] == "4 records, " + str(len(_synthetic_file())) + " bytes"
     assert "  records 1..2: JPEG" in lines

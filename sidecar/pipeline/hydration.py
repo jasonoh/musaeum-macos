@@ -26,7 +26,7 @@ from fetchers.goodreads import fetch_series
 from fetchers.google_books import fetch_google_books, search_by_isbn, search_by_title
 from fetchers.openlibrary import KNOWN_ISBN_CAP, fetch_openlibrary, known_isbns
 from pipeline.conflict import merge_metadata
-from pipeline.cover import gather_candidates, score_candidates, select_cover, summarise_candidates
+from pipeline.cover import gather_candidates, score_candidates, select_cover, summarize_candidates
 
 
 def hydrate_metadata(
@@ -107,19 +107,19 @@ def cover_candidates(file_path: str, book_dir: str, known: dict) -> list:
 
     Nothing is written and nothing is persisted: `metadata.json` is untouched by
     this (D1), the candidates are recomputed live on every call, and the answer
-    is `cover.summarise_candidates`' payload — one entry per candidate carrying
+    is `cover.summarize_candidates`' payload — one entry per candidate carrying
     its source, its dimensions, its score, whether it is the one that would win,
     whether it is the one on disk now, and a small inlined image the renderer can
     actually display (its CSP names no remote origin, so a bare URL could not be
     shown at all).
 
-    It deliberately does **not** honour a `cover` lock. The lock belongs to the
+    It deliberately does **not** honor a `cover` lock. The lock belongs to the
     fetch: `hydrate_metadata` gathers no candidate for a locked cover, but a
     person reopening the picker to choose a different jacket is exactly what the
     lock must not prevent — otherwise locking once would be a one-way door (D4).
     """
     _, _, google, openlib = _sources(file_path, known)
-    return summarise_candidates(
+    return summarize_candidates(
         score_candidates(gather_candidates(file_path, google, openlib)), book_dir
     )
 
@@ -166,7 +166,7 @@ def search_candidates(file_path: str, book_dir: str, known: dict) -> list:
     Every entry comes back with `winner: false` (D3). `winner` means "what a
     fetch would write", and a fetch would never ask this question — the mark is
     forced here, on the way out, rather than by a parameter on
-    `summarise_candidates`, because that function's meaning is shared with the
+    `summarize_candidates`, because that function's meaning is shared with the
     gather and must not learn about a group whose head is not its winner.
     `applied` keeps its byte-identity meaning, unchanged. `url` is present on
     every entry (every hit here is online); a hit that somehow arrived without
@@ -198,7 +198,7 @@ def search_candidates(file_path: str, book_dir: str, known: dict) -> list:
         hits = _search_call(search_by_title, title, author)
 
     out = []
-    for entry in summarise_candidates(score_candidates(_dedupe_by_bytes(hits)), book_dir):
+    for entry in summarize_candidates(score_candidates(_dedupe_by_bytes(hits)), book_dir):
         if not entry.get("url"):
             continue
         entry["winner"] = False

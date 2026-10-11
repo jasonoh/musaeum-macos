@@ -65,7 +65,7 @@ export function startSearch(): SearchState {
   return { searching: true, progress: 0, results: [] }
 }
 
-/** Whole-book search, outlined in a colour the reader resolved itself (D3, D4). */
+/** Whole-book search, outlined in a color the reader resolved itself (D3, D4). */
 export interface SearchOptions {
   query: string
   drawOptions?: { color?: string; width?: number; radius?: number }
@@ -113,7 +113,7 @@ function toExcerpt(value: unknown): SearchExcerpt {
  * a string is the terminator, `progress` is the section counter, `subitems` is
  * a section's hits.
  *
- * A yield we do not recognise is ignored rather than thrown on. The engine is
+ * A yield we do not recognize is ignored rather than thrown on. The engine is
  * someone else's JavaScript and an unexpected shape there is not a failure of
  * the reader (invariant #12) — the alternative throws away a whole book's
  * results over one malformed hit.
@@ -205,7 +205,7 @@ export function applySearchEvent(state: SearchState, event: SearchEvent): Search
 
 export interface SearchRunOptions {
   query: string
-  /** The resolved outline colour (D4) — a literal from the reader's palette. */
+  /** The resolved outline color (D4) — a literal from the reader's palette. */
   color: string
   /**
    * True once this run has been superseded: by a newer search, the panel

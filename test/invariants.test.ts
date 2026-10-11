@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
  * are exactly the ones whose array disagrees with `FORMAT_ORDER`.
  *
  * **Why a source scan rather than a unit case:** the rule is about code that must
- * not exist. A behaviour test can only prove the call sites that exist today are
+ * not exist. A behavior test can only prove the call sites that exist today are
  * right; this fails on the next one, the moment it is written — which is the job
  * the invariant docs do for the other twelve rules.
  *
@@ -80,7 +80,7 @@ describe('invariant 8 — IPC handlers do no file or process work of their own',
  * (packaged) or `http://localhost` (dev) origin, and on Electron 44 Chromium
  * refuses that cross-origin fetch — `Failed to fetch`, before our handler runs —
  * unless the scheme carries the flag (measured 2026-09-25; 37 did not need it).
- * The electron mock stubs `registerSchemesAsPrivileged`, so no behaviour test
+ * The electron mock stubs `registerSchemesAsPrivileged`, so no behavior test
  * can see the flag go missing; the reader would just stop opening books.
  */
 describe('invariant 9 — the musaeum scheme keeps the privileges the reader fetches through', () => {

@@ -85,7 +85,7 @@ declare module '@vendor/foliate-js/view.js' {
     matchDiacritics?: boolean
     matchWholeWords?: boolean
     defaultLocale?: string
-    /** Defaults to `Overlayer.outline`; the reader passes a colour (D4). */
+    /** Defaults to `Overlayer.outline`; the reader passes a color (D4). */
     drawOptions?: { color?: string; width?: number; radius?: number }
   }
 

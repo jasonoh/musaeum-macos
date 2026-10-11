@@ -144,7 +144,7 @@
    * 2 px dark stripes had nothing to antialias against: measured on the open
    * cover, four bright runs across the band with adjacent-pixel steps up to
    * 180 luminance (against two boundary steps and one bright run now), and
-   * that pattern re-quantised on every frame of the transform — the white
+   * that pattern re-quantized on every frame of the transform — the white
    * flicker. Hiding the block outright is what isolates it: the same frames
    * with `.cover-pages` removed show a clean edge and no stripes at all.
    * It is inset 4 px top and bottom, inside the 6 px corner radius, so it

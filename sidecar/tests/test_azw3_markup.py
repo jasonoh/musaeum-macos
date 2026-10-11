@@ -135,7 +135,7 @@ def test_text_in_malformed_markup_is_kept_not_dropped(markup, expected):
     assert raw_part(markup).fragment == expected
 
 
-def test_a_declared_non_utf8_encoding_is_honoured():
+def test_a_declared_non_utf8_encoding_is_honored():
     latin = '<?xml version="1.0" encoding="iso-8859-1"?><html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p>café</p></body></html>'
     assert raw_part(latin.encode("latin-1")).fragment == b'<p aid="1">caf&#233;</p>'
     utf16 = '<html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p>café</p></body></html>'.encode("utf-16")

@@ -157,9 +157,9 @@ describe('the phone API row', () => {
     expect(SECTION).not.toMatch(/localStorage|sessionStorage|zustand/)
   })
 
-  it('keeps the row out of the other sections’ save behaviour', () => {
+  it('keeps the row out of the other sections’ save behavior', () => {
     // The dialog saves a whole `EditableSettings` object; the row must not be
-    // able to round-trip a neighbouring field as `undefined` and clear it. The
+    // able to round-trip a neighboring field as `undefined` and clear it. The
     // switch's reply updates the *view* only — the form is what holds every
     // section's unsaved edits, and one click must not discard them.
     const body = setEnabledBody()

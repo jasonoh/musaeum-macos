@@ -57,7 +57,7 @@ function ToastCard({ toast, dismiss }: { toast: Toast; dismiss: (id: number) => 
  *
  * Above the modals (`z-50`) because it is *the* completion report for jobs the
  * user started before opening something else — a refresh that finishes while a
- * settings panel is up must not be hidden behind it. Anchored bottom-centre
+ * settings panel is up must not be hidden behind it. Anchored bottom-center
  * rather than bottom-right so it never covers the detail panel's action row,
  * which is where these are usually triggered from. Dismissal is the store's
  * (see `notify`), so the timer and the close button can't disagree.

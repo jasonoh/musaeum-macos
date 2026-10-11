@@ -126,7 +126,7 @@ def merge_metadata(sources: dict, preferences: dict, locked_fields=()) -> tuple:
         if not data:
             continue
         # The union is the one place these two fields are built without going
-        # through `candidates_for`, so the lock is honoured here too
+        # through `candidates_for`, so the lock is honored here too
         if "identifiers" not in locked:
             identifiers.update({k: v for k, v in (data.get("identifiers") or {}).items() if v})
         if "tags" not in locked:

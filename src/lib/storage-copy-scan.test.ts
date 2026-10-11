@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
  * instrument that lives only in that session: the next component that types
  * *"Reconnect to the NAS to make changes."* by hand gets no red from anywhere.
  * This is the same predicate, in the gate. It is the sibling of
- * `theme/palette-scan.test.ts`, which makes the same argument for colour.
+ * `theme/palette-scan.test.ts`, which makes the same argument for color.
  *
  * **What it decides:**
  * - no `.ts`/`.tsx` under `src/` carries a bare `NAS` (comments excluded — the

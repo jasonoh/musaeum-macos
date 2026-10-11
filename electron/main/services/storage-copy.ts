@@ -206,7 +206,7 @@ export function smbUrlDetail(configured: boolean): string {
  * **Claims only what is known.** The catalog is last-write-wins, one machine at
  * a time (`docs/invariants/nas-and-catalog.md`), so a second machine writing the
  * same library can lose changes — true of every client here. The eviction
- * hazard is iCloud's own documented behaviour and is claimed for **iCloud
+ * hazard is iCloud's own documented behavior and is claimed for **iCloud
  * alone**: nothing measured says a Dropbox or Google Drive folder behaves the
  * same way, and guessing would be exactly the "unsupported" claim this copy
  * exists to avoid. The revival condition for turning it into a refusal is a

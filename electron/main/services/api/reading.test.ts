@@ -282,7 +282,7 @@ describe('with the share offline the report still lands (AC23)', () => {
     }
 
     // **The pending set, decided by its only reader.** It is module-private, so
-    // the proof is behavioural: bring the share back and flush, and the
+    // the proof is behavioral: bring the share back and flush, and the
     // position the phone sent is what lands. A report that was dropped — or one
     // applied without being parked — writes nothing here.
     await nas.setLibraryRoot(root)

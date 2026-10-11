@@ -256,13 +256,13 @@ describe('updateFieldsInCatalog', () => {
     await writeCatalog(root, [])
     await updateFieldsInCatalog(
       root,
-      [makeBook('new', 'Never Catalogued')],
+      [makeBook('new', 'Never Cataloged')],
       ['readingState'],
       () => []
     )
     const cat = await readCatalog(root)
     expect(cat?.books.map((b) => b.id)).toEqual(['new'])
-    expect(cat?.books[0].title).toBe('Never Catalogued')
+    expect(cat?.books[0].title).toBe('Never Cataloged')
   })
 })
 
@@ -422,7 +422,7 @@ describe('rebuildFromBookDirs', () => {
   // guarantee both rest on is that `replaceCatalog` is the walk's *only* write —
   // which is why a full library can be abandoned after 20 minutes at no cost
   // (measured: 1,281 s for 7,101 folders over SMB).
-  it('returns nothing and writes nothing when cancelled mid-walk', async () => {
+  it('returns nothing and writes nothing when canceled mid-walk', async () => {
     await writeBookDir('uuid-1', makeMetadataJson('uuid-1'))
     await writeBookDir('uuid-2', makeMetadataJson('uuid-2'))
     await writeBookDir('uuid-3', makeMetadataJson('uuid-3'))
@@ -456,13 +456,13 @@ describe('rebuildFromBookDirs', () => {
     expect(await readCatalog(root)).toBeNull()
   })
 
-  it('leaves an existing catalog byte-identical when cancelled', async () => {
+  it('leaves an existing catalog byte-identical when canceled', async () => {
     await writeBookDir('uuid-1', makeMetadataJson('uuid-1'))
     const first = await rebuildFromBookDirs(root)
     expect(first.map((b) => b.id)).toEqual(['uuid-1'])
     const raw = await fs.readFile(join(root, 'catalog.json'), 'utf8')
 
-    // A second folder the cancelled walk was about to adopt: the catalog must
+    // A second folder the canceled walk was about to adopt: the catalog must
     // still not mention it afterwards
     await writeBookDir('uuid-2', makeMetadataJson('uuid-2'))
     let ticks = 0

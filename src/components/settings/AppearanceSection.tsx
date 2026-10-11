@@ -22,7 +22,7 @@ import {
  * this dialog that applies on click.
  *
  * *Why the exception to the modal's batching.* Every other field here is a value
- * the app reads later, so a Save step costs nothing. A colour choice is its own
+ * the app reads later, so a Save step costs nothing. A color choice is its own
  * feedback loop: pressing a row derives, validates, writes and broadcasts in one
  * interaction (`theme.set`), and burying that behind ⌘↵ would hide the thing the
  * user is looking at (AC4.5). The row's reason therefore rides back on the click
@@ -255,7 +255,7 @@ export function AppearanceSection() {
               aria-controls={LIST_ID}
               className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-ink-800"
             >
-              <SwatchStrip colours={appliedSwatches(view.active.tokens)} />
+              <SwatchStrip colors={appliedSwatches(view.active.tokens)} />
               <span className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="truncate text-[13px] text-parchment">{view.active.name}</span>
                 <VariantBadge variant={view.active.variant} />
@@ -397,7 +397,7 @@ function ThemeRow({
             option.active ? 'bg-ink-800/60' : 'hover:bg-ink-800'
           }`}
         >
-          <SwatchStrip colours={option.swatches} />
+          <SwatchStrip colors={option.swatches} />
           <span
             className={`min-w-0 flex-1 truncate text-[13px] ${
               option.active ? 'text-parchment' : 'text-parchment-dim'
@@ -453,16 +453,16 @@ function ThemeRow({
  * The five derived values, side by side. Their order is fixed by
  * `ThemeSwatches`, so two rows are comparable with each other.
  *
- * The one literal colour the renderer is allowed: the swatch *is* the data, and
+ * The one literal color the renderer is allowed: the swatch *is* the data, and
  * a token would paint every theme the same.
  */
-function SwatchStrip({ colours }: { colours: readonly string[] }) {
+function SwatchStrip({ colors }: { colors: readonly string[] }) {
   return (
     <span
       aria-hidden
       className="flex h-4 w-[52px] shrink-0 overflow-hidden rounded-sm border border-ink-700"
     >
-      {colours.map((hex, at) => (
+      {colors.map((hex, at) => (
         <span key={at} className="h-full flex-1" style={{ backgroundColor: hex }} />
       ))}
     </span>
@@ -496,7 +496,7 @@ function matches(option: ThemeOption, needle: string): boolean {
 }
 
 /**
- * `dark` / `light`, as the data spells it. Deliberately not colour-coded: the
+ * `dark` / `light`, as the data spells it. Deliberately not color-coded: the
  * variant is a fact about the theme, and the swatch strip beside it already says
  * what that fact looks like.
  */
@@ -511,7 +511,7 @@ function VariantBadge({ variant }: { variant: ThemeVariant }) {
 /**
  * A failure line — a refused click, a rejected file, a call that could not run.
  *
- * Carries no hue: the token set the app has today has no failure colour (slice 7a
+ * Carries no hue: the token set the app has today has no failure color (slice 7a
  * adds the status family), and the icon plus the sentence is what makes it read as
  * a failure rather than another faint label (`CLAUDE.md` #12 — the report is the
  * feature).

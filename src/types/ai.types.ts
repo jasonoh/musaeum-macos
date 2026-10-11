@@ -40,9 +40,9 @@ export interface AskRequest {
 
 /**
  * How a stream ended. Only a failure is an error; every one of these is an
- * outcome, including `cancelled` — the reader closing the panel is normal.
+ * outcome, including `canceled` — the reader closing the panel is normal.
  */
-export type AskDoneReason = 'stop' | 'length' | 'cancelled' | 'timeout'
+export type AskDoneReason = 'stop' | 'length' | 'canceled' | 'timeout'
 
 export interface AiChunkEvent {
   requestId: string

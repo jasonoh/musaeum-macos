@@ -327,11 +327,11 @@ export interface RebuildProgress {
  * Slow over SMB (minutes at library scale — measured at 1,281 s / 21.4 min for
  * 7,101 folders) — only run on user request or when no catalog exists.
  *
- * `isCancelled` is polled once per folder, which is where the walk's whole cost
+ * `isCanceled` is polled once per folder, which is where the walk's whole cost
  * is. On cancel this returns `[]` **without writing the catalog**: the single
  * write is `replaceCatalog` at the end, so abandoning costs nothing on disk.
- * That makes `[]` ambiguous between "cancelled" and "a library with no books",
- * and the caller must resolve it from its own flag — `isCancelled` is the
+ * That makes `[]` ambiguous between "canceled" and "a library with no books",
+ * and the caller must resolve it from its own flag — `isCanceled` is the
  * caller's own predicate, and `library-sync.rebuildCatalog` checks it with no
  * await in between. Anything that ever writes mid-walk must move this
  * guarantee (and that check) with it.
@@ -339,7 +339,7 @@ export interface RebuildProgress {
 export async function rebuildFromBookDirs(
   root: string,
   onProgress?: (p: RebuildProgress) => void,
-  isCancelled?: () => boolean
+  isCanceled?: () => boolean
 ): Promise<Book[]> {
   let entries: Dirent[]
   try {
@@ -352,7 +352,7 @@ export async function rebuildFromBookDirs(
   const byId = new Map<string, Book>()
   let completed = 0
   for (const dir of dirs) {
-    if (isCancelled?.()) break
+    if (isCanceled?.()) break
     const bookDir = join(root, 'books', dir.name)
     try {
       const raw = await fs.readFile(join(bookDir, 'metadata.json'), 'utf8')
@@ -373,7 +373,7 @@ export async function rebuildFromBookDirs(
   // Re-read after the loop as well as inside it: a cancel that arrives while the
   // last folder is being read is still a cancel, and writing the catalog then
   // would be the one outcome the user asked not to have.
-  if (isCancelled?.()) return []
+  if (isCanceled?.()) return []
   const books = [...byId.values()]
   await replaceCatalog(root, books)
   return books

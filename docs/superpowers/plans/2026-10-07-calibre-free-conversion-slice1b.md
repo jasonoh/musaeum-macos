@@ -2002,7 +2002,7 @@ Expected: the probe shows `INDX` runs, an `FDST`, `FLIS`, `FCIS` and `EOF`, with
 | *Darwin's Devices* | | | | | | |
 | *Raspberry Pi for Secret Agents* | | | | | | |
 
-**Verdict:** pass (all fifteen readings) → slices 2–4 are authorised (spec D6) / fail → which reading, on which book, and the owner's decision per D6.
+**Verdict:** pass (all fifteen readings) → slices 2–4 are authorized (spec D6) / fail → which reading, on which book, and the owner's decision per D6.
 ```
 
 - [ ] **Step 6: Commit the CLI and Annex B**

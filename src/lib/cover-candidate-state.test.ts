@@ -30,7 +30,7 @@ import {
  *
  * `applied` and `winner` are the sidecar's two facts and are set here rather
  * than derived — a fixture that computed them would be a second implementation
- * of `summarise_candidates`, and the case would then pass while the payload was
+ * of `summarize_candidates`, and the case would then pass while the payload was
  * wrong.
  */
 function candidate(over: Partial<CoverCandidate> = {}): CoverCandidate {
@@ -350,7 +350,7 @@ describe('the upload control’s copy', () => {
   // There is no case here for "no busy sentence": the rule that this dialog shows
   // no line while the file sheet is open is a *removal*, and the only test that
   // could stand for it would scan this module for words like "writing" — pinning
-  // prose rather than behaviour, and failing on any later sentence that happens to
+  // prose rather than behavior, and failing on any later sentence that happens to
   // use them. The reasoning lives in the block comment above `UPLOAD_APPLIED` and
   // in the diff; the honest deciders around it — the landed sentence, the refusal
   // in the service's own words, and a cancellation's silence — are the cases above
@@ -360,9 +360,9 @@ describe('the upload control’s copy', () => {
 describe('coverUploadReading — what the upload call’s answer means', () => {
   it('reads a cancellation as an answer of its own, not as a failure', () => {
     // `CoverUploadOutcome`'s two arms: the book the write produced, or
-    // `{cancelled: true}`. Only the second changes nothing, and this is the
+    // `{canceled: true}`. Only the second changes nothing, and this is the
     // case that decides the branch the whole gesture's honesty rests on.
-    expect(coverUploadReading({ cancelled: true })).toEqual({ kind: 'cancelled' })
+    expect(coverUploadReading({ canceled: true })).toEqual({ kind: 'canceled' })
     expect(coverUploadReading(makeBook('re-dressed'))).toEqual({ kind: 'settled' })
   })
 })
@@ -371,10 +371,10 @@ describe('uploadCopy — the dialog’s line, and the gather’s notice', () => 
   it('says nothing at all for a cancellation, and for nothing asked yet', () => {
     // The silent states are the point of the rule: a line for a cancellation
     // would report a failure that did not happen, and the person who closed the
-    // dialog needs no notification that they did. Asked-yet and cancelled are
+    // dialog needs no notification that they did. Asked-yet and canceled are
     // the same silence on purpose — neither is news about the book.
     expect(uploadCopy(null)).toEqual({ line: null, gatherNotice: true })
-    expect(uploadCopy({ kind: 'cancelled' })).toEqual({ line: null, gatherNotice: true })
+    expect(uploadCopy({ kind: 'canceled' })).toEqual({ line: null, gatherNotice: true })
   })
 
   it('reports a landed image, and stands the gather’s explanation down', () => {

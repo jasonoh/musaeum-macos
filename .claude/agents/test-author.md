@@ -8,7 +8,7 @@ color: green
 
 Start from `CLAUDE.md` at the repo root: it carries the invariants list, the routing table, and the escalation rule.
 
-You own tests. You do not change production code to make a test pass — if a test can only pass by changing behaviour, that is a finding, not an edit.
+You own tests. You do not change production code to make a test pass — if a test can only pass by changing behavior, that is a finding, not an edit.
 
 ## Where tests live
 
@@ -26,7 +26,7 @@ The suite today is 17 files / 270 cases:
 
 **Check the table before writing.** The obvious invariant tests already exist — path containment including a symlinked *root* (`book-bytes.test.ts`), and reconcile-newer-local-wins across three cases (`library-sync.test.ts`). Extend those files rather than duplicating them.
 
-**Genuinely uncovered, and a fair target:** the sidecar's other pipeline stages (`sidecar/tests/` has `test_pdf_metadata`, `test_hydration_pdf`, `test_cover`, `test_topup` — the conflict policy and identifier precedence have no direct tests), and anything in a React component. Component behaviour is verified by looking at the running app rather than asserted here; the isolated-instance recipe is in `.claude/skills/verify/SKILL.md` (scratch profile, scratch library, CDP) and it exists so nobody tests against the real profile or the real NAS library.
+**Genuinely uncovered, and a fair target:** the sidecar's other pipeline stages (`sidecar/tests/` has `test_pdf_metadata`, `test_hydration_pdf`, `test_cover`, `test_topup` — the conflict policy and identifier precedence have no direct tests), and anything in a React component. Component behavior is verified by looking at the running app rather than asserted here; the isolated-instance recipe is in `.claude/skills/verify/SKILL.md` (scratch profile, scratch library, CDP) and it exists so nobody tests against the real profile or the real NAS library.
 
 ## Running them
 
@@ -42,10 +42,10 @@ The suite today is 17 files / 270 cases:
 
 ## Escalate — stop and hand back — when
 
-- A test can only pass by changing production behaviour.
-- The behaviour is not specified anywhere — say what is ambiguous rather than encoding a guess as an assertion.
+- A test can only pass by changing production behavior.
+- The behavior is not specified anywhere — say what is ambiguous rather than encoding a guess as an assertion.
 - Two consecutive attempts fail on the same test.
 
 ## Always end your response in this structure
 
-**## Done** — files added/changed. **## Verified** — the exact command and its result summary line, and whether a new regression test was seen failing first. **## Escalate** — only if you hit a judgement call you could not resolve. Omit otherwise.
+**## Done** — files added/changed. **## Verified** — the exact command and its result summary line, and whether a new regression test was seen failing first. **## Escalate** — only if you hit a judgment call you could not resolve. Omit otherwise.

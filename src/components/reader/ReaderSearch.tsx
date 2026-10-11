@@ -91,11 +91,11 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
   }, [clearSearch, viewRef])
 
   /**
-   * The colour a run draws its hit outlines in — the derived link colour (D1),
+   * The color a run draws its hit outlines in — the derived link color (D1),
    * resolved from the app's live tokens. Hoisted out of `start` so the watcher
    * below can tell when it moves.
    */
-  const searchColour = resolveReaderPalette(theme, tokens).search
+  const searchColor = resolveReaderPalette(theme, tokens).search
 
   const start = useCallback(async () => {
     const view = viewRef.current
@@ -112,7 +112,7 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
       // A resolved literal, never `var(--…)`: the outline is drawn in
       // foliate-view's closed shadow root, where a custom property is not
       // something this repo bets on.
-      color: searchColour,
+      color: searchColor,
       isStale: stale,
       // A run that has been superseded must not write, even for its own state
       onState: (state) => {
@@ -120,7 +120,7 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
       }
     })
     if (result.outcome === 'failed') setFailure(result.message)
-  }, [query, searchColour, viewRef, setSearchState])
+  }, [query, searchColor, viewRef, setSearchState])
 
   /**
    * The latest `start`, read through a ref: its identity changes with every
@@ -138,7 +138,7 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
    *
    * The vendor draws annotations per run and keeps the options it was handed
    * (`view.js:545`'s `#searchDrawOptions`, re-applied on every section render), so
-   * the outlines otherwise keep the colour of the run that drew them: measured,
+   * the outlines otherwise keep the color of the run that drew them: measured,
    * flipping the app theme with five hits up left all ~1,780 orange pixels orange
    * against a page that had gone dark. That mismatch could not happen while the
    * reader's page palette was a pair of constants — it is a consequence of the
@@ -147,15 +147,15 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
    * Cheap and safe: the search runs in memory over the book that is already open
    * (which is why it works offline), `search()` clears its own annotations on
    * entry, and the token guard unwinds a run that is superseded by this one.
-   * Keyed on the resolved colour rather than on the tokens, so a theme change
+   * Keyed on the resolved color rather than on the tokens, so a theme change
    * that leaves the link alone redraws nothing.
    */
-  const drawnColour = useRef(searchColour)
+  const drawnColor = useRef(searchColor)
   useEffect(() => {
-    if (drawnColour.current === searchColour) return
-    drawnColour.current = searchColour
+    if (drawnColor.current === searchColor) return
+    drawnColor.current = searchColor
     if (ranQuery) void startRef.current()
-  }, [searchColour, ranQuery])
+  }, [searchColor, ranQuery])
 
   const jumpTo = useCallback(
     (hit: SearchHit | null) => {
@@ -163,7 +163,7 @@ export function ReaderSearch({ viewRef }: { viewRef: MutableRefObject<FoliateVie
       setSearchState({ activeCfi: hit.cfi })
       // The panel stays open: a search user is stepping through matches, not
       // going somewhere once — which is why this is not the TOC panel's
-      // navigate-and-close behaviour
+      // navigate-and-close behavior
       void viewRef.current?.goTo(hit.cfi)
     },
     [setSearchState, viewRef]

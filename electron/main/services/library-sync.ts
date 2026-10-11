@@ -278,12 +278,12 @@ export async function refreshLibrary(): Promise<CatalogSyncOutcome> {
   } else {
     adopt(result.file.books)
     handledRoots.add(root)
-    outcome = { books: result.file.books.length, cancelled: false }
+    outcome = { books: result.file.books.length, canceled: false }
   }
   // Reload re-reads shelves.json too (bookshelves D4) — here, after the swap,
   // and not in `rebuildCatalog`, which the spec keeps away from shelves. A
-  // cancelled walk changed no books, so the shelves have nothing to catch up on.
-  if (!outcome.cancelled) await shelves.adopt(root)
+  // canceled walk changed no books, so the shelves have nothing to catch up on.
+  if (!outcome.canceled) await shelves.adopt(root)
   return outcome
 }
 
@@ -297,32 +297,32 @@ export async function refreshLibrary(): Promise<CatalogSyncOutcome> {
 // `library-sync.test.ts`. A `rebuilding` flag was tried here first and removed:
 // it claimed to protect that case and the mutation campaign showed it could be
 // deleted without any test noticing.
-let rebuildCancelled = false
+let rebuildCanceled = false
 
 /** Stop a running rebuild. A no-op when nothing is running. */
 export function cancelRefresh(): void {
-  rebuildCancelled = true
+  rebuildCanceled = true
 }
 
 /** Recovery: walk books/<uuid>/metadata.json, rewrite the catalog, reload the cache. */
 export async function rebuildCatalog(): Promise<CatalogSyncOutcome> {
   nas.assertOnline()
   const root = nas.getLibraryRoot()!
-  rebuildCancelled = false
+  rebuildCanceled = false
   const walked = await catalog.rebuildFromBookDirs(
     root,
     (p) => broadcast('catalogRebuildProgress', p),
-    () => rebuildCancelled
+    () => rebuildCanceled
   )
   // `walked` is [] both when the user stopped the walk and when the library has
   // no books — the flag is the only thing that tells them apart, and the walk
-  // wrote nothing in the cancelled case (catalog.ts)
-  if (rebuildCancelled) return { books: 0, cancelled: true }
+  // wrote nothing in the canceled case (catalog.ts)
+  if (rebuildCanceled) return { books: 0, canceled: true }
   adopt(walked)
   handledRoots.add(root)
   // Bare `false`: the early return above holds whenever the flag is set, so
   // reading it here would be the same value by a longer route
-  return { books: walked.length, cancelled: false }
+  return { books: walked.length, canceled: false }
 }
 
 /**

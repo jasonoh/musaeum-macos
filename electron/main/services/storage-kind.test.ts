@@ -197,7 +197,7 @@ describe('survivingAncestor', () => {
 
 /**
  * D7: **a cloud-synced root is named, not refused.** Which clients are
- * recognised, and what an unrecognised one is called.
+ * recognized, and what an unrecognized one is called.
  *
  * The home directory is a **parameter** rather than `homedir()` inside the
  * function, so the table is decided without the machine's own layout — and the

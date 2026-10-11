@@ -20,7 +20,7 @@ Third-party palette files, committed as data — the same category as `vendor/fo
 - **Ref:** `master`, commit `1a3e1d298b0a102d53333f1a03cb5234e7f9dae8`
 - **Path upstream:** `schemes/Gruvbox Dark Hard.itermcolors`, `schemes/Nord.itermcolors`
 - **License:** MIT (collection), with the same per-theme copyright carve-out — the corpus's LICENSE states that each theme's copyright belongs to its author.
-- **Verified:** on 2026-09-15 both files were fetched and their component values compared slot by slot against the committed copies via `plistlib` — 27 and 26 colour slots, zero differing components. The only change is the filename (`gruvbox.itermcolors`, `nord.itermcolors`), which keeps the fixture names aligned with their base16 counterparts.
+- **Verified:** on 2026-09-15 both files were fetched and their component values compared slot by slot against the committed copies via `plistlib` — 27 and 26 color slots, zero differing components. The only change is the filename (`gruvbox.itermcolors`, `nord.itermcolors`), which keeps the fixture names aligned with their base16 counterparts.
 
 ## Local modifications
 

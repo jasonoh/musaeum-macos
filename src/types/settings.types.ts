@@ -25,7 +25,7 @@ export interface AppSettings {
    * integer on write, the token is *generated* on first enable (never typed by
    * hand) and the bind is blank when the address should be resolved from this
    * machine's interfaces. A blank is "not set", which for the flag, the port and
-   * the bind all mean the compiled-in behaviour.
+   * the bind all mean the compiled-in behavior.
    */
   restApiEnabled: string | null
   restApiPort: string | null

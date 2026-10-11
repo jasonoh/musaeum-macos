@@ -13,7 +13,7 @@
 1. A **Provider** select at the top of the Ask (AI) group. Choosing a row writes that row's base URL into the Endpoint field. There are eleven rows: three loopback servers, seven cloud endpoints, and **Custom** — which is what the select reads for any URL no row matches, including one the user types.
 2. A **Test** button beside the Endpoint/Key fields, which reports one verdict about the endpoint-and-key as they are *in the form right now*: whether the key is accepted, refused, unprobeable, or aimed at nothing.
 3. The **Model** field stops being blind: a successful Test returns the ids the endpoint itself listed, and the field offers them (and stays typable).
-4. A **Save** button inside the section, which is the dialog's own save — the same behaviour, placed where the owner asked for it (D6).
+4. A **Save** button inside the section, which is the dialog's own save — the same behavior, placed where the owner asked for it (D6).
 5. Nothing else. No new `app_config` key, no migration, no contract change to `AppSettings`, no change to the wire, no change to the reader, no new dependency.
 
 ### 1.1 Measured before (isolated profile, `MUSAEUM_USER_DATA=/tmp/musaeum-ai-config/profile`, `npx electron . --remote-debugging-port=9223` at `bf6c76e`)
@@ -78,7 +78,7 @@ The select's value is `matchProvider(form.aiBaseUrl)`, computed; choosing a row 
 
 A `<datalist>` over the ids the last successful Test returned, wired to the existing `Field`, which gains one optional prop (`list`). The ids are **sorted**, **capped at 100**, and the total is reported when it was capped — OpenRouter lists several hundred, and a 400-entry dropdown is a worse control than a substring filter, which a datalist gives for free as the user types. Typing stays unrestricted: an id the endpoint didn't list is still sendable, because the endpoint is the authority on what it will run (D3's own reasoning, applied to models). **Alternative:** a `<select>`. **Why not:** it would forbid a model the endpoint lists under another name, and would need a second control to keep free text possible. **Reversal condition:** a user with a several-hundred-model provider unable to find one — then the cap gets a filter box (the appearance picker's D4 precedent).
 
-### D3.6 — the section's Save is the dialog's save, one behaviour with two affordances
+### D3.6 — the section's Save is the dialog's save, one behavior with two affordances
 
 The owner asked for a Save button in the section. **Decision:** it calls the same `save()` the footer's **Save changes** calls — whole form, `changedFields` diff, the same ⌘↵. **Alternative:** a section-scoped save writing only the three AI fields. **Why not:** two buttons in one dialog that mean different things about the same form is a bug generator, not a feature — edit the SMB URL, press the AI section's Save, close, and the app has silently kept half of what you told it. The owner's ask is satisfied by *placement*, and nothing about `changedFields` changes. **Reversal condition:** the dialog being deliberately restructured into per-section saves.
 
@@ -140,7 +140,7 @@ Two of these shape the code: the error reader must carry the endpoint's own word
 | AC32 | A successful probe returns the ids listed, **sorted**, capped at 100, with the total; and `modelOffered` is `true`/`false`/`null` for the model asked about | `ai.test.ts`, a 150-id list |
 | AC33 | The Model field offers those ids after a successful Test and stays typable | live CDP: `<datalist>` option count after a Test against the stub, then a hand-typed id that survives |
 | AC34 | Test reads the **form**, and a Test **writes nothing**: the request carries the edited-but-unsaved values, and `app_config` is unchanged afterwards | live CDP (stub request log + `sqlite3 -readonly` before/after) + source walk: the probe call's argument names `form`, not `view` |
-| AC35 | The section's Save and the dialog's Save changes are **one behaviour**: an edit made in another group persists when Save is pressed *in the AI section* | live CDP |
+| AC35 | The section's Save and the dialog's Save changes are **one behavior**: an edit made in another group persists when Save is pressed *in the AI section* | live CDP |
 | AC36 | The verdict line is cleared by editing any of the three AI fields and is never persisted | live CDP + source walk (no `localStorage` in the file) |
 | AC37 | Nothing on the reader's side moved: `index.html` byte-identical, `ai:ask`/`ai:cancel` untouched, `CONFIG_KEYS`' AI trio and `SIDECAR_KEYS` unchanged (saving an endpoint still restarts nothing) | `git diff --quiet index.html` + the full suite green |
 
@@ -152,7 +152,7 @@ Two of these shape the code: the error reader must carry the endpoint's own word
 - **The masked-key rule** in `resolved.aiApiKey`: the key is still never echoed back, in either direction.
 - **The reader.** Nothing under `src/components/reader/`, `src/stores/reader.store.ts` or `src/lib/ask-*.ts` is touched; the panel's own disclosure line and payload ladder are untouched.
 - **The vendor-blindness of `electron/main/`**: no main-process file may import `ai-providers.ts` (§3 D3.1's assertion).
-- **Colour**: every new value rides an existing token (`gold-400`, `danger-400`, `ok-500`, `parchment-*`), which is what slice 7b's repo-wide grep enforces.
+- **Color**: every new value rides an existing token (`gold-400`, `danger-400`, `ok-500`, `parchment-*`), which is what slice 7b's repo-wide grep enforces.
 
 ## 8. Verification plan
 
@@ -183,12 +183,12 @@ Two of these shape the code: the error reader must carry the endpoint's own word
 | 36 | live: 1 non-faint line after a Test → 0 after one keystroke in a field |
 | 37 | `git diff --quiet index.html` clean; `ai:ask` / `ai:cancel` untouched; the AI trio still absent from `SIDECAR_KEYS` |
 
-**The mutation campaign: 14 mutations, 14 killed**, across three rounds — one per new decider. The one honest wrinkle is in round 1: its first 403 mutation **survived**, and the triage says why. Written as `if (response.status === 403)` → `if (response.status === 401 || response.status === 403)`, it cannot change behaviour, because the 401 arm *above* it has already returned — an **equivalent mutant**, not a missing decider. The mutation that does fold it (adding 403 to the arm that runs first) reds the criterion immediately. That is worth more than the count: the ladder's correctness depends on the **order** of the two arms, so they are not interchangeable, and the first campaign said so by failing to say anything.
+**The mutation campaign: 14 mutations, 14 killed**, across three rounds — one per new decider. The one honest wrinkle is in round 1: its first 403 mutation **survived**, and the triage says why. Written as `if (response.status === 403)` → `if (response.status === 401 || response.status === 403)`, it cannot change behavior, because the 401 arm *above* it has already returned — an **equivalent mutant**, not a missing decider. The mutation that does fold it (adding 403 to the arm that runs first) reds the criterion immediately. That is worth more than the count: the ladder's correctness depends on the **order** of the two arms, so they are not interchangeable, and the first campaign said so by failing to say anything.
 
 **Two copy defects, both found by the live pass and neither by the suite**, which is exactly what the pass is for:
 
 1. **A doubled full stop.** `api.openai.com`'s own message ends in `.`, and the line appended another: *"…at https://platform.openai.com/account/api-keys.."*. `suffix()` now ends the sentence without doubling it (a `[.!?]$` test), and a case asserts both shapes — a detail that ends in a stop and one that doesn't.
-2. **"Accepted the key" with no key sent.** OpenRouter lists its models to anyone (446 of them, measured), so the unkeyed Test read *"accepted the key"* about a key that had not been sent. The subject is now derived from whether a key travelled: *"openrouter.ai answered (no key was sent)…"*. Both defects have their own deciding case now, and both were re-verified live after the fix.
+2. **"Accepted the key" with no key sent.** OpenRouter lists its models to anyone (446 of them, measured), so the unkeyed Test read *"accepted the key"* about a key that had not been sent. The subject is now derived from whether a key traveled: *"openrouter.ai answered (no key was sent)…"*. Both defects have their own deciding case now, and both were re-verified live after the fix.
 
 **A third defect, and the one worth the most: two lines that contradicted each other.** The first build put a form-derived egress sentence under the Provider select (*"Requests go to <host>."*) beside the Endpoint field's stored-derived one (*"<host> receives what you send"*). Mid-edit — pick OpenAI over a saved OpenRouter, before saving — the two said different things on the same screen, and one of them was about where the book's own text travels. The DOM said nothing (both lines existed, both were "right"), and the screenshot said it immediately. The fix keeps **one** line, always about the value the app would actually use, and moves the only thing the renderer knows and main does not into a pure function with four cases: `endpointHint(formBaseUrl, resolved)` — value in force → main's own sentence; unsaved → *"the reader still sends to <host> until you save"*; blank beside a configured value → *"goes back to the built-in local default when you save"*. The frame's diff confirms **one** egress line now, not two.
 
@@ -200,10 +200,10 @@ Two of these shape the code: the error reader must carry the endpoint's own word
 2. **Custom is a derived state, not a choice.** It renders as a `disabled` option at the end of the list: it is what the select *reads* for a URL no row names, and selecting it could only clear the field and silently drop the endpoint back to the default.
 3. **A blank key falls back to the one in force.** `probe()` uses `resolveKey()` when the request carries no key, because a key set in the environment is invisible to the renderer — a Test that reported "none is set" while the reader posted with that key would answer a different question. A case pins it (`Bearer sk-from-env` reaches the stub).
 4. **A 200 with an empty list and a 200 with an unparseable body are different sentences.** The first is a real answer from a fresh Ollama (*"it lists no models yet"*); the second means the line could not be shown.
-5. **`probe()`'s 15 s deadline is a value, not a mechanism, and has no mutation.** The option-driven case decides that an unanswered request terminates rather than hanging; the specific default is a judgement recorded in the doc comment.
+5. **`probe()`'s 15 s deadline is a value, not a mechanism, and has no mutation.** The option-driven case decides that an unanswered request terminates rather than hanging; the specific default is a judgment recorded in the doc comment.
 6. **The section stays inline in `SettingsModal.tsx`.** `AppearanceSection` is its own file because it owns its own save path and its own store; these three fields are part of the batched form, so a new file would have copied the layout without the reason.
 
-**Deliberately not done:** no Anthropic row (O3), no completion fallback for `/models` (O2 — its consequence is reported honestly rather than papered over), no persisted provider, no "last verified" stamp, no per-provider model catalogue, and nothing in the reader, the sidecar, the schema or `index.html`.
+**Deliberately not done:** no Anthropic row (O3), no completion fallback for `/models` (O2 — its consequence is reported honestly rather than papered over), no persisted provider, no "last verified" stamp, no per-provider model catalog, and nothing in the reader, the sidecar, the schema or `index.html`.
 
 **One observation for the owner's eye, not a defect:** on the built-in default theme the verdict line's `ok` tone reads warm rather than green, because the default palette's accent ramp is gold and the status family is derived from it (slice 7a's rule). An imported theme with a green accent gets a green "ok". Nothing here changes that; it is recorded because the line is new and visible.
 

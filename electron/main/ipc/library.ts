@@ -67,7 +67,7 @@ export function registerLibraryHandlers(): void {
    * are handed back and then go through `import:addFiles` like any other.
    *
    * The filter comes from `bookFileFilter()`, derived from `BookFormat`, so the
-   * picker and the drag-drop gate are one list. A cancelled dialog answers with
+   * picker and the drag-drop gate are one list. A canceled dialog answers with
    * an empty list rather than null: the caller's next step is a batch import,
    * and an empty batch is already the no-op.
    */

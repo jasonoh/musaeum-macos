@@ -37,7 +37,7 @@ Every code block in this plan is complete. Lines marked _measured_ were taken on
 - **Nothing in the artifact's content moves.** `sidecar/reflow/*` is not touched: the pass, its gate and its stamp are slice 2's, verbatim. So `scripts/pdf-reflow-probe.py --production` must still read `gate: 4/6` with the same per-book lines, and that is a **must-not-move** criterion rather than a gate to re-take.
 - **`metadata.json` and `formats` are never written by this slice** (AC2, D3). A reflow is a rendering cache, not a format: no book's `formats` gains `epub` because an artifact exists, no `metadata.json` gains a member, and the `derived/` folder stays invisible to every extension-keyed rule (`docs/invariants/files-and-deletion.md`).
 - **The wire stays closed until slice 4.** `resolveBookFile`'s allowlist, `services/api/shape.ts`, `api/rest.ts`, the payload goldens and `docs/rest-api.md` are untouched: `GET /api/books/{id}/file?format=reflow` answers 404 when this slice lands, and slice 4 is what opens it — with the document first (D8, iOS invariant 1).
-- **`vendor/foliate-js/` is never edited** (invariant 11, held by `test/invariants.test.ts`). Everything the reflow needs from the engine is behaviour it already has.
+- **`vendor/foliate-js/` is never edited** (invariant 11, held by `test/invariants.test.ts`). Everything the reflow needs from the engine is behavior it already has.
 - **A fallback is not an error** (invariant 12, D6): a book the pass refuses leaves no artifact, opens the original, and shows one line. Nothing in this slice throws across the IPC boundary, and nothing it does can block an import, a hydration or a quit.
 - **The reader's own rules are not bent for this book.** Same `ReaderEngine`, same `musaeum://` route, same panels, same typography and theme resolution, same `reading_state` schema — and the reflowed EPUB is the position of record (D5, D10). If any part of the reader has to learn about PDFs, the design has gone wrong.
 - **Markdown prose is not hard-wrapped** (`CLAUDE.md`, _Markdown_): one line per paragraph in every `.md` edit, this plan included.
@@ -60,7 +60,7 @@ The parent spec closed every product decision; these are readings it left open, 
 
 **R1 — The artifact gets its own route, not an arm in `resolveBookFile`.** `resolveBookFile`'s two consumers are `musaeum://book/…` and `GET /api/books/{id}/file` — and `electron/main/api/rest.ts:984` passes the caller's `format` straight through with no union check of its own. A `reflow` arm there would therefore open the HTTP route in the same commit that no document describes, which is the order D8 forbids ("the contract lands in this repo first", iOS invariant 1). So the artifact is served by `resolveReflowFile(bookId)`, used by the renderer's handler alone, and the containment rule is **shared rather than copied**: `resolveBookFile`'s realpath-both-sides rule moves into a helper both call, and the existing `book-bytes.test.ts` cases must pass unchanged — they are this extraction's corpus sweep, exactly as a _tightening_ while extracting is answered by a sweep rather than by the fixture that was already green. **Alternative beaten:** `'reflow'` in `FORMATS` — fewer lines, and it opens the wire early and silently. **Reversal:** slice 4 lands, `docs/rest-api.md` names the route, and the two shapes can be merged into one function then.
 
-**R2 — The reader's format widens to `ReaderFormat = BookFormat | 'reflow'`.** The spec calls the route `musaeum://book/{id}/reflow`, so `'reflow'` is the string that travels; `ReaderEngine` builds both the URL and the `File` name from it, and `new File([blob], 'book.reflow')` is safe — read at `vendor/foliate-js/view.js`: `isZip` decides by the first four bytes (`:8-11`), `isCBZ`/`isFBZ` are the only name reads (`:20-28`), and every other zip takes the EPUB branch (`:101-104`). The mechanism is the _opposite_ of the PDF case, where `isPDF` reads the magic and its import is externalised (`electron.vite.config.ts:51`), which is why the reader must never be handed `format: 'pdf'` (`docs/invariants/reader.md`, _Reading in the app_). **Alternative beaten:** a second `source` field beside `format` — two fields for one meaning, and `ReaderView`'s "Open externally" would then have to choose between them. **Reversal:** upstream ever branches on an extension we would have to match, or a `BookFormat` member gains a meaning `'reflow'` would collide with.
+**R2 — The reader's format widens to `ReaderFormat = BookFormat | 'reflow'`.** The spec calls the route `musaeum://book/{id}/reflow`, so `'reflow'` is the string that travels; `ReaderEngine` builds both the URL and the `File` name from it, and `new File([blob], 'book.reflow')` is safe — read at `vendor/foliate-js/view.js`: `isZip` decides by the first four bytes (`:8-11`), `isCBZ`/`isFBZ` are the only name reads (`:20-28`), and every other zip takes the EPUB branch (`:101-104`). The mechanism is the _opposite_ of the PDF case, where `isPDF` reads the magic and its import is externalized (`electron.vite.config.ts:51`), which is why the reader must never be handed `format: 'pdf'` (`docs/invariants/reader.md`, _Reading in the app_). **Alternative beaten:** a second `source` field beside `format` — two fields for one meaning, and `ReaderView`'s "Open externally" would then have to choose between them. **Reversal:** upstream ever branches on an extension we would have to match, or a `BookFormat` member gains a meaning `'reflow'` would collide with.
 
 **R3 — A refused book is handed to the OS, and the reason rides the toast surface.** D6 says "no artifact, **the original path**, one line of reason", and today's path for a PDF-only book is `files.openBookFile(book.id, 'pdf')` → Preview. So on a `fallback` the reader closes, opens the original, and `useUIStore.notify` carries the pipeline's own sentence as the toast's `detail`. The reader's progress surface is where the _pass_ is shown; a refusal is not a panel but a hand-off. **Alternative beaten:** keep the overlay showing the reason with an "Open externally" button (the shape the reader's error state already has) — more visible, and it strands the book behind an extra click, which is the opposite of "the original path". **Reversal:** the owner reads it in the app and dislikes the hand-off; the change is one branch in the store, and the alternative's shape is already in `ReaderView`.
 
@@ -254,7 +254,7 @@ and add, just above it:
 /**
  * The book's folder, when the library holds one for it — or null.
  *
- * The lexical check is `nasPath`'s own defence: the path comes from a catalog
+ * The lexical check is `nasPath`'s own defense: the path comes from a catalog
  * any machine can write, so a traversing entry must not turn a renderer URL into
  * arbitrary filesystem read access. The realpath half is in `contained`: a
  * symlink passes the lexical test.
@@ -1215,7 +1215,7 @@ reflow: ReflowProgress | null
   setReflow(progress: ReflowProgress | null): void
 ```
 
-5. change the creator's signature from `(set) => ({` to `(set, get) => ({`, and initialise `reflow: null` beside `percent: 0`;
+5. change the creator's signature from `(set) => ({` to `(set, get) => ({`, and initialize `reflow: null` beside `percent: 0`;
 6. replace `openBook` with:
 
 ```ts
@@ -1306,7 +1306,7 @@ reflow: ReflowProgress | null
       },
 
       /**
-       * One progress frame, or the artefact's arrival.
+       * One progress frame, or the artifact's arrival.
        *
        * Two guards, both of which are the difference between a bar and a bug: a
        * frame for another book is dropped (the sidecar's four threads can be
@@ -1403,7 +1403,7 @@ void window.Musaeum.files
   .catch(() => {})
 ```
 
-6. add the panel and its one-line labeller at the bottom of the file:
+6. add the panel and its one-line labeler at the bottom of the file:
 
 ```tsx
 /**

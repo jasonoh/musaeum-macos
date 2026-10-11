@@ -18,13 +18,13 @@ Slice 5 of six. **Slices 1–3 landed** (storage/service/IPC; the renderer's she
 
 **The baseline this plan was written against:** `1cf3f63` (2026-09-28, slice 3's last commit), Node v26, `npm run typecheck` clean, `npm run lint` clean, `npm test` = **87 files, 1843 passed, 2 skipped** — measured 2026-09-28 by this session, matching the count slice 3's record ends on. Check `git log --oneline -3` before starting; `origin/main` may have moved and that is someone else's push, not a signal.
 
-**File counts.** Code files whose behaviour changes: `services/db.ts`, `services/shelves.ts`, `services/api/routes.ts`, `services/api/query.ts`, `services/api/shape.ts`, `api/rest.ts` — **six**, inside the ~10-file bound. Tests (`db-shelves`, `query`, `shelves`, `shape`, `rest`) and the contract artifacts (`docs/rest-api.md`, `scripts/api-smoke.sh`) ride along, as slice 3's did. The slice still splits into two parts along its one real seam: **5a** is the read surface (listable, scoped, and the member on every payload) and **5b** is the first `DELETE` in the API's life and the first write that is not about a book's own bytes — and 5b's write cases need 5a's reads to read themselves back. If a task finds itself wanting a seventh code file, that is the point to split 5b further rather than to keep going.
+**File counts.** Code files whose behavior changes: `services/db.ts`, `services/shelves.ts`, `services/api/routes.ts`, `services/api/query.ts`, `services/api/shape.ts`, `api/rest.ts` — **six**, inside the ~10-file bound. Tests (`db-shelves`, `query`, `shelves`, `shape`, `rest`) and the contract artifacts (`docs/rest-api.md`, `scripts/api-smoke.sh`) ride along, as slice 3's did. The slice still splits into two parts along its one real seam: **5a** is the read surface (listable, scoped, and the member on every payload) and **5b** is the first `DELETE` in the API's life and the first write that is not about a book's own bytes — and 5b's write cases need 5a's reads to read themselves back. If a task finds itself wanting a seventh code file, that is the point to split 5b further rather than to keep going.
 
 ---
 
 ## Readings this slice must settle itself, each with the alternative it beats
 
-The spec fixes the behaviour; these are where it stops short. Each is recorded rather than discovered mid-task, and none changes an acceptance criterion.
+The spec fixes the behavior; these are where it stops short. Each is recorded rather than discovered mid-task, and none changes an acceptance criterion.
 
 ### S1 — `bookPayload`'s `shelves` is a **required** parameter, not an optional one defaulting to `[]`
 
@@ -849,7 +849,7 @@ and the three book-answering arms fill the member:
         sendJson(res, 201, importPayload({ book, duplicate: outcome.result.duplicate ?? null, shelves: shelfIdsFor(book.id) }))       // the upload
 ```
 
-(The file's own docblock — the "Route by route" list — gains `/api/shelves` with its `shelf`-scoped neighbours.)
+(The file's own docblock — the "Route by route" list — gains `/api/shelves` with its `shelf`-scoped neighbors.)
 
 - [ ] **Step 4: The document's prose for the read surface**
 
@@ -963,7 +963,7 @@ In `shelves.test.ts` (it already imports `* as shelves` and `SHELF_GONE` is expo
 
 ```ts
 describe('the gone-shelf predicate the REST surface reads (slice 5)', () => {
-  it('recognises the writer own refusal, and nothing else', async () => {
+  it('recognizes the writer own refusal, and nothing else', async () => {
     const shelf = await shelves.create('To Read')
     await shelves.deleteShelf(shelf.id)
 
@@ -1420,7 +1420,7 @@ Append `## Built — slice 5` with: the commit list, the real counts (`git diff 
 
 - [ ] **Step 5: Verify and commit**
 
-Run: `npm test` (the docs change no behaviour, but the walks and the goldens read these neighbours).
+Run: `npm test` (the docs change no behavior, but the walks and the goldens read these neighbors).
 
 ```bash
 git add docs/invariants/shelves.md CHANGELOG.md tasks.md CLAUDE.md \
@@ -1439,7 +1439,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 1. **That the smoke profile used for AC33 holds a shelf.** The script cannot create one by decision, so the run needs a profile whose root carries a hand-written `shelves.json` — named as a step, and a run against a shelf-less profile is honest with a note rather than red.
 2. **The iOS decode run's environment.** `xcodebuild` on this machine has moved once already (the iPhone 18 Pro device is gone; the gates run on iPhone 17 Pro / iOS 26.1). If the toolchain refuses, AC32's second half is **blocked**, stated as such — not inferred from the fixture count alone.
-3. **The phone's behaviour itself** — every claim about `musaeum-ios`'s screens, its capability probe and its checklist is slice 6's, in that repo's annex, against *this* document.
+3. **The phone's behavior itself** — every claim about `musaeum-ios`'s screens, its capability probe and its checklist is slice 6's, in that repo's annex, against *this* document.
 
 ## Handoff notes for slice 6 (the phone)
 
@@ -1474,7 +1474,7 @@ Landed 2026-09-28, main process + the contract artifacts + docs, in nine commits
 
 An isolated scratch profile (the path above; scratch is pruned when idle, so it is described rather than committed) — hand-configured (`library_root`, `rest_api_port` 8791, a fresh token) — with two seed EPUBs **built by the throwaway instrument with embedded jackets**, uploaded through the app's own `POST /api/books`, and one **hand-authored `shelves.json`** (the canonical format; exactly what another Mac's write looks like) adopted on connect.
 
-- **The smoke script: 92 passed, 0 failed, exit 0.** The shelf section green end to end: the list, the scope (the scoped `total` equalling the shelf's own `count`; every page book declaring the shelf), the default order matching explicit `sort=shelf_added&dir=desc`, facets scoped, the membership pair (PUT → detail read-back → PUT again → DELETE → DELETE again, all 200 and idempotent), the 404s (unknown shelf, unknown book, a `GET` of the membership path) and the 400s (a present-but-empty `shelf`, `sort=shelf_added` without a shelf), and `HEAD /api/shelves` 200 with no body. The pair **restored the shelf** it borrowed (post-run count 2; the file's members unchanged).
+- **The smoke script: 92 passed, 0 failed, exit 0.** The shelf section green end to end: the list, the scope (the scoped `total` equaling the shelf's own `count`; every page book declaring the shelf), the default order matching explicit `sort=shelf_added&dir=desc`, facets scoped, the membership pair (PUT → detail read-back → PUT again → DELETE → DELETE again, all 200 and idempotent), the 404s (unknown shelf, unknown book, a `GET` of the membership path) and the 400s (a present-but-empty `shelf`, `sort=shelf_added` without a shelf), and `HEAD /api/shelves` 200 with no body. The pair **restored the shelf** it borrowed (post-run count 2; the file's members unchanged).
 - **What the live passes found — and it is the reason the run exists.** The first — a shelf-less, coverless profile, before the seeds carried jackets — read **72 passed / 1 failed**, that failure being the **cover** section's own check, with the membership pair noted-skipped because adoption had not landed yet; its evidence is what produced the instrument's second version (embedded jackets on the seeds, and a poll for the adopted shelf instead of an assumption). The second, with shelf and covers working, read **91 passed / 1 failed**, and **that** failure was not the server: the smoke script's own `SHELF_COUNT` was read from `$BODY` *after* later requests had overwritten it, so the scoped-total check compared a real total against 0 (`expected 0, got 2`). Fixed in `596e86a`; the third pass is the 92/0 above.
 - **Not exercised live, stated as such:** the offline 503 on a shelf write (it needs the share taken down; the socket case decides it), an unreadable `shelves.json` over REST (the socket case decides it), and the Mac sidebar repainting after a phone write (the `shelves:changed` socket case decides the broadcast; no UI frame was taken).
 - **The instrument, for the next session.** The dev app's shelf adoption fires on the NAS manager's `connected` status (`index.ts:246`) and can land *seconds to tens of seconds after* the REST server is up — poll `/api/shelves` for the state, never assume it. A foreground timeout above the 600 s cap is auto-promoted to a background process and the script's stdout goes with it, so **write run output to a file**. `pkill -9` is the stop that works for `npm run dev`'s tree (a plain SIGTERM leaves the Electron process alive); its pattern is `musaeum/node_modules/electron`. And the dev profile's own REST server (8788) may be up at any time — the scratch profile used **8791** so the two never meet.
@@ -1500,7 +1500,7 @@ Run in `musaeum-ios` after re-vendoring, as the criterion asks (2026-09-28): `sc
 
 ### The part-5a review's findings, and what happened to each
 
-Report-only, against `1cf3f63..68dac03`, reviewed on an extracted copy of that commit — the working tree moved under the reviewer mid-read (it noticed, and extracting was the right answer). It verified **all nine** of the claims it was asked to check: the two pinned imports, the two modules' purity, `API_VERSION` still 1, the touched paths, the doc↔goldens parity (**non-vacuous, and measured rather than reasoned**: it broke the shelf id in `payload=book`, renamed the member, and renamed the fence, and watched the right case fail each time), the one-query batch read, S1's four call sites, and S3/S4/S5's behaviours. It found **no blocker**; its two should-fixes were gaps in the contract's *prose*, not in the code or the payloads.
+Report-only, against `1cf3f63..68dac03`, reviewed on an extracted copy of that commit — the working tree moved under the reviewer mid-read (it noticed, and extracting was the right answer). It verified **all nine** of the claims it was asked to check: the two pinned imports, the two modules' purity, `API_VERSION` still 1, the touched paths, the doc↔goldens parity (**non-vacuous, and measured rather than reasoned**: it broke the shelf id in `payload=book`, renamed the member, and renamed the fence, and watched the right case fail each time), the one-query batch read, S1's four call sites, and S3/S4/S5's behaviors. It found **no blocker**; its two should-fixes were gaps in the contract's *prose*, not in the code or the payloads.
 
 | Finding | Disposition |
 | --- | --- |
@@ -1508,9 +1508,9 @@ Report-only, against `1cf3f63..68dac03`, reviewed on an extracted copy of that c
 | **2 (should-fix)** — the payloads' own paragraph said *Three members deserve their own sentence* and had never gained the `shelves` one | **Fixed in this amendment**: it reads *Four*, and the member's sentence says what a client relies on — ids only, always present, `[]` when the book is on none. |
 | **3 (nit)** — the `sort` row enumerated six fields, so read alone it implied `shelf_added` is always a 400 | **Fixed in this amendment**: the row names the seventh and its inside-only rule. |
 | **4 (nit)** — the purity case built its import list from lines that `startsWith('import ')`, so a specifier on a wrapped line was invisible to it | **Fixed in this amendment**: the case now extracts **specifiers** (a `from '…'` match over the whole source, plus side-effect imports) and asserts over those — the same claims, a scan formatting cannot dodge. Pre-existing, and worth closing while found. |
-| **5 (nit)** — `?shelf=x&q=%22` (a quoted but empty term) comes back in *title* order: a `q` is present, so no default sort is set, and the search fallback runs with none | **Recorded, not changed.** The document conditions the default on "no `q`", so this is not a breach; the corner needs a hand-made request (this client trims its term before sending), and pinning a sort inside the search fallback would be a behaviour change the contract does not ask for. Named here so it is a known corner rather than a rediscovery. |
+| **5 (nit)** — `?shelf=x&q=%22` (a quoted but empty term) comes back in *title* order: a `q` is present, so no default sort is set, and the search fallback runs with none | **Recorded, not changed.** The document conditions the default on "no `q`", so this is not a breach; the corner needs a hand-made request (this client trims its term before sending), and pinning a sort inside the search fallback would be a behavior change the contract does not ask for. Named here so it is a known corner rather than a rediscovery. |
 
-Its verdict, for the record: *"Part 5a is sound: the wire change, the S1/S3/S4/S5 behaviours and the three contract artifacts agree."* The things it could not verify were the ones the slice's later tasks owned, and each is closed: live behaviour (Task 7's smoke run, 92/0), the full suite on a settled tree (`89b1b84` onward, **1884/0**), the iOS decode (AC32, **191/0** in the other repo), and `docs/invariants/shelves.md`'s then-stale `shelf_added` sentence (Task 8). ### The part-5b review's findings, and what happened to each
+Its verdict, for the record: *"Part 5a is sound: the wire change, the S1/S3/S4/S5 behaviors and the three contract artifacts agree."* The things it could not verify were the ones the slice's later tasks owned, and each is closed: live behavior (Task 7's smoke run, 92/0), the full suite on a settled tree (`89b1b84` onward, **1884/0**), the iOS decode (AC32, **191/0** in the other repo), and `docs/invariants/shelves.md`'s then-stale `shelf_added` sentence (Task 8). ### The part-5b review's findings, and what happened to each
 
 Report-only, against `68dac03..HEAD`, on extracted copies of the commits it needed (`1cf3f63`, `39fbb9a`, `89b1b84` — the repo untouched, `git status` clean at its end). It verified **all eight** of its claims — the funnel, the wrapped read-back with its parity case, the idempotence cases over a real socket, the refusal ladder, the matcher (pure *and* wired), the smoke script's restore and the count fix, this record's counts (**1884 / 87 files / 2 skipped**; `+2646/−85`) and invariants 8 and 12 — and found **no overclaim**: the section you are reading checked out against the tree. No blocker; four prose/comment findings and one race window.
 

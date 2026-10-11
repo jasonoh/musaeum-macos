@@ -13,10 +13,10 @@
 4. **The `node_modules` symlink a worktree creates is not gitignored** (`.gitignore`'s `node_modules/` matches directories, not the symlink), so a `git add -A` inside a worktree would stage an absolute-path symlink. Two agents flagged it independently; the slash-less form is now added.
 
 **Named gaps this pass did NOT close** (recorded, not absorbed):
-- **Three of the four `computeFileSizeBytes` call sites are unguarded**: only `deleteFormats` has a case; `add_format`, the Kindle conversion cache and the PDF top-up attach have none (`rg fileSizeBytes` across the suite returns one hit). The class is implemented once, so the risk is a site forgetting the call, not the maths.
+- **Three of the four `computeFileSizeBytes` call sites are unguarded**: only `deleteFormats` has a case; `add_format`, the Kindle conversion cache and the PDF top-up attach have none (`rg fileSizeBytes` across the suite returns one hit). The class is implemented once, so the risk is a site forgetting the call, not the math.
 - **`conflicts.test.ts` names a broadcast it never asserts**, and no case reads `metadata.json` back after a resolution; the cover/series/tags branches (`conflicts.ts:38-56`) are uncovered.
 - **The renderer half of the cold-start presence fix** (`useDevice.ts`) stays untested: covering it needs a DOM environment and React testing devDeps, which is a `package.json` decision, not a test-file one.
-- **EBADF on SMB `close()`** has no local analogue; the handling is pinned, the OS behaviour is not — only real hardware closes that.
+- **EBADF on SMB `close()`** has no local analog; the handling is pinned, the OS behavior is not — only real hardware closes that.
 
 Date: 2026-09-16. Owner-approved scope: **fixes + tests**. Two adjudications taken before any code moved (recorded here rather than in conversation):
 

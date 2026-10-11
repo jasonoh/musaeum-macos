@@ -40,4 +40,4 @@ You own `electron/main/` — `services/` (all business logic), `ipc/` (thin hand
 
 ## Always end your response in this structure
 
-**## Done** — what you changed, in `file:line` terms. **## Verified** — the commands you ran and what they returned, or "not run" with the reason. **## Escalate** — only if you hit a judgement call you could not resolve. Omit otherwise.
+**## Done** — what you changed, in `file:line` terms. **## Verified** — the commands you ran and what they returned, or "not run" with the reason. **## Escalate** — only if you hit a judgment call you could not resolve. Omit otherwise.

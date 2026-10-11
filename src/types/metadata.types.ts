@@ -204,7 +204,7 @@ export interface BulkHydrateProgress {
    */
   duplicates: number
   /** Why the loop ended before the last book, when it did. */
-  stopped?: 'cancelled' | 'offline'
+  stopped?: 'canceled' | 'offline'
   /** Last failure's message — one line, so the summary can say why. */
   lastError?: string
   running: boolean

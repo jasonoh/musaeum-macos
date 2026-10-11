@@ -17,7 +17,7 @@ import { notifyError } from '@/lib/notify'
 export async function importBooksFromDialog(): Promise<void> {
   try {
     const paths = await window.Musaeum.import.fromDialog()
-    // A cancelled dialog is not a failure and has nothing to say — an empty
+    // A canceled dialog is not a failure and has nothing to say — an empty
     // list is the shape the handler answers with, so this is one check, not two
     if (!paths.length) return
     await window.Musaeum.import.addFiles(paths)

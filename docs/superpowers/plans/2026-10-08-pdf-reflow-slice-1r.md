@@ -27,7 +27,7 @@ No task has started. The spec amendment (D4R, Annex C) and this plan are committ
 - **Below macOS 26, or with no helper, a book falls back** with verdict `no_layout` and a one-line reason (D6). Never a crash.
 - **The spike reads the library and writes only to `--out`.** No `metadata.json`, no database write, nothing inside a book folder (spec Annex B, *What exists*).
 - **The pipeline writes nothing to stderr** (AC10). The helper's stderr is captured, not passed through.
-- **The EPUB stylesheet sets no colour and no typeface** — the reader owns typography and theme (`sidecar/reflow/epub.py` docstring, `docs/invariants/reader.md`).
+- **The EPUB stylesheet sets no color and no typeface** — the reader owns typography and theme (`sidecar/reflow/epub.py` docstring, `docs/invariants/reader.md`).
 - **Artifacts are deterministic**: the identifier and `dcterms:modified` derive from the source's size and mtime, never the clock.
 - **Thresholds are the spec's (Annex C.5), verbatim:** region padding 1pt; orphan reach 6pt; a stored space survives only at a glyph gap ≥ 0.1× font size; a synthetic space needs a gap > 0.5× character height; text-source switch when ratio < 0.9 **and** PDF junk ≥ Vision junk + 0.1; heading when ≤ 2 lines, ≤ 120 chars and size ≥ 1.15× body or a single bold line over a non-bold body; footnote when size ≤ 0.85× body in the bottom quarter; furniture in the top/bottom 8%, ≤ 80 chars, repeating on ≥ 25% of text pages or a bare number; figure JPEG above 6% of the page; plate long side ≤ 1,400 px.
 - **Gate thresholds (Annex C.4):** trigram recall ≥ 95%; word loss ≤ 3%; TOC ≥ 90% of entries land on a matching heading; no image under 32 px on its short side.
@@ -38,7 +38,7 @@ No task has started. The spec amendment (D4R, Annex C) and this plan are committ
 
 1. **A page with `/Rotate 90`.** The helper draws the page rotated; its boxes must still come back in the unrotated PDF space pdfium uses, so ≥ 90% of characters fall inside a region. Pinned in Task 6 (`test_real_helper_handles_a_rotated_page`).
 2. **The helper's stream missing a page** (a crash mid-book, or a page it skipped). That page must still read, as one region, and count as a layout error, not raise. Pinned in Task 8 (`test_missing_page_layout_degrades_to_one_region`).
-3. **A PDF pdfium cannot open** (corrupt, truncated, encrypted). `analyse` returns verdict `unreadable` with a reason, never an exception. Pinned in Task 8 (`test_unopenable_pdf_is_a_verdict`).
+3. **A PDF pdfium cannot open** (corrupt, truncated, encrypted). `analyze` returns verdict `unreadable` with a reason, never an exception. Pinned in Task 8 (`test_unopenable_pdf_is_a_verdict`).
 4. **Outline entries that point past the last page, and duplicate titles** ("Foreword" twice in *Modernist Cuisine*). Out-of-range entries are skipped; duplicates each get their own anchor. Pinned in Task 5 (`test_duplicate_titles_get_distinct_anchors`, `test_entries_past_the_end_are_skipped`).
 5. **Characters outside every region** (bleed, crop marks, text off the crop box). Counted as orphans, never a crash and never a stray paragraph. Pinned in Task 7 (`test_char_outside_every_region_is_an_orphan`).
 
@@ -55,7 +55,7 @@ No task has started. The spec amendment (D4R, Annex C) and this plan are committ
 | `scripts/reflow-golden.json` (new) | the golden passages G1 checks, read off the pages by a person | 3 |
 | `scripts/pdf-reflow-probe.py` | `--gate-only`, then the full gate on a fresh run | 3, 8 |
 | `sidecar/reflow/model.py` (new) | `Block`, `PageResult`, `Document`, `clean_text`, `Box` — moved out of `layout.py` so `regions.py` can import them without a cycle | 4 |
-| `sidecar/reflow/layout.py` | figures, plates, roles, furniture, figure placement, `analyse`; the old band pass deleted | 4, 8 |
+| `sidecar/reflow/layout.py` | figures, plates, roles, furniture, figure placement, `analyze`; the old band pass deleted | 4, 8 |
 | `sidecar/reflow/epub.py` | images named by encoding; nested nav anchored on headings; tables, footnotes | 4, 5 |
 | `helpers/musaeum-layout/main.swift` (new) | the Vision helper | 6 |
 | `scripts/build-layout-helper.sh` (new) | builds it into `helpers/bin/` (gitignored) | 6 |
@@ -111,7 +111,7 @@ class Text:
     text: str
     size: float = 10.0
     bold: bool = False
-    rotated: bool = False  # 90° anticlockwise, like an arXiv stamp
+    rotated: bool = False  # 90° counterclockwise, like an arXiv stamp
 
 
 @dataclass
@@ -325,7 +325,7 @@ import pypdfium2.raw as raw
 _BOLD_NAME = re.compile(r"bold|black|heavy|semibold|demi", re.I)
 ROTATION_TOLERANCE = 0.05  # radians; an arXiv stamp reads 4.71 (3π/2)
 LINE_LOOKBACK = 8  # how many open lines a glyph may join, newest first
-MERGE_MAX_GLYPHS = 4  # a line this short that overlaps its neighbour is a superscript
+MERGE_MAX_GLYPHS = 4  # a line this short that overlaps its neighbor is a superscript
 
 
 @dataclass
@@ -362,7 +362,7 @@ class Char:
 
 
 def page_chars(textpage) -> list[Char]:
-    """Every character on a page except pdfium's synthesised line breaks."""
+    """Every character on a page except pdfium's synthesized line breaks."""
     out: list[Char] = []
     buf = ctypes.create_string_buffer(256)
     flags = ctypes.c_int()
@@ -407,14 +407,14 @@ def _overlap(a_bottom: float, a_top: float, b_bottom: float, b_top: float) -> fl
 
 
 def baseline_lines(chars: list[Char]) -> list[list[Char]]:
-    """Characters → lines, top to bottom, each sorted by centre x.
+    """Characters → lines, top to bottom, each sorted by center x.
 
     A glyph joins the open line it overlaps vertically by at least half the
     shorter of the two. Slice 1 grouped by "the same bottom within a tolerance"
     instead, which put an apostrophe — whose box starts well above the baseline
     — on a line of its own. A line of a few glyphs that still overlaps its
-    neighbour is a superscript and is folded in. Spaces are attached last, to
-    the line that contains their centre, because PDFs often give a space a
+    neighbor is a superscript and is folded in. Spaces are attached last, to
+    the line that contains their center, because PDFs often give a space a
     zero-height box; a space near no line is dropped. Callers remove rotated
     characters first.
     """
@@ -478,13 +478,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `sidecar/reflow/gate.py`
-- Modify: `sidecar/reflow/outline.py` (additive: `Entry`, `is_junk`, `clean_label`, `normalise_depths`, `outline_entries`; the existing functions stay until Task 5)
+- Modify: `sidecar/reflow/outline.py` (additive: `Entry`, `is_junk`, `clean_label`, `normalize_depths`, `outline_entries`; the existing functions stay until Task 5)
 - Test: `sidecar/tests/test_reflow_gate.py`
 
 **Interfaces:**
 - Consumes: `reflow.chars.Char`, `page_chars`, `baseline_lines` (Task 1); `tests.reflow_pdfs` (Task 1).
 - Produces:
-  - `reflow.outline`: `Entry(title: str, depth: int, page: int, top: Optional[float] = None)` (frozen dataclass); `is_junk(label: str) -> bool`; `clean_label(label) -> str`; `normalise_depths(entries: list[Entry]) -> list[Entry]`; `outline_entries(path: str, pages: Optional[int] = None) -> list[Entry]`.
+  - `reflow.outline`: `Entry(title: str, depth: int, page: int, top: Optional[float] = None)` (frozen dataclass); `is_junk(label: str) -> bool`; `clean_label(label) -> str`; `normalize_depths(entries: list[Entry]) -> list[Entry]`; `outline_entries(path: str, pages: Optional[int] = None) -> list[Entry]`.
   - `reflow.gate`: `tokens(text) -> list[str]`; `spine_text(epub_path) -> str`; `check_golden(spine: str, passages: Sequence[str]) -> list[str]`; `PageEvidence(segments, upright, rotated, plate_expected)`; `page_evidence(page, chars, exclude=(), page_box=None) -> PageEvidence`; `trigram_recall(segments, spine_tokens) -> tuple[float, int]`; `rotated_only(rotated: Iterable[str], upright: Iterable[str]) -> set[str]`; `check_rotated(spine_tokens, rotated_only_tokens) -> list[str]`; `check_figures(epub_path, *, expected_figures: Optional[int], expected_plates: Optional[int]) -> list[str]`; `nav_entries(zf) -> list[tuple[str, int, str]]`; `check_toc(epub_path, expected: Optional[list[tuple[str, int]]]) -> list[str]`; `word_loss(pdf_tokens: Counter, art_tokens: Counter, excluded: Counter) -> tuple[float, Counter]`; `check_package(epub_path) -> list[str]`. Constants `TRIGRAM_RECALL_MIN = 0.95`, `WORD_LOSS_MAX = 0.03`, `TOC_HEADING_SHARE_MIN = 0.90`. Every failure string starts with its check's id (`"G1 "`, `"G4 "`, …).
 
 - [ ] **Step 1: Write the failing tests**
@@ -555,7 +555,7 @@ def row(text, x, y, size=10.0):
     return out
 
 
-def test_tokens_normalise_quotes_and_line_break_hyphens():
+def test_tokens_normalize_quotes_and_line_break_hyphens():
     assert gate.tokens("Tycho’s mer-\ncenary “soldier”") == ["tycho's", "mercenary", "soldier"]
 
 
@@ -598,7 +598,7 @@ def test_rotated_only_tokens_are_caught_in_the_spine():
     assert gate.check_rotated(["attention", "03762v5"], stamp)[0].startswith("G3 ")
 
 
-def test_check_figures_catches_mislabelled_bytes_slivers_and_counts(tmp_path):
+def test_check_figures_catches_mislabeled_bytes_slivers_and_counts(tmp_path):
     epub = make_epub(
         tmp_path / "f.epub",
         [("c.xhtml", "<p>x</p>")],
@@ -721,7 +721,7 @@ def clean_label(label: object) -> str:
     return _WS.sub(" ", clean_text(str(label or ""))).strip()[:120]
 
 
-def normalise_depths(entries: list[Entry]) -> list[Entry]:
+def normalize_depths(entries: list[Entry]) -> list[Entry]:
     """No entry may sit more than one level below the one before it.
 
     Dropping a junk parent would otherwise leave its children two levels deep
@@ -777,7 +777,7 @@ def outline_entries(path: str, pages: Optional[int] = None) -> list[Entry]:
         walk(reader.outline, 0)
     except Exception:
         return []
-    return normalise_depths(found)
+    return normalize_depths(found)
 ```
 
 - [ ] **Step 4: Write `gate.py`**
@@ -1376,7 +1376,7 @@ In `main`, add the option to the argument loop:
             gate_dir = argv[i]
 ```
 
-initialise `gate_dir: Optional[str] = None` beside `compare = False`, and right after `root = library_root()` add:
+initialize `gate_dir: Optional[str] = None` beside `compare = False`, and right after `root = library_root()` add:
 
 ```python
     if gate_dir:
@@ -1408,7 +1408,7 @@ Append to `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md`, after
 | … one row per book, each cell `pass` or the first failure, from `/tmp/gate-slice1.txt` … |
 ```
 
-Fill in the date and every row from `/tmp/gate-slice1.txt`, one cell per check: `pass`, or the first failure line shortened to its numbers (for example `2 of 3 passages`, `81% recall`, `106 of 159 mislabelled`). Asterix gets one row reading `G8 pass — no artifact`.
+Fill in the date and every row from `/tmp/gate-slice1.txt`, one cell per check: `pass`, or the first failure line shortened to its numbers (for example `2 of 3 passages`, `81% recall`, `106 of 159 mislabeled`). Asterix gets one row reading `G8 pass — no artifact`.
 
 - [ ] **Step 6: Commit**
 
@@ -1425,7 +1425,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `sidecar/reflow/model.py`
-- Modify: `sidecar/reflow/layout.py` (data classes move out; `_figure_regions`, `_crop`, `extract_page`, `analyse`; new `Crop`, `render_plate`, `_has_ink`)
+- Modify: `sidecar/reflow/layout.py` (data classes move out; `_figure_regions`, `_crop`, `extract_page`, `analyze`; new `Crop`, `render_plate`, `_has_ink`)
 - Modify: `sidecar/reflow/epub.py` (image names and media types follow the encoding)
 - Modify: `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md` (Annex C.5 item 6, one sentence)
 - Test: `sidecar/tests/test_reflow_figures.py`
@@ -1474,7 +1474,7 @@ def test_crop_renders_the_box_it_is_given(tmp_path):
     assert _dark_share(crop.data) > 0.8
 
 
-def test_crop_honours_a_crop_box_origin(tmp_path):
+def test_crop_honors_a_crop_box_origin(tmp_path):
     pdf, page = _page(tmp_path, Page(rects=[Rect(300, 300, 120, 90)], crop=(33, 33, 581, 759)))
     crop = _crop(page, (300, 300, 420, 390), page.get_bbox())
     assert crop is not None and _dark_share(crop.data) > 0.8
@@ -1836,7 +1836,7 @@ def render_plate(page: pdfium.PdfPage) -> Optional[Crop]:
     return Crop(buffer.getvalue(), image.width, image.height, "jpeg")
 ```
 
-- [ ] **Step 7: Use them in `extract_page` and `analyse`**
+- [ ] **Step 7: Use them in `extract_page` and `analyze`**
 
 In `extract_page`, replace the no-text early return:
 
@@ -1894,7 +1894,7 @@ Replace the figure loop and the swallow block (from `boxes = [...]` to the end o
         elements = kept
 ```
 
-In `analyse`, after the page loop and before `mark_running_heads(doc)`, aggregate:
+In `analyze`, after the page loop and before `mark_running_heads(doc)`, aggregate:
 
 ```python
     doc.figures_detected = sum(p.figures_detected for p in doc.pages)
@@ -1964,7 +1964,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `sidecar/tests/test_reflow_toc.py`
 
 **Interfaces:**
-- Consumes: `Entry`, `outline_entries`, `normalise_depths`, `clean_label` (Task 2); `model.Block`, `Document`, `PageResult` (Task 4); `gate.check_toc`, `nav_entries`, `check_package` (Task 2).
+- Consumes: `Entry`, `outline_entries`, `normalize_depths`, `clean_label` (Task 2); `model.Block`, `Document`, `PageResult` (Task 4); `gate.check_toc`, `nav_entries`, `check_package` (Task 2).
 - Produces:
   - `reflow.outline`: `heading_entries(doc) -> list[Entry]`; `document_entries(path, doc) -> list[Entry]` — sets `doc.outline_entries` and `doc.entries_from_outline`, returns the entries; the caller assigns `doc.entries`.
   - `reflow.epub`: `link_entries(doc) -> list[tuple[Entry, Block]]` (gives each target block an `anchor`, and, for outline entries, `level = min(depth + 1, 3)`); `write_epub(doc, out_path, title) -> dict` with keys `sections`, `toc_entries`, `images`, `words`, `bytes`, `uid`. It renders block kinds `heading`, `para`, `footnote` (`<p class="footnote">`), `figure` and `table` (`<table><tbody><tr><td>`).
@@ -2127,7 +2127,7 @@ def heading_entries(doc: Document) -> list[Entry]:
         for b in page.blocks
         if b.kind == "heading" and b.level in (1, 2) and b.text.strip()
     ]
-    return normalise_depths(out)
+    return normalize_depths(out)
 
 
 def document_entries(path: str, doc: Document) -> list[Entry]:
@@ -2152,10 +2152,10 @@ typography and its whole `reading_state` policy apply to a PDF book without one
 line of change on either platform — the argument the design is built on.
 
 **What this writer deliberately does not do.** It names no typeface, sets no
-colour and does not touch line height, because the reader injects its own
+color and does not touch line height, because the reader injects its own
 stylesheet and derives the page palette from the app's theme
 (`docs/invariants/reader.md`, `src/lib/theme/reader-palette.ts`). A stylesheet
-that set a colour here would fight the theme on both clients.
+that set a color here would fight the theme on both clients.
 
 **The TOC is the outline, whole.** Every usable outline entry at every depth is
 a nav entry, nested as the outline nests, linking to the *heading* it names.
@@ -2491,7 +2491,7 @@ def write_epub(doc: Document, out_path: str, title: str) -> dict:
 
 ```python
 from .epub import link_entries, write_epub
-from .layout import analyse, extract_page
+from .layout import analyze, extract_page
 from .model import Block, Document, PageResult
 from .outline import Entry, document_entries, heading_entries, outline_entries
 
@@ -2500,7 +2500,7 @@ __all__ = [
     "Document",
     "Entry",
     "PageResult",
-    "analyse",
+    "analyze",
     "document_entries",
     "extract_page",
     "heading_entries",
@@ -2510,10 +2510,10 @@ __all__ = [
 ]
 ```
 
-In `scripts/pdf-reflow-probe.py`: change `from reflow import analyse, document_sections, write_epub` to `from reflow import analyse, document_entries, write_epub`. In `run_one`, replace the three lines from `doc = analyse(path, limit=limit)` through `doc.sections = sections` with:
+In `scripts/pdf-reflow-probe.py`: change `from reflow import analyze, document_sections, write_epub` to `from reflow import analyze, document_entries, write_epub`. In `run_one`, replace the three lines from `doc = analyze(path, limit=limit)` through `doc.sections = sections` with:
 
 ```python
-    doc = analyse(path, limit=limit)
+    doc = analyze(path, limit=limit)
     doc.entries = document_entries(path, doc)
 ```
 
@@ -2662,7 +2662,7 @@ func pageRect(_ r: NormalizedRect, _ raster: Raster) -> [Double] {
 }
 
 @available(macOS 26.0, *)
-func analyse(_ page: PDFPage, number: Int, scale: CGFloat) async -> [String: Any] {
+func analyze(_ page: PDFPage, number: Int, scale: CGFloat) async -> [String: Any] {
     let started = Date()
     guard let raster = render(page, scale: scale) else {
         return ["page": number, "error": "render failed"]
@@ -2751,7 +2751,7 @@ struct Main {
                     guard let d = PDFDocument(url: URL(fileURLWithPath: path)),
                         let page = d.page(at: n - 1)
                     else { return ["page": n, "error": "cannot open page"] }
-                    return await analyse(page, number: n, scale: scale)
+                    return await analyze(page, number: n, scale: scale)
                 }
             }
             for _ in 0..<o.concurrency { add() }
@@ -3362,7 +3362,7 @@ def _binds(before: str, after: str) -> bool:
 
 
 def line_text(chars: Sequence[Char]) -> str:
-    """A baseline's characters (sorted by centre x) as text.
+    """A baseline's characters (sorted by center x) as text.
 
     A stored space survives only when the glyphs either side of it are at
     least 0.1× the font size apart: *Universe*'s text layer stores
@@ -3633,17 +3633,17 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 8: The page pass on Vision — roles, furniture, figures in place, and the old pass deleted
 
 **Files:**
-- Modify: `sidecar/reflow/layout.py` (rewire `analyse`; add `classify_roles`, `stitch_pages`, `place_figures`; delete the band pass)
+- Modify: `sidecar/reflow/layout.py` (rewire `analyze`; add `classify_roles`, `stitch_pages`, `place_figures`; delete the band pass)
 - Modify: `sidecar/reflow/model.py` (drop `PageResult`'s slice-1 fields and `Document.sections`)
 - Modify: `sidecar/reflow/__init__.py`
 - Modify: `scripts/pdf-reflow-probe.py` (normal mode runs the gate)
-- Modify: `sidecar/tests/test_reflow_figures.py` (its three `extract_page` tests move onto `analyse`)
+- Modify: `sidecar/tests/test_reflow_figures.py` (its three `extract_page` tests move onto `analyze`)
 - Modify: `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md` (Annex C.5 item 4, footnotes)
 - Test: `sidecar/tests/test_reflow_pipeline.py`
 
 **Interfaces:**
 - Consumes: everything above — `page_chars` (1), `gate.*` (2), `model.*`, `_figure_regions`, `_crop`, `render_plate` (4), `document_entries`, `write_epub` (5), `run_helper`, `LayoutUnavailable`, `PageLayout` (6), `build_page_text`, `join_lines` (7).
-- Produces: `reflow.layout`: `analyse(path, limit=None, layouts: Optional[dict[int, PageLayout]] = None) -> Document` — `layouts` is keyed by **1-based** page number; when `None` the helper is run. Verdicts: `ok`, `no_text_layer`, `no_layout` (helper missing or macOS < 26), `unreadable` (pdfium cannot open the file), `unstable_layout` (more than 25% of text pages had no usable layout). `classify_roles(pages) -> None`; `stitch_pages(pages) -> None`; `place_figures(text_blocks, figures) -> list[Block]`; `mark_running_heads(doc) -> None`.
+- Produces: `reflow.layout`: `analyze(path, limit=None, layouts: Optional[dict[int, PageLayout]] = None) -> Document` — `layouts` is keyed by **1-based** page number; when `None` the helper is run. Verdicts: `ok`, `no_text_layer`, `no_layout` (helper missing or macOS < 26), `unreadable` (pdfium cannot open the file), `unstable_layout` (more than 25% of text pages had no usable layout). `classify_roles(pages) -> None`; `stitch_pages(pages) -> None`; `place_figures(text_blocks, figures) -> list[Block]`; `mark_running_heads(doc) -> None`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3654,7 +3654,7 @@ import pytest
 
 from reflow import gate, layout
 from reflow.epub import write_epub
-from reflow.layout import analyse, classify_roles, place_figures, stitch_pages
+from reflow.layout import analyze, classify_roles, place_figures, stitch_pages
 from reflow.model import Block, PageResult
 from reflow.outline import document_entries
 from reflow.vision import LayoutUnavailable, PageLayout, Region
@@ -3700,7 +3700,7 @@ def all_text(doc):
 
 def test_a_book_reads_in_order_without_its_stamp_or_its_running_footer(tmp_path):
     path, layouts = book(tmp_path)
-    doc = analyse(path, layouts=layouts)
+    doc = analyze(path, layouts=layouts)
     assert doc.verdict == "ok"
     first, second = [b.text for b in doc.pages[0].blocks]
     assert first.startswith("Left line 0") and "planets" not in first
@@ -3713,7 +3713,7 @@ def test_a_book_reads_in_order_without_its_stamp_or_its_running_footer(tmp_path)
 
 def test_the_whole_path_produces_a_package_the_gate_accepts(tmp_path):
     path, layouts = book(tmp_path)
-    doc = analyse(path, layouts=layouts)
+    doc = analyze(path, layouts=layouts)
     doc.entries = document_entries(path, doc)
     out = str(tmp_path / "book.epub")
     write_epub(doc, out, "Book")
@@ -3725,21 +3725,21 @@ def test_the_whole_path_produces_a_package_the_gate_accepts(tmp_path):
 def test_missing_page_layout_degrades_to_one_region(tmp_path):
     path = write_pdf(tmp_path / "m.pdf", [plain(BODY) for _ in range(4)])
     layouts = {n: regions(n, (BODY_BOX, ""), (F_BOX, "")) for n in (1, 3, 4)}
-    doc = analyse(path, layouts=layouts)
+    doc = analyze(path, layouts=layouts)
     assert doc.verdict == "ok" and doc.layout_errors == 1
     assert "continues the story" in " ".join(b.text for b in doc.pages[1].blocks)
 
 
 def test_too_many_missing_layouts_is_unstable(tmp_path):
     path = write_pdf(tmp_path / "u.pdf", [plain(BODY) for _ in range(4)])
-    doc = analyse(path, layouts={1: regions(1, (BODY_BOX, ""))})
+    doc = analyze(path, layouts={1: regions(1, (BODY_BOX, ""))})
     assert doc.verdict == "unstable_layout" and "3 of 4" in doc.reason
 
 
 def test_unopenable_pdf_is_a_verdict(tmp_path):
     path = tmp_path / "broken.pdf"
     path.write_bytes(b"this is not a pdf at all")
-    doc = analyse(str(path), layouts={})
+    doc = analyze(str(path), layouts={})
     assert doc.verdict == "unreadable" and doc.reason
 
 
@@ -3750,14 +3750,14 @@ def test_no_layout_helper_is_a_fallback_reason(tmp_path, monkeypatch):
         raise LayoutUnavailable("page layout needs macOS 26 or later")
 
     monkeypatch.setattr(layout, "run_helper", unavailable)
-    doc = analyse(path)
+    doc = analyze(path)
     assert doc.verdict == "no_layout" and "macOS 26" in doc.reason
 
 
 def test_a_textless_book_never_runs_the_helper(tmp_path, monkeypatch):
     path = write_pdf(tmp_path / "t.pdf", [Page(rects=[Rect(0, 0, 612, 792, 0.3)])] * 2)
     monkeypatch.setattr(layout, "run_helper", lambda *a, **k: pytest.fail("helper ran on a textless book"))
-    assert analyse(path).verdict == "no_text_layer"
+    assert analyze(path).verdict == "no_text_layer"
 
 
 def B(kind="para", text="", size=10.0, bold=False, lines=3, top=600.0, bottom=560.0, left=72.0, right=500.0):
@@ -3813,10 +3813,10 @@ def test_figures_go_before_the_first_block_below_them_in_their_column():
 In `sidecar/tests/test_reflow_figures.py`, delete `test_a_failed_crop_keeps_the_figures_labels`, `test_a_written_crop_swallows_its_labels`, `test_a_textless_page_becomes_a_plate` and the `extract_page` import, and add:
 
 ```python
-from reflow.layout import analyse
+from reflow.layout import analyze
 from reflow.vision import PageLayout, Region
 
-LABELLED = BODY + [Text(320, 340, "Label inside the figure")]
+LABELED = BODY + [Text(320, 340, "Label inside the figure")]
 LABEL_LAYOUT = {
     1: PageLayout(
         page=1, box=(0, 0, 612, 792),
@@ -3826,24 +3826,24 @@ LABEL_LAYOUT = {
 
 
 def test_a_failed_crop_keeps_the_figures_labels(tmp_path, monkeypatch):
-    path = write_pdf(tmp_path / "l.pdf", [Page(texts=LABELLED, rects=[Rect(300, 300, 200, 90, 0.8)])])
+    path = write_pdf(tmp_path / "l.pdf", [Page(texts=LABELED, rects=[Rect(300, 300, 200, 90, 0.8)])])
     monkeypatch.setattr(layout, "_crop", lambda *a, **k: None)
-    doc = analyse(path, layouts=LABEL_LAYOUT)
+    doc = analyze(path, layouts=LABEL_LAYOUT)
     assert "Label inside the figure" in " ".join(b.text for b in doc.pages[0].blocks)
     assert len(doc.crop_failures) == 1 and not any(b.kind == "figure" for b in doc.pages[0].blocks)
 
 
 def test_a_written_crop_swallows_its_labels(tmp_path):
-    path = write_pdf(tmp_path / "w.pdf", [Page(texts=LABELLED, rects=[Rect(300, 300, 200, 90, 0.8)])])
-    doc = analyse(path, layouts=LABEL_LAYOUT)
+    path = write_pdf(tmp_path / "w.pdf", [Page(texts=LABELED, rects=[Rect(300, 300, 200, 90, 0.8)])])
+    doc = analyze(path, layouts=LABEL_LAYOUT)
     assert "Label inside the figure" not in " ".join(b.text for b in doc.pages[0].blocks)
     assert [b.image_type for b in doc.pages[0].blocks if b.kind == "figure"] == ["png"]
     assert "Label inside the figure" in doc.dropped_text
 
 
 def test_a_textless_page_becomes_a_plate(tmp_path):
-    path = write_pdf(tmp_path / "p.pdf", [Page(texts=LABELLED), Page(rects=[Rect(0, 0, 612, 792, 0.3)])])
-    doc = analyse(path, layouts={1: LABEL_LAYOUT[1]})
+    path = write_pdf(tmp_path / "p.pdf", [Page(texts=LABELED), Page(rects=[Rect(0, 0, 612, 792, 0.3)])])
+    doc = analyze(path, layouts={1: LABEL_LAYOUT[1]})
     assert [b.plate for b in doc.pages[1].blocks] == [True]
 ```
 
@@ -4021,9 +4021,9 @@ def place_figures(text_blocks: list[Block], figures: list[Block]) -> list[Block]
     return out
 ```
 
-- [ ] **Step 5: Rewire `analyse` and the verdict**
+- [ ] **Step 5: Rewire `analyze` and the verdict**
 
-Replace `_verdict` and `analyse` with:
+Replace `_verdict` and `analyze` with:
 
 ```python
 def _verdict(doc: Document) -> None:
@@ -4095,7 +4095,7 @@ def _page(page: pdfium.PdfPage, index: int, layout: Optional[PageLayout], doc: D
     return result
 
 
-def analyse(path: str, limit: Optional[int] = None, layouts: Optional[dict[int, PageLayout]] = None) -> Document:
+def analyze(path: str, limit: Optional[int] = None, layouts: Optional[dict[int, PageLayout]] = None) -> Document:
     """A whole PDF → a Document the EPUB writer can lay out, or a verdict saying why not.
 
     `layouts` (keyed by 1-based page number) is the helper's answer; when it
@@ -4138,7 +4138,7 @@ def analyse(path: str, limit: Optional[int] = None, layouts: Optional[dict[int, 
 
 In `sidecar/reflow/model.py`, delete from `PageResult` the comment `# Slice-1 bookkeeping…` and the six fields under it (`lines`, `cross_band`, `figures_swallowed`, `labels_swallowed`, `bands`, `seconds`), and delete `Document.sections` with its comment.
 
-In `sidecar/reflow/__init__.py`, change `from .layout import analyse, extract_page` to `from .layout import analyse` and remove `"extract_page"` from `__all__`. Replace the docstring's second paragraph with: `Called by scripts/pdf-reflow-probe.py and by nothing else yet: it is not wired into the sidecar's RPC (slice 2), does not know about the library, and writes nothing outside the output path it is given.`
+In `sidecar/reflow/__init__.py`, change `from .layout import analyze, extract_page` to `from .layout import analyze` and remove `"extract_page"` from `__all__`. Replace the docstring's second paragraph with: `Called by scripts/pdf-reflow-probe.py and by nothing else yet: it is not wired into the sidecar's RPC (slice 2), does not know about the library, and writes nothing outside the output path it is given.`
 
 - [ ] **Step 7: Record the footnote rule in the spec**
 
@@ -4166,7 +4166,7 @@ def run_one(title: str, why: str, root: str, out_dir: str, limit: Optional[int],
         "pdf": os.path.basename(path),
     }
     started = time.perf_counter()
-    doc = analyse(path, limit=limit)
+    doc = analyze(path, limit=limit)
     doc.entries = document_entries(path, doc)
     rec["seconds"] = round(time.perf_counter() - started, 1)
     rec["pages"] = len(doc.pages)

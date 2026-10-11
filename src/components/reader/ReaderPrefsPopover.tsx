@@ -104,7 +104,7 @@ function FieldLabel({ children }: { children: ReactNode }) {
  * The third option is **two-tone** — ink over parchment — because `auto` is not
  * either row: it is whichever row the app theme resolves to, and the old
  * two-way branch (`ink` ? ink : parchment) would have drawn it as a second
- * `paper`. No new colour is introduced for it: both halves are existing tokens,
+ * `paper`. No new color is introduced for it: both halves are existing tokens,
  * which is the rule that keeps the dot meaningful under any imported theme.
  */
 function ThemeDot({ theme }: { theme: ReaderPageTheme }) {

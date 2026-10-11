@@ -41,7 +41,7 @@ vi.mock('child_process', async (importOriginal) => {
     }
     callback?.(null, '', '')
   }
-  // A `ChildProcess` return is the one thing a recorder cannot honour, and
+  // A `ChildProcess` return is the one thing a recorder cannot honor, and
   // nothing in the module under test reads it.
   return { ...actual, exec: exec as unknown as typeof actual.exec }
 })

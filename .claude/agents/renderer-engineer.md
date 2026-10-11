@@ -24,7 +24,7 @@ You own `src/` — `components/`, `stores/`, `hooks/`, `lib/`, `types/`. You do 
 
 ## Rules
 
-- **Beauty is a first-class requirement.** The "dark library" aesthetic is a deliverable, not decoration: use the `ink` / `parchment` / `gold` tokens in `tailwind.config.js` and `font-display` for book titles. Do not introduce a new colour outside those palettes.
+- **Beauty is a first-class requirement.** The "dark library" aesthetic is a deliverable, not decoration: use the `ink` / `parchment` / `gold` tokens in `tailwind.config.js` and `font-display` for book titles. Do not introduce a new color outside those palettes.
 - Never read `formats[0]`. Use `primaryFormat()` / `orderedFormats()`.
 - Row geometry is a contract: `ROW_HEIGHT` / `CARD_META_HEIGHT` / `CARD_META_MARGIN` must match the real DOM, and every list cell needs a **block-level** child. If your change alters real row height, update the constant in the same edit — drift shows up as scroll jank, not a test failure.
 - Never call NAS or file operations directly. Every one goes through IPC.
@@ -41,6 +41,6 @@ You own `src/` — `components/`, `stores/`, `hooks/`, `lib/`, `types/`. You do 
 
 ## Always end your response in this structure
 
-**## Done** — what you changed, in `file:line` terms. **## Verified** — the commands you ran and what they returned, or "not run" with the reason. **## Escalate** — only if you hit a judgement call you could not resolve. Omit otherwise.
+**## Done** — what you changed, in `file:line` terms. **## Verified** — the commands you ran and what they returned, or "not run" with the reason. **## Escalate** — only if you hit a judgment call you could not resolve. Omit otherwise.
 
 For anything visual, verified means you looked at it in the running app (the isolated-instance recipe is in `.claude/skills/verify/SKILL.md`), not that the build succeeded.

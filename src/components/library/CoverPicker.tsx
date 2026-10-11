@@ -35,7 +35,7 @@ import {
  * The second write, `metadata.chooseCoverFromFile` (D6), carries only a bookId:
  * its file dialog is the main process's, so no path and no `file://` reaches
  * this component, and what comes back is either the updated book or
- * `{cancelled: true}`. No new channel, and nothing below the renderer changes.
+ * `{canceled: true}`. No new channel, and nothing below the renderer changes.
  *
  * Three things it is careful about, each because the alternative was a lie:
  * the candidates' images arrive as `data:` URLs from the sidecar (the renderer's
@@ -108,7 +108,7 @@ function TileButton({
       <span className="flex h-40 w-full items-center justify-center">
         {/* `object-contain`, not the card's `object-cover`: this is the one
             surface where seeing the whole image matters — a jacket that is a
-            wraparound spread would otherwise be shown as a centre crop of
+            wraparound spread would otherwise be shown as a center crop of
             itself */}
         <img
           src={candidate.thumb}
@@ -339,7 +339,7 @@ export function CoverPicker() {
    *
    * The three states, each decided by `src/lib/cover-candidate-state.ts`:
    *
-   * - **cancelled** — the dialog was closed. An answer, not a failure: nothing
+   * - **canceled** — the dialog was closed. An answer, not a failure: nothing
    *   was written, nothing is re-read and nothing is said (a line here would
    *   report an event that did not happen).
    * - **refused** — the call rejected with the sidecar's sentence. The write
@@ -365,7 +365,7 @@ export function CoverPicker() {
     try {
       const outcome = await window.Musaeum.metadata.chooseCoverFromFile(book.id)
       const reading = coverUploadReading(outcome)
-      if (reading.kind === 'cancelled') return
+      if (reading.kind === 'canceled') return
 
       setUploadReading(reading)
       // Bump before awaiting anything: the re-read is the effect's, and it must

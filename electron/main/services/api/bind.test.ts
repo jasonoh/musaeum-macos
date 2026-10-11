@@ -147,7 +147,7 @@ describe('resolveBindAddress — rest_api_bind', () => {
     })
   })
 
-  it('honours a loopback override, which is the only way to ask for loopback', () => {
+  it('honors a loopback override, which is the only way to ask for loopback', () => {
     for (const address of ['127.0.0.1', '::1', 'localhost']) {
       expect(resolveBindAddress(MEASURED, address)).toMatchObject({
         ok: true,

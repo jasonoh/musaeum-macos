@@ -379,7 +379,7 @@ describe('the upload route', () => {
     ['an unknown format', '/api/books?format=sh&filename=Dune.epub'],
     ['a missing filename', '/api/books?format=epub'],
     ['a filename that names nothing', '/api/books?format=epub&filename=..'],
-    ['a filename that sanitises to nothing', '/api/books?format=epub&filename=%2F'],
+    ['a filename that sanitizes to nothing', '/api/books?format=epub&filename=%2F'],
     ['a filename that is only an extension', '/api/books?format=epub&filename=.epub']
   ])('answers 400 for %s, before a byte is written (AC9)', async (_label, path) => {
     // **A real body on the wire, deliberately.** The earlier spelling sent no
@@ -664,7 +664,7 @@ describe('the upload route', () => {
     let answer = ''
     socket.on('data', (chunk: Buffer) => (answer += chunk.toString('utf8')))
 
-    // A declared length the client does not honour, and an open connection: a
+    // A declared length the client does not honor, and an open connection: a
     // raw socket, because `fetch` cannot go quiet mid-body.
     socket.write(
       `POST /api/books?format=epub&filename=Stalled.epub HTTP/1.1\r\n` +

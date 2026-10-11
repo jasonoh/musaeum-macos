@@ -67,7 +67,7 @@ def test_a_missing_file_counts_as_a_change(tmp_path):
 #
 # A cover candidate is an image *URL*, and the renderer's CSP
 # (`img-src 'self' musaeum: data: blob:`) refuses every remote origin — so the
-# review queue showed two empty tiles labelled Google Books and OpenLibrary, and
+# review queue showed two empty tiles labeled Google Books and OpenLibrary, and
 # a person had to choose a jacket they could not see. These cases decide the
 # thing that fixes it: the candidate travels as a small inlined JPEG.
 

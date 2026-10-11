@@ -30,7 +30,7 @@ import tokyoNightDark from './builtin/tokyo-night-dark.yaml?raw'
 import tokyoNightLight from './builtin/tokyo-night-light.yaml?raw'
 
 /**
- * The active theme, the imported library, and the one colour main needs before
+ * The active theme, the imported library, and the one color main needs before
  * the window exists.
  *
  * Four things this file is careful about:
@@ -108,7 +108,7 @@ export async function openThemeFolder(): Promise<void> {
  *
  * An explicit constant rather than an absence, so the default goes through the
  * same apply path as any other theme — `windowBackgroundColor` of it is
- * `#0d0b09`, and no literal of that colour is left in `electron/main/index.ts`.
+ * `#0d0b09`, and no literal of that color is left in `electron/main/index.ts`.
  * `theme/store.test.ts` pins it against `:root` itself, so the duplicate cannot
  * drift. `status` is absent on purpose: slice 7a owns `:root`'s status values.
  */
@@ -221,10 +221,10 @@ function defaultTheme(): StoredTheme {
   }
 }
 
-function colourProblem(label: string, value: unknown): string | null {
+function colorProblem(label: string, value: unknown): string | null {
   return typeof value === 'string' && HEX.test(value)
     ? null
-    : `${label} is not a lowercase #rrggbb colour (got ${JSON.stringify(value)})`
+    : `${label} is not a lowercase #rrggbb color (got ${JSON.stringify(value)})`
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -237,7 +237,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
  *
  * The rule is *every value the derivation emits*, not "every value present":
  * the 7 ink steps, the 3 parchment stops, the 4 gold steps, `on_acc`, `scrim`,
- * `shadow` and `dark` are all **required**, so a row that arrived with a colour
+ * `shadow` and `dark` are all **required**, so a row that arrived with a color
  * family missing degrades instead of rendering half of `:root`'s palette inside
  * a theme. It is written as a walk over the step lists rather than a hardcoded
  * count so slice 7a's status family is covered by the same rule when it lands
@@ -285,26 +285,26 @@ function recordProblem(value: unknown, expectedId: string | null): string | null
   const ink = tokens.ink
   if (!isObject(ink)) return 'tokens.ink is not an object'
   for (const step of INK_STEPS) {
-    const problem = colourProblem(`tokens.ink.${step}`, ink[step])
+    const problem = colorProblem(`tokens.ink.${step}`, ink[step])
     if (problem) return problem
   }
   const parchment = tokens.parchment
   if (!isObject(parchment)) return 'tokens.parchment is not an object'
   for (const key of PARCHMENT_KEYS) {
-    const problem = colourProblem(`tokens.parchment.${key}`, parchment[key])
+    const problem = colorProblem(`tokens.parchment.${key}`, parchment[key])
     if (problem) return problem
   }
   const gold = tokens.gold
   if (!isObject(gold)) return 'tokens.gold is not an object'
   for (const step of GOLD_STEPS) {
-    const problem = colourProblem(`tokens.gold.${step}`, gold[step])
+    const problem = colorProblem(`tokens.gold.${step}`, gold[step])
     if (problem) return problem
   }
   for (const [label, field] of [
     ['on_acc', tokens.on_acc],
     ['scrim', tokens.scrim]
   ] as const) {
-    const problem = colourProblem(`tokens.${label}`, field)
+    const problem = colorProblem(`tokens.${label}`, field)
     if (problem) return problem
   }
   if (typeof tokens.dark !== 'boolean') {
@@ -332,7 +332,7 @@ function recordProblem(value: unknown, expectedId: string | null): string | null
       const ramp = status[family]
       if (!isObject(ramp)) return `tokens.status.${family} is not an object`
       for (const step of STATUS_STEPS) {
-        const problem = colourProblem(`tokens.status.${family}.${step}`, ramp[step])
+        const problem = colorProblem(`tokens.status.${family}.${step}`, ramp[step])
         if (problem) return problem
       }
     }
@@ -844,7 +844,7 @@ export function setTheme(
   return { ok: true, view: getThemeView() }
 }
 
-/** Pure. The colour `new BrowserWindow` is constructed with. */
+/** Pure. The color `new BrowserWindow` is constructed with. */
 export function windowBackgroundColor(tokens: ThemeTokens): string {
   return tokens.ink['950']
 }
@@ -852,7 +852,7 @@ export function windowBackgroundColor(tokens: ThemeTokens): string {
 /**
  * Pure. Which way the platform's *own* chrome points for a set of tokens.
  *
- * The platform paints some of Musaeum and will not take a colour for it: native
+ * The platform paints some of Musaeum and will not take a color for it: native
  * scrollbars, the traffic lights, the menu bar, the text caret, `<select>` popup
  * lists and the default canvas all follow `nativeTheme.themeSource` and nothing
  * else. `:root`'s `color-scheme` covers the web-content half of that list

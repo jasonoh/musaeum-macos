@@ -479,7 +479,7 @@ Launch migration wizard
 ## 10. Open Questions for Future Decisions
 
 1. **App name**: "Musaeum"
-2. **Goodreads scraping**: legally grey; confirm acceptable for personal use
+2. **Goodreads scraping**: legally gray; confirm acceptable for personal use
 3. **Calibre dependency**: app assumes `ebook-convert` is installed; should we bundle it or require user installation?
 4. **Google Books API key**: obtain key and store in Infisical under `GOOGLE_BOOKS_API_KEY` before running the migration wizard. The 7000-book migration will exceed free tier limits.
 5. **Update mechanism**: Electron auto-updater or manual?

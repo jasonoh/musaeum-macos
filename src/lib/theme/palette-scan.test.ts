@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
  *
  * **What it decides:** no `.ts`/`.tsx`/`.css` under `src/` (nor a class in
  * `index.html`, which is in Tailwind's own `content` globs) names a
- * stock-palette colour utility. Test files are **included**, not exempted — the
+ * stock-palette color utility. Test files are **included**, not exempted — the
  * note on composition below is what makes that possible.
  *
  * **What it does not decide** — the residue, deliberately:
@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest'
  * - anything under `electron/` (no Tailwind classes there; the one mention of a
  *   retired name is a comment in `theme/derive.ts`) or `vendor/` (invariant
  *   #11 — never edited, and never scanned).
- * - **colour literals.** A hex string is not a utility, and
+ * - **color literals.** A hex string is not a utility, and
  *   `src/lib/theme/reader-palette.ts` owns a documented pair of derived
  *   baselines; scanning for literals would redden on the reader's own design.
  */
@@ -132,7 +132,7 @@ describe('no stock Tailwind hue in the renderer source (AC8.4)', () => {
     expect(files.some((f) => f.endsWith('index.html'))).toBe(true)
   })
 
-  it('finds no stock-palette colour utility', () => {
+  it('finds no stock-palette color utility', () => {
     expect(offenders()).toEqual([])
   })
 

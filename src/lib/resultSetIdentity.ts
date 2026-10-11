@@ -32,7 +32,7 @@ export interface ResultSetIdentity {
  *   order must compare equal, and toggling the same one on and off must
  *   round-trip to the original key.
  *
- * One asymmetry is not a normalization but the store's real behaviour: while a
+ * One asymmetry is not a normalization but the store's real behavior: while a
  * query is active the filters are **not part of the result set at all**.
  * `load()` calls `searchBooks(query, sort)` when a query is present and only
  * passes `filters` to `getBooks` when browsing
@@ -42,7 +42,7 @@ export interface ResultSetIdentity {
  * Filters therefore enter the key only when they are actually applied. If that
  * branch in `load()` ever changes, this is the second place to change.
  *
- * The open shelf is not a normalization but the store's other real behaviour:
+ * The open shelf is not a normalization but the store's other real behavior:
  * it scopes a search as well as a browse (`searchBooks(query, sort, scope)`),
  * so it stays in the key in both branches.
  */

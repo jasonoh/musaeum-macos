@@ -20,7 +20,7 @@ import { useUIStore } from '@/stores/ui.store'
 export function usePythonEnv(): void {
   useEffect(() => {
     let heardEvent = false
-    let cancelled = false
+    let canceled = false
 
     const unsubscribe = window.Musaeum.on.pythonEnvProgress((progress) => {
       heardEvent = true
@@ -30,7 +30,7 @@ export function usePythonEnv(): void {
     void window.Musaeum.settings
       .getPythonEnv()
       .then((state) => {
-        if (cancelled || heardEvent || !state) return
+        if (canceled || heardEvent || !state) return
         useUIStore.getState().setPythonEnv(state)
       })
       .catch(() => {
@@ -38,7 +38,7 @@ export function usePythonEnv(): void {
       })
 
     return () => {
-      cancelled = true
+      canceled = true
       unsubscribe()
     }
   }, [])

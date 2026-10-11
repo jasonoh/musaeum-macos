@@ -100,7 +100,7 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
       draggable
       onDragStart={(e) => startBookDrag(e, book.id, useUIStore.getState().selection)}
       // Clearing on the source is not enough — a virtualized card can unmount
-      // mid-drag — but this is where a *cancelled* drag ends, and the payload
+      // mid-drag — but this is where a *canceled* drag ends, and the payload
       // must not outlive it (Review Focus 1)
       onDragEnd={clearDragPayload}
       onContextMenu={(e) => {

@@ -37,7 +37,7 @@ export function registerMetadataHandlers(): void {
   )
 
   // The picker's own image (D6). The dialog is *this* side of the boundary, so
-  // the renderer sends a bookId and receives `{cancelled: true}` or the updated
+  // the renderer sends a bookId and receives `{canceled: true}` or the updated
   // book: the absolute path a file dialog chose is never a value a renderer can
   // name, and one that could name it could ask the main process to write an
   // arbitrary file into a book's folder. Thin by construction (invariant 8) —
@@ -95,6 +95,6 @@ export async function chooseCoverFromFile(
   // A cancellation is an answer, not an error: nothing was written and there is
   // no book to report, so the renderer is told which of the two it is rather than
   // checking a path it never had.
-  if (result.canceled || !result.filePaths.length) return { cancelled: true }
+  if (result.canceled || !result.filePaths.length) return { canceled: true }
   return coverChoice.chooseUploadedCover(bookId, result.filePaths[0])
 }

@@ -36,9 +36,9 @@ Stated here because a fresh session has not read slice 2's plan. The first two a
    })
    ```
 
-   **This slice must replace that case, not delete it.** Its replacement asserts the rows *are* targets and still asserts the thing that mattered underneath — that the drop wiring lives on the rows and not on something that re-renders the list. Deleting it would leave invariant-7's neighbourhood unguarded in exactly the file slice 2 built the guard in.
+   **This slice must replace that case, not delete it.** Its replacement asserts the rows *are* targets and still asserts the thing that mattered underneath — that the drop wiring lives on the rows and not on something that re-renders the list. Deleting it would leave invariant-7's neighborhood unguarded in exactly the file slice 2 built the guard in.
 
-   The neighbouring case is the other half: **`promises only actions that work, and offers them as controls`** asserts no renderer file contains `Drag books here` while `BookCard` is still `draggable={false}`. Once the sources are draggable, that case's second assertion is obsolete — flip it in the same commit as Task 3, and keep the first (the copy rule stands on its own: see *Copy decisions for the owner*).
+   The neighboring case is the other half: **`promises only actions that work, and offers them as controls`** asserts no renderer file contains `Drag books here` while `BookCard` is still `draggable={false}`. Once the sources are draggable, that case's second assertion is obsolete — flip it in the same commit as Task 3, and keep the first (the copy rule stands on its own: see *Copy decisions for the owner*).
 
 2. **`ShelfList`'s docblock names this slice.** Its last paragraph reads *"Slice 3 makes the rows drop targets. Neither is stubbed here."* — update it when it lands, or the file lies about its own state.
 
@@ -71,7 +71,7 @@ Each part ends green (`npm run typecheck && npm run lint && npm test`) and gets 
 
 ## Readings this slice must settle itself, each with the alternative it beats
 
-The spec fixes the behaviour; these are where it stops short. Each is recorded rather than discovered mid-task, and none changes an acceptance criterion.
+The spec fixes the behavior; these are where it stops short. Each is recorded rather than discovered mid-task, and none changes an acceptance criterion.
 
 ### S1 — the drag lives on the card's outer box and the list's `<tr>`, not on the buttons inside them
 
@@ -91,11 +91,11 @@ D9: *"Dropping on **+** opens the name field, and confirming creates the shelf w
 
 ### S5 — the drop is read in the row's `onDrop` and cleared by the window, so `stopPropagation` must not be called
 
-D9 puts the clear on the **window's** `drop`/`dragend`. The row's `onDrop` runs during the target phase, before the event bubbles to the window, so the order is: row reads the slot → row calls `addToShelf` → window clears. **That order is a contract, and `e.stopPropagation()` in the row's drop breaks it** — the window never sees the drop, the slot keeps its payload, and the next drop of a *different* drag can carry stale ids. So the row's handlers stop nothing, and a walk case asserts it. **The alternative:** clear in the row and treat `stopPropagation` as ordinary hygiene — one line, and it removes the only thing guaranteeing a cancelled or failed drop leaves no payload behind.
+D9 puts the clear on the **window's** `drop`/`dragend`. The row's `onDrop` runs during the target phase, before the event bubbles to the window, so the order is: row reads the slot → row calls `addToShelf` → window clears. **That order is a contract, and `e.stopPropagation()` in the row's drop breaks it** — the window never sees the drop, the slot keeps its payload, and the next drop of a *different* drag can carry stale ids. So the row's handlers stop nothing, and a walk case asserts it. **The alternative:** clear in the row and treat `stopPropagation` as ordinary hygiene — one line, and it removes the only thing guaranteeing a canceled or failed drop leaves no payload behind.
 
 ### S6 — the ring is a `ring`, never a `border` or a `padding`
 
-Invariant 7 makes the shelf row's height real geometry (`ROW_HEIGHT`-style constants are the views'; the row's own box is content-plus-padding and every row below it shifts when one grows). So the drag highlight is a Tailwind `ring-*` utility — a box-shadow, which occupies no layout — and the transition is a colour, not a size. **The alternative:** a `border` (which would add 2px to the row and move every shelf below it down, mid-drag) or a `scale`/`translate` (which moves the hit target under the cursor). Both are what a screenshot would show as jitter rather than a build failure, which is why this is written down here.
+Invariant 7 makes the shelf row's height real geometry (`ROW_HEIGHT`-style constants are the views'; the row's own box is content-plus-padding and every row below it shifts when one grows). So the drag highlight is a Tailwind `ring-*` utility — a box-shadow, which occupies no layout — and the transition is a color, not a size. **The alternative:** a `border` (which would add 2px to the row and move every shelf below it down, mid-drag) or a `scale`/`translate` (which moves the hit target under the cursor). Both are what a screenshot would show as jitter rather than a build failure, which is why this is written down here.
 
 ### S7 — `isImportDrag` is extracted from the hook so AC25 is a real case, not a walk
 
@@ -116,7 +116,7 @@ D9: *"a fanned stack of up to three thumbs with a gold count badge, drawn into a
 Two sentences are slice 3's to revisit because slice 3 is what makes them true or false. Both are one-line changes; both are flagged here so they are not made silently in a component.
 
 1. **The empty-shelf pane.** It currently reads *"Add books from the library — right-click a book, then Add to Shelf…"* (slice 2 replaced D9's *"Drag books here, or use Add to Shelf."*, whose first half named an action that did not exist). After this slice there are **two** working routes from that pane: drop onto the shelf's sidebar row, or go to the Library and use the menu. The plan's default is to name the drag as well: *"Add books from the library — drag them onto this shelf in the sidebar, or right-click a book."* D9's original sentence stays wrong even now, because *"here"* was never the pane: the pane is not a drop target, the sidebar row is. Task 4 changes the string; the owner may prefer shorter.
-2. **The sidebar's empty state.** Slice 2 replaced D9's *"Drag books here to start a shelf"* with a labelled **New shelf** row, because the sentence named the one action slice 2 could not perform. The row stays — a control beats an instruction about one, and it is now also a drop target — so the plan does **not** restore D9's line. If the owner wants the affordance taught in words as well as by the ring, the place for it is the row's `title`, not a paragraph above it.
+2. **The sidebar's empty state.** Slice 2 replaced D9's *"Drag books here to start a shelf"* with a labeled **New shelf** row, because the sentence named the one action slice 2 could not perform. The row stays — a control beats an instruction about one, and it is now also a drop target — so the plan does **not** restore D9's line. If the owner wants the affordance taught in words as well as by the ring, the place for it is the row's `title`, not a paragraph above it.
 
 ---
 
@@ -127,7 +127,7 @@ Two sentences are slice 3's to revisit because slice 3 is what makes them true o
 - TypeScript strict, **no `any`**. Handler params are typed as what they use: a structural `{ dataTransfer: DataTransfer | null }` rather than `React.DragEvent` in `book-drag.ts`, so the module keeps no React import and stays unit-testable.
 - The code blocks below are not guaranteed Prettier-formatted: run `npx prettier --write <the code files you touched>` before `npm run lint`, which runs with `--max-warnings=0`. **Never `prettier --write` the markdown** — the docs tree is deliberately not Prettier-formatted (`npx prettier --check "docs/**/*.md"` fails 48 files) and doing it churns ~400 unrelated lines. Edit prose by hand.
 - Invariant 7: **nothing added above either view, and no geometry moves.** The drag adds attributes, handlers and a `ring` class (S6); it adds no DOM child to a card or a row, and no element between `<Toolbar />` and `<main>`. The guard is `shelf-list-wiring.test.ts`'s existing invariant-7 block (which pins `ROW_HEIGHT = 37`, `CARD_META_HEIGHT = 68`, `CARD_META_MARGIN = 8` and their consuming expressions) plus a diff that shows no change to those constants or to the cells that carry them.
-- **Renderer colours come from design tokens** (`src/lib/theme/palette-scan.test.ts` fails the build otherwise): the ring is `ring-gold-400`, the same token the selection ring on a card already uses.
+- **Renderer colors come from design tokens** (`src/lib/theme/palette-scan.test.ts` fails the build otherwise): the ring is `ring-gold-400`, the same token the selection ring on a card already uses.
 - **No renderer file restates a sentence the main process composes** (`src/lib/storage-copy-scan.test.ts`). A refused drop shows the storage copy through `nasStatus.copy.label` — a label, not an instruction (slice 2's R7, settled with the owner 2026-09-24) — and the add/remove sentences stay in `shelf-membership.ts` where slice 2 put them.
 - Every shelf write still goes through the funnel: a component calls `addToShelf`/the store action, never `window.Musaeum.shelves.*` inline. `ShelfList`'s own create/rename/delete remain the stated exception (slice 2's docblock, unchanged).
 - The MIME type has **one definition** (`BOOK_DRAG_MIME` in `book-drag.ts`) and no second string literal anywhere, including in tests: the cases import the constant.
@@ -138,7 +138,7 @@ Two sentences are slice 3's to revisit because slice 3 is what makes them true o
 
 The five inputs the spec implies but no acceptance criterion exercises, most likely to bite first. Each has a case or a step in the task named.
 
-1. **A cancelled drag (Escape) leaves no payload.** `dragend` fires on the source for a cancelled drag in Chromium, but the source may have been unmounted by then — so the payload's clear cannot depend on the source element. If it is, a later drop adds the *previous* drag's books. *Task 2's slot cases, Task 4's window-clear walk.*
+1. **A canceled drag (Escape) leaves no payload.** `dragend` fires on the source for a canceled drag in Chromium, but the source may have been unmounted by then — so the payload's clear cannot depend on the source element. If it is, a later drop adds the *previous* drag's books. *Task 2's slot cases, Task 4's window-clear walk.*
 2. **A drop with nothing in the slot** — a drag that started in another app, or a `dragover` that arrives after a cleared slot — must not act: no ring, no toast, and above all no `addBooks(id, [])`. *Task 4.*
 3. **The rows refresh mid-drag.** `shelves:changed` can land (a REST write from the phone, an adoption) while the pointer is over a row, so the drop must act on the **id** it was rendered with and re-look-up the shelf, never on a captured `ShelfSummary` object. *Task 4.*
 4. **A multi-book drag counts what was carried, not what is selected at drop time.** The toast is `addToShelf`'s and its number comes from main's answer, so the risk is not the toast but the *refusal* decisions (`!ids.length`, the open-shelf check) being made from the live selection instead of the payload. *Tasks 2, 4.*
@@ -272,7 +272,7 @@ describe('the import overlay stays down (AC25)', () => {
     expect(isImportDrag([BOOK_DRAG_MIME, 'text/plain'])).toBe(false)
   })
 
-  it('still recognises a real file drop', () => {
+  it('still recognizes a real file drop', () => {
     expect(isImportDrag(['Files'])).toBe(true)
     expect(isImportDrag(['text/plain', 'Files'])).toBe(true)
   })
@@ -564,7 +564,7 @@ In `BookCard.tsx`, on the root `div` (lines 92–100) — and note what moves an
       draggable
       onDragStart={(e) => startBookDrag(e, book.id, useUIStore.getState().selection)}
       // Clearing on the source is not enough — a virtualized card can unmount
-      // mid-drag — but this is where a *cancelled* drag ends, and the payload
+      // mid-drag — but this is where a *canceled* drag ends, and the payload
       // must not outlive it (Review Focus 1)
       onDragEnd={clearDragPayload}
       onContextMenu={(e) => {
@@ -980,7 +980,7 @@ Append `## Built — slice 3` with: the commit list, the real counts (`git diff 
 
 - [ ] **Step 6: Verify and commit**
 
-Run: `npm test` (the docs change no behaviour, but the source walks read these files' neighbours — this catches a stray edit).
+Run: `npm test` (the docs change no behavior, but the source walks read these files' neighbors — this catches a stray edit).
 
 ```bash
 git add docs/invariants/shelves.md docs/invariants/library-views.md \
@@ -992,7 +992,7 @@ git commit -m "shelves slice 3: the drag rules, the copy, and the record
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
-**— Part 3b review gate, and the slice's last one.** The reviewer's list, against CLAUDE.md's invariants and the fact that this is the last code change of the slice: invariant 7 (the ring is a shadow; no new child in the card or the row; `shelf-list-wiring.test.ts`'s geometry block untouched — and its pinned constants still 37 / 68 / 8); invariant 9 (nothing builds a `file://` URL; the drag image's `<img src>` comes from `coverUrl`, which is `musaeum://`); invariant 8 (no IPC or service change at all — this slice's diff has no file under `electron/`); the palette scan (`ring-gold-400` is a token, and the drag-image node's literals are the two hexes `src/index.css` declares — a third colour there is a finding); and that the funnel holds (every add goes through `addToShelf`; `ShelfList`'s direct `window.Musaeum.shelves.create` is slice 2's stated exception and now takes a second argument). **Live check, end to end:** drag one book onto a shelf row (toast counts 1, the row's count grows by 1), drag a two-book selection onto the same row (toast counts 2), drop onto the open shelf (nothing at all — no ring, no toast), drop onto **+** and name it (the new shelf holds them), stop the share and try again (refused, with the storage label as the tooltip), and the AC27 scroll case.
+**— Part 3b review gate, and the slice's last one.** The reviewer's list, against CLAUDE.md's invariants and the fact that this is the last code change of the slice: invariant 7 (the ring is a shadow; no new child in the card or the row; `shelf-list-wiring.test.ts`'s geometry block untouched — and its pinned constants still 37 / 68 / 8); invariant 9 (nothing builds a `file://` URL; the drag image's `<img src>` comes from `coverUrl`, which is `musaeum://`); invariant 8 (no IPC or service change at all — this slice's diff has no file under `electron/`); the palette scan (`ring-gold-400` is a token, and the drag-image node's literals are the two hexes `src/index.css` declares — a third color there is a finding); and that the funnel holds (every add goes through `addToShelf`; `ShelfList`'s direct `window.Musaeum.shelves.create` is slice 2's stated exception and now takes a second argument). **Live check, end to end:** drag one book onto a shelf row (toast counts 1, the row's count grows by 1), drag a two-book selection onto the same row (toast counts 2), drop onto the open shelf (nothing at all — no ring, no toast), drop onto **+** and name it (the new shelf holds them), stop the share and try again (refused, with the storage label as the tooltip), and the AC27 scroll case.
 
 ---
 
@@ -1010,7 +1010,7 @@ Stated plainly, because this plan's first task exists to settle them and a reade
 
 1. **The CDP drag instrument itself.** `Input.dispatchMouseEvent` with a press-then-move is *expected* to start a native HTML5 drag in a headed Chromium window; the session that wrote this plan did not run it. If it does not, the fallbacks are in Task 1.
 2. **That `draggable` on a `<tr>` starts a drag**, and that the card's outer `div` does while the `<button>` inside it would compete with its own click (S1's claim).
-3. **That `dataTransfer.getData()` is empty during `dragover` in this build.** Documented Chromium behaviour and the reason the slot exists (S2); confirming it is what makes S2 a measurement rather than a citation.
+3. **That `dataTransfer.getData()` is empty during `dragover` in this build.** Documented Chromium behavior and the reason the slot exists (S2); confirming it is what makes S2 a measurement rather than a citation.
 4. **That `scrollTop` set mid-drag unmounts the source row *and* the drop still lands** (AC27). Both halves are needed for the criterion to mean anything, and only the app can show it.
 5. **Nothing about slice 4's menu work** — the row menu is untouched here and *Send to ‹device›* is not stubbed.
 
@@ -1048,7 +1048,7 @@ Landed 2026-09-28, `src/` and docs only, in six commits before this record:
 
 ### Divergences from this plan, each measured or justified
 
-- **The drag image's colours are the palette's tokens** (`rgb(var(--ink-900) / 0.92)`, `rgb(var(--gold-400))`), not the plan's literals — the plan's hexes were wrong against `src/index.css` (`ink-900` is `20 17 13`, not `20 17 14`; `gold-400` is `212 162 78`, not `212 171 88`), and the node rides `document.body` while the theme writes its properties onto the document root, so the tokens resolve and survive a stored theme where literals would not. `img.decoding = 'sync'` was added beside it.
+- **The drag image's colors are the palette's tokens** (`rgb(var(--ink-900) / 0.92)`, `rgb(var(--gold-400))`), not the plan's literals — the plan's hexes were wrong against `src/index.css` (`ink-900` is `20 17 13`, not `20 17 14`; `gold-400` is `212 162 78`, not `212 171 88`), and the node rides `document.body` while the theme writes its properties onto the document root, so the tokens resolve and survive a stored theme where literals would not. `img.decoding = 'sync'` was added beside it.
 - **`bare()` is applied in both new walks** — the Global Constraint required it; the Task 4/5 case snippets did not show it. `book-drag-wiring.test.ts` also grew a `bare` (its third case now checks both files for `setDragImage`/`dragImage`, not one spelling in one file).
 - **Task 4's `dragBlock` slice was fixed**: `SOURCE.indexOf('return (')` finds the menu effect's cleanup `return () => {` *before* `canAcceptDrop`, so the plan's case as written slices empty and can never pass; the case now ends the slice at the next `return (` after the handler.
 - **The part-3a review's S1 finding landed in Task 4**: `canAcceptDrop` and `onRowDrop` both gate on the event's own types (`isBookDrag`), because the window's unconditional `dragover` `preventDefault` (`useDragDrop`, for file imports) means a refused target cannot rely on "no accepted `dragover`, no drop" alone — and the slot can hold stale ids after a drag the window never saw end (Escape or a release over another app, the source already unmounted). The live pass then measured that `dropEffect = 'none'` *does* suppress the `drop` event entirely — so the gate is defense-in-depth, and this record says so rather than claiming the leak it prevents was observed.

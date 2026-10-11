@@ -41,7 +41,7 @@ Each invariant file carries the *why* — the measurement, the failure it was wr
 
 Musaeum is a macOS Electron application for personal ebook library management, designed to replace Calibre for a library of 7000+ books stored on network-attached storage. It prioritizes automatic metadata hydration, clean organization, and frictionless device delivery.
 
-**Beauty is a first-class requirement.** The UI follows a "dark library" aesthetic: warm near-black surfaces, amber/gold accents, serif display type for book titles, covers as the hero element. The palette is consumed through design tokens: `tailwind.config.js` defines them as `rgb(var(--x) / <alpha-value>)` over CSS custom properties, and the properties' *default* lives in `src/index.css`'s `:root` (`ink`, `parchment`, `gold`; plus `font-display`). Since slice 3 of the theming feature a stored theme re-writes those properties at runtime, so `tailwind.config.js` is the palette's *shape* and `:root` is its default, not its identity — a colour decision that lives outside both (a literal in a component, a stock Tailwind hue) is invisible to theming.
+**Beauty is a first-class requirement.** The UI follows a "dark library" aesthetic: warm near-black surfaces, amber/gold accents, serif display type for book titles, covers as the hero element. The palette is consumed through design tokens: `tailwind.config.js` defines them as `rgb(var(--x) / <alpha-value>)` over CSS custom properties, and the properties' *default* lives in `src/index.css`'s `:root` (`ink`, `parchment`, `gold`; plus `font-display`). Since slice 3 of the theming feature a stored theme re-writes those properties at runtime, so `tailwind.config.js` is the palette's *shape* and `:root` is its default, not its identity — a color decision that lives outside both (a literal in a component, a stock Tailwind hue) is invisible to theming.
 
 ---
 
@@ -96,7 +96,7 @@ Fixed; do not substitute. Process model, directory layout and path aliases are i
 
 ## Invariants — never break these
 
-Each one is load-bearing and has a doc carrying the full reasoning. If a change would require bending one, that is an escalation (below), not a judgement call.
+Each one is load-bearing and has a doc carrying the full reasoning. If a change would require bending one, that is an escalation (below), not a judgment call.
 
 1. **`metadata.json` is canonical; `catalog.json` is derived.** Never make the catalog authoritative, and never write it from a path that has not already written `metadata.json`. (`invariants/nas-and-catalog.md`)
 2. **Every file lookup resolves by extension**, never by canonical filename — a book renamed after import must still open, hydrate, delete and transfer. (`invariants/files-and-deletion.md`)

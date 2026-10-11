@@ -53,7 +53,7 @@ const STATE_TONE: Record<RestApiListenState, string> = {
 
 interface RestApiSectionProps {
   view: SettingsView
-  /** A row write is in flight — its own flag, so it never greys the whole dialog. */
+  /** A row write is in flight — its own flag, so it never grays the whole dialog. */
   applying: boolean
   /** A dialog write is in flight; the switch must not fire a second one into it. */
   busy: boolean

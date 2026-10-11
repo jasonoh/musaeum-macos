@@ -27,7 +27,7 @@
 5. **`at` is the client's clock, and it must lose to a newer local write** (AC21). A phone whose clock is behind must not rewind progress the Mac has already advanced.
 6. **The contract's document and goldens are each other's decider.** `shape.test.ts` parses the `json payload=` blocks out of `docs/rest-api.md` and compares them field for field, so 1c's payload needs its own block in the document **and** an entry in the test's `PAYLOADS` map — a payload added to the code and not to that map is invisible to every case, which the review named as the pair's one blind spot.
 
-## The judgement the review handed to this slice (do it here, not separately)
+## The judgment the review handed to this slice (do it here, not separately)
 
 `api/rest.ts` is 1,008 lines: the routing switch, the byte machinery **and** ~126 lines of pure parameter parsing (`parseLibraryQuery`, `parseSort`, `intParam`, `listParam`, `matchBookPath`, `decodeSegment`). The pre-merge review's verdict was that the layer is thin in the sense invariant 8 means — it decides no query, no path rule, no payload — but that D2's own test is "anything that can be a pure function of inputs becomes one so the suite can decide it without a socket", and these six are exactly that, reachable today only through a live socket. **The split, to do as part of 1c rather than as a slice of its own:**
 

@@ -61,7 +61,7 @@ def row(text, x, y, size=10.0):
     return out
 
 
-def test_tokens_normalise_quotes_and_line_break_hyphens():
+def test_tokens_normalize_quotes_and_line_break_hyphens():
     assert gate.tokens("Tycho’s mer-\ncenary “soldier”") == ["tycho's", "mercenary", "soldier"]
 
 
@@ -117,7 +117,7 @@ def test_rotated_only_tokens_are_caught_in_the_spine():
     assert gate.check_rotated(["attention", "03762v5"], stamp)[0].startswith("G3 ")
 
 
-def test_check_figures_catches_mislabelled_bytes_slivers_and_counts(tmp_path):
+def test_check_figures_catches_mislabeled_bytes_slivers_and_counts(tmp_path):
     epub = make_epub(
         tmp_path / "f.epub",
         [("c.xhtml", "<p>x</p>")],

@@ -8,7 +8,7 @@ color: yellow
 
 Start from `CLAUDE.md` at the repo root: it carries the invariants list, the routing table, and the escalation rule.
 
-You own `electron-builder.yml`, `scripts/`, `build/`, `services/python-env.ts`, and the packaging paths in `electron/main/index.ts`. You do not own app behaviour — if the fix is "the app should do X", it belongs to another agent.
+You own `electron-builder.yml`, `scripts/`, `build/`, `services/python-env.ts`, and the packaging paths in `electron/main/index.ts`. You do not own app behavior — if the fix is "the app should do X", it belongs to another agent.
 
 ## Read first, always
 
@@ -26,11 +26,11 @@ You own `electron-builder.yml`, `scripts/`, `build/`, `services/python-env.ts`, 
 
 ## Escalate — stop and hand back — when
 
-- The fix would change app behaviour rather than how it is built or bundled.
+- The fix would change app behavior rather than how it is built or bundled.
 - Enabling signing or notarization is implied — that is a decision, not a task.
 - A change would require an entry in `mac.identity`, `extraResources`, or CI.
 - A packaged-only failure survives two focused attempts.
 
 ## Always end your response in this structure
 
-**## Done** — what you changed, in `file:line` terms. **## Verified** — the build/launch command you ran and its real output, or "not run" with the reason. **## Escalate** — only if you hit a judgement call you could not resolve. Omit otherwise.
+**## Done** — what you changed, in `file:line` terms. **## Verified** — the build/launch command you ran and its real output, or "not run" with the reason. **## Escalate** — only if you hit a judgment call you could not resolve. Omit otherwise.

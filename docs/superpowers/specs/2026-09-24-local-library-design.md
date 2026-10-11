@@ -67,7 +67,7 @@ Frames were captured at `<scratch>/musaeum-localprobe/frames/` (`01-local-librar
 
 **Not true today, and inside this feature rather than free:**
 
-- **There is no `nas-manager.test.ts`.** The module that owns the app's recovery behaviour has no direct suite; its behaviour is covered only incidentally by the suites that call `setLibraryRoot(tmpdir)`. This slice puts a decision in it, so it needs one.
+- **There is no `nas-manager.test.ts`.** The module that owns the app's recovery behavior has no direct suite; its behavior is covered only incidentally by the suites that call `setLibraryRoot(tmpdir)`. This slice puts a decision in it, so it needs one.
 - **`state === 'connected'` is re-derived in six components** (`BookDetail`, `SelectionPanel`, `DeleteBookDialog`, `DeleteSelectionDialog`, `BookEditor`, `SettingsModal`) and two more read `state` for copy (`Sidebar`, `NASStatusBanner`). Adding a union member fans out to all of them; the ones that only gate a button are fine (they want "can I write"), but the two that *render state* must learn the new member or they will fall through to `Offline`.
 
 ---
@@ -98,7 +98,7 @@ Frames were captured at `<scratch>/musaeum-localprobe/frames/` (`01-local-librar
 
 **Why:** a backoff is a claim that waiting is a strategy. For a share that is true — shares come back. For a folder it is false, and the retry's only observable effects are three `open` calls a minute (reading 9) and a banner that lies (reading 11). The distinction also makes the *fix* legible: `offline` means "come back later", `missing` means "tell me where it went".
 
-**Consequence:** the banner, the sidebar row and the Settings row each gain a case. `'missing'` must not be `'disconnected'` with different words — the *behaviour* differs (no timer), so a state that only changes copy is the wrong shape; and the `nextRetryMs` field must actually be null or the banner's `Retrying in Ns` will render for a state that is not retrying.
+**Consequence:** the banner, the sidebar row and the Settings row each gain a case. `'missing'` must not be `'disconnected'` with different words — the *behavior* differs (no timer), so a state that only changes copy is the wrong shape; and the `nextRetryMs` field must actually be null or the banner's `Retrying in Ns` will render for a state that is not retrying.
 
 ## D3 — `reconnect()` can return to `disconnected` (D-B's fix)
 
@@ -122,7 +122,7 @@ Frames were captured at `<scratch>/musaeum-localprobe/frames/` (`01-local-librar
 
 **Why:** a field whose placeholder is a server the user does not own (`settings.ts:126-131` resolving the compiled-in `smb://nas` as `source: 'default'`) is worse than an absent one: it invites the reading "this app expects something from me here". Keeping the view total rather than making the field conditional *in the type* avoids churning a shared interface for a render-time decision — the same reason the row renders the listener's report whole.
 
-**Consequence:** `DEFAULT_SMB_URL` should lose its personal value in favour of an empty/blank resolved state, or the word "default" in that row keeps meaning `nas`. Either way, this is the only place a personal server name is compiled into the product.
+**Consequence:** `DEFAULT_SMB_URL` should lose its personal value in favor of an empty/blank resolved state, or the word "default" in that row keeps meaning `nas`. Either way, this is the only place a personal server name is compiled into the product.
 
 ## D6 — The recovery for a local library is the picker, pre-pointed
 
@@ -144,7 +144,7 @@ Frames were captured at `<scratch>/musaeum-localprobe/frames/` (`01-local-librar
 
 **Decision:** the `nas:getStatus` / `nas:setLibraryRoot` / `nas:reconnect` channels, the `NASState` / `NASStatus` types, `nas-manager.ts`'s filename, the `nas.store`, the renderer's `nas` key and `Book.nasPath` are **not** renamed. Only user-visible strings change.
 
-**Why:** renaming them touches ~20 files across both processes for zero behaviour, which is exactly the drive-by churn the repo's conventions forbid; and `nasPath` in particular is a field name inside the metadata contract's neighbourhood, where a rename has an audience outside this repo (the iOS client and `docs/rest-api.md`). A future rename is its own mechanical slice, with no invariant and no reasoning attached.
+**Why:** renaming them touches ~20 files across both processes for zero behavior, which is exactly the drive-by churn the repo's conventions forbid; and `nasPath` in particular is a field name inside the metadata contract's neighborhood, where a rename has an audience outside this repo (the iOS client and `docs/rest-api.md`). A future rename is its own mechanical slice, with no invariant and no reasoning attached.
 
 **Consequence:** the code will keep saying NAS where the UI says "library folder". That is a deliberate asymmetry this paragraph exists to record, so nobody reads it later as an oversight.
 
@@ -252,7 +252,7 @@ The local case itself is now four bullets where there was one, each naming its d
 
 **Gates:** `npx prettier --check` clean on the two touched files that were clean at `HEAD` (`README.md` and the invariant file — so the check is about this slice's own lines); the other three (`tasks.md` and the two specs) were **already dirty at `HEAD`** and are left exactly as they were, with every line this slice added to them prettier-clean — decided by diffing Prettier's own output against the file and confirming no hunk lands inside the added text, which is the house rule the theming slice 7b established (record the pre-existing dirt, never reformat it). `npm run typecheck` 0 and `npm run lint` 0, unchanged — no code touched — and **`npm test` 1500 passed across 64 files**, which is slice 2's number unchanged: this slice's own evidence is a green suite that did not move, and saying so is better than quoting a count as though the slice produced it.
 
-**CHANGELOG: no entry, and the check rather than the judgement.** `git rev-list --count $(git log -1 --format=%H -- CHANGELOG.md)..HEAD` is **0** — the file was last written by slice 2's commit — and slice 2's entries already carry every part of this feature a user would notice. This slice changes nothing a user can do, so the row's `CHANGELOG.md` is the one file of the four it does not touch.
+**CHANGELOG: no entry, and the check rather than the judgment.** `git rev-list --count $(git log -1 --format=%H -- CHANGELOG.md)..HEAD` is **0** — the file was last written by slice 2's commit — and slice 2's entries already carry every part of this feature a user would notice. This slice changes nothing a user can do, so the row's `CHANGELOG.md` is the one file of the four it does not touch.
 
 ### The two residues, and where the owner put them (2026-09-24)
 

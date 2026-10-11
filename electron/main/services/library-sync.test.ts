@@ -478,7 +478,7 @@ describe('refreshLibrary', () => {
   it('reloads the cache from the catalog', async () => {
     await writeCatalog(root, [makeBook('a')])
     const result = await librarySync.refreshLibrary()
-    expect(result).toEqual({ books: 1, cancelled: false })
+    expect(result).toEqual({ books: 1, canceled: false })
     expect(getBooks().map((b) => b.id)).toEqual(['a'])
   })
 
@@ -490,7 +490,7 @@ describe('refreshLibrary', () => {
       JSON.stringify({ id: 'uuid-9', title: 'Walked' })
     )
     const result = await librarySync.refreshLibrary()
-    expect(result).toEqual({ books: 1, cancelled: false })
+    expect(result).toEqual({ books: 1, canceled: false })
     expect(getBooks()[0]?.title).toBe('Walked')
     expect((await readCatalog(root))?.books.length).toBe(1)
   })
@@ -535,7 +535,7 @@ describe('rebuildCatalog', () => {
     const result = await librarySync.rebuildCatalog()
     await librarySync.flushForTests()
 
-    expect(result).toEqual({ books: 1, cancelled: false })
+    expect(result).toEqual({ books: 1, canceled: false })
     expect(getBook('rs-rebuild-newer')?.readingState).toEqual(local.readingState)
   })
 
@@ -558,7 +558,7 @@ describe('rebuildCatalog', () => {
     })
     const result = await librarySync.rebuildCatalog().finally(unsubscribe)
 
-    expect(result).toEqual({ books: 0, cancelled: true })
+    expect(result).toEqual({ books: 0, canceled: true })
     expect(getBooks().length).toBe(rowsBefore)
     expect(await fs.readFile(join(root, 'catalog.json'), 'utf8')).toBe(rawBefore)
   })
@@ -575,7 +575,7 @@ describe('rebuildCatalog', () => {
     // could tell the two apart, so this case pins the reset instead.
     librarySync.cancelRefresh()
 
-    expect(await librarySync.rebuildCatalog()).toEqual({ books: 1, cancelled: false })
+    expect(await librarySync.rebuildCatalog()).toEqual({ books: 1, canceled: false })
     expect(getBook('ok-1')?.title).toBe('Ok')
   })
 })

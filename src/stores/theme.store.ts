@@ -50,7 +50,7 @@ interface ThemeState {
   setTheme(id: string): Promise<string | null>
   /** Import provider files by path: dropped ones, or one the user chose. */
   importPaths(paths: string[]): Promise<string | null>
-  /** The native multi-select picker. A cancelled dialog imports nothing. */
+  /** The native multi-select picker. A canceled dialog imports nothing. */
   importFromDialog(): Promise<string | null>
   /** Re-scan the drop-box directory, so files put there by hand show up (AC4.3). */
   syncFolder(): Promise<string | null>

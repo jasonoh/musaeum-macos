@@ -314,7 +314,7 @@ interface RouteDeps {
   upload: UploadOptions
 }
 
-/** A file to serve, and the type its bytes are labelled with. */
+/** A file to serve, and the type its bytes are labeled with. */
 interface ByteSource {
   path: string
   contentType: string
@@ -421,7 +421,7 @@ async function sendBytes(
 /**
  * How long a `format=reflow` request waits for the pass before answering 202. A
  * cached artifact, or a quick pass, is served in the same request; a long one is
- * polled. The pass is never cancelled by the window closing.
+ * polled. The pass is never canceled by the window closing.
  */
 export const REFLOW_GRACE_MS = 2000
 
@@ -758,7 +758,7 @@ async function handleShelfMembership(
 // ---------------------------------------------------------------------------
 
 /**
- * The upload's refusal vocabulary, mapped once — a lookup, not a judgement.
+ * The upload's refusal vocabulary, mapped once — a lookup, not a judgment.
  *
  * The reasons are `services/api/upload.ts`'s own union, and the `Record` is over
  * it, so a sixth reason there is a `npm run typecheck` failure here until its
@@ -1357,7 +1357,7 @@ async function activate(options: StartOptions): Promise<RestApiStatus> {
 
 /**
  * Bumped by every stop. An activation that was in flight when it moved has been
- * cancelled — see the race handled in `activate`.
+ * canceled — see the race handled in `activate`.
  */
 let stopEpoch = 0
 
@@ -1367,7 +1367,7 @@ let stopEpoch = 0
  *
  * `close()` alone leaves an in-flight transfer (a book, minutes long) holding
  * its socket, and a stop the owner asked for should not leave a download
- * running. The `!listening` guard is not an optimisation: `close()` on a server
+ * running. The `!listening` guard is not an optimization: `close()` on a server
  * that never listened calls back with `ERR_SERVER_NOT_RUNNING`, which would turn
  * a *successful* activation's status into a failure — and the `listen` seam
  * answers without ever binding, so that shape is reachable from a case.

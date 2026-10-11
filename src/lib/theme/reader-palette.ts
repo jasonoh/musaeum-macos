@@ -6,13 +6,13 @@ import type { ThemeTokens } from '@shared/theme.types'
  *
  * **Why this is literals and not CSS variables.** The book renders in its own
  * iframe document, which the app's stylesheet does not reach. So the page's
- * colours cannot be Tailwind classes, and they cannot be `var(--ink-900)`
+ * colors cannot be Tailwind classes, and they cannot be `var(--ink-900)`
  * either: the custom properties live on the *app's* `:root`, the book document
  * has no access to them, and `vendor/foliate-js/paginator.js:191` reads the
  * book document's background back out with a string comparison
  * (`=== 'rgba(0, 0, 0, 0)'`) and re-applies it at `:626`, `:685` and `:1113` to
  * paint the margin around the page. An unresolved value takes that fallback
- * branch and the page colour stops at the iframe edge (AC5.7). Every value in
+ * branch and the page color stops at the iframe edge (AC5.7). Every value in
  * this module is therefore a plain `#rrggbb` literal.
  *
  * **Why the store import is absent.** D3: this module is pure — a token set in,
@@ -30,7 +30,7 @@ export interface ReaderPalette {
   dim: string
   link: string
   /**
-   * The link colour with its alpha **already composed onto it** (`#d4a24e44`).
+   * The link color with its alpha **already composed onto it** (`#d4a24e44`).
    *
    * A field of its own rather than `${c.link}44` written at the rule: that
    * concatenation is only valid CSS while `link` happens to be a hex literal,
@@ -41,12 +41,12 @@ export interface ReaderPalette {
    */
   linkAlphaHex: string
   /**
-   * The colour a search hit is outlined in — the derived link colour, threaded
+   * The color a search hit is outlined in — the derived link color, threaded
    * as its own field (D1) rather than read back off `link` at the call site.
    *
    * The role exists because `ReaderSearch` draws its outline inside
    * foliate-view's **closed shadow root**, where a custom property is a bet this
-   * repo does not take, so the colour has to travel as a literal. Naming it is
+   * repo does not take, so the color has to travel as a literal. Naming it is
    * what lets it be derived; D1 has this slice keep it equal to `link`, which is
    * what both authored rows already do.
    */
@@ -90,10 +90,10 @@ export const PAPER_PALETTE: ReaderPalette = {
   scheme: 'light'
 }
 
-/** The only shape a colour interpolated into the page stylesheet may have. */
+/** The only shape a color interpolated into the page stylesheet may have. */
 const HEX = /^#[0-9a-f]{6}$/
 
-/** A value that is a hex colour, or null — the guard `readerPalette` is total on. */
+/** A value that is a hex color, or null — the guard `readerPalette` is total on. */
 function hexOrNull(value: unknown): string | null {
   return typeof value === 'string' && HEX.test(value) ? value : null
 }
@@ -111,12 +111,12 @@ function hexOrNull(value: unknown): string | null {
  * **Total, deliberately.** `/^#[0-9a-f]{6}$/` is not decoration: it is the
  * module's only guarantee that the string it hands `readerPageCss` cannot be
  * interpolated into an invalid declaration. Main validates every stored theme
- * before it writes one (`theme/store.ts`'s `colourProblem`), so a set that fails
+ * before it writes one (`theme/store.ts`'s `colorProblem`), so a set that fails
  * this is a caller `src/` does not have today — and if one appears, the page gets
  * the ink row rather than `background: undefined;`, which the engine's read-back
  * would then treat as transparent (the AC5.7 failure) with nothing reporting it.
  * Reporting a palette that cannot be applied is `css.ts`'s business; a page
- * always having a colour is this function's.
+ * always having a color is this function's.
  */
 export function readerPalette(tokens: ThemeTokens | null | undefined): ReaderPalette {
   const bg = hexOrNull(tokens?.ink?.['900'])
@@ -174,7 +174,7 @@ const SANS = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue"
  * fill in what it left unsaid (AC5.6).
  *
  * Moved here verbatim from `ReaderEngine.tsx` when the palette became derived.
- * The rules are unchanged — only the colours' source changed: every
+ * The rules are unchanged — only the colors' source changed: every
  * interpolation is now a field of the resolved palette, so the string carries no
  * `var(` and no value that has to be composed at the rule (AC5.7/AC5.8).
  */

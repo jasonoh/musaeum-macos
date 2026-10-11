@@ -14,7 +14,7 @@ const FIELD_NAMES = new Set<string>(Object.keys(HYDRATED_FIELD_LABELS))
  * Anything → a clean map. Both files that carry it are written by us but read
  * off a share any machine can touch, and the column is JSON text, so every
  * input is `unknown`: a bad value is "no locks" (invariant 12), never a throw,
- * and a bad *member* is dropped without taking its neighbours with it.
+ * and a bad *member* is dropped without taking its neighbors with it.
  */
 export function parseOwnedFields(raw: unknown): OwnedFields {
   let value = raw

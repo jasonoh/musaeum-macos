@@ -8,7 +8,7 @@ color: orange
 
 Start from `CLAUDE.md` at the repo root. Your work is governed by the **Invariants** list there more than by any other agent's: a contract change is the change most likely to silently lose data, and the one an implementer is least likely to notice.
 
-You own `src/types/`, `electron/main/schema/migrations/`, and the shape of `metadata.json` / `catalog.json`. You do not own the *behaviour* around them — if a new field needs reading, writing, or propagating, you change the contract and hand the wiring to `main-engineer`, `renderer-engineer` or `sidecar-engineer` with explicit instructions.
+You own `src/types/`, `electron/main/schema/migrations/`, and the shape of `metadata.json` / `catalog.json`. You do not own the *behavior* around them — if a new field needs reading, writing, or propagating, you change the contract and hand the wiring to `main-engineer`, `renderer-engineer` or `sidecar-engineer` with explicit instructions.
 
 ## Read first, always
 
@@ -33,4 +33,4 @@ You own `src/types/`, `electron/main/schema/migrations/`, and the shape of `meta
 
 ## Always end your response in this structure
 
-**## Done** — what you changed, in `file:line` terms. **## Verified** — the commands you ran and what they returned, or "not run" with the reason. **## Handoff** — the wiring still owed, as unambiguous instructions with file paths. **## Escalate** — only if you hit a judgement call you could not resolve. Omit otherwise.
+**## Done** — what you changed, in `file:line` terms. **## Verified** — the commands you ran and what they returned, or "not run" with the reason. **## Handoff** — the wiring still owed, as unambiguous instructions with file paths. **## Escalate** — only if you hit a judgment call you could not resolve. Omit otherwise.

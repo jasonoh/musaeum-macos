@@ -110,8 +110,8 @@ export function BookDetail() {
             was "no way to initiate a cover change directly" — measured at
             **2.35:1** on his own theme (Tokyo Night Dark) and **3.99:1** on the
             defaults, against AA's 4.5:1 for text this size. The tier was the
-            mistake, not the colour: this palette's audit lets *faint* sit at
-            2.2:1 and *dim* at 3.5:1, floors meant for decoration, and a labelled
+            mistake, not the color: this palette's audit lets *faint* sit at
+            2.2:1 and *dim* at 3.5:1, floors meant for decoration, and a labeled
             control is not decoration. It keeps no background of its own so the
             contrast is measured against the surface it actually rests on, which
             is what `cover-picker-wiring.test.ts` computes. */}
@@ -191,7 +191,7 @@ export function BookDetail() {
 
         {book.description && (
           <p className="mt-5 whitespace-pre-line text-[13px] leading-relaxed text-parchment-dim">
-            {/* Rows written before descriptions were normalised at ingestion
+            {/* Rows written before descriptions were normalized at ingestion
                 still hold HTML (see lib/description.ts) */}
             {descriptionText(book.description)}
           </p>
@@ -321,7 +321,7 @@ export function BookDetail() {
             reflowed EPUB on demand (slice 3) and hands the book to the OS only
             if that pass refuses it. Only a book with no files at all falls
             through to `openBookFile`, and the button is disabled for those.
-            Deliberately *not* gated on `online` like its neighbours: those are
+            Deliberately *not* gated on `online` like its neighbors: those are
             writes, this is a read. Offline the bytes are unreachable whichever
             entry point is used, and the reader's error state says so and offers
             "Open externally" — better than a dead button with nothing to

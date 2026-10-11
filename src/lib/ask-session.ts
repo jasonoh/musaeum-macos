@@ -6,7 +6,7 @@
  *
  * 1. **What a stream does to the transcript.** `reduceAsk` is the only writer
  *    of the session state: a stream is identified by the id the caller minted,
- *    so an event for a request that has been superseded — the cancelled
+ *    so an event for a request that has been superseded — the canceled
  *    previous question is the ordinary case — cannot land in the new one.
  * 2. **What a probe verdict does to the rung** (D6). The verdict and the
  *    composer's override both feed one rule, and the override can only widen:

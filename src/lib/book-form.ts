@@ -133,7 +133,7 @@ export function changedFields(book: Partial<Book>, next: Partial<Book>): Partial
  * the publisher, description and date changed underneath an open editor, saving
  * only the author recorded all four as the user's (locking three the person
  * never touched) and wrote the form's stale blanks over the fetched values.
- * Both sides go through `toBookFields`, so a stored value the form normalises
+ * Both sides go through `toBookFields`, so a stored value the form normalizes
  * (trailing space, `''` for null) is not a phantom edit either.
  */
 export function editsSince(opened: Book, form: FormState): Partial<Book> {

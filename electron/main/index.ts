@@ -89,7 +89,7 @@ function registerMusaeumProtocol(): void {
     // library root, 404-on-missing — so this handler and `GET /api/books/{id}/cover`
     // cannot disagree about the security boundary, and so the boundary is
     // decidable without a running Electron app (D8). The refusal carries its own
-    // status because the split *is* the behaviour being preserved: 400 for a row
+    // status because the split *is* the behavior being preserved: 400 for a row
     // that escapes the library root, 404 for a missing root, book or cover.
     const cover = await resolveCoverFile(bookId, rest)
     if (!cover.ok) return new Response(null, { status: cover.status })
@@ -139,7 +139,7 @@ function adoptWindow(win: BrowserWindow): void {
 
 function createWindow(): BrowserWindow {
   // The platform's own chrome — scrollbars, traffic lights, the menu bar, the
-  // caret, `<select>` popups — is not ours to colour; it follows
+  // caret, `<select>` popups — is not ours to color; it follows
   // `nativeTheme.themeSource` and nothing else. Set here from the same stored
   // theme the window's background comes from, so the two cannot disagree at
   // boot. The *decision* is `nativeScheme`, in the theme service, where it has a
@@ -214,7 +214,7 @@ app.whenReady().then(() => {
   // the tokens repainted from here are the ones that were just written.
   //
   // `themeSource` is set unconditionally — it is process-wide and needs no
-  // window — while the window's own colour is guarded exactly as `broadcast`
+  // window — while the window's own color is guarded exactly as `broadcast`
   // guards its send: a theme change after the window is gone (`window-all-closed`
   // on a non-macOS quit, or a rejection between `close` and `activate`) logs
   // nothing and throws nothing (`CLAUDE.md` #12).
@@ -223,7 +223,7 @@ app.whenReady().then(() => {
     // The registry types the payload `unknown`, so it is cast once and then
     // *checked* — not asserted and trusted. A future broadcast of this channel
     // from anywhere else must not be able to take the main process down from a
-    // listener, and it must not be able to set the window's colour from a record
+    // listener, and it must not be able to set the window's color from a record
     // that is not a theme: the check is on the two fields this handler reads, so a
     // tokens object missing `dark` (nativeScheme would answer `'light'`) or a
     // canvas is reported rather than applied in silence (`CLAUDE.md` #12).

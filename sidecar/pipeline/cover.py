@@ -1,4 +1,4 @@
-"""Cover candidate gathering, scoring, summarising, and writing.
+"""Cover candidate gathering, scoring, summarizing, and writing.
 
 score = resolution*0.4 + aspect_ratio*0.3 + source_priority*0.2 + file_size*0.1
 Top two within 15% → also emit a 'cover' review conflict (top one is still
@@ -6,7 +6,7 @@ applied so the book is never coverless while waiting on review).
 
 Two callers, one set of rules. `hydrate_metadata` gathers candidates, scores
 them and writes the winner; `cover_candidates` (the picker's gather) scores the
-same list and summarises it without writing anything — so the jackets a person
+same list and summarizes it without writing anything — so the jackets a person
 is offered are exactly the jackets the fetch decides between, ranked by the same
 formula and previewed by the same `preview_data_url` the conflict queue's tiles
 use. A second copy of the gather, the ranking or the preview rule is the defect
@@ -58,7 +58,7 @@ def gather_candidates(file_path: str, google: Optional[dict], openlib: Optional[
     """Every cover a fetch would consider for this book, in source order.
 
     The one home for the candidate set. `hydrate_metadata` scores exactly this
-    list, and the picker's gather summarises exactly this list, so the jackets a
+    list, and the picker's gather summarizes exactly this list, so the jackets a
     person is offered cannot be a different set from the jackets the fetch
     silently decides between — that agreement is the whole point of gathering
     the candidates live (D1 of the cover-choice design).
@@ -104,7 +104,7 @@ def score_candidates(candidates: list) -> list:
     Downloads a candidate that did not bring its own bytes, drops anything PIL
     cannot read and anything under the 120 px floor, and sorts. The sort lives
     here rather than at each caller because both take the head as *the* winner —
-    the writer, and the summariser that tells the picker which one would win.
+    the writer, and the summarizer that tells the picker which one would win.
     """
     scored = []
     for cand in candidates:
@@ -156,7 +156,7 @@ def select_cover(candidates: list, book_dir: str) -> dict:
         # URLs only, on purpose: a queued cover conflict carries a *value* a
         # resolver can send back to `fetch_cover`, and an embedded candidate has
         # no URL to send. The picker is where the file's own jacket is visible —
-        # see `summarise_candidates`.
+        # see `summarize_candidates`.
         "candidates": [
             {"source": c["source"], "url": c["url"], "width": c["width"], "height": c["height"]}
             for c in scored
@@ -165,7 +165,7 @@ def select_cover(candidates: list, book_dir: str) -> dict:
     }
 
 
-def summarise_candidates(scored: list, book_dir: str) -> list:
+def summarize_candidates(scored: list, book_dir: str) -> list:
     """The picker's payload: one entry per scored candidate, best first.
 
     `scored` must be `score_candidates`' own list, because `winner` is its head
@@ -261,7 +261,7 @@ def _renditions(data: bytes) -> tuple:
 
     One home for the rendition sizes and qualities, because two questions are
     answered from them: `_write_cover` writes exactly these bytes, and
-    `summarise_candidates` compares a candidate against the full one to decide
+    `summarize_candidates` compares a candidate against the full one to decide
     `applied`. Deriving them twice would let "this is the cover on disk" and
     "this is what a pick would write" come out disagreeing on the same image.
     """

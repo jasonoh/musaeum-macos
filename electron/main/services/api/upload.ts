@@ -48,7 +48,7 @@ export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
  * it does not bound a legitimate slow upload, which a total-duration clock
  * cannot distinguish from a dead one (528 MiB over a tailnet is minutes).
  *
- * **30 s is a measurement, not a judgement.** Measured 2026-09-23 (harness:
+ * **30 s is a measurement, not a judgment.** Measured 2026-09-23 (harness:
  * `~/.hermes/profiles/dev/cache/scratch/upload-probe/`), a 320 MiB body streamed
  * to a listener on this Mac's tailnet address never left a gap longer than
  * **99.7 ms** between chunks (p99 0.43 ms, 44,706 chunks). TCP delivers at
@@ -77,7 +77,7 @@ const MAX_NAME_BYTES = 255
 
 export interface UploadParams {
   format: BookFormat
-  /** The client's own filename, sanitised — see `safeFileName`. */
+  /** The client's own filename, sanitized — see `safeFileName`. */
   filename: string
 }
 
@@ -115,7 +115,7 @@ export function uploadScratchDir(): string {
  * on the extension (invariant 2), so a body arriving as `book.mobi` with
  * `format=epub` would be a file the pipeline cannot see; a suffix that *is* one
  * of the four book extensions is replaced by the declared one, so a client that
- * mislabelled its own format still lands under a name the library can read. A
+ * mislabeled its own format still lands under a name the library can read. A
  * suffix the library does not know (`book.txt`) is left alone — it is part of
  * the name the client sent, and guessing that it meant an extension is how a
  * title loses a word.

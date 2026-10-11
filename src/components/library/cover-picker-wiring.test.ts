@@ -77,7 +77,7 @@ describe('AC8b — the wider search is asked about this book, and only on a pres
   it('calls searchCovers with the book id and nothing else', () => {
     // Its limit: this decides the call's *argument*, which is the half a walk
     // can decide. That the search reaches the sidecar and comes back is the
-    // service test's and the probe's (AC7); that the tiles arrive labelled is
+    // service test's and the probe's (AC7); that the tiles arrive labeled is
     // `cover-candidate-state.test.ts`'s.
     const picker = read(PICKER)
 
@@ -157,11 +157,11 @@ describe('AC11 — an uploaded image names the book, and never a path', () => {
     // branch that keeps them apart is not written in the JSX.
     expect(picker).toContain('coverUploadReading(')
     expect(picker).toContain('uploadCopy(')
-    // …and a cancelled answer stops the press there: the re-read below it (the
-    // run bump, then `load()`) must be unreachable from the cancelled arm,
+    // …and a canceled answer stops the press there: the re-read below it (the
+    // run bump, then `load()`) must be unreachable from the canceled arm,
     // because a dialog somebody closed moved nothing to re-read. Control flow is
     // the most a source walk can see of this, and this is its shape.
-    expect(picker).toMatch(/reading\.kind === 'cancelled'\)\s*return/)
+    expect(picker).toMatch(/reading\.kind === 'canceled'\)\s*return/)
     // The gather's notice is gated on the rule's answer: an upload that landed
     // must be able to stand it down, or the dialog prints the explanation this
     // whole slice exists to make untrue.
@@ -191,7 +191,7 @@ describe('AC11 — an uploaded image names the book, and never a path', () => {
     expect(picker).toMatch(/setUploadError\(uploadRefusal\(err\)\)/)
 
     // One dialog at a time, and it is the guard inside the handler that enforces
-    // it: the trigger's `disabled` is the cosmetic half, because a greyed button
+    // it: the trigger's `disabled` is the cosmetic half, because a grayed button
     // still loses a race against a render.
     expect(picker).toMatch(/if \(!book \|\| uploading\) return/)
     // Both tile grids hand the upload's busy state down, and the count is the
@@ -236,7 +236,7 @@ describe('the picker’s entry point is a control, not decoration', () => {
     // His report was "there is no way for me to initiate a cover change directly":
     // the control was there, at 11px, and could not be read. The theme engine's own
     // audit lets *faint* sit at 2.2:1 and *dim* at 3.5:1 — floors for decoration —
-    // so a tier cannot be chosen for a labelled control by taste. This case reads
+    // so a tier cannot be chosen for a labeled control by taste. This case reads
     // the token pair off the component, resolves both through `index.css`, and does
     // the arithmetic.
     const detail = read('src/components/library/BookDetail.tsx')

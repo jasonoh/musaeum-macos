@@ -20,7 +20,7 @@ import {
  * These are the three things `ReaderAsk.tsx` must not be trusted to do by
  * inspection: route a stream that has been superseded, turn a verdict into a
  * payload width, and match a section name. The renderer has no DOM harness, so
- * this file is where the panel's behaviour is actually decided.
+ * this file is where the panel's behavior is actually decided.
  */
 
 const SECTION = `Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it.`
@@ -79,8 +79,8 @@ describe('reduceAsk — the transcript', () => {
 
   it('lets a superseded stream’s terminal event land nowhere', () => {
     const session = reduceAsk(asking(), { type: 'open', requestId: 'q2', question: 'And?' })
-    // The cancelled question's own `done` — the ordinary case (D9)
-    expect(reduceAsk(session, { type: 'settle', requestId: 'q1', reason: 'cancelled' })).toBe(
+    // The canceled question's own `done` — the ordinary case (D9)
+    expect(reduceAsk(session, { type: 'settle', requestId: 'q1', reason: 'canceled' })).toBe(
       session
     )
     expect(reduceAsk(session, { type: 'fail', requestId: 'q1', message: 'ECONNREFUSED' })).toBe(
@@ -123,7 +123,7 @@ describe('reduceAsk — the transcript', () => {
   })
 
   it('ignores a chunk that arrives after the terminal event', () => {
-    const session = reduceAsk(asking(), { type: 'settle', requestId: 'q1', reason: 'cancelled' })
+    const session = reduceAsk(asking(), { type: 'settle', requestId: 'q1', reason: 'canceled' })
     expect(reduceAsk(session, { type: 'chunk', requestId: 'q1', delta: 'late' })).toBe(session)
   })
 

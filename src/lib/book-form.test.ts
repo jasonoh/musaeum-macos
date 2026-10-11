@@ -35,7 +35,7 @@ describe('editsSince', () => {
     expect(sent).not.toHaveProperty('publishedDate')
   })
 
-  it('does not treat a value the form normalises as an edit', () => {
+  it('does not treat a value the form normalizes as an edit', () => {
     const odd = { ...opened, publisher: '  Ace  ', description: '' }
     expect(editsSince(odd, toForm(odd))).toEqual({})
   })

@@ -78,7 +78,7 @@ describe('writes: file first, cache second, one write each (bookshelves D3)', ()
 
   it('creates a shelf with books in the same single write, skipping ids the library does not hold', async () => {
     const writes = countWrites()
-    const shelf = await shelves.create('Favourites', ['a', 'not-a-book', 'a'])
+    const shelf = await shelves.create('Favorites', ['a', 'not-a-book', 'a'])
     expect(writes()).toBe(1)
     expect(shelf.count).toBe(1)
     expect(manualOnDisk(await onDisk(), shelf.id).books.map((m) => m.id)).toEqual(['a'])
@@ -374,7 +374,7 @@ describe('adopt (bookshelves D4)', () => {
 })
 
 describe('the gone-shelf predicate the REST surface reads (slice 5)', () => {
-  it('recognises the writer own refusal, and nothing else', async () => {
+  it('recognizes the writer own refusal, and nothing else', async () => {
     const shelf = await shelves.create('To Read')
     await shelves.deleteShelf(shelf.id)
 

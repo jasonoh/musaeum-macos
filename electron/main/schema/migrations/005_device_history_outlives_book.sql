@@ -2,7 +2,7 @@
 --
 -- The row is a log of what this machine did — "sent to Kindle on this date" —
 -- not a child of the book. `replaceAllBooks` (services/db.ts) documents the
--- same intent and turns FK enforcement off to honour it, but the REFERENCES
+-- same intent and turns FK enforcement off to honor it, but the REFERENCES
 -- clause here contradicted that everywhere else: sending a book wrote a
 -- history row, and from then on `deleteBook` failed with "FOREIGN KEY
 -- constraint failed" *after* book-delete.ts had already removed the NAS

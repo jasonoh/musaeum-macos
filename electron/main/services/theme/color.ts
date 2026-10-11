@@ -1,9 +1,9 @@
 import type { Rgb } from '@shared/theme.types'
 
 /**
- * Colour maths, transliterated from `derive.py` lines 24–98 and 348–357.
+ * Color math, transliterated from `derive.py` lines 24–98 and 348–357.
  *
- * Colours are `[number, number, number]` triples in 0..1 wherever the prototype
+ * Colors are `[number, number, number]` triples in 0..1 wherever the prototype
  * returns a tuple, and hex strings wherever it returns hex — matching each
  * function's own choice is what keeps the two comparable line by line.
  *
@@ -24,7 +24,7 @@ export function hexToRgb(h: string): Rgb {
 }
 
 /**
- * `round()` with Python's tie rule: halves go to the even neighbour, where
+ * `round()` with Python's tie rule: halves go to the even neighbor, where
  * `Math.round` sends them up. It differs only at exact halves, but the port's
  * whole claim is byte-for-byte agreement with the prototype, and this is the
  * cheapest way to be exact.
@@ -37,7 +37,7 @@ function roundHalfEven(v: number): number {
   return floor % 2 === 0 ? floor : floor + 1
 }
 
-/** `rgb_to_hex`: quantise to 8-bit and clamp, the prototype's order. */
+/** `rgb_to_hex`: quantize to 8-bit and clamp, the prototype's order. */
 export function rgbToHex(c: Rgb): string {
   const channels = c.map((v) => Math.max(0, Math.min(255, roundHalfEven(v * 255))))
   return '#' + channels.map((v) => v.toString(16).padStart(2, '0')).join('')
@@ -145,7 +145,7 @@ export function hueDelta(x: Rgb, y: Rgb): number {
  * Move lightness in Oklab while KEEPING the hue/chroma direction.
  *
  * Mixing toward the palette's foreground to raise contrast desaturates the
- * colour into it (measured: solarized's danger red became a grey-teal and still
+ * color into it (measured: solarized's danger red became a gray-teal and still
  * missed 4.5:1). An error state has to stay red, so adjust L, not hue.
  */
 export function adjustLight(c: Rgb, frac: number, up: boolean): Rgb {

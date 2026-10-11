@@ -83,14 +83,14 @@ function tokensFromRoot(vars: Record<string, string>): ThemeTokens {
  * The twelve slice-7a names and the four slice-5 names this path owns — both at
  * module scope because the `tokensToCssVars`, `applyTokens` and `OWNED_CSS_VARS`
  * groups all read the same lists, and every count in this file is one of them
- * plus the sixteen colours.
+ * plus the sixteen colors.
  */
 const STATUS_VARS = ['danger', 'ok', 'warn'].flatMap((family) =>
   ['400', '500', '600', 'on'].map((step) => `--status-${family}-${step}`)
 )
 /**
  * Slice 5's: the three derived shadow alphas and the declared scheme. They are
- * also the only four values this path writes that are *not* colours — three bare
+ * also the only four values this path writes that are *not* colors — three bare
  * numbers and a keyword — which is why the "channel triplet" case has to name
  * its exclusions instead of sweeping the whole map.
  */
@@ -110,7 +110,7 @@ function withStatus(): ThemeTokens {
 /**
  * A light theme as the engine derives one: the weak shadow strength and
  * `dark: false`. Nothing else about it is light — the alphas and the scheme are
- * the whole subject here, and the four page colours are the reader's.
+ * the whole subject here, and the four page colors are the reader's.
  */
 function lightTokens(): ThemeTokens {
   return { ...tokensFromRoot(rootVars()), shadow: 0.16, dark: false }
@@ -131,8 +131,8 @@ describe('hexToChannels', () => {
 
   it.each(['13 11 9', '#0d0b0', '#0d0b09f', '0d0b09', '#gggggg', '', '#12345'])(
     'refuses %j rather than writing it through',
-    (notAColour) => {
-      expect(() => hexToChannels(notAColour)).toThrow(/Not a #rrggbb colour/)
+    (notAColor) => {
+      expect(() => hexToChannels(notAColor)).toThrow(/Not a #rrggbb color/)
     }
   )
 })
@@ -169,25 +169,25 @@ describe('tokensToCssVars', () => {
     expect(vars['--shadow-a3']).toBe('0.6')
   })
 
-  it('emits channel triplets for every colour it writes, and never a hex', () => {
+  it('emits channel triplets for every color it writes, and never a hex', () => {
     // `tailwind.config.js` composes `rgb(var(--x) / <alpha-value>)`; a hex in the
     // variable is invalid at computed-value time, so every opacity-modified
     // utility is dropped silently with the build still green.
     const written = tokensToCssVars(tokensFromRoot(vars))
-    const colours = Object.entries(written).filter(([name]) => !DERIVED_VARS.includes(name))
-    expect(colours).toHaveLength(16)
-    for (const [name, value] of colours) {
+    const colors = Object.entries(written).filter(([name]) => !DERIVED_VARS.includes(name))
+    expect(colors).toHaveLength(16)
+    for (const [name, value] of colors) {
       expect(value, name).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/)
       expect(value, name).not.toContain('#')
     }
     expect(written['--ink-950']).toBe('13 11 9')
     expect(written['--ink-950']).not.toBe('#0d0b09')
-    // The four that are not colours are not forced into the colour shape.
+    // The four that are not colors are not forced into the color shape.
     expect(written['--shadow-a1']).toBe('0.5')
     expect(written['color-scheme']).toBe('dark')
   })
 
-  it('derives the shadow alphas and the colour scheme, and leaves status to slice 7a (AC5.4)', () => {
+  it('derives the shadow alphas and the color scheme, and leaves status to slice 7a (AC5.4)', () => {
     // Inverted by slice 5: these four were `:root`'s and this path deliberately
     // did not own them. They are derived now — which is what makes a light theme
     // a light app rather than a light app with dark shadows and dark native
@@ -288,7 +288,7 @@ describe('applyTokens', () => {
     expect(Object.keys(set)).toHaveLength(20)
   })
 
-  it('reports a malformed colour as a reason, and writes nothing at all', () => {
+  it('reports a malformed color as a reason, and writes nothing at all', () => {
     // Finding 5's decider. Pre-fix this was `expect(applyTokens(...)).toThrow()`
     // — the throw the renderer's `useTheme` effect let reach React, which
     // unmounts the tree. The value form is what makes both call sites safe.
@@ -304,7 +304,7 @@ describe('applyTokens', () => {
       '--ink-950': '253 246 227',
       '--ink-900': '238 232 213'
     })
-    const broken: ThemeTokens = { ...light, on_acc: 'not a colour' }
+    const broken: ThemeTokens = { ...light, on_acc: 'not a color' }
     const { el, set } = recorder()
     applyTokens(tokensFromRoot(rootVars()), el)
     const before = { ...set }
@@ -313,7 +313,7 @@ describe('applyTokens', () => {
     expect(() => {
       reason = applyTokens(broken, el)
     }).not.toThrow()
-    expect(reason).toMatch(/Not a #rrggbb colour/)
+    expect(reason).toMatch(/Not a #rrggbb color/)
     // A refused apply writes nothing — no half-a-palette.
     expect(set).toEqual(before)
     expect(set['--ink-950']).toBe('13 11 9')
@@ -344,7 +344,7 @@ describe('applyTokens', () => {
   })
 
   it('both renderer call sites call it, which is what makes each of them safe', () => {
-    // The behavioural half — "a throw in `useTheme`'s effect unmounts the tree" —
+    // The behavioral half — "a throw in `useTheme`'s effect unmounts the tree" —
     // needs React and a DOM, and F12's config is `environment: 'node'`. So the
     // call sites are decided the way AC3.1(b) decides `createWindow()`: by their
     // source. Both apply through the one guarded export, so neither can be the

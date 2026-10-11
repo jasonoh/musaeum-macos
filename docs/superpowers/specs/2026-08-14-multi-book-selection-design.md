@@ -75,7 +75,7 @@ Select twelve books, then type in the search box: without pruning, those books l
 
 This also covers books deleted on another machine and picked up by a catalog adoption, and books that vanish under a background `libraryChanged` reload.
 
-Single-selection behaviour changes slightly and deliberately: today a `selectedBookId` filtered out of view stays set, and the panel reappears when the search is cleared. After this, it is dropped.
+Single-selection behavior changes slightly and deliberately: today a `selectedBookId` filtered out of view stays set, and the panel reappears when the search is cleared. After this, it is dropped.
 
 ## 4. Selection panel
 
@@ -112,7 +112,7 @@ The hover trash button stays single-book, always. A per-book affordance that som
 
 ## 8. Keyboard
 
-`useBookNavigation` gains ⇧+arrow handling. Note that `shiftKey` is *not* in that hook's current modifier bail-out (`metaKey || ctrlKey || altKey`), so ⇧+arrow today silently behaves as a plain arrow — this is a change in behaviour, not an addition to dead keys.
+`useBookNavigation` gains ⇧+arrow handling. Note that `shiftKey` is *not* in that hook's current modifier bail-out (`metaKey || ctrlKey || altKey`), so ⇧+arrow today silently behaves as a plain arrow — this is a change in behavior, not an addition to dead keys.
 
 Escape clears the whole selection, as it clears the single selection today.
 
@@ -165,11 +165,11 @@ Two rules:
 - **Books already on the device are skipped**, using the presence map the device store already maintains, and the button label reflects the sendable count ("Send 9 to Kindle" out of a selection of twelve). Presence is derived from a scan of the device, so this is the same source of truth the card badge and the detail panel's "On {device}" state use. If every selected book is already there, the button is disabled and says so.
 - **The loop is fire-and-forget per book but sequential in the queue.** One book that fails to convert or copy is logged to `device_history` with its error, exactly as today; it does not stop the other eleven, because the queue's existing per-job error handling already owns that.
 
-Conversions triggered by a send do write `metadata.json` and upsert the catalog per book, because a cached azw3 is a new format on that book. That is unchanged single-book behaviour and is not batched here: an `ebook-convert` run takes ~30 seconds, so one catalog write per conversion is nothing like the per-book cost that shapes the delete and hydrate designs.
+Conversions triggered by a send do write `metadata.json` and upsert the catalog per book, because a cached azw3 is a new format on that book. That is unchanged single-book behavior and is not batched here: an `ebook-convert` run takes ~30 seconds, so one catalog write per conversion is nothing like the per-book cost that shapes the delete and hydrate designs.
 
 ## 12. Bulk re-hydrate is a real job
 
-The opposite situation from send. `metadata:rehydrateBook` is already fire-and-forget (`void importer.hydrate(...)`), and each `hydrate` call does its own `writeMetadataJson`, `librarySync.upsertCatalog([updated])` and `broadcast('libraryChanged')` (`importer.ts:284–295`). Looping it in the renderer over fifty books would mean fifty whole-catalog rewrites over SMB, fifty full library reloads in the renderer, and fifty *concurrent* sidecar hydrations against rate-limited APIs — the sidecar dispatches on a thread pool, so nothing there serialises them.
+The opposite situation from send. `metadata:rehydrateBook` is already fire-and-forget (`void importer.hydrate(...)`), and each `hydrate` call does its own `writeMetadataJson`, `librarySync.upsertCatalog([updated])` and `broadcast('libraryChanged')` (`importer.ts:284–295`). Looping it in the renderer over fifty books would mean fifty whole-catalog rewrites over SMB, fifty full library reloads in the renderer, and fifty *concurrent* sidecar hydrations against rate-limited APIs — the sidecar dispatches on a thread pool, so nothing there serializes them.
 
 New service `electron/main/services/bulk-hydrate.ts` (business logic in services, never in a handler):
 
@@ -182,7 +182,7 @@ New service `electron/main/services/bulk-hydrate.ts` (business logic in services
 
 `importer.hydrate` gains an options parameter `{ batched?: boolean }`, defaulting false so the import path is byte-for-byte unchanged. When batched it skips its own `upsertCatalog` and its own `libraryChanged` broadcast — the job owns both. It still writes `metadata.json` per book: that file is the canonical store and is small and local to the book's own folder, which is exactly what the catalog is not. `conflictQueueUpdated` still fires per book, since it broadcasts a count and does no I/O.
 
-**Cancellation stops the loop, not the book in flight.** A sidecar call cannot be aborted cleanly mid-request, so the current book finishes and is counted; everything after it is dropped. The button says "Cancel", and the honest behaviour is that it stops within one book.
+**Cancellation stops the loop, not the book in flight.** A sidecar call cannot be aborted cleanly mid-request, so the current book finishes and is counted; everything after it is dropped. The button says "Cancel", and the honest behavior is that it stops within one book.
 
 Surface: `metadata:rehydrateBooks(ids)` and `metadata:cancelRehydrate()` in `ipc/metadata.ts` (thin wrappers), matching entries in `api.types.ts` and the preload, and a `bulkHydrateProgress` entry in `EVENT_CHANNELS` (`event:bulk-hydrate-progress`) alongside the existing progress channels.
 
@@ -214,12 +214,12 @@ Progress surfaces in `StatusBar`, which already carries transient job state in t
 
 - books are hydrated **sequentially**, not concurrently (the rate-limit guarantee, asserted by overlapping call timestamps)
 - `catalog.json` is written **once** for the whole job, not per book
-- cancelling stops the loop, counts the in-flight book, and still writes the catalog once
+- canceling stops the loop, counts the in-flight book, and still writes the catalog once
 - a book with no hydratable file (PDF-only) is skipped and counted, not thrown
 - NAS going offline mid-job stops it and reports
 - starting a second job while one runs is refused
 
-Send-to-device gets no new main-process test, because it adds no main-process code — the loop is a store method over an IPC call already covered by the transfer queue's own behaviour. Its verification is live.
+Send-to-device gets no new main-process test, because it adds no main-process code — the loop is a store method over an IPC call already covered by the transfer queue's own behavior. Its verification is live.
 
 Live verification with the `verify` skill: ⌘-click, ⇧-click, checkbox and header select-all, ⌘A interception, bulk delete of several books, a bulk send that skips books already on the device, a bulk re-hydrate with cancel, and **`scrollHeight` unchanged in the list view** — the row-height regression this design most risks.
 
@@ -237,7 +237,7 @@ Docs: `CLAUDE.md` (a Selection section, and the `MusaeumAPI` surface), `tasks.md
 
 1. **ListView row height.** Covered above; the reason `scrollHeight` is an explicit verification step.
 2. **⌘A accelerator.** Unknown until measured; documented fallback.
-3. **Selection pruning changes single-select behaviour** under a filter change. Deliberate, and commented at the call site.
+3. **Selection pruning changes single-select behavior** under a filter change. Deliberate, and commented at the call site.
 4. **A partially failed bulk delete** leaves the library correct but the user informed of less than they asked for — which is the intended trade against an all-or-nothing transaction across N independent NAS folders.
 5. **The `batched` option on `importer.hydrate`** is the one change in this design that touches the import path. It defaults to false and the import call site is not modified, but a mistake here is silent: a batched hydrate that forgot to write the catalog at the end would leave the other machine with stale records, which is the same failure mode the reading-position work had to fix. The "catalog written exactly once" test exists precisely to pin this down.
 6. **A long bulk re-hydrate is minutes of API traffic.** It is sequential by design, and the Google Books key matters more here than anywhere else in the app — an unkeyed run of a few hundred books is the fastest way to meet a rate limit. Cancellation is the mitigation, and it stops within one book, not instantly.

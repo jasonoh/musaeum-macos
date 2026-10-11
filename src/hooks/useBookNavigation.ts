@@ -76,7 +76,7 @@ export function useBookNavigation({
 
   /**
    * Whether this mount has already aligned itself to the selection. The first
-   * alignment centres (arriving from the other view, the book should have
+   * alignment centers (arriving from the other view, the book should have
    * context around it); later ones only nudge the selection back into view.
    */
   const aligned = useRef(false)

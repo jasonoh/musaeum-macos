@@ -153,7 +153,7 @@ describe('startBulkHydrate', () => {
     await flushForTests()
   })
 
-  it('stops early when cancelled', async () => {
+  it('stops early when canceled', async () => {
     await seed('a')
     await seed('b')
     await seed('c')
@@ -280,7 +280,7 @@ describe('bulk hydrate reporting', () => {
     expect(lastProgress(spy)).toMatchObject({ completed: 2, updated: 1, running: false })
   })
 
-  it('says the run was cancelled rather than leaving a count that stopped', async () => {
+  it('says the run was canceled rather than leaving a count that stopped', async () => {
     await seed('a')
     await seed('b')
     const spy = vi.spyOn(events, 'broadcast')
@@ -289,7 +289,7 @@ describe('bulk hydrate reporting', () => {
     cancelBulkHydrate()
     await flushForTests()
 
-    expect(lastProgress(spy)).toMatchObject({ stopped: 'cancelled', running: false })
+    expect(lastProgress(spy)).toMatchObject({ stopped: 'canceled', running: false })
   })
 
   it('names the share dropping as the reason it stopped', async () => {

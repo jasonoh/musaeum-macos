@@ -76,7 +76,7 @@ Musaeum is one person's Mac app, so the servers beat it on reach and Calibre bea
 | **Kindle**                 | ✅ USB, judged by content           | ✅                     | ✅ Auto-send              | ❔             | ❔               | ❔            |
 | **Kobo / KOReader / OPDS** | ❌                                  | ❔                     | ✅                        | ✅             | ✅               | ✅            |
 | **iPhone app**             | ⚠️ Build from source                | ❔                     | ❔                        | ✅ App Store   | ❔               | ❔            |
-| **Licence**                | MIT                                 | GPL-3.0                | GPL-3.0                   | AGPL-3.0       | GPL-3.0          | MIT           |
+| **License**                | MIT                                 | GPL-3.0                | GPL-3.0                   | AGPL-3.0       | GPL-3.0          | MIT           |
 
 **BookLore** has no column because it is entering maintenance mode, with [BookOrbit as its official successor](https://github.com/booklore-app/booklore). Its community fork, **Grimmory**, is covered in the full comparison.
 

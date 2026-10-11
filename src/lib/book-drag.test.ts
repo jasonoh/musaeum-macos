@@ -68,7 +68,7 @@ describe('the import overlay stays down (AC25)', () => {
     expect(isImportDrag([BOOK_DRAG_MIME, 'text/plain'])).toBe(false)
   })
 
-  it('still recognises a real file drop', () => {
+  it('still recognizes a real file drop', () => {
     expect(isImportDrag(['Files'])).toBe(true)
     expect(isImportDrag(['text/plain', 'Files'])).toBe(true)
   })

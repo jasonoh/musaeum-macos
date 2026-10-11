@@ -110,7 +110,7 @@ describe('AC2.5 — adaptation is lossless where base16 has the semantics', () =
 
 /**
  * AC2.4. Terminal files carry no base01–03, so the surface ramp is reconstructed
- * from whatever greys the palette ships — and only greys in the background's own
+ * from whatever grays the palette ships — and only grays in the background's own
  * hue family may stand in for surfaces.
  *
  * Measured, and it matters for how these assertions are written: the criterion as
@@ -118,19 +118,19 @@ describe('AC2.5 — adaptation is lossless where base16 has the semantics', () =
  * hold for the prototype's output on this fixture. Six of the seven stops measure
  * 1.29–2.47 against their own canvas, because the hue clause of the filter is
  * bypassed when the background is itself near-neutral (`chroma(bg) = 0.0049 <
- * 0.01`) and the hue angle of a near-grey is unstable — the stops carry chroma
- * 0.002–0.028, i.e. they are greys whose "hue" is numerical noise. The property
+ * 0.01`) and the hue angle of a near-gray is unstable — the stops carry chroma
+ * 0.002–0.028, i.e. they are grays whose "hue" is numerical noise. The property
  * that actually delivers "no green sidebar" is the one asserted below: the filter
- * excludes every chromatic ANSI slot up front, and the ladder it builds stays grey.
+ * excludes every chromatic ANSI slot up front, and the ladder it builds stays gray.
  */
-describe('AC2.4 — the iTerm grey filter does its job', () => {
+describe('AC2.4 — the iTerm gray filter does its job', () => {
   it('excludes every chromatic ANSI slot under the filter’s own predicate, bypass included', () => {
     const ir = loadIr(GRUVBOX_ITERM)
     const bg = hexToRgb(ir.bg)
     // The filter's own predicate, transcribed from `itermcolors.ts:210-211`: a slot is a
-    // grey when its chroma is under 0.035 *and* it sits in the canvas's hue family —
+    // gray when its chroma is under 0.035 *and* it sits in the canvas's hue family —
     // *unless* the canvas is itself near-neutral, in which case the hue half is bypassed,
-    // because a near-grey's hue angle is numerical noise. The bypass is not decoration
+    // because a near-gray's hue angle is numerical noise. The bypass is not decoration
     // here: this canvas's chroma is 0.0049, so it is live, and the two forms of the
     // predicate are **not** the same statement on this fixture — measured, Ansi 7
     // (#a89984, chroma 0.0346, hue_delta 2.5022) and Ansi 8 (#928374, chroma 0.0286,
@@ -160,8 +160,8 @@ describe('AC2.4 — the iTerm grey filter does its job', () => {
     for (const hex of [ir.bg, ir.bg2, ir.bg3, ir.border]) {
       expect({ hex, excluded: excluded(hex) }).toEqual({ hex, excluded: false })
     }
-    // Which is why the ramp is inferred from three greys and no more
-    expect(ir.notes).toEqual(['ramp inferred from 3 greys; no base01-03 in source'])
+    // Which is why the ramp is inferred from three grays and no more
+    expect(ir.notes).toEqual(['ramp inferred from 3 grays; no base01-03 in source'])
 
     // What this case does *not* decide, so the name is not read as more than it is: it
     // transcribes the predicate rather than observing the filter. Deleting the hue clause
@@ -172,7 +172,7 @@ describe('AC2.4 — the iTerm grey filter does its job', () => {
     // equality above); the hue half by the synthetic file in AC2.4(a) below.
   })
 
-  it('derives a ladder that stays a grey ladder, rising from the canvas', () => {
+  it('derives a ladder that stays a gray ladder, rising from the canvas', () => {
     const loaded = loadThemeFile(GRUVBOX_ITERM)
     if (!loaded.ok) throw new Error(loaded.reason)
     const derived = deriveTheme(loaded.ir)
@@ -184,9 +184,9 @@ describe('AC2.4 — the iTerm grey filter does its job', () => {
     let previous = -1
     for (const stop of stops) {
       const tone = hexToRgb(derived.tokens.ink[stop])
-      // Below the threshold the filter itself uses to call something a grey: no
+      // Below the threshold the filter itself uses to call something a gray: no
       // stop is a green, a teal, or anything else with a hue to speak of.
-      expect({ stop, grey: chroma(tone) < 0.035 }).toEqual({ stop, grey: true })
+      expect({ stop, gray: chroma(tone) < 0.035 }).toEqual({ stop, gray: true })
       // And the ladder only ever climbs, from the canvas toward the palette's own
       // border tone — the direction is the point of it.
       expect({ stop, rises: lstar(tone) > previous }).toEqual({ stop, rises: true })
@@ -194,8 +194,8 @@ describe('AC2.4 — the iTerm grey filter does its job', () => {
     }
   })
 
-  it('infers the ramp from the palette’s own greys', () => {
-    // gruvbox ships exactly three greys in its background's family: the canvas, Ansi
+  it('infers the ramp from the palette’s own grays', () => {
+    // gruvbox ships exactly three grays in its background's family: the canvas, Ansi
     // 8 and Ansi 7. Two of them are interior, and the prototype's median and upper
     // pick are then the same element — so bg3 and border coincide here on purpose.
     expect(loadIr(GRUVBOX_ITERM)).toEqual({
@@ -221,7 +221,7 @@ describe('AC2.4 — the iTerm grey filter does its job', () => {
         brown: '#fb4934'
       },
       accent_hint: '#fabd2f',
-      notes: ['ramp inferred from 3 greys; no base01-03 in source']
+      notes: ['ramp inferred from 3 grays; no base01-03 in source']
     })
   })
 
@@ -244,7 +244,7 @@ describe('AC2.4 — the iTerm grey filter does its job', () => {
 
 /**
  * A `.itermcolors` document built in the test — no fixture file, nothing vendored —
- * in the shape iTerm writes: a `key` naming a colour, then a `dict` carrying
+ * in the shape iTerm writes: a `key` naming a color, then a `dict` carrying
  * Red/Green/Blue as `real`s.
  */
 function itermFile(slots: Record<string, string>): string {
@@ -282,9 +282,9 @@ function itermFile(slots: Record<string, string>): string {
 describe('AC2.4(a) — the hue clause, on a canvas that carries chroma', () => {
   const CANVAS = '#1b2b3a'
   const FOREGROUND = '#e8e8e8'
-  const GREY_LO = '#3a4b57'
-  const GREY_HI = '#506070'
-  /** A near-grey off the canvas's own hue, at a luminance a ladder sort would take. */
+  const GRAY_LO = '#3a4b57'
+  const GRAY_HI = '#506070'
+  /** A near-gray off the canvas's own hue, at a luminance a ladder sort would take. */
   const OFF_HUE = '#5a4a3a'
   const SYNTHETIC = itermFile({
     'Ansi 0 Color': CANVAS,
@@ -294,8 +294,8 @@ describe('AC2.4(a) — the hue clause, on a canvas that carries chroma', () => {
     'Ansi 4 Color': '#5070c0',
     'Ansi 5 Color': '#9a5ac0',
     'Ansi 6 Color': '#3a9a9a',
-    'Ansi 7 Color': GREY_HI,
-    'Ansi 8 Color': GREY_LO,
+    'Ansi 7 Color': GRAY_HI,
+    'Ansi 8 Color': GRAY_LO,
     'Ansi 9 Color': '#e07a5a',
     'Ansi 10 Color': '#8aba5a',
     'Ansi 11 Color': '#e8c060',
@@ -307,9 +307,9 @@ describe('AC2.4(a) — the hue clause, on a canvas that carries chroma', () => {
     'Foreground Color': FOREGROUND
   })
 
-  it('measures the canvas, the greys and the off-hue slot', () => {
+  it('measures the canvas, the grays and the off-hue slot', () => {
     // The three properties the witness rests on, so a reader does not have to take
-    // the filter's behaviour on faith.
+    // the filter's behavior on faith.
     const bg = hexToRgb(CANVAS)
     // The bypass is not in play: this canvas is not near-neutral.
     expect(chroma(bg)).toBeGreaterThanOrEqual(0.01)
@@ -322,23 +322,23 @@ describe('AC2.4(a) — the hue clause, on a canvas that carries chroma', () => {
     const hi = Math.max(lstar(bg), lstar(hexToRgb(FOREGROUND)))
     expect(lstar(off)).toBeGreaterThan(lo)
     expect(lstar(off)).toBeLessThan(hi)
-    // Specifically: between the two in-family greys, so it would land in the middle
+    // Specifically: between the two in-family grays, so it would land in the middle
     // of the ladder rather than at one end.
-    expect(lstar(off)).toBeGreaterThan(lstar(hexToRgb(GREY_LO)))
-    expect(lstar(off)).toBeLessThan(lstar(hexToRgb(GREY_HI)))
+    expect(lstar(off)).toBeGreaterThan(lstar(hexToRgb(GRAY_LO)))
+    expect(lstar(off)).toBeLessThan(lstar(hexToRgb(GRAY_HI)))
   })
 
-  it('refuses to build the ladder out of a near-grey off the canvas’s hue', () => {
+  it('refuses to build the ladder out of a near-gray off the canvas’s hue', () => {
     // The separating witness. With the real filter the ladder is the two in-family
-    // greys; drop the hue clause from the filter and the off-hue slot is admitted,
-    // `bg3` becomes `#5a4a3a` and the note counts three greys (measured against a
+    // grays; drop the hue clause from the filter and the off-hue slot is admitted,
+    // `bg3` becomes `#5a4a3a` and the note counts three grays (measured against a
     // byte-identical copy with that one clause removed).
     const loaded = loadThemeText('synthetic.itermcolors', SYNTHETIC)
     if (!loaded.ok) throw new Error(loaded.reason)
-    expect(loaded.ir.bg2).toBe(GREY_LO)
-    expect(loaded.ir.bg3).toBe(GREY_HI)
-    expect(loaded.ir.border).toBe(GREY_HI)
-    expect(loaded.ir.notes).toEqual(['ramp inferred from 2 greys; no base01-03 in source'])
+    expect(loaded.ir.bg2).toBe(GRAY_LO)
+    expect(loaded.ir.bg3).toBe(GRAY_HI)
+    expect(loaded.ir.border).toBe(GRAY_HI)
+    expect(loaded.ir.notes).toEqual(['ramp inferred from 2 grays; no base01-03 in source'])
   })
 
   it('holds on the iTerm nord fixture too, as a property and not a discriminator', () => {
@@ -381,7 +381,7 @@ describe('AC2.6 — a bad file is reported, never thrown', () => {
   it('names the ANSI slot it cannot find', () => {
     // The prototype only ever saw complete documents (plistlib gave it no choice);
     // this scanner can see a missing slot, so it has to name it rather than
-    // synthesise a colour for it.
+    // synthesize a color for it.
     const text = readFileSync(GRUVBOX_ITERM, 'utf8')
     const without = text.replace(/<key>Ansi 5 Color<\/key>\s*<dict>[\s\S]*?<\/dict>/, '')
     expect(without).not.toContain('Ansi 5 Color')
@@ -499,7 +499,7 @@ describe('AC2.6 — a bad file is reported, never thrown', () => {
   it('rejects a file with no Background Color, where the reference substitutes one', () => {
     // The other divergence, and the larger one: `col('Background Color') or
     // slots['black']` — and Ansi 7 for the foreground — is the prototype's silent
-    // substitution, and a whole theme then hangs off a colour the file never carried.
+    // substitution, and a whole theme then hangs off a color the file never carried.
     const text = readFileSync(GRUVBOX_ITERM, 'utf8')
     const noBackground = text.replace(/<key>Background Color<\/key>\s*<dict>[\s\S]*?<\/dict>/, '')
     expect(noBackground).not.toContain('Background Color')

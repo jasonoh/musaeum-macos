@@ -4,7 +4,7 @@
 
 **Goal:** Promote the pass the owner accepted in slice 1R to production: a `reflow_pdf` sidecar RPC that lays a PDF out once, writes `{book}/derived/reflow.epub` beside its `reflow.json` stamp by temp-write-and-rename, streams progress while it works, and answers *no artifact and one line of reason* for a book it cannot lay out confidently (D2, D6, D7, D9).
 
-**Architecture:** `sidecar/reflow/produce.py` is the new production entry. It checks the stamp against the source PDF's size and mtime (D9), takes a per-book lock so a second open waits and then finds the first one's artifact cached (D7, AC6), runs the accepted pass (`analyse` → `document_entries` → `write_epub`) with a progress callback, verifies the written file, and renames it into place — and it writes nothing anywhere but `{book}/derived/` (AC2). `analyse` learns to report the pass in two phases (`layout` for the helper's streamed pages, `reading` for the page pass), `vision.run_helper` reads the helper's stream off the pipe as it is written and stops mistaking a helper killed mid-book for a short document, and `epub.write_epub` gives every zip entry a fixed date so two runs over one source are byte-identical. `sidecar/main.py` exposes it as `reflow_pdf` with `reflow_progress` notifications.
+**Architecture:** `sidecar/reflow/produce.py` is the new production entry. It checks the stamp against the source PDF's size and mtime (D9), takes a per-book lock so a second open waits and then finds the first one's artifact cached (D7, AC6), runs the accepted pass (`analyze` → `document_entries` → `write_epub`) with a progress callback, verifies the written file, and renames it into place — and it writes nothing anywhere but `{book}/derived/` (AC2). `analyze` learns to report the pass in two phases (`layout` for the helper's streamed pages, `reading` for the page pass), `vision.run_helper` reads the helper's stream off the pipe as it is written and stops mistaking a helper killed mid-book for a short document, and `epub.write_epub` gives every zip entry a fixed date so two runs over one source are byte-identical. `sidecar/main.py` exposes it as `reflow_pdf` with `reflow_progress` notifications.
 
 **Tech Stack:** Python 3.12 (`pypdfium2` 5.13.0, `pypdf` 6.16.1, `Pillow` 12.3.0 — all already pinned, nothing new), pytest 9.1.1, Swift 6.4 / Vision via `xcrun swiftc`, macOS 26.7.1.
 
@@ -32,7 +32,7 @@ Every code block in this plan is complete. Lines marked *measured* were taken on
 - **D7:** progress on the existing notification channel (`reflow_progress`, `sidecar.ts:34`'s `onNotification`), and one pass per book — the sidecar's pool runs four requests at once, so the lock is real work, not decoration.
 - **Nothing outside `{book}/derived/` is written** (AC2): not `metadata.json`, not a format file, not SQLite. `metadata.json` is read for the title, never written.
 - **The pipeline writes nothing to stderr** (AC10). The helper's stderr is discarded; pypdf's is suppressed in `produce.py`, because it is not "per-page library chatter on the corpus" alone — measured, a read of the library's damaged PDFs writes thousands of lines (see below).
-- **The EPUB stylesheet sets no colour and no typeface**, and no rule here adds one (`sidecar/reflow/epub.py` docstring, `docs/invariants/reader.md`).
+- **The EPUB stylesheet sets no color and no typeface**, and no rule here adds one (`sidecar/reflow/epub.py` docstring, `docs/invariants/reader.md`).
 - **`vendor/foliate-js` is not touched; no renderer, IPC or preload file is touched.** Slice 3 owns those.
 - **Markdown prose is not hard-wrapped** (`CLAUDE.md`, *Markdown*): one line per paragraph in every `.md` edit.
 - **Budget:** 7 files in the spec's row (`sidecar/reflow/*`, `sidecar/main.py`, `sidecar/tests/*`) **+ 3 the spec assigns elsewhere**: `scripts/pdf-reflow-probe.py` (the production harness that measures this slice's bar), `docs/data-contracts.md` (the new RPC's row) and `tasks.md` (C2's status line). The row's own budget is met exactly; nothing else is touched.
@@ -53,7 +53,7 @@ Every code block in this plan is complete. Lines marked *measured* were taken on
 | File | Responsibility | Task |
 | --- | --- | --- |
 | `sidecar/reflow/vision.py` | read the helper's stream as it is written (`on_page`); the header's page count; a non-zero exit's unanswered pages as error lines; `--pages` from either bound | 1 |
-| `sidecar/reflow/layout.py` | `analyse(progress=…)`: `layout` pages from the helper, `reading` pages from the pass | 1 |
+| `sidecar/reflow/layout.py` | `analyze(progress=…)`: `layout` pages from the helper, `reading` pages from the pass | 1 |
 | `sidecar/tests/test_reflow_vision.py` | the stream's own rules: the header, streaming order, the unanswered pages, the timeout | 1 |
 | `sidecar/reflow/epub.py` | a fixed date on every zip entry; the source-page map (D5) in `write_epub`'s report | 2 |
 | `sidecar/tests/test_reflow_produce.py` (new) | the artifact's rules: no clock, byte-stability, the page map, then the stamp and its re-runs, temp-write-and-rename, no residue, the fallback, progress, one pass per book | 2, 3 |
@@ -77,7 +77,7 @@ $PY -m pytest sidecar/tests -q               # 349
 ## What was measured first (2026-10-08, before Task 1)
 
 1. **The zip entries carry the clock.** Two `write_epub` runs over one document in the same process are byte-identical (the clock's resolution is a second), so the carry-in's "not byte-deterministic" was invisible until a run was made to cross a second boundary: with a `time.sleep(1.2)` between them the two files differ, and the differing field is every str-named entry's `date_time` (`ZipInfo("mimetype")`'s default is already `(1980, 1, 1, 0, 0, 0)`, so only the four documents and the images moved). Task 2 fixes this; **without it slice 2's own bar can never be met.**
-2. **Where the pass's time goes** — because that is what decides whether progress can be one number or two. *Universe*, the helper built at `helpers/bin/musaeum-layout`, concurrency 8, render scale 1.5: pages 1–20 — helper 6.07 s (303 ms/page), the Python pass 4.33 s (216 ms/page); pages 1–40 — helper 7.66 s (192 ms/page), pass 13.61 s (340 ms/page). The two halves are within about 20% of each other, so `analyse` reports them as two phases of *the same* page count and a caller can weigh them equally (Task 1).
+2. **Where the pass's time goes** — because that is what decides whether progress can be one number or two. *Universe*, the helper built at `helpers/bin/musaeum-layout`, concurrency 8, render scale 1.5: pages 1–20 — helper 6.07 s (303 ms/page), the Python pass 4.33 s (216 ms/page); pages 1–40 — helper 7.66 s (192 ms/page), pass 13.61 s (340 ms/page). The two halves are within about 20% of each other, so `analyze` reports them as two phases of *the same* page count and a caller can weigh them equally (Task 1).
 3. **The corpus does not exercise `is_junk`'s Roman rule**, so the fix cannot move a gate number: across the six outlines, the labels the `^[ivxlcdm]+$` rule drops that are word-like are *Modernist Cuisine*'s `viii`, `xii`, `xiii` — exactly what the rule exists for — and nothing else (0 word-like drops in the other five). The rule still over-reaches in principle: `Civil`, `Mild` and `DIM` all match it, and a strict Roman grammar kills those three while keeping every real folio (`viii`, `xii`, `xiii`, `ix`, `xliv`, `mcmxciv`) — residual words that a strict grammar still drops: `mix`, `civ`. That is why it is *placed* at the end of this plan rather than fixed here.
 4. **No corpus book folder holds a `derived/` today**, and the six PDFs total 637 MB (Universe 305 MB, Modernist Cuisine Vol 1 299 MB), which is what Task 4 copies once into `dist/`.
 5. **pypdf's chatter goes to the app's log.** `logging.getLogger("pypdf")` at its default level writes `incorrect startxref pointer(2)` / `Ignoring wrong pointing object 2334` to stderr — thousands of lines while walking the library's damaged PDFs, measured by scanning the books that hold one. At `ERROR` the same read is silent. The measured line is AC10's own escape hatch ("or the noise is explicitly suppressed in the pipeline module"), so Task 3 sets it there.
@@ -100,7 +100,7 @@ $PY -m pytest sidecar/tests -q               # 349
   - `vision.read_stream(lines: Iterable[str], on_page: Optional[Callable[[int], None]] = None) -> HelperStream` — `on_page(done)` as each page's line is read.
   - `vision.parse_stream(lines) -> dict[int, PageLayout]` — unchanged public shape (the probe and the existing tests use it).
   - `vision.run_helper(pdf_path, *, first=None, last=None, concurrency=8, scale=1.5, helper=None, timeout=None, on_page=None) -> dict[int, PageLayout]` — every page of the requested range the helper never answered is present, as a `PageLayout` whose `error` says so.
-  - `layout.analyse(path, limit=None, layouts=None, progress=None) -> Document` — `progress(phase, done, total)` with `phase` `"layout"` (the helper's pages) then `"reading"` (the pass's own pages).
+  - `layout.analyze(path, limit=None, layouts=None, progress=None) -> Document` — `progress(phase, done, total)` with `phase` `"layout"` (the helper's pages) then `"reading"` (the pass's own pages).
 
 ---
 
@@ -231,7 +231,7 @@ from typing import Callable, Iterable, Optional
 $PY -m pytest sidecar/tests -k reflow -q
 ```
 
-Expected: `90 passed` with the helper built (`88 passed, 2 skipped` without it) — the refactor is behaviour-preserving on its own.
+Expected: `90 passed` with the helper built (`88 passed, 2 skipped` without it) — the refactor is behavior-preserving on its own.
 
 ```bash
 git add sidecar/reflow/vision.py
@@ -248,7 +248,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 2: Read the helper's stream while it is written**
 
-Replace `run_helper`'s `subprocess.run` call (and the function's docstring and signature) in `sidecar/reflow/vision.py` with the streamed form. The behavioural change is in `_unanswered`: a helper that did not answer every page it was asked for now *says so* once per missing page, so the per-book verdict can weigh them (Task 3 pins that end to end).
+Replace `run_helper`'s `subprocess.run` call (and the function's docstring and signature) in `sidecar/reflow/vision.py` with the streamed form. The behavioral change is in `_unanswered`: a helper that did not answer every page it was asked for now *says so* once per missing page, so the per-book verdict can weigh them (Task 3 pins that end to end).
 
 Replace the whole `run_helper` function with:
 
@@ -282,7 +282,7 @@ def run_helper(
     in the helper's `--pages a-b`, so the whole document is laid out and the
     caller takes the pages it asked for. The range's upper bound for the padding
     below is the page count the header reports, so a header that understates the
-    document bounds how much of the gap can be named here — `analyse` counts a
+    document bounds how much of the gap can be named here — `analyze` counts a
     page with no layout at all either way.
     """
     exe = helper or find_helper()
@@ -356,7 +356,7 @@ def _stream_helper(
             # Whatever ended the read before it finished — a header this module
             # refuses, or `on_page` raising (Task 3's sink is the RPC's `notify`,
             # which can) — the helper must not be left alive holding a pipe that
-            # nobody drains: the timer that would have killed it was cancelled
+            # nobody drains: the timer that would have killed it was canceled
             # just above, and `wait()` would then block for good.
             proc.kill()
         proc.wait()
@@ -433,12 +433,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 3: Report the pass in its two phases**
 
-`analyse` runs the helper and then reads every page into blocks. Measured (see *What was measured first*), the two halves cost about the same per page, so both report against the same page count and a caller can weigh them equally.
+`analyze` runs the helper and then reads every page into blocks. Measured (see *What was measured first*), the two halves cost about the same per page, so both report against the same page count and a caller can weigh them equally.
 
-In `sidecar/reflow/layout.py`, import `Callable`, change `analyse`'s signature and docstring, forward a callback to the helper, and report each page the pass finishes. Replace the `analyse` definition's header with:
+In `sidecar/reflow/layout.py`, import `Callable`, change `analyze`'s signature and docstring, forward a callback to the helper, and report each page the pass finishes. Replace the `analyze` definition's header with:
 
 ```python
-def analyse(
+def analyze(
     path: str,
     limit: Optional[int] = None,
     layouts: Optional[dict[int, PageLayout]] = None,
@@ -483,7 +483,7 @@ Expected: the same `90 passed` — nothing else calls `progress` yet.
 
 ```bash
 git add sidecar/reflow/layout.py
-git commit -m "feat(sidecar): analyse reports its two phases as progress
+git commit -m "feat(sidecar): analyze reports its two phases as progress
 
 The helper's pages and the pass's own pages cost about the same per page
 (192-303 ms against 216-340 ms on Universe), so both report against the page
@@ -545,7 +545,7 @@ def test_a_helper_that_never_answers_is_a_reason_not_a_hang(tmp_path):
 def test_a_progress_sink_that_raises_does_not_wedge_the_helper(tmp_path):
     """Task 3 hands `on_page` to the RPC's `notify`, which can raise. The read has
     to end and the helper must not be left alive holding a pipe nobody drains —
-    the timer that would have killed it is cancelled in the same `finally`."""
+    the timer that would have killed it is canceled in the same `finally`."""
     script = _script(tmp_path, [_header(500)] + [page_line(n) for n in range(1, 501)])
 
     def sink(done: int) -> None:
@@ -867,9 +867,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `sidecar/tests/test_reflow_produce.py` (append)
 
 **Interfaces:**
-- Consumes: `epub.write_epub` and `epub.GENERATOR` (Task 2), `layout.analyse(path, limit, layouts, progress)` (Task 1), `outline.document_entries`, `vision.HELPER_VERSION`.
+- Consumes: `epub.write_epub` and `epub.GENERATOR` (Task 2), `layout.analyze(path, limit, layouts, progress)` (Task 1), `outline.document_entries`, `vision.HELPER_VERSION`.
 - Produces:
-  - `produce.reflow_pdf(book_dir, pdf_path, *, book_id="", force=False, notify=None) -> dict` — `status` ∈ {`produced`, `cached`, `fallback`}, `reason` (D6's one line), `verdict` (`analyse`'s, or `write_failed`), `epub`/`stamp_file` (relative to `book_dir`, `""` when nothing was written), `converter`, `seconds`, and the stats `pages`, `text_pages`, `toc_entries`, `toc_from`, `figures`, `plates`, `words`, `bytes`, `page_map`, `layout_errors`, `vision_regions`.
+  - `produce.reflow_pdf(book_dir, pdf_path, *, book_id="", force=False, notify=None) -> dict` — `status` ∈ {`produced`, `cached`, `fallback`}, `reason` (D6's one line), `verdict` (`analyze`'s, or `write_failed`), `epub`/`stamp_file` (relative to `book_dir`, `""` when nothing was written), `converter`, `seconds`, and the stats `pages`, `text_pages`, `toc_entries`, `toc_from`, `figures`, `plates`, `words`, `bytes`, `page_map`, `layout_errors`, `vision_regions`.
   - `produce.artifact_paths(book_dir) -> (epub_path, stamp_path)`; `produce.read_stamp(path) -> Optional[dict]`; `produce.stamp_is_current(stamp, stat) -> bool`; `produce.converter_version() -> dict`; `produce.CONVERTER_VERSION`, `produce.STAMP_VERSION`; `produce._write_stamp(path, stamp)` (the seam Task 3's ordering test patches).
   - `main.METHODS["reflow_pdf"]`, streaming `reflow_progress` notifications.
 
@@ -881,7 +881,7 @@ Create `sidecar/reflow/produce.py`:
 """The production pass: a PDF → `{book}/derived/reflow.epub` plus its stamp.
 
 `reflow_pdf` is what the sidecar's RPC calls (spec D7). Around the pass slice 1R
-already had (`analyse` → `document_entries` → `write_epub`) it adds the four
+already had (`analyze` → `document_entries` → `write_epub`) it adds the four
 things that turn a working spike into a cache on a share:
 
 - **The stamp (D9).** `derived/reflow.json` records the source PDF's size and
@@ -897,7 +897,7 @@ things that turn a working spike into a cache on a share:
 - **One pass per book (D7, AC6).** The sidecar runs requests on four threads, so
   two opens can ask for the same book at once; a per-artifact lock makes the
   second wait and then find the first one's stamp current.
-- **D6's verdict is `analyse`'s.** A book whose verdict is not `ok` writes
+- **D6's verdict is `analyze`'s.** A book whose verdict is not `ok` writes
   nothing and returns the one line the reader shows.
 
 What it deliberately does not touch: `metadata.json` (read for the title, never
@@ -918,7 +918,7 @@ import zipfile
 from typing import Callable, Optional
 
 from .epub import GENERATOR, write_epub
-from .layout import analyse
+from .layout import analyze
 from .outline import document_entries
 from .vision import HELPER_VERSION
 
@@ -1245,7 +1245,7 @@ def reflow_pdf(
         stamp_tmp = ""
         try:
             progress("start")
-            doc = analyse(pdf_path, progress=progress)
+            doc = analyze(pdf_path, progress=progress)
             doc.entries = document_entries(pdf_path, doc)
             result["verdict"] = doc.verdict
             result.update(_doc_stats(doc))
@@ -1354,7 +1354,7 @@ back before renaming, and lands the stamp last — an artifact no stamp describe
 is removed again. A book whose verdict is not ok writes nothing and returns D6's
 one line of reason, and nothing outside {book}/derived/ is touched (AC2).
 
-Progress is the reflow_progress channel, in the two phases analyse reports plus
+Progress is the reflow_progress channel, in the two phases analyze reports plus
 start/writing/done/cached/fallback. pypdf's own warnings are suppressed here:
 measured on the library's damaged PDFs they run to thousands of lines on stderr,
 which is the app's log (AC10).
@@ -1881,10 +1881,10 @@ def _run(book_dir: str, pdf: str, *, force: bool = False) -> dict:
 def _record_is_clean(doc) -> bool:
     """Is this layout record whole enough to judge an artifact against?
 
-    `analyse` calls a layout `ok` when at most a quarter of the text pages
+    `analyze` calls a layout `ok` when at most a quarter of the text pages
     degraded (D6's tolerance), but a gate verdict needs *every* page: an
     exclusion list with holes in it moves G4 and G6 on a book whose own pass was
-    fine. And when the helper answers nothing at all, `analyse` returns
+    fine. And when the helper answers nothing at all, `analyze` returns
     `no_layout` with no pages — `layout_errors == 0` on an empty record, which a
     guard keyed on the error count alone would read as perfect (measured by Task
     4's review: a degenerate record scored a clean artifact as "fails G4 now").
@@ -1898,7 +1898,7 @@ def gate_artifact(title: str, pdf: str, epub_path: str, golden: dict, rec: dict)
 
     The exclusions C.4 asks for — the regions read from Vision, the figure labels
     inside written crops, the dropped furniture — are facts about the *source*,
-    so they come from laying it out again with `analyse`, the same deterministic
+    so they come from laying it out again with `analyze`, the same deterministic
     pass, rather than from the RPC's result, whose consumer is the reader and not
     this probe. Gating the artifact with a fresh record is a cross-check as well:
     if the artifact had come from some other pass, G2 and G6 would move.
@@ -1908,7 +1908,7 @@ def gate_artifact(title: str, pdf: str, epub_path: str, golden: dict, rec: dict)
     """
     attempts = []
     for _ in range(3):
-        doc = analyse(pdf)
+        doc = analyze(pdf)
         attempts.append({"verdict": doc.verdict, "layout_errors": doc.layout_errors})
         if _record_is_clean(doc):
             break
@@ -2283,7 +2283,7 @@ Each task's reviewer found things the plan could not have known; every one is fi
 
 | Repair | Found by | What it fixed | Tests |
 | --- | --- | --- | --- |
-| `45f56ee` | Task 1's review | a raised progress sink cancelled the timeout and then waited on a live helper (a wedged sidecar worker, no answer ever sent); a *complete* answer was discarded when the timer fired | +3 (one of which fails by hanging) |
+| `45f56ee` | Task 1's review | a raised progress sink canceled the timeout and then waited on a live helper (a wedged sidecar worker, no answer ever sent); a *complete* answer was discarded when the timer fired | +3 (one of which fails by hanging) |
 | `679cdd9` | Task 2's review | the fixed-date rule was pinned for documents but not for `OEBPS/images/*`, the entry class its own measurement named; the byte comparison slept 1.1 s against a two-second zip timestamp bucket (it passed 8 of 20 runs against the clock); `page_map`'s contract claimed a cover where it is a span per file | +1 |
 | the Task 3 block | Task 3's review | `stamp_is_current` trusted `source`'s shape, so a stamp with `"source": [...]` raised out of `reflow_pdf` `—` an RPC error on **every** open of that book, forever; a cache hit was decided on the artifact's existence, so a truncated EPUB under a current stamp was served forever; a raising `notify` echoed out of a pass that had already succeeded | +5 |
 | the Task 3 block | Task 3's review | unique temp names per run and age-based stale-temp cleanup: a fixed temp name made two *processes* `—` a second app instance, a second Mac on the same library, this repo's own harness while the app is open `—` collide, and both passes fell back with no artifact at all | (in the +5) |
@@ -2299,7 +2299,7 @@ Each task's reviewer found things the plan could not have known; every one is fi
 
 | Repair | Found by | What it fixed | Tests |
 | --- | --- | --- | --- |
-| `45f56ee` | Task 1's review | a raised progress sink cancelled the timeout and then waited on a live helper (a wedged sidecar worker, no answer ever sent); a *complete* answer was discarded when the timer fired | +3 (one of which fails by hanging) |
+| `45f56ee` | Task 1's review | a raised progress sink canceled the timeout and then waited on a live helper (a wedged sidecar worker, no answer ever sent); a *complete* answer was discarded when the timer fired | +3 (one of which fails by hanging) |
 | `679cdd9` | Task 2's review | the fixed-date rule was pinned for documents but not for `OEBPS/images/*`, the entry class its own measurement named; the byte comparison slept 1.1 s against a two-second zip timestamp bucket (it passed 8 of 20 runs against the clock); `page_map`'s contract claimed a cover where it is a span per file | +1 |
 | the Task 3 block | Task 3's review | `stamp_is_current` trusted `source`'s shape, so a stamp with `"source": [...]` raised out of `reflow_pdf` `—` an RPC error on **every** open of that book, forever; a cache hit was decided on the artifact's existence, so a truncated EPUB under a current stamp was served forever; a raising `notify` echoed out of a pass that had already succeeded | +5 |
 | the Task 3 block | Task 3's review | unique temp names per run and age-based stale-temp cleanup: a fixed temp name made two *processes* `—` a second app instance, a second Mac on the same library, this repo's own harness while the app is open `—` collide, and both passes fell back with no artifact at all | (in the +5) |

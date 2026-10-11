@@ -107,7 +107,7 @@ export function describeHydrate(outcome: HydrateOutcome, bookTitle: string): Toa
 /**
  * What to say when a bulk refresh ends. It is the job's only report: the status
  * bar counter is gone by the time the answer is interesting, and the reason it
- * stopped early (cancelled, or the share dropped under it) is not something the
+ * stopped early (canceled, or the share dropped under it) is not something the
  * user can infer from a count that stopped moving.
  */
 export function describeBulkHydrate(p: BulkHydrateProgress): ToastContent | null {
@@ -132,7 +132,7 @@ export function describeBulkHydrate(p: BulkHydrateProgress): ToastContent | null
       detail: `${p.completed} of ${p.total} refreshed · ${changed}`
     }
   }
-  if (p.stopped === 'cancelled') {
+  if (p.stopped === 'canceled') {
     return {
       kind: 'info',
       message: 'Refresh stopped',

@@ -123,7 +123,7 @@ describe('pickLibraryRoot', () => {
     expect(asked[0].title).toBe('Choose Library Folder')
   })
 
-  it('writes nothing when the dialog is cancelled', async () => {
+  it('writes nothing when the dialog is canceled', async () => {
     const before = configKeys()
     const { show } = stubDialog(null)
 

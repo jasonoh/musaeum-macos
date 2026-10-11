@@ -43,7 +43,7 @@ vi.mock('./device-manager', () => ({
  * it is asserted at the call rather than on the file: what these cases decide is
  * that the transfer path announces a newly cached format to the same writers
  * every other gain-a-format path uses. Spread over the real module so a
- * neighbour's call still lands.
+ * neighbor's call still lands.
  */
 vi.mock('./library-sync', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./library-sync')>()),

@@ -206,7 +206,7 @@ export interface WireBook {
  * `formats` goes through `orderedFormats()` rather than crossing as the row's
  * own array: the database's order is whatever the writing source left
  * (`["epub","mobi"]` and `["mobi","epub"]` are both common), so a client
- * labelling a book or picking a file would otherwise be reading `formats[0]` —
+ * labeling a book or picking a file would otherwise be reading `formats[0]` —
  * the one thing invariant 3 forbids on this side of the wire, and the reason the
  * order is settled before it leaves.
  *

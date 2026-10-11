@@ -160,7 +160,7 @@ export function updateBook(id: string, updates: Partial<Book>): void {
 
 ### T2: Window navigation guards + `openExternal` allowlist
 
-**Why:** `electron/main/index.ts:150` passes *any* URL from `setWindowOpenHandler` to `shell.openExternal`, and no `will-navigate` handler exists. Book iframes can't reach either today (their sandbox lacks `allow-popups`/`allow-top-navigation`), so this is defence in depth: a navigated main frame would get the full preload API, and `openExternal` on a custom scheme is the classic Electron exploit shape.
+**Why:** `electron/main/index.ts:150` passes *any* URL from `setWindowOpenHandler` to `shell.openExternal`, and no `will-navigate` handler exists. Book iframes can't reach either today (their sandbox lacks `allow-popups`/`allow-top-navigation`), so this is defense in depth: a navigated main frame would get the full preload API, and `openExternal` on a custom scheme is the classic Electron exploit shape.
 
 **Files:**
 - Create: `electron/main/services/window-guards.ts`
@@ -379,7 +379,7 @@ def handle_request(request: object) -> None:
 
 ### T6: `library:updateBook` orchestration moves to `services/`
 
-**Why:** `electron/main/ipc/library.ts:44-72` is the one IPC handler that orchestrates (NAS check, row write, reading-state clock, field overrides, `metadata.json`, catalog, rename) instead of delegating — invariant 8. `docs/invariants/files-and-deletion.md` names `library:updateBook` as a rename call site; the behaviour and ordering must not change.
+**Why:** `electron/main/ipc/library.ts:44-72` is the one IPC handler that orchestrates (NAS check, row write, reading-state clock, field overrides, `metadata.json`, catalog, rename) instead of delegating — invariant 8. `docs/invariants/files-and-deletion.md` names `library:updateBook` as a rename call site; the behavior and ordering must not change.
 
 **Files:**
 - Create: `electron/main/services/library-edit.ts`, `electron/main/services/library-edit.test.ts`
@@ -428,7 +428,7 @@ Remove now-unused imports from `ipc/library.ts` (lint will flag them).
 
 ### T7: `file-access.ts` tests
 
-**Why:** `revealBook`/`openBookFile` have no tests, yet this is where the `formats[0]` bug was measured on 1,372 books (`test/invariants.test.ts` docstring). Guard invariants 2 and 3 behaviourally.
+**Why:** `revealBook`/`openBookFile` have no tests, yet this is where the `formats[0]` bug was measured on 1,372 books (`test/invariants.test.ts` docstring). Guard invariants 2 and 3 behaviorally.
 
 **Files:** Create `electron/main/services/file-access.test.ts`.
 
@@ -595,7 +595,7 @@ Decided with the user 2026-09-24.
 
 - **Dropped** — `migration.ts` / `pipeline/migrate.py` have no direct tests. No second migration run is planned. Measured: of 7,671 importable Calibre books (`/Volumes/books/library/metadata.db`, untouched since 2026-07-06), ~420 match nothing in the DB by ISBN, Goodreads ID or exact title, plus 208 more that are likely title variants. That fits the 637 on-disk-but-unlisted folders `tasks.md` already records, so the gap is adoption, not a migration defect.
 - **Do** — EPUB XML via stdlib `ElementTree` + no zip-member size cap (`sidecar/extractors/epub_metadata.py:23,44,113`) — `defusedxml` + a size guard. Landed as `audit(U3)`.
-- **Open** — `db.findByTitleAuthor` (`db.ts:628`) full scan per import — index on normalised title/author needs a migration (contracts-engineer).
+- **Open** — `db.findByTitleAuthor` (`db.ts:628`) full scan per import — index on normalized title/author needs a migration (contracts-engineer).
 - **Open** — Sidecar `ThreadPoolExecutor(max_workers=4)` shared between hour-long migration and interactive calls.
 - **Measured → sliced as N1–N5 below** — `tsconfig` `noUncheckedIndexedAccess`.
 - **Open** — `ListView.tsx:99-110` cells vs `docs/invariants/library-views.md`'s "block-level child" wording — measure in-app, then align code or doc.
@@ -608,7 +608,7 @@ Decided with the user 2026-09-24.
 
 **Rules for every slice:**
 
-- No behaviour change. Narrow with a real check (`if (x === undefined) …`, `?? fallback`, destructuring with a guard) where the missing case can actually happen, and say in the commit which reads are genuinely bounded (loop over `.length`, a regex group that must match) — those may use `!`, sparingly. Tests may use `!` or a small `at(i)` helper freely.
+- No behavior change. Narrow with a real check (`if (x === undefined) …`, `?? fallback`, destructuring with a guard) where the missing case can actually happen, and say in the commit which reads are genuinely bounded (loop over `.length`, a regex group that must match) — those may use `!`, sparingly. Tests may use `!` or a small `at(i)` helper freely.
 - Per-slice check: the slice's files drop to zero under the flag via the CLI command above; the flag itself goes into the tsconfig only in N3 (node) and N5 (web), once that project is at zero.
 - Re-measure before starting — the counts below drift as code lands.
 

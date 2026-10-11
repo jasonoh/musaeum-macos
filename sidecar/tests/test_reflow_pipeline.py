@@ -2,7 +2,7 @@ import pytest
 
 from reflow import gate, layout
 from reflow.epub import write_epub
-from reflow.layout import analyse, classify_roles, place_figures, stitch_pages
+from reflow.layout import analyze, classify_roles, place_figures, stitch_pages
 from reflow.model import Block, PageResult
 from reflow.outline import document_entries
 from reflow.vision import LayoutUnavailable, PageLayout, Region
@@ -48,7 +48,7 @@ def all_text(doc):
 
 def test_a_book_reads_in_order_without_its_stamp_or_its_running_footer(tmp_path):
     path, layouts = book(tmp_path)
-    doc = analyse(path, layouts=layouts)
+    doc = analyze(path, layouts=layouts)
     assert doc.verdict == "ok"
     first, second = [b.text for b in doc.pages[0].blocks]
     assert first.startswith("Left line 0") and "planets" not in first
@@ -61,7 +61,7 @@ def test_a_book_reads_in_order_without_its_stamp_or_its_running_footer(tmp_path)
 
 def test_the_whole_path_produces_a_package_the_gate_accepts(tmp_path):
     path, layouts = book(tmp_path)
-    doc = analyse(path, layouts=layouts)
+    doc = analyze(path, layouts=layouts)
     doc.entries = document_entries(path, doc)
     out = str(tmp_path / "book.epub")
     write_epub(doc, out, "Book")
@@ -73,21 +73,21 @@ def test_the_whole_path_produces_a_package_the_gate_accepts(tmp_path):
 def test_missing_page_layout_degrades_to_one_region(tmp_path):
     path = write_pdf(tmp_path / "m.pdf", [plain(BODY) for _ in range(4)])
     layouts = {n: regions(n, (BODY_BOX, ""), (F_BOX, "")) for n in (1, 3, 4)}
-    doc = analyse(path, layouts=layouts)
+    doc = analyze(path, layouts=layouts)
     assert doc.verdict == "ok" and doc.layout_errors == 1
     assert "continues the story" in " ".join(b.text for b in doc.pages[1].blocks)
 
 
 def test_too_many_missing_layouts_is_unstable(tmp_path):
     path = write_pdf(tmp_path / "u.pdf", [plain(BODY) for _ in range(4)])
-    doc = analyse(path, layouts={1: regions(1, (BODY_BOX, ""))})
+    doc = analyze(path, layouts={1: regions(1, (BODY_BOX, ""))})
     assert doc.verdict == "unstable_layout" and "3 of 4" in doc.reason
 
 
 def test_unopenable_pdf_is_a_verdict(tmp_path):
     path = tmp_path / "broken.pdf"
     path.write_bytes(b"this is not a pdf at all")
-    doc = analyse(str(path), layouts={})
+    doc = analyze(str(path), layouts={})
     assert doc.verdict == "unreadable" and doc.reason
 
 
@@ -98,14 +98,14 @@ def test_no_layout_helper_is_a_fallback_reason(tmp_path, monkeypatch):
         raise LayoutUnavailable("page layout needs macOS 26 or later")
 
     monkeypatch.setattr(layout, "run_helper", unavailable)
-    doc = analyse(path)
+    doc = analyze(path)
     assert doc.verdict == "no_layout" and "macOS 26" in doc.reason
 
 
 def test_a_textless_book_never_runs_the_helper(tmp_path, monkeypatch):
     path = write_pdf(tmp_path / "t.pdf", [Page(rects=[Rect(0, 0, 612, 792, 0.3)])] * 2)
     monkeypatch.setattr(layout, "run_helper", lambda *a, **k: pytest.fail("helper ran on a textless book"))
-    assert analyse(path).verdict == "no_text_layer"
+    assert analyze(path).verdict == "no_text_layer"
 
 
 def B(kind="para", text="", size=10.0, bold=False, lines=3, top=600.0, bottom=560.0, left=72.0, right=500.0):

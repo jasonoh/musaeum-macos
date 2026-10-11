@@ -534,7 +534,7 @@ In `src/hooks/useLibrary.ts`, add after the existing store reads:
 
 - [ ] **Step 4: Verify the app still builds and behaves as before**
 
-Run: `npm run typecheck && npm run lint && npm test` Expected: all pass. Single selection still works exactly as it did — this task adds no user-visible behaviour.
+Run: `npm run typecheck && npm run lint && npm test` Expected: all pass. Single selection still works exactly as it did — this task adds no user-visible behavior.
 
 - [ ] **Step 5: Commit**
 
@@ -1238,7 +1238,7 @@ describe('startBulkHydrate', () => {
     await flushForTests()
   })
 
-  it('stops early when cancelled', async () => {
+  it('stops early when canceled', async () => {
     await seed('a')
     await seed('b')
     await seed('c')
@@ -1333,7 +1333,7 @@ export async function findHydratableFile(bookDir: string): Promise<string | null
 }
 
 let running = false
-let cancelled = false
+let canceled = false
 let current: Promise<void> = Promise.resolve()
 
 export function isBulkHydrateRunning(): boolean {
@@ -1342,7 +1342,7 @@ export function isBulkHydrateRunning(): boolean {
 
 /** Stops the loop; the book in flight still finishes and is counted. */
 export function cancelBulkHydrate(): void {
-  if (running) cancelled = true
+  if (running) canceled = true
 }
 
 /**
@@ -1354,7 +1354,7 @@ export function startBulkHydrate(ids: string[]): void {
   if (running) throw new Error('A metadata refresh is already running')
   nas.assertOnline()
   running = true
-  cancelled = false
+  canceled = false
   current = run(ids)
 }
 
@@ -1371,7 +1371,7 @@ async function run(ids: string[]): Promise<void> {
 
   try {
     for (const id of ids) {
-      if (cancelled) break
+      if (canceled) break
       // Every remaining write would fail anyway; stopping and saying so beats
       // reporting fifty separate failures
       if (!nas.isOnline()) break
@@ -1401,7 +1401,7 @@ async function run(ids: string[]): Promise<void> {
     }
   } finally {
     running = false
-    cancelled = false
+    canceled = false
     progress.running = false
     if (hydrated > 0) {
       librarySync.writeFullCatalog()
@@ -1417,7 +1417,7 @@ export function flushForTests(): Promise<void> {
 }
 export function resetForTests(): void {
   running = false
-  cancelled = false
+  canceled = false
   current = Promise.resolve()
 }
 ```
@@ -1963,7 +1963,7 @@ git commit -m "feat: selection panel with bulk delete, send and refresh"
 
 ### Task 10: Selection-aware context menu
 
-> **Amended 2026-09-25, on the owner's report.** A right-click no longer makes the clicked book the selection. That side effect opened the **Details** panel beside the menu — the panel renders from the derived single selection — so one gesture ran its own action and the left click's. Steps 1 and 3 below are the behaviour as built at the time: the rule now lives in `docs/invariants/selection-and-keyboard.md`, the menu's scope is decided by `contextMenuScope` in `src/lib/selection.ts` (the selection when the click landed inside a multi-selection, the clicked book otherwise), and the `openContextMenuFor` action this task added is gone. What the task was *for* is unchanged: right-clicking inside a multi-selection still offers the bulk items.
+> **Amended 2026-09-25, on the owner's report.** A right-click no longer makes the clicked book the selection. That side effect opened the **Details** panel beside the menu — the panel renders from the derived single selection — so one gesture ran its own action and the left click's. Steps 1 and 3 below are the behavior as built at the time: the rule now lives in `docs/invariants/selection-and-keyboard.md`, the menu's scope is decided by `contextMenuScope` in `src/lib/selection.ts` (the selection when the click landed inside a multi-selection, the clicked book otherwise), and the `openContextMenuFor` action this task added is gone. What the task was *for* is unchanged: right-clicking inside a multi-selection still offers the bulk items.
 
 **Files:**
 - Modify: `src/components/library/BookContextMenu.tsx`
@@ -2122,7 +2122,7 @@ Three, and deliberately not symmetric — the services under them are not.
   sidecar's thread pool would otherwise fan out concurrent hydrations at
   rate-limited APIs), cancellable, and batched via a `batched` option on
   `importer.hydrate` that suppresses its per-book `upsertCatalog` and
-  `libraryChanged` so the job can write the catalog once at the end. Cancelling
+  `libraryChanged` so the job can write the catalog once at the end. Canceling
   stops the loop, not the book in flight. Progress and Cancel live in
   `StatusBar`, because the job outlives the selection.
 

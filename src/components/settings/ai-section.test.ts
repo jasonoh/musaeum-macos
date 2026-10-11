@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
  * The renderer has no DOM harness in this repo (the vitest environment is Node,
  * with no React testing library), so the two claims that are about *wiring*
  * rather than about logic are decided by reading the file. Both are claims a
- * behavioural test would be better at and neither can be decided any other way
+ * behavioral test would be better at and neither can be decided any other way
  * here — so each case states what it does not prove.
  *
  * Everything the section *computes* is decided by real tests elsewhere:
@@ -98,7 +98,7 @@ describe('the Ask (AI) section', () => {
     expect(SOURCE).not.toContain('sessionStorage')
   })
 
-  it('gives the section a Save without introducing a second behaviour', () => {
+  it('gives the section a Save without introducing a second behavior', () => {
     // D3.6 (AC35). One `save`, three callers: ⌘↵, the footer's Save changes and
     // the section's Save. A second save function is what would make two buttons
     // in one dialog mean different things about the same form.

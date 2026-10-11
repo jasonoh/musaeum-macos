@@ -9,7 +9,7 @@ decisions this implements and Annex B for what it measured.
 """
 
 from .epub import link_entries, write_epub
-from .layout import analyse
+from .layout import analyze
 from .model import Block, Document, PageResult
 from .outline import Entry, document_entries, heading_entries, outline_entries
 
@@ -18,7 +18,7 @@ __all__ = [
     "Document",
     "Entry",
     "PageResult",
-    "analyse",
+    "analyze",
     "document_entries",
     "heading_entries",
     "link_entries",

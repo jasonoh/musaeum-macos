@@ -1,6 +1,6 @@
 # Design: Ask about what you're reading (reader AI panel, v1)
 
-**Date:** 2026-09-19 **Status:** Proposed — the four gating forks were settled with Jason on 2026-09-19. **All three slices are built** (1, 2 and 3, each on 2026-09-19), **and slice 4 — the provider picker and the Test button — landed 2026-09-20** (annex: `docs/superpowers/plans/2026-09-20-reader-ai-config-slice4.md`, which also records the two product decisions the owner took for it in a batched form: the model list comes from the endpoint, and Test sends `GET {base}/models` and nothing else). v1 is complete as designed; every deferred item below still carries its reversal condition. **Scope:** a question panel inside the reader that knows where you are — the book, the section, the passage you selected — against an OpenAI-compatible endpoint that is **localhost by default**. **Depends on:** the reader (`specs/2026-08-13-native-reader-design.md`, shipped 2026-08-13); the Settings surface over `app_config` (`docs/invariants/settings-and-editing.md`); the `handle()` / preload / event plumbing (`docs/data-contracts.md`). **Supersedes:** the _"AI conversation about the book you are reading"_ paragraph in `tasks.md` §"Captured, not analysed" (2026-09-19). That entry argued the payload and named six forks; this document settles them. The measurements it carried are reused here, not re-derived. **Interacts with:** S1 in-book search (`specs/2026-09-19-reader-search-design.md`) — one side-panel slot, two claimants. The rule is **D4** here; S1's D7 is superseded by it.
+**Date:** 2026-09-19 **Status:** Proposed — the four gating forks were settled with Jason on 2026-09-19. **All three slices are built** (1, 2 and 3, each on 2026-09-19), **and slice 4 — the provider picker and the Test button — landed 2026-09-20** (annex: `docs/superpowers/plans/2026-09-20-reader-ai-config-slice4.md`, which also records the two product decisions the owner took for it in a batched form: the model list comes from the endpoint, and Test sends `GET {base}/models` and nothing else). v1 is complete as designed; every deferred item below still carries its reversal condition. **Scope:** a question panel inside the reader that knows where you are — the book, the section, the passage you selected — against an OpenAI-compatible endpoint that is **localhost by default**. **Depends on:** the reader (`specs/2026-08-13-native-reader-design.md`, shipped 2026-08-13); the Settings surface over `app_config` (`docs/invariants/settings-and-editing.md`); the `handle()` / preload / event plumbing (`docs/data-contracts.md`). **Supersedes:** the _"AI conversation about the book you are reading"_ paragraph in `tasks.md` §"Captured, not analyzed" (2026-09-19). That entry argued the payload and named six forks; this document settles them. The measurements it carried are reused here, not re-derived. **Interacts with:** S1 in-book search (`specs/2026-09-19-reader-search-design.md`) — one side-panel slot, two claimants. The rule is **D4** here; S1's D7 is superseded by it.
 
 ---
 
@@ -18,7 +18,7 @@ What that argument does not settle is whether the model actually holds the conte
 
 | Slice                       | Books         | Bearing on the bet                                          |
 | --------------------------- | ------------- | ----------------------------------------------------------- |
-| pre-1900                    | 995           | public-domain canon — the most-memorised material there is  |
+| pre-1900                    | 995           | public-domain canon — the most-memorized material there is  |
 | 1900–1959                   | 43            |                                                             |
 | 1960–1999                   | 377           |                                                             |
 | 2000–2013                   | 3,132         | the bulk: business, self-help, technical, textbooks         |
@@ -76,7 +76,7 @@ A third occupant of the reader's side-panel slot. It assembles a prompt from the
 
 **Why:** in this repo _sidecar_ is the Python metadata process (`services/sidecar.ts`, `docs/data-contracts.md` §"Python Sidecar Communication"). Naming a renderer panel plus a main-process HTTP client a sidecar would read as the wrong process for as long as the code lives — and it would invite exactly the wrong implementation (fork 1 of the `tasks.md` entry).
 
-**Consequence:** `tasks.md`'s phrasing ("a sidecar to the ebook reader") is retired in favour of "the ask panel". Cheap now, expensive after a year of commits.
+**Consequence:** `tasks.md`'s phrasing ("a sidecar to the ebook reader") is retired in favor of "the ask panel". Cheap now, expensive after a year of commits.
 
 ---
 
@@ -140,7 +140,7 @@ One wire format — `POST {base}/chat/completions` with `stream: true` — cover
 | ---------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | **L0** (default) | title, author, section label, fraction, the question, and the selection if there is one | always, unless the probe says the model cannot place this book                               |
 | **L1**           | L0 **+ the current section's text**, capped                                             | when the verdict is `weak` for this `(book, session)`, or when the user turns the passage on |
-| L2               | L1 + a CFI-centred window across adjacent sections                                      | **deferred** — see "Rejected and deferred"                                                   |
+| L2               | L1 + a CFI-centered window across adjacent sections                                      | **deferred** — see "Rejected and deferred"                                                   |
 
 - **The selection is always sent, and is always the referent.** It is the only text that travels by default, it is bounded (a selection longer than the cap is truncated with a visible notice), and the prompt says which part is which: the pointer is an index, the selection is authoritative over recall.
 - **The section label comes from `tocItem.label`, and the fraction from the relocate detail — never a chapter number.** Section indices and chapter numbers drift across editions, reissues and translations, and a collection's "chapter 7" is a short story. Today that label is _dropped_ (`ReaderEngine.tsx:149-155`); threading it through is the one change to the engine this feature needs.
@@ -227,14 +227,14 @@ ai:ask(request: AskRequest) → { requestId }
 ai:cancel(requestId) → boolean
 
 event:ai-chunk  { requestId, delta }
-event:ai-done   { requestId, reason: 'stop' | 'length' | 'cancelled' | 'timeout' }
+event:ai-done   { requestId, reason: 'stop' | 'length' | 'canceled' | 'timeout' }
 event:ai-error  { requestId, message }
 ```
 
 - **The caller mints `requestId`** (so `AskRequest` carries it) rather than the service returning one. As first written this decision went the other way, and building it showed why that was wrong: the renderer subscribes _then_ asks, and a refused connection fails in a few milliseconds — faster than the IPC reply carrying the id would arrive. A service-minted id would have left that error with nobody listening, and the panel stuck. Minting it caller-side removes the race rather than racing it. (`ai:getStatus`, not `ai:status`, follows the house `domain:verb` convention — `settings:get`, `library:getBooks`.)
 
 - **The job-id shape is the existing one.** `transfer-queue` and `bulk-hydrate` already return an id and push progress through `events.broadcast`; this adds three channel entries to `EVENT_CHANNELS` (`api.types.ts:216-232`) and three listeners to the preload's `on` block.
-- **Cancellation is a terminal `done`, not an error.** The user closing the panel or starting another question is a normal outcome; it aborts the `AbortController` and emits `reason: 'cancelled'`.
+- **Cancellation is a terminal `done`, not an error.** The user closing the panel or starting another question is a normal outcome; it aborts the `AbortController` and emits `reason: 'canceled'`.
 - **At most one user question in flight**, and at most one probe per book per session. A new question cancels the previous one.
 - **Listeners are per-request and released on settle.** The panel subscribes when `ai:ask` resolves and unsubscribes on `chunk`'s terminal event — a leaked listener per question would be a memory leak in an app with a 500MB ceiling, and it is invisible until it isn't.
 - **Timeouts are idle-based:** no chunk for 120s → `reason: 'timeout'`, terminal. No total deadline: a local model's first token can legitimately take a minute on a cold start.
@@ -271,11 +271,11 @@ Components: `ReaderAsk.tsx` (transcript + composer + disclosure line + verdict b
 
 1. `AppSettings` gains `aiBaseUrl`, `aiModel`, `aiApiKey`; `CONFIG_KEYS` maps them to `ai_base_url` / `ai_model` / `ai_api_key`. A forgotten mapping is a **typecheck** error (`settings.ts:26-34`), not a runtime one — assert by construction.
 2. A blank base URL resolves to `http://localhost:11434/v1` with source `default`; a blank model resolves to source `none` and the panel reports why; the key never appears in `resolved` (masked `detail` only), asserted the way `settings.test.ts:51-58` already asserts it.
-3. `MUSAEUM_AI_*` env vars are honoured when nothing is configured, and `source` is `'env'` — the `resolveGoogleBooksKey` contract, applied to three values.
+3. `MUSAEUM_AI_*` env vars are honored when nothing is configured, and `source` is `'env'` — the `resolveGoogleBooksKey` contract, applied to three values.
 4. Saving the endpoint or model does **not** call `sidecar.restart()` (they are not in `SIDECAR_KEYS`), asserted.
 5. `ai:status` reports `{ configured, model, endpoint, isLocal, reason }`; `isLocal` is true for `localhost`, `127.0.0.1`, `[::1]`, and false for anything else.
 6. Against a stub SSE server: deltas broadcast **in order**, `ai-done { reason: 'stop' }` fires exactly once, and **zero listeners remain** after settle.
-7. `ai:cancel` mid-stream closes the socket and produces `ai-done { reason: 'cancelled' }` — not an error.
+7. `ai:cancel` mid-stream closes the socket and produces `ai-done { reason: 'canceled' }` — not an error.
 8. `ECONNREFUSED` produces the "is your local model server running?" message; a 401 produces "the endpoint rejected the key"; a JSON `{ error: { message } }` body surfaces that message.
 9. No chunk for 120s produces a terminal `timeout`; no request can hang forever.
 10. The SSE parser handles: an event split across chunks, several events in one chunk, `data: [DONE]`, comment/heartbeat lines, and a malformed JSON line (skipped, not fatal).
@@ -321,7 +321,7 @@ Verified in the running app against a **stub SSE server** on localhost (a ~40-li
 
 - **A library-wide "ask the AI about my library"** — a _different_ feature (a catalog query over FTS), and explicitly not absorbed here (`tasks.md` fork 6 named it to stop exactly that).
 - **Sending the section by default** — rejected: it contradicts the egress argument that justifies the whole shape, and the ladder already reaches it on evidence. Revived only if probing proves useless on real books.
-- **A cloud-first provider model** — rejected in favour of a loopback default (D3); a cloud endpoint remains a first-class choice, it just isn't the default.
+- **A cloud-first provider model** — rejected in favor of a loopback default (D3); a cloud endpoint remains a first-class choice, it just isn't the default.
 - **A second right-hand panel** — rejected (D4). Revived if search and ask are both used in the same sitting often enough that the exclusivity is felt.
 - **CFI citations and CFI jump-to** — rejected (D7): unproducible by the model, so unverifiable.
 - **Highlights/annotations persistence** — untouched. The panel reads a live selection through the public annotation mechanism without needing storage, which is what stops this feature queueing behind the annotations decision (`tasks.md`, C1 out-of-scope list).
@@ -383,24 +383,24 @@ The panel exists and v1 is complete. **AC18–AC25 hold**, decided by the instru
 | 22  | CDP + the stub's request log: `weak` → notice + `this section's text` in the disclosure; the override → the passage in the *body*, not just in the line                 |
 | 23  | CDP: `Go to “The Ledger of Small Debts”` appears, and clicking it moves the pointer to `section “The Ledger of Small Debts”, position (72%)`; absent for an answer that names no section |
 | 24  | `find` + `grep` over the library root, the SQLite file and its WAL: a sentinel answer appears in 0 of them, and no file was written during the session                  |
-| 25  | Structural: the panel's entire IPC surface is `ai:getStatus` / `ai:ask` / `ai:cancel` and the three `on.ai*` subscriptions — plus a behavioural run with the book's folder moved out of the library root, which still answered       |
+| 25  | Structural: the panel's entire IPC surface is `ai:getStatus` / `ai:ask` / `ai:cancel` and the three `on.ai*` subscriptions — plus a behavioral run with the book's folder moved out of the library root, which still answered       |
 
 The verification ran against a **stub SSE server**, no model and no library: `MUSAEUM_USER_DATA` isolation plus two synthetic EPUBs (`/tmp/musaeum-probe`), so the real library was never opened and **no real book was touched** — the sentinel and tree checks are only meaningful because nothing else was writing.
 
 **Nine code files, two test files.** The eight planned, plus:
 
 - `src/components/shared/icons.tsx` — the panel's header button needs a glyph, and the house rule is that icons are hand-rolled SVGs in that set rather than borrowed from a library. One 12-line `AskIcon`.
-- `src/stores/reader.store.test.ts` — the file already existed (sanitizePrefs); the store's ask routing is now 14 more cases there, because the reducer can be tested in isolation but *routing* (which stream an event lands in) is store behaviour.
+- `src/stores/reader.store.test.ts` — the file already existed (sanitizePrefs); the store's ask routing is now 14 more cases there, because the reducer can be tested in isolation but *routing* (which stream an event lands in) is store behavior.
 - `vitest.config.ts` — one line, and the only genuine bug the gates caught. The store now imports through `@/`, which no test had ever exercised; `vitest.config.ts` aliased `@shared` and `electron` but not `@`, so `reader.store.test.ts` failed to *load*. The build config already had the alias (`electron.vite.config.ts`) — the test config now mirrors it, which is the fix rather than writing the store's one import relative and leaving the trap for the next file.
 
-**One bug found before it ran, and it was a real one.** `onRelocate` reports position updates, and `latest.current` is spread straight into `reader:saveProgress` — so adding `label` to the relocate detail and letting the whole detail become `latest` would have posted a `label` field into the progress report. The handler now destructures the two fields the report carries. Nothing would have failed loudly; it would have travelled silently for as long as the report shape tolerated it.
+**One bug found before it ran, and it was a real one.** `onRelocate` reports position updates, and `latest.current` is spread straight into `reader:saveProgress` — so adding `label` to the relocate detail and letting the whole detail become `latest` would have posted a `label` field into the progress report. The handler now destructures the two fields the report carries. Nothing would have failed loudly; it would have traveled silently for as long as the report shape tolerated it.
 
 **Readings this spec left open, now settled — each one is a coin flip the next session should not have to make again:**
 
 1. **The disclosure line needs a payload before a question exists.** `buildAskMessages` refuses an empty ask (deliberately), so the composer assembles its preview with a placeholder standing in for the *question* only. The member list is still the assembler's own — derived from the payload's fields — so an ask always lists `your question`, which is correct: an ask cannot be sent without one.
 2. **The probe is a send too, so it gets a line.** D5's rule is that nothing leaves quietly; the probe is the one request the reader pressed nothing for. While it is out the panel says *"Checking whether the model knows this book. Sends: title, author, section “X”, position → host"* — the probe's own payload, from the same assembler. This is an addition beyond the letter of D5 and squarely inside its intent.
 3. **Escape's scope.** The decision text says "Escape while the composer has focus"; the build scopes it to *focus anywhere inside the panel* (its buttons included) and additionally swallows unmodified keys while focus is inside — which is the rule the `prefsOpen` branch already states, applied to the second panel. Without it Space on the panel's own button would also turn the page underneath.
-4. **A cancelled probe still lands a verdict.** `null` means "not probed", so leaving it `null` after a cancel would re-probe on every reopen and weaken "one probe per (book, session)". Cancelled or failed, the verdict is `unknown` — unverified, which is what is actually known. A partial reply that parses is still scored (`RECALL: no` followed by a dropped connection is the model saying it cannot place the book).
+4. **A canceled probe still lands a verdict.** `null` means "not probed", so leaving it `null` after a cancel would re-probe on every reopen and weaken "one probe per (book, session)". Canceled or failed, the verdict is `unknown` — unverified, which is what is actually known. A partial reply that parses is still scored (`RECALL: no` followed by a dropped connection is the model saying it cannot place the book).
 5. **The selection's CFI is captured nowhere.** D7 jumps by label and D8 defers the cfi-keyed cache, so nothing consumes `getCFI(index, range)`; the selection's *text* is all that travels. `src/types/foliate-js.d.ts` is therefore untouched — when the deferred cache is built, whoever needs the CFI declares it then, rather than this slice widening the vendored surface for a field with no reader.
 6. **The section text is `textContent`, not `innerText`.** `load` fires while the paginator is measuring the new section with its iframe unrendered, and `innerText` needs layout; foliate's own search reads the same text nodes. The known limit is a file whose XHTML is minified onto one line — two block elements then read as one word — which costs a little in the passage and a token at the score, never a verdict.
 7. **The transcript is one store field (`askSession`), not the sketch's four flat ones.** The reducer is its only writer; `askTurns` / `askStatus` / `askError` as separate fields would be three writes per event and could disagree. `askStatus` is derived instead, by `askStatusOf(session, probing)`, and the pure module owns that rule too.
@@ -409,7 +409,7 @@ The verification ran against a **stub SSE server**, no model and no library: `MU
 
 **Deliberately not done:** no transcript persistence, no answer cache, no verdict cache, no L2 (adjacent sections), no CFI storage, no highlights storage — all deferred with the conditions already stated above. The one thing the panel reaches outside itself is `openModal('settings')` for the unavailable state's button, which is the existing modal route and not a new surface.
 
-**Stated plainly, so nobody re-derives it:** AC25's "works with the library offline" is proven structurally and by one behavioural run (the book's folder removed from the library root while a question was answered), not by unmounting the NAS — the section text is in memory and no path in this feature reads a file. And the verification observed something outside this slice: with two books imported in one session, the second book was in `catalog.json` and on disk but had no `books` row until the app was relaunched, after which the startup catalog reconciliation adopted it. That is the import/catalog path, untouched here, and whether it is a race with the verification's own immediate `refreshLibrary()` call or a real gap is **not diagnosed** — it is recorded rather than explained.
+**Stated plainly, so nobody re-derives it:** AC25's "works with the library offline" is proven structurally and by one behavioral run (the book's folder removed from the library root while a question was answered), not by unmounting the NAS — the section text is in memory and no path in this feature reads a file. And the verification observed something outside this slice: with two books imported in one session, the second book was in `catalog.json` and on disk but had no `books` row until the app was relaunched, after which the startup catalog reconciliation adopted it. That is the import/catalog path, untouched here, and whether it is a race with the verification's own immediate `refreshLibrary()` call or a real gap is **not diagnosed** — it is recorded rather than explained.
 
 ---
 

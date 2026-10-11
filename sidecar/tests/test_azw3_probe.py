@@ -20,7 +20,7 @@ def test_classify_names_the_records_the_annex_cares_about():
     assert classify(b"plain text") == "data"
 
 
-def test_describe_summarises_runs_and_dumps_header_words_and_tagx():
+def test_describe_summarizes_runs_and_dumps_header_words_and_tagx():
     lines = describe(_synthetic_file())
     assert lines[0] == "4 records, " + str(len(_synthetic_file())) + " bytes"
     assert "  records 1..2: JPEG" in lines

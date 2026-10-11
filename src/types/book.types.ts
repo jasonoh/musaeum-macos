@@ -122,12 +122,12 @@ export interface ReflowProgress {
  * What a manual Refresh or Rebuild reports back. Both return the same *shape*
  * because either can become the other: `library-sync.refreshLibrary` walks and
  * rebuilds when the catalog is missing, so a caller cannot tell which ran
- * without being told. `cancelled` is true only for a rebuild the user stopped,
+ * without being told. `canceled` is true only for a rebuild the user stopped,
  * and in that case nothing was written.
  */
 export interface CatalogSyncOutcome {
   books: number
-  cancelled: boolean
+  canceled: boolean
 }
 
 /**
@@ -143,8 +143,8 @@ export interface CatalogSyncState {
   completed: number
   /** Null until the walk's first progress event reports the folder count. */
   total: number | null
-  outcome: 'running' | 'done' | 'cancelled' | 'failed'
-  /** Books the settled run produced; null while running, and when cancelled. */
+  outcome: 'running' | 'done' | 'canceled' | 'failed'
+  /** Books the settled run produced; null while running, and when canceled. */
   books: number | null
 }
 
@@ -276,7 +276,7 @@ export function orderedFormats(book: Book): BookFormat[] {
 
 /**
  * The format a card names: the one the reader would open. A PDF-only book has
- * no *readable* format and still gets labelled — "PDF" is the one worth seeing
+ * no *readable* format and still gets labeled — "PDF" is the one worth seeing
  * from across the grid (never converted, no in-app reader).
  */
 export function primaryFormat(book: Book): BookFormat | null {

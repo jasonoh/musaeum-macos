@@ -73,7 +73,7 @@ interface LibraryState {
 const EMPTY_FILTERS: BookFilters = {}
 
 /**
- * How long a *successful* sync keeps its settled line. A cancelled or failed
+ * How long a *successful* sync keeps its settled line. A canceled or failed
  * one has no deadline: those are the states a user has to act on, and the
  * whole point of the line is that a job which stops reporting at the moment it
  * matters is indistinguishable from one that finished (`refresh-feedback.md`).
@@ -152,12 +152,12 @@ export const useLibraryStore = create<LibraryState>()(
         settledTimer = null
         set({ catalogSync: startCatalogSync(kind) })
 
-        let outcome: 'done' | 'cancelled' | 'failed' = 'done'
+        let outcome: 'done' | 'canceled' | 'failed' = 'done'
         let books: number | null = null
         try {
           const result = await run()
           books = result.books
-          outcome = result.cancelled ? 'cancelled' : 'done'
+          outcome = result.canceled ? 'canceled' : 'done'
         } catch (err) {
           console.error(`catalog ${kind} failed:`, err)
           outcome = 'failed'

@@ -160,7 +160,7 @@ const STOPWORDS = new Set([
  * Spanish or Cyrillic book normalizes instead of vanishing. The known limit is
  * the length filter: a two-character CJK word is dropped, and a CJK sentence
  * arrives as a handful of long tokens — verbatim still scores `strong` and a
- * paraphrase still scores `weak`, which is the behaviour the verdict needs.
+ * paraphrase still scores `weak`, which is the behavior the verdict needs.
  */
 export function normalizeTokens(text: string | null | undefined): string[] {
   if (!text) return []

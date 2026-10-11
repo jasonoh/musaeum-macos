@@ -121,7 +121,7 @@ describe('removeFilesWithStem', () => {
     expect(await exists('Leviathan Wakes.azw3')).toBe(false)
     expect(await exists('._Leviathan Wakes.azw3')).toBe(false)
     expect(await exists('Leviathan Wakes.sdr')).toBe(false)
-    // Untouched neighbour
+    // Untouched neighbor
     expect(await exists('Caliban’s War.epub')).toBe(true)
   })
 
@@ -1023,7 +1023,7 @@ describe('on-device presence', () => {
 
     it('gives no entry to a file that names neither of two books sharing its title (AC12)', async () => {
       // The ambiguity guard, seen from the cover side: neither book can claim
-      // this file, so no jacket may be put on it. Its neighbour, which carries
+      // this file, so no jacket may be put on it. Its neighbor, which carries
       // the author, is claimed and gets one.
       await putOnDevice(
         'Kindle',
@@ -1171,7 +1171,7 @@ describe('on-device presence', () => {
       // what stops it. Without that guard the pass still runs, reads the device's
       // cache directory and reports a line of zeros for a device there is nothing
       // to say about. (Found by the mutation campaign: removing the guard left
-      // the suite green, which is what a decider resting on its neighbour looks
+      // the suite green, which is what a decider resting on its neighbor looks
       // like.)
       await putOnDevice(
         'Kindle',

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** the set of fields a user has claimed (today `app_config.field_overrides`, machine-local) lives in each book's own record — `metadata.json`, `catalog.json` and a `books` column — timestamped per field, so the second machine honours it.
+**Goal:** the set of fields a user has claimed (today `app_config.field_overrides`, machine-local) lives in each book's own record — `metadata.json`, `catalog.json` and a `books` column — timestamped per field, so the second machine honors it.
 
 **Architecture:** a new `owned_fields` map `{field: ISO}` on the `Book` (column `books.owned_fields`, `metadata.json` key `owned_fields`). `services/field-overrides.ts` keeps its public API (`list`, `markFromPatch`, `release`) and moves its storage from `app_config` onto the row, so every enforcement site (`importer.hydrate`'s lock list, the reply filter, the editor's padlock) is untouched. A pure module, `services/owned-fields.ts`, holds the validator and the per-field reconcile, which `library-sync.adopt` applies beside the reading-state reconcile. `app_config.field_overrides` is read exactly once, inside the migration, to seed rows.
 
@@ -102,7 +102,7 @@ Expected: FAIL — `setOwnedFields` is not exported / `ownedFields` is undefined
 `electron/main/schema/migrations/007_owned_fields.sql`:
 ```sql
 -- The fields the user has claimed, as { field: ISO time } JSON, mirrored from
--- metadata.json so a second machine can honour them (portable-decisions D1/D2).
+-- metadata.json so a second machine can honor them (portable-decisions D1/D2).
 -- Not an FTS column, so the sync triggers are unaffected. NULL = no claims.
 ALTER TABLE books ADD COLUMN owned_fields TEXT;
 ```
@@ -253,7 +253,7 @@ const FIELD_NAMES = new Set<string>(Object.keys(HYDRATED_FIELD_LABELS))
  * Anything → a clean map. Both files that carry it are written by us but read
  * off a share any machine can touch, and the column is JSON text, so every
  * input is `unknown`: a bad value is "no locks" (invariant 12), never a throw,
- * and a bad *member* is dropped without taking its neighbours with it.
+ * and a bad *member* is dropped without taking its neighbors with it.
  */
 export function parseOwnedFields(raw: unknown): OwnedFields {
   let value = raw
@@ -403,7 +403,7 @@ function fromCatalogEntry(book: Book): Book {
   }
 }
 ```
-(keeps today's behaviour for reading state: `validateReadingState(null/undefined)` returns `null`; the old early return only skipped an allocation. Confirm `normalized.readingState == null` still yields `null`, not `undefined`, so existing catalog tests stay green.)
+(keeps today's behavior for reading state: `validateReadingState(null/undefined)` returns `null`; the old early return only skipped an allocation. Confirm `normalized.readingState == null` still yields `null`, not `undefined`, so existing catalog tests stay green.)
 
 `importer.ts` `writeMetadataJson`, after `reading_state` and before `date_added`:
 ```ts
@@ -604,7 +604,7 @@ git commit -m "feat(overrides): the claim map moves onto the book row; the upgra
 
 ---
 
-### Task 5: Adoption honours the other machine's claims; release reaches the record
+### Task 5: Adoption honors the other machine's claims; release reaches the record
 
 **Files:**
 - Modify: `electron/main/services/library-sync.ts` (`adopt`, new `preserveLocalOwnedFields`), `electron/main/services/library-edit.ts` (new `releaseFieldOverride`), `electron/main/ipc/library.ts` (the `library:releaseFieldOverride` handler), `src/components/library/BookEditor.tsx` (`releaseOverride` guard)
@@ -768,7 +768,7 @@ Expected: row count identical before and after; `0` rows with a non-NULL `owned_
 
 - [ ] **Step 3: AC4 and AC5 — the two-profile probe (live, isolated; this instrument does not exist yet)**
 
-Reuse `cdp.py` from the 2026-10-11 editor probe (`/private/tmp/claude-501/-Users-oh-Projects-musaeum-macos/c62ce302-d284-4afe-8f1d-fd0db757b062/scratchpad/cdp.py`; it takes a port via `target()` — parameterise `http://127.0.0.1:{port}/json`). Procedure, following the `verify` skill's launch recipe (`env -u ELECTRON_RUN_AS_NODE MUSAEUM_USER_DATA=… npm run dev -- -- --remote-debugging-port=PORT`, and **check the listening pid's start time against your launch** before trusting a port):
+Reuse `cdp.py` from the 2026-10-11 editor probe (`/private/tmp/claude-501/-Users-oh-Projects-musaeum-macos/c62ce302-d284-4afe-8f1d-fd0db757b062/scratchpad/cdp.py`; it takes a port via `target()` — parameterize `http://127.0.0.1:{port}/json`). Procedure, following the `verify` skill's launch recipe (`env -u ELECTRON_RUN_AS_NODE MUSAEUM_USER_DATA=… npm run dev -- -- --remote-debugging-port=PORT`, and **check the listening pid's start time against your launch** before trusting a port):
 1. One scratch library `$S/library`; profile `$S/A` (port 9222) and profile `$S/B` (port 9223), each with `app_config.library_root` set to `$S/library` (create each DB by a first launch, kill, set the config row, relaunch — the app creates the schema).
 2. In A: drop one EPUB into `$S/library/imports/`; wait until it is a book; confirm `catalog.json` lists it.
 3. B: click *Reload Library* (adoption). Confirm B has the book and `SELECT owned_fields FROM books` is NULL.
@@ -794,7 +794,7 @@ git commit -m "docs: portable decisions slice 1 — the claim travels, in the co
 ## Risks
 
 1. **Lazy `metadata.json` (departure 3).** A seeded lock or a reconcile win is in SQLite and `catalog.json` at once, but a book's `metadata.json` only gains it on that book's next write. If the catalog were deleted and rebuilt from folders before that write, the claim would be lost. Bounded: a handful of books, any edit/hydrate/reading flush closes it. The alternative (write every seeded book's `metadata.json` during adoption) puts a per-book SMB write inside `adopt`; declined for slice 1.
-2. **The absent-entry rule is a judgement the spec did not make** (departure 2). It is stated once, in `owned-fields.ts`, and tested at the tie boundary, the null boundary and both orderings; if the owner wants tombstones instead, that is a record-shape change and a new decision.
+2. **The absent-entry rule is a judgment the spec did not make** (departure 2). It is stated once, in `owned-fields.ts`, and tested at the tie boundary, the null boundary and both orderings; if the owner wants tombstones instead, that is a record-shape change and a new decision.
 3. **Clock skew** behaves as the spec says (D2 risk 4): a fast clock wins ties it should not, bounded to one field of one book.
 4. **A required `Book.ownedFields`** touches every `Book` literal. Typecheck finds each; the cost is paid once and prevents a path that forgets the field (the invariant-4 shape of bug).
 5. **`app_config.field_overrides` is left in place.** It is dead after 007 and is the rollback path; a later cleanup may delete it.

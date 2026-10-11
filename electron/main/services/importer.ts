@@ -118,7 +118,7 @@ function titleFromFilename(filePath: string): string {
 /**
  * What an import may be told to do about a duplicate the pre-copy gate finds.
  *
- * `'ask'` — the default, and the behaviour every caller had before this
+ * `'ask'` — the default, and the behavior every caller had before this
  * existed — suspends the import on a `DuplicateDecision` until something calls
  * `resolveDuplicate`. `'add-new'` detects the same collision, builds the same
  * `DuplicateContext`, and then simply does not suspend: the file is imported as

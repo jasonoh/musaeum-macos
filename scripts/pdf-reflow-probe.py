@@ -45,7 +45,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "sidecar"))
 
-from reflow import analyse, document_entries, write_epub  # noqa: E402
+from reflow import analyze, document_entries, write_epub  # noqa: E402
 from reflow import gate  # noqa: E402
 from reflow.chars import page_chars  # noqa: E402
 from reflow.outline import outline_entries  # noqa: E402
@@ -238,7 +238,7 @@ def run_one(title: str, why: str, root: str, out_dir: str, limit: Optional[int],
         "pdf": os.path.basename(path),
     }
     started = time.perf_counter()
-    doc = analyse(path, limit=limit)
+    doc = analyze(path, limit=limit)
     doc.entries = document_entries(path, doc)
     rec["seconds"] = round(time.perf_counter() - started, 1)
     rec["pages"] = len(doc.pages)
@@ -367,10 +367,10 @@ def _run(book_dir: str, pdf: str, *, force: bool = False) -> dict:
 def _record_is_clean(doc) -> bool:
     """Is this layout record whole enough to judge an artifact against?
 
-    `analyse` calls a layout `ok` when at most a quarter of the text pages
+    `analyze` calls a layout `ok` when at most a quarter of the text pages
     degraded (D6's tolerance), but a gate verdict needs *every* page: an
     exclusion list with holes in it moves G4 and G6 on a book whose own pass was
-    fine. And when the helper answers nothing at all, `analyse` returns
+    fine. And when the helper answers nothing at all, `analyze` returns
     `no_layout` with no pages — `layout_errors == 0` on an empty record, which a
     guard keyed on the error count alone would read as perfect (measured by Task
     4's review: a degenerate record scored a clean artifact as "fails G4 now").
@@ -384,7 +384,7 @@ def gate_artifact(title: str, pdf: str, epub_path: str, golden: dict, rec: dict)
 
     The exclusions C.4 asks for — the regions read from Vision, the figure labels
     inside written crops, the dropped furniture — are facts about the *source*,
-    so they come from laying it out again with `analyse`, the same deterministic
+    so they come from laying it out again with `analyze`, the same deterministic
     pass, rather than from the RPC's result, whose consumer is the reader and not
     this probe. Gating the artifact with a fresh record is a cross-check as well:
     if the artifact had come from some other pass, G2 and G6 would move.
@@ -394,7 +394,7 @@ def gate_artifact(title: str, pdf: str, epub_path: str, golden: dict, rec: dict)
     """
     attempts = []
     for _ in range(3):
-        doc = analyse(pdf)
+        doc = analyze(pdf)
         attempts.append({"verdict": doc.verdict, "layout_errors": doc.layout_errors})
         if _record_is_clean(doc):
             break

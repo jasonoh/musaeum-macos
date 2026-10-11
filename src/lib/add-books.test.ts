@@ -55,9 +55,9 @@ describe('importBooksFromDialog — what the picker hands back', () => {
     expect(imported).toEqual([PATHS])
   })
 
-  it('does nothing at all when the dialog is cancelled', async () => {
-    // The handler answers a cancelled dialog with an empty list, so this is the
-    // only cancelled-state check there is — and a no-op, not an error
+  it('does nothing at all when the dialog is canceled', async () => {
+    // The handler answers a canceled dialog with an empty list, so this is the
+    // only canceled-state check there is — and a no-op, not an error
     const imported = stubImport({ fromDialog: async () => [] })
     await importBooksFromDialog()
     expect(imported).toEqual([])
@@ -143,7 +143,7 @@ describe('the Add Books control (AC17) — one menu, two on-ramps', () => {
     expect(toolbar).toMatch(/label="Import files…"/)
     expect(toolbar).toMatch(/label="Migrate from Calibre…"/)
     // The same function ⌘O reaches, so the shortcut cannot become a second
-    // import path with its own behaviour
+    // import path with its own behavior
     expect(toolbar).toMatch(/importBooksFromDialog\(\)/)
   })
 
@@ -174,7 +174,7 @@ describe('the picker handler (AC18) — the filter is the shared list', () => {
     expect(library).not.toMatch(/extensions:/)
   })
 
-  it('is a multi-select open-file dialog, and answers [] when cancelled', () => {
+  it('is a multi-select open-file dialog, and answers [] when canceled', () => {
     expect(library).toMatch(/properties: \['openFile', 'multiSelections'\]/)
     expect(library).toMatch(/result\.canceled \? \[\] : result\.filePaths/)
   })

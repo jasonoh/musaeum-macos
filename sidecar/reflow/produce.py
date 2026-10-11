@@ -1,7 +1,7 @@
 """The production pass: a PDF → `{book}/derived/reflow.epub` plus its stamp.
 
 `reflow_pdf` is what the sidecar's RPC calls (spec D7). Around the pass slice 1R
-already had (`analyse` → `document_entries` → `write_epub`) it adds the four
+already had (`analyze` → `document_entries` → `write_epub`) it adds the four
 things that turn a working spike into a cache on a share:
 
 - **The stamp (D9).** `derived/reflow.json` records the source PDF's size and
@@ -17,7 +17,7 @@ things that turn a working spike into a cache on a share:
 - **One pass per book (D7, AC6).** The sidecar runs requests on four threads, so
   two opens can ask for the same book at once; a per-artifact lock makes the
   second wait and then find the first one's stamp current.
-- **D6's verdict is `analyse`'s.** A book whose verdict is not `ok` writes
+- **D6's verdict is `analyze`'s.** A book whose verdict is not `ok` writes
   nothing and returns the one line the reader shows.
 
 What it deliberately does not touch: `metadata.json` (read for the title, never
@@ -38,7 +38,7 @@ import zipfile
 from typing import Callable, Optional
 
 from .epub import GENERATOR, write_epub
-from .layout import analyse
+from .layout import analyze
 from .outline import document_entries
 from .vision import HELPER_VERSION
 
@@ -365,7 +365,7 @@ def reflow_pdf(
         stamp_tmp = ""
         try:
             progress("start")
-            doc = analyse(pdf_path, progress=progress)
+            doc = analyze(pdf_path, progress=progress)
             doc.entries = document_entries(pdf_path, doc)
             result["verdict"] = doc.verdict
             result.update(_doc_stats(doc))

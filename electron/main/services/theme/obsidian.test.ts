@@ -5,7 +5,7 @@ import {
   OBSIDIAN_ACCENT_LADDER,
   OBSIDIAN_ROLE_LADDER,
   OBSIDIAN_THEME_FILE,
-  normalizeColour,
+  normalizeColor,
   obsidianIr,
   themeFolderName,
   variantFromCanvas,
@@ -27,7 +27,7 @@ import { resolverRuleFilter, resolverWindowOptions, resolvedEntries } from './re
  * `resolvedEntries`) are here too, and that is legitimate rather than a boundary
  * blurred: `npm test` runs Electron-as-Node, so `BrowserWindow` and `session` do
  * not exist — but these three are *values*, and AC6.5's options half and D5's
- * entry rule are exactly the parts a unit test can decide. The behaviour that
+ * entry rule are exactly the parts a unit test can decide. The behavior that
  * needs a real window is the probe's (§7 of the annex).
  */
 
@@ -126,7 +126,7 @@ describe('AC6.1 — the ladder resolves a theme whose values only exist in a cas
 
   it('resolves the same nine roles from the forms Chromium actually hands back', () => {
     // The resolver's probe element resolves `calc()`/`color-mix()`/`var()` before
-    // the value reaches `normalizeColour`, so these are the shapes that arrive in
+    // the value reaches `normalizeColor`, so these are the shapes that arrive in
     // production — `rgb()` (both spellings), `color(srgb …)` for a `color-mix()`
     // result, and an 8-digit hex. The regex scrape's own input is the case below.
     const resolvedForms: ObsidianReads = {
@@ -157,7 +157,7 @@ describe('AC6.1 — the ladder resolves a theme whose values only exist in a cas
 
   it('has no answer for a scrape: the raw declarations are computed strings', () => {
     // The mutation AC6.1 names. A regex scrape reads the declarations as written,
-    // so it sees `var()` and `calc()` chains — exactly the values `normalizeColour`
+    // so it sees `var()` and `calc()` chains — exactly the values `normalizeColor`
     // refuses, because a value that still looks computed is one nobody resolved.
     const scraped: ObsidianReads = {
       '--background-secondary': 'hsl(var(--base-h), calc(var(--base-s) - 4%), var(--base-l))',
@@ -248,7 +248,7 @@ describe('D4 — the role ladder is three rungs, and only a required role reject
   })
 
   it('names the declared-but-unusable variable, not the rung two steps down', () => {
-    // `--text-normal` is *present* but not a colour (AC6.4's own input). The
+    // `--text-normal` is *present* but not a color (AC6.4's own input). The
     // variable to blame is the one the theme declared: naming the halcyon rung
     // would send the user looking for a variable their theme should not have.
     const built = obsidianIr(
@@ -263,7 +263,7 @@ describe('D4 — the role ladder is three rungs, and only a required role reject
     )
   })
 
-  it('omits an unresolved optional role rather than substituting a colour it never named', () => {
+  it('omits an unresolved optional role rather than substituting a color it never named', () => {
     const bare: ObsidianReads = {
       '--background-secondary': '#0f1117',
       '--background-modifier-border': '#262a38',
@@ -275,7 +275,7 @@ describe('D4 — the role ladder is three rungs, and only a required role reject
     }
     const ir = mustIr(bare, 'dark', 'Bare')
 
-    // Absent, not defaulted: a substituted surface would be a colour the theme
+    // Absent, not defaulted: a substituted surface would be a color the theme
     // never declared (D3's rule, applied to the roles with no canonical name).
     expect('bg2' in ir).toBe(false)
     expect('bg3' in ir).toBe(false)
@@ -316,17 +316,17 @@ describe('D4 — the role ladder is three rungs, and only a required role reject
     // With the accent role gone too, the hint becomes the value the derivation
     // itself reaches for — the orange slot (`derive.ts:314-321`) — which here is
     // the same muted tone every accent fell back to, because this theme declares
-    // no colour at all. The hint is a *slot's* value rather than a synthesised
-    // hue; nothing here invents a colour the theme did not supply.
+    // no color at all. The hint is a *slot's* value rather than a synthesized
+    // hue; nothing here invents a color the theme did not supply.
     const noRole: ObsidianReads = { ...noAccents }
     delete noRole['--interactive-accent']
     expect(mustIr(noRole, 'dark', 'NoAccents').accent_hint).toBe('#9aa0b0')
   })
 })
 
-// --- D3: the colour normalizer, and what it refuses ---------------------------
+// --- D3: the color normalizer, and what it refuses ---------------------------
 
-describe('D3 — normalizeColour accepts the forms Chromium hands back and nothing else', () => {
+describe('D3 — normalizeColor accepts the forms Chromium hands back and nothing else', () => {
   it('reads every accepted form to lowercase #rrggbb', () => {
     for (const [raw, hex] of [
       ['#171c28', '#171c28'],
@@ -339,25 +339,25 @@ describe('D3 — normalizeColour accepts the forms Chromium hands back and nothi
       ['color(srgb 0.149 0.186 0.264)', '#262f43'],
       ['color(srgb 0 0 0)', '#000000']
     ] as const) {
-      expect({ raw, hex: normalizeColour(raw)?.hex }).toEqual({ raw, hex })
+      expect({ raw, hex: normalizeColor(raw)?.hex }).toEqual({ raw, hex })
     }
   })
 
   it('drops alpha and reports it, but only when there was an alpha to lose', () => {
-    expect(normalizeColour('#8695b799')).toEqual({ hex: '#8695b7', droppedAlpha: true })
-    expect(normalizeColour('#e6e6e6ff')).toEqual({ hex: '#e6e6e6', droppedAlpha: false })
-    expect(normalizeColour('rgba(40, 45, 55, 0.65)')).toEqual({
+    expect(normalizeColor('#8695b799')).toEqual({ hex: '#8695b7', droppedAlpha: true })
+    expect(normalizeColor('#e6e6e6ff')).toEqual({ hex: '#e6e6e6', droppedAlpha: false })
+    expect(normalizeColor('rgba(40, 45, 55, 0.65)')).toEqual({
       hex: '#282d37',
       droppedAlpha: true
     })
-    expect(normalizeColour('color(srgb 0 0 0 / 0.5)')).toEqual({
+    expect(normalizeColor('color(srgb 0 0 0 / 0.5)')).toEqual({
       hex: '#000000',
       droppedAlpha: true
     })
   })
 
-  it('refuses everything that is not a resolvable colour', () => {
-    // Which is the whole contract: a payload that can only be a hex colour cannot
+  it('refuses everything that is not a resolvable color', () => {
+    // Which is the whole contract: a payload that can only be a hex color cannot
     // carry CSS, a URL or a selector (AC6.3), and a value that still *looks*
     // computed is one the resolver did not manage to resolve (D3).
     for (const raw of [
@@ -379,7 +379,7 @@ describe('D3 — normalizeColour accepts the forms Chromium hands back and nothi
       'color(display-p3 1 0 0)',
       '#gggggg'
     ]) {
-      expect({ raw, value: normalizeColour(raw) }).toEqual({ raw, value: null })
+      expect({ raw, value: normalizeColor(raw) }).toEqual({ raw, value: null })
     }
   })
 
@@ -421,9 +421,9 @@ describe('D5 — the variant comes from the canvas, and the light entry has to d
   })
 })
 
-// --- AC6.3: nothing but hex colours crosses back ------------------------------
+// --- AC6.3: nothing but hex colors crosses back ------------------------------
 
-describe('AC6.3 — the resolve result can only carry hex colours', () => {
+describe('AC6.3 — the resolve result can only carry hex colors', () => {
   it('serializes to values with no CSS, no URL, no at-rule and no non-hex #', () => {
     const ir = mustIr(
       {
@@ -441,7 +441,7 @@ describe('AC6.3 — the resolve result can only carry hex colours', () => {
     expect(payload).not.toContain('url(')
     expect(payload).not.toContain('@')
     expect(payload).not.toMatch(/#(?![0-9a-f])/)
-    // And every colour-bearing field is a lowercase #rrggbb — the contract the
+    // And every color-bearing field is a lowercase #rrggbb — the contract the
     // renderer's CSS-variable write depends on.
     for (const hex of [
       ir.bg,

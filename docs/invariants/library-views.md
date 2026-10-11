@@ -17,7 +17,7 @@
 
 ## Sorting & Search
 
-One `BookSort` in the library store drives every list: the toolbar dropdown and the clickable list-view column headers both write to it, so they can never disagree. Sort SQL lives in `db.SORT_SQL` — each field maps to an **array** of expressions and the direction is applied to every one, so descending `series` fully reverses the ordering instead of only flipping the index within a series. Entries are parameterised by table prefix because the FTS join exposes `books_fts.title`/`author` too, and an unqualified reference is ambiguous.
+One `BookSort` in the library store drives every list: the toolbar dropdown and the clickable list-view column headers both write to it, so they can never disagree. Sort SQL lives in `db.SORT_SQL` — each field maps to an **array** of expressions and the direction is applied to every one, so descending `series` fully reverses the ordering instead of only flipping the index within a series. Entries are parameterized by table prefix because the FTS join exposes `books_fts.title`/`author` too, and an unqualified reference is ambiguous.
 
 List-view headers: click to sort, click the active column again to flip. First-click direction comes from `defaultSortDirection()` — ascending for text, descending for `date_added`/`rating`, which is what "newest"/"best" means. Formats has no sensible ordering and is deliberately not sortable. Labels for every field/direction pair come from `sortLabel()` in `book.types.ts`, shared so the dropdown can name a combination a header produced (it appends the current sort when it isn't one of its curated shortcuts).
 

@@ -8,7 +8,7 @@ safety argument (D2): an ISBN question cannot return another book, so the
 identifier passes are exact, and the fuzzy pass is confined to rows whose own
 identifiers are all junk.
 
-The book these cases are modelled on is the one the design was opened for
+The book these cases are modeled on is the one the design was opened for
 (`7ae66296-fd60-4e99-8420-ef985e36abd6`, *Topology of Violence*, MIT Press): its
 stored ISBN is one Google answers with `totalItems: 0`, and the English jackets it
 should be offered instead hang off ISBNs OpenLibrary already lists for the work —
@@ -41,7 +41,7 @@ from pipeline import cover
 #
 # The two English volumes of this book, at the sizes the design records: the
 # 1352x2103 jacket Google answers `isbn:0262345072` with, and the 800x1245 one it
-# answers `isbn:9780262534956` with. Flat colours, because these bytes are handed
+# answers `isbn:9780262534956` with. Flat colors, because these bytes are handed
 # to the pipeline directly and only need to be real, displayable images.
 JACKET_TALL = "https://books.google.com/books/content?id=9eRVDwAAQBAJ&printsec=frontcover&zoom=0"
 JACKET_WIDE = "https://books.google.com/books/content?id=B-VVDwAAQBAJ&printsec=frontcover&zoom=0"
@@ -81,7 +81,7 @@ RECORDED_ISBNS = [
 
 
 def _flat(color: tuple, size: tuple) -> bytes:
-    """A flat-coloured PNG: deterministic, tiny, and unmistakably an image."""
+    """A flat-colored PNG: deterministic, tiny, and unmistakably an image."""
     buf = io.BytesIO()
     Image.new("RGB", size, color).save(buf, "PNG")
     return buf.getvalue()
@@ -414,7 +414,7 @@ def test_no_searched_entry_claims_the_fetchs_mark(monkeypatch, tmp_path):
 
     `winner` means "what a fetch would write", and a fetch would never ask this
     question — so every entry is `false`, without exception and without a
-    parameter having been added to `summarise_candidates` for it. Every entry also
+    parameter having been added to `summarize_candidates` for it. Every entry also
     keeps the `url` a pick needs, and a thumb the renderer's CSP can actually
     show, because a tile nobody can see is a tile nobody can choose.
     """

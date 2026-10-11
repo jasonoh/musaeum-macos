@@ -13,16 +13,16 @@ import { hexToRgb, lstar } from '../color'
  * stylesheet and reads the roles back; this file decides what those strings
  * mean. Three measured facts shape it:
  *
- * 1. **What comes back is the substituted token stream, not a colour.** Chromium
+ * 1. **What comes back is the substituted token stream, not a color.** Chromium
  *    answers `getComputedStyle(body).getPropertyValue('--x')` with `#171c28`,
  *    `rgb(22, 22, 30)`, `hsl(220, 12%, calc(18% - 2%))`,
  *    `color-mix( in hsl, #1d2433, #2f3b54 )`, `color(srgb 0.149 0.186 0.264)`,
  *    `rgba(40, 45, 55, 0.65)` or `''` — so the resolver's probe element resolves
- *    the CSS value before it reaches `normalizeColour`, which accepts exactly
+ *    the CSS value before it reaches `normalizeColor`, which accepts exactly
  *    the four shapes Chromium then hands back and answers `null` for anything
  *    else. A value that still *looks* computed is `null`: that is the honest
  *    answer for one the resolver did not manage to resolve, and a payload that
- *    can only be a hex colour cannot carry CSS, a URL, or a selector (AC6.3).
+ *    can only be a hex color cannot carry CSS, a URL, or a selector (AC6.3).
  * 2. **The canonical role list alone admits 2 of the 6 themes installed on this
  *    machine.** These themes are written against Obsidian's *own* base
  *    stylesheet, so `--color-base-00…100` and `--color-red` are declared by
@@ -34,7 +34,7 @@ import { hexToRgb, lstar } from '../color'
  * 3. **Alpha is dropped, not composited.** Surfaces are opaque (the prototype's
  *    rule, and the reason a 60 %-alpha `#8695b799` reads as a surface at all).
  *    Compositing would be a guess about intent — halcyon's translucent `faint`
- *    is a text tone over several backdrops — and it would invent a colour the
+ *    is a text tone over several backdrops — and it would invent a color the
  *    theme never declared. So the alpha is dropped and every role it was
  *    dropped for is named in `notes`, which puts the loss in the picker's
  *    disclosure rather than in silence.
@@ -50,10 +50,10 @@ export type ObsidianRole =
 
 /**
  * What the resolver read back: variable name -> the trimmed string the page
- * handed over, exactly as it was (a substituted token stream, not a colour).
+ * handed over, exactly as it was (a substituted token stream, not a color).
  *
  * A missing variable is *absent* rather than `''`, but both read as unresolved:
- * `normalizeColour('')` is `null`, so the two spellings of "this theme does not
+ * `normalizeColor('')` is `null`, so the two spellings of "this theme does not
  * declare it" take the same path.
  */
 export type ObsidianReads = Record<string, string>
@@ -105,11 +105,11 @@ const ACCENT_ORDER: readonly AccentSlot[] = [
  * because §2.6 says to (`derive.py:258-267`). Rung 3 is the new one: Obsidian's
  * own ramp, which is the vocabulary modern themes actually declare. Only the
  * surface and text roles get rung 3 — accents have no `--color-base-*` name to
- * stand in for them, and a grey "red" would be worse than the declared fallback.
+ * stand in for them, and a gray "red" would be worse than the declared fallback.
  *
  * `muted` and `faint` cross-reference each other's canonical name last: a theme
  * that declares only one of the two dim text tones has still named a tone for
- * the other, and that is closer to its intent than a surface colour.
+ * the other, and that is closer to its intent than a surface color.
  */
 export const OBSIDIAN_ROLE_LADDER: Record<ObsidianRole, readonly string[]> = {
   canvas: ['--background-secondary', '--halcyon-base-blue-01', '--color-base-00'],
@@ -144,8 +144,8 @@ export const OBSIDIAN_ROLE_LADDER: Record<ObsidianRole, readonly string[]> = {
  * The eight accent slots' ladders: Obsidian's own `--color-*` name, then the
  * halcyon palette variable the prototype kept for the same slot.
  *
- * No `--color-base-*` rung: those are greys, and an accent that is grey is a
- * colour the theme did not declare.
+ * No `--color-base-*` rung: those are grays, and an accent that is gray is a
+ * color the theme did not declare.
  */
 export const OBSIDIAN_ACCENT_LADDER: Record<AccentSlot, readonly string[]> = {
   red: ['--color-red', '--halcyon-palette-salmon'],
@@ -158,7 +158,7 @@ export const OBSIDIAN_ACCENT_LADDER: Record<AccentSlot, readonly string[]> = {
   brown: ['--color-pink', '--halcyon-palette-pink']
 }
 
-/** A role's value, once the page's string has been read as a colour. */
+/** A role's value, once the page's string has been read as a color. */
 interface Resolved {
   hex: string
   droppedAlpha: boolean
@@ -208,7 +208,7 @@ function alphaOf(raw: string): number | null {
   return Number.isFinite(value) ? value : null
 }
 
-/** The quantisation `rgbToHex` uses, without its `Rgb`-triple detour. */
+/** The quantization `rgbToHex` uses, without its `Rgb`-triple detour. */
 function byteOf(channel: number): number {
   return Math.max(0, Math.min(255, Math.round(channel)))
 }
@@ -218,7 +218,7 @@ function hexOf(channels: number[]): string {
 }
 
 /**
- * One read value -> `#rrggbb`, or `null` for anything that is not a colour this
+ * One read value -> `#rrggbb`, or `null` for anything that is not a color this
  * engine can store.
  *
  * Accepted, and only these: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(r,g,b)`,
@@ -235,7 +235,7 @@ function hexOf(channels: number[]): string {
  * value actually carried a translucent alpha — an opaque `#rrggbbff` loses
  * nothing and so is not reported, which keeps `notes` free of non-losses.
  */
-export function normalizeColour(raw: string): { hex: string; droppedAlpha: boolean } | null {
+export function normalizeColor(raw: string): { hex: string; droppedAlpha: boolean } | null {
   const text = raw.trim()
   if (text === '') return null
 
@@ -282,7 +282,7 @@ export function normalizeColour(raw: string): { hex: string; droppedAlpha: boole
 /**
  * The prototype's variant rule: `lstar(canvas) < 0.5` is dark, else light.
  *
- * A read is labelled by its **canvas's own lightness and never by the class it
+ * A read is labeled by its **canvas's own lightness and never by the class it
  * was read under** (D5). The class is a probe: Dracula + LYT's `theme-light`
  * class resolves to a dark palette, and a theme that does not gate on
  * `body:is(.theme-dark)` answers the same palette under both classes.
@@ -298,7 +298,7 @@ export function variantFromCanvas(canvasHex: string): ThemeVariant {
  * It is deliberately not "the first rung that read empty". A theme that writes
  * `--text-normal: none` (or a `var()` chain the probe could not resolve, or
  * `hsl(212, 15%, calc(13% + 65%))`) has *declared* the canonical name — the fact
- * the user can act on is that the thing they declared is not a colour, and
+ * the user can act on is that the thing they declared is not a color, and
  * naming the halcyon rung two steps down would send them looking for a variable
  * their theme was never supposed to have.
  */
@@ -307,10 +307,10 @@ function blameVar(reads: ObsidianReads, role: ObsidianRole): string {
   return ladder.find((name) => (reads[name] ?? '').trim() !== '') ?? ladder[0]
 }
 
-/** A role's value: the first rung whose read normalizes to a colour, or `null`. */
+/** A role's value: the first rung whose read normalizes to a color, or `null`. */
 function resolveRole(reads: ObsidianReads, role: ObsidianRole): Resolved | null {
   for (const name of OBSIDIAN_ROLE_LADDER[role]) {
-    const found = normalizeColour(reads[name] ?? '')
+    const found = normalizeColor(reads[name] ?? '')
     if (found !== null) return found
   }
   return null
@@ -319,7 +319,7 @@ function resolveRole(reads: ObsidianReads, role: ObsidianRole): Resolved | null 
 /** An accent slot's value, the same way — with no `--color-base-*` rung. */
 function resolveAccent(reads: ObsidianReads, slot: AccentSlot): Resolved | null {
   for (const name of OBSIDIAN_ACCENT_LADDER[slot]) {
-    const found = normalizeColour(reads[name] ?? '')
+    const found = normalizeColor(reads[name] ?? '')
     if (found !== null) return found
   }
   return null
@@ -458,7 +458,7 @@ export function obsidianIr(
   // `bg2`/`bg3`/`muted` are spelled *required* on `ThemeIr` while the derivation
   // reads none of `bg2`/`bg3` and treats a missing `muted` as "use `fg`"
   // (`derive.ts:216`) — so an unresolved optional role is omitted here, as D4
-  // says, rather than substituted with a colour the theme never declared. The
+  // says, rather than substituted with a color the theme never declared. The
   // cast is that disagreement, kept in one place: a caller that spread these
   // defaults instead would ship a palette the theme did not name.
   const ir = {

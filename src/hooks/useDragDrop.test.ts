@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
  *
  * The predicate itself is no longer here: slice 3 of the library-IA design moved
  * it to `BOOK_FILE_EXTENSIONS` / `isBookFile` in `@shared/book.types` so the
- * window drop and the native file picker cannot disagree, and its behaviour is
+ * window drop and the native file picker cannot disagree, and its behavior is
  * decided in `src/types/book.types.test.ts`. What is left for this file is the
  * one thing the hook still owns — having no list of its own to fall behind,
  * which is how a dropped PDF became a silent no-op: a file the gate rejects
@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
  *
  * Stated limit: there is no DOM harness in this suite, so a real drop cannot be
  * dispatched at a window. This proves the call site's shape, not the drop's
- * behaviour.
+ * behavior.
  */
 const SOURCE = readFileSync(join(process.cwd(), 'src', 'hooks', 'useDragDrop.ts'), 'utf8')
 

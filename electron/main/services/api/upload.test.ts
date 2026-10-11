@@ -141,7 +141,7 @@ describe('safeFileName — the client names the book, not the path', () => {
   })
 
   it('replaces another book extension with the declared one', () => {
-    // A client that mislabelled its own format still lands somewhere the
+    // A client that mislabeled its own format still lands somewhere the
     // importer can find it by extension (invariant 2)
     expect(safeFileName('Dune.mobi', 'epub')).toBe('Dune.epub')
     expect(safeFileName('Dune.Messiah.azw3', 'epub')).toBe('Dune.Messiah.epub')

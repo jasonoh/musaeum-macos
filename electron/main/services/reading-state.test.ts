@@ -108,8 +108,8 @@ describe('saveProgress write tiering', () => {
 
     expect((await readJson(dir)).reading_state.position).toBe('p9')
     await librarySync.flushForTests()
-    const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b4')
-    expect(catalogued?.readingState?.position).toBe('p9')
+    const cataloged = (await readCatalog(root))?.books.find((b) => b.id === 'b4')
+    expect(cataloged?.readingState?.position).toBe('p9')
   })
 
   it('pushes a position without overwriting fields edited on another machine', async () => {
@@ -210,8 +210,8 @@ describe('flushPending', () => {
 
     expect((await readJson(dir)).reading_state.position).toBe('p2')
     await librarySync.flushForTests()
-    const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b8')
-    expect(catalogued?.readingState?.position).toBe('p2')
+    const cataloged = (await readCatalog(root))?.books.find((b) => b.id === 'b8')
+    expect(cataloged?.readingState?.position).toBe('p2')
   })
 
   it('does nothing when every book was already flushed', async () => {
@@ -257,8 +257,8 @@ describe('flushPending', () => {
     // the moment this resolves, the handshake calls quit() and teardown
     // closes the database and exits. Awaiting a test-only helper would prove
     // a property the shipped path does not have.
-    const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b12')
-    expect(catalogued?.readingState?.position).toBe('p2')
+    const cataloged = (await readCatalog(root))?.books.find((b) => b.id === 'b12')
+    expect(cataloged?.readingState?.position).toBe('p2')
     expect((await readJson(dir)).reading_state.position).toBe('p2')
   })
 })
@@ -300,8 +300,8 @@ describe('flushPendingBeforeQuit', () => {
     // second timer of its own.
     await flushPendingBeforeQuit(1_000)
 
-    const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b13')
-    expect(catalogued?.readingState?.position).toBe('p2')
+    const cataloged = (await readCatalog(root))?.books.find((b) => b.id === 'b13')
+    expect(cataloged?.readingState?.position).toBe('p2')
   })
 
   it('does not wait for a stalled flush — quit is never blocked by a dead NAS write', async () => {

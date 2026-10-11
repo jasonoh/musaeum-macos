@@ -696,8 +696,8 @@ describe('saveProgress write tiering', () => {
 
     expect((await readJson(dir)).reading_state.position).toBe('p9')
     await librarySync.flushForTests()
-    const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b4')
-    expect(catalogued?.readingState?.position).toBe('p9')
+    const cataloged = (await readCatalog(root))?.books.find((b) => b.id === 'b4')
+    expect(cataloged?.readingState?.position).toBe('p9')
   })
 
   it('advances read status as progress is saved', async () => {
@@ -745,8 +745,8 @@ describe('flushPending', () => {
 
     expect((await readJson(dir)).reading_state.position).toBe('p2')
     await librarySync.flushForTests()
-    const catalogued = (await readCatalog(root))?.books.find((b) => b.id === 'b8')
-    expect(catalogued?.readingState?.position).toBe('p2')
+    const cataloged = (await readCatalog(root))?.books.find((b) => b.id === 'b8')
+    expect(cataloged?.readingState?.position).toBe('p2')
   })
 
   it('does nothing when every book was already flushed', async () => {
@@ -1332,7 +1332,7 @@ export const useReaderStore = create<ReaderState>()(
 
       /**
        * A book the engine can't render is handed to the OS instead of opening
-       * a reader that only apologises — so PDFs land in Preview today and
+       * a reader that only apologizes — so PDFs land in Preview today and
        * quietly stop falling through when C2 ships.
        */
       openBook: (book) => {
@@ -1403,7 +1403,7 @@ This task is verified by running the app, not by unit tests — it is a renderin
 
 - [ ] **Step 1: Add the icons**
 
-In `src/components/shared/icons.tsx`, following the existing hand-rolled inline-SVG style (copy the props signature from a neighbouring icon):
+In `src/components/shared/icons.tsx`, following the existing hand-rolled inline-SVG style (copy the props signature from a neighboring icon):
 
 ```tsx
 export function ReaderIcon({ className }: { className?: string }) {

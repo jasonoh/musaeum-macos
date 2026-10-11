@@ -265,7 +265,7 @@ function whereLine(sectionLabel: string | null, fraction: number | null): string
  * the pointer's section label was read as a measure of how far the reader had
  * got (it comes from a table of contents that named the whole 18,405-character
  * Introduction "Introduction", with no entry for the part they were in), and
- * the block labelled as the section's text was a window that began behind them
+ * the block labeled as the section's text was a window that began behind them
  * without saying so. The prompt tells the model what each line is and is not.
  */
 function askSystem(pointer: AskPointer, windowed: boolean): string {
@@ -281,7 +281,7 @@ function askSystem(pointer: AskPointer, windowed: boolean): string {
     '- If you do not know this book, or do not know the part being asked about, say so plainly. "I do not have that book" is a complete and correct answer, and always better than a plausible invention. Never invent a quotation, a chapter title, or a page number.',
     '- Only quote text you were given. Never present prose you recall as a quotation.',
     "- If you can name the section something is discussed in, name it as the book's own table of contents names it.",
-    '- A block labelled as coming from the book may have been cut off at the end to fit a limit. If the answer depends on something past that point, say that you only have the beginning rather than guessing at the rest.',
+    '- A block labeled as coming from the book may have been cut off at the end to fit a limit. If the answer depends on something past that point, say that you only have the beginning rather than guessing at the rest.',
     // Only when it is true: at the section's head there is no run-up to explain,
     // and a rule that describes something the payload does not do is a rule the
     // model has to reconcile with the block in front of it.

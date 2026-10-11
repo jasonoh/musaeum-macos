@@ -11,7 +11,7 @@ import { timingSafeEqual } from 'node:crypto'
  * 2. **Fail closed.** No configured token means no request is authorized: an
  *    enabled surface with no credential is the one shape this must never grow.
  *    `api/rest.ts` also refuses to start in that state — this is the second of
- *    the two defences, and the one that holds if the first is ever bypassed.
+ *    the two defenses, and the one that holds if the first is ever bypassed.
  * 3. **A refusal logs the client, never the attempt.** The address is useful.
  *    The presented credential is not: a rejected guess is often a *real*
  *    credential with a typo, and the token itself belongs in no log file.

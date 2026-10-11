@@ -143,7 +143,7 @@ Musaeum/
 │   │   │   ├── apple-books.ts    # open -a Books
 │   │   │   └── theme/            # theming (palette only, never layout)
 │   │   │       ├── index.ts      #   loader + barrel; THEME_ENGINE_VERSION
-│   │   │       ├── color.ts      #   colour maths — sRGB/Oklab, contrast, mixes
+│   │   │       ├── color.ts      #   color math — sRGB/Oklab, contrast, mixes
 │   │   │       ├── derive.ts     #   palette → derived tokens, floors enforced
 │   │   │       ├── store.ts      #   the app_config keys: read+validate, write in one
 │   │   │       │                 #   transaction, the inlined built-in registry,

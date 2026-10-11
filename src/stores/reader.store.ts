@@ -63,7 +63,7 @@ export const DEFAULT_PREFS: ReaderPrefs = {
 }
 
 /**
- * The choices the popover offers, labelled — and, because they are the same
+ * The choices the popover offers, labeled — and, because they are the same
  * lists `sanitizePrefs` validates against, a value the UI cannot produce is
  * also a value storage cannot smuggle in.
  */
@@ -509,7 +509,7 @@ export const useReaderStore = create<ReaderState>()(
        * caller minted. The probe's reply never lands in the transcript; an
        * event for a superseded question cannot touch the current one; and a
        * chunk the reducer does not want is returned as *the same state*, so a
-       * cancelled stream cannot notify a subscriber either.
+       * canceled stream cannot notify a subscriber either.
        */
       aiChunk: (event) =>
         set((s) => {
@@ -596,7 +596,7 @@ export const useReaderStore = create<ReaderState>()(
       },
 
       /**
-       * One progress frame, or the artefact's arrival.
+       * One progress frame, or the artifact's arrival.
        *
        * Two guards, both of which are the difference between a bar and a bug: a
        * frame for another book is dropped (the sidecar's four threads can be

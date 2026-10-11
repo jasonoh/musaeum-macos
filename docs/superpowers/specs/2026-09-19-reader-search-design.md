@@ -16,7 +16,7 @@ Three properties make it unusually cheap for the value:
 2. **No NAS I/O at all.** `open()` already fetched the whole file into a `Blob` (`ReaderEngine.tsx:163-171`), so every search result comes out of the in-memory container. Search therefore works offline, on a dropped share, and with no latency attributable to SMB.
 3. **The navigation already exists.** A hit is a CFI, and `goTo(cfi)` is exactly what the TOC panel already calls (`ReaderView.tsx:214`) and what position restore already calls (`ReaderEngine.tsx:181`). Jumping to a result is a solved problem in this codebase.
 
-It is also the _only_ thing on the analysed "missing" list that is unspecified, cheap, and load-bearing for the reading loop. Its expensive twin — a library-wide index of book _contents_ — is explicitly rejected in D1.
+It is also the _only_ thing on the analyzed "missing" list that is unspecified, cheap, and load-bearing for the reading loop. Its expensive twin — a library-wide index of book _contents_ — is explicitly rejected in D1.
 
 ---
 
@@ -42,7 +42,7 @@ async * search(opts) // view.js:542
 - `excerpt` is `{ pre, match, post }`, already trimmed to ~50 characters either side with ellipses added (`search.js:6-21`).
 - The consumer **must discriminate on shape** — `typeof result === 'string'` is the end.
 
-**Behaviour worth knowing before designing the UI:**
+**Behavior worth knowing before designing the UI:**
 
 - `search()` calls `this.clearSearch()` on entry (`view.js:543`), so exactly one search is live at a time and starting a new one erases the previous highlights.
 - Hits are stored as annotations under the `foliate-search:` prefix and **re-added on every section render** (`view.js:415-416`), so they stay outlined while you read on rather than vanishing as you page. This is free and is a AC1.5.
@@ -83,18 +83,18 @@ Actions: `toggleSearch()`, `setQuery()`, `setSearchState()`, `clearSearch()`.
 
 - Grouped by section in **book order** (the engine yields sections in spine order).
 - Group header: `label || 'Part N'` — the fallback matters, because a book with no TOC labels yields groups with an empty label and a wall of blank headers is worse than no grouping.
-- A hit row shows `excerpt.pre` + emphasised `excerpt.match` + `excerpt.post`, with the group's hit count in the header.
-- Clicking a hit: `goTo(hit.cfi)`, set `activeCfi`, keep the panel open so the next hit is one click away (matching the TOC panel's behaviour of closing on navigate is _not_ wanted here — a search user is stepping through matches, not going somewhere once).
+- A hit row shows `excerpt.pre` + emphasized `excerpt.match` + `excerpt.post`, with the group's hit count in the header.
+- Clicking a hit: `goTo(hit.cfi)`, set `activeCfi`, keep the panel open so the next hit is one click away (matching the TOC panel's behavior of closing on navigate is _not_ wanted here — a search user is stepping through matches, not going somewhere once).
 - Progress: while `searching`, reuse the existing thin gold progress-bar idiom for the search progress. The count of hits found so far is shown as it grows.
 - Zero hits: an explicit "No matches" line, not an empty panel (AC1.10).
 
-### Highlight colour
+### Highlight color
 
 `drawOptions.color` is passed to `Overlayer.outline` (`view.js:544`, `overlayer.js:142-158`), which builds an SVG that lives in foliate-view's closed shadow root inside the **app's** document — not the book's iframe.
 
-**D4: the colour comes from the reader's own palette table as a resolved literal.** The table is `PALETTE` in `ReaderEngine.tsx:48-51`, whose comment already says it must stay in step with `tailwind.config.js`. Two consequences the implementation must respect:
+**D4: the color comes from the reader's own palette table as a resolved literal.** The table is `PALETTE` in `ReaderEngine.tsx:48-51`, whose comment already says it must stay in step with `tailwind.config.js`. Two consequences the implementation must respect:
 
-- Theming slice 5 makes that table derived. If S1 lands first, **slice 5 must add the search highlight colour to its derivation list** — otherwise a themed app outlines search hits in a hardcoded amber. This is recorded as a hand-off in both directions.
+- Theming slice 5 makes that table derived. If S1 lands first, **slice 5 must add the search highlight color to its derivation list** — otherwise a themed app outlines search hits in a hardcoded amber. This is recorded as a hand-off in both directions.
 - Pass a literal, never `var(--…)`. This matches slice 5's constraint for the book-document stylesheet and avoids betting on custom-property inheritance across a closed shadow boundary (which would probably work, and is exactly the kind of "probably" this repo refuses to ship on). `ReaderEngine.tsx:104`'s `background: ${c.link}44` alpha-suffix concatenation is the existing precedent for what slice 5 has to clean up, not a pattern to extend.
 
 An `Overlayer.highlight` fill exists as an alternative draw (`overlayer.js:126-141`, with `--overlayer-highlight-opacity` hooks). Rejected for v1: `outline` is the engine's own default and reads well over both page themes without tuning opacity per theme.
@@ -121,8 +121,8 @@ No query, no results, no `activeCfi`. Reopening a book starts with an empty pane
 ## Out of scope
 
 - **Library-wide content search** (a text index over all 7,000 books). See D1.
-- **PDF.** The reader has no PDF engine until C2; PDF opens in Preview today, so there is nothing to search. When C2 lands, the find command's availability follows the engine's own ability — the spec does not pre-decide pdf.js search behaviour.
-- **Annotations and highlights as saved artefacts.** S1 uses the engine's transient search annotations, which vanish on `clearSearch()` and are never written to `metadata.json`. Saved highlights still wait on the storage decision the C1 spec named.
+- **PDF.** The reader has no PDF engine until C2; PDF opens in Preview today, so there is nothing to search. When C2 lands, the find command's availability follows the engine's own ability — the spec does not pre-decide pdf.js search behavior.
+- **Annotations and highlights as saved artifacts.** S1 uses the engine's transient search annotations, which vanish on `clearSearch()` and are never written to `metadata.json`. Saved highlights still wait on the storage decision the C1 spec named.
 - Search history, regex, replace, result export, a hit-count badge on library cards.
 - **Fixed-layout (FXL) books:** search should still find text, but the overlayer's geometry on a pre-paginated page is unverified. To be measured during implementation, not assumed — recorded as an open question rather than a promise.
 
@@ -136,7 +136,7 @@ No query, no results, no `activeCfi`. Reopening a book starts with an empty pane
 
 **D3 — Whole-book only.** The whole-book yield path is the one with `label` and `progress`; the per-section path yields a different shape and no chapter context. One code path, one set of cases. _Rejected:_ "search this chapter" as a second mode. _Reversal:_ a book in the library where whole-book search is too slow to be usable _after_ the progress/cancel UX is measured.
 
-**D4 — Highlight colour from the reader palette, as a literal.** _Rejected:_ a `var(--gold-400)` reference resolved by the app's CSS, betting on custom-property inheritance into foliate-view's closed shadow root. Probably works; unverifiable by unit test; and it would leave the colour outside slice 5's derivation. _Reversal:_ if slice 5 lands first and its derived table already carries a search/selection role, use that value directly and this decision becomes a no-op.
+**D4 — Highlight color from the reader palette, as a literal.** _Rejected:_ a `var(--gold-400)` reference resolved by the app's CSS, betting on custom-property inheritance into foliate-view's closed shadow root. Probably works; unverifiable by unit test; and it would leave the color outside slice 5's derivation. _Reversal:_ if slice 5 lands first and its derived table already carries a search/selection role, use that value directly and this decision becomes a no-op.
 
 **D5 — Search-jump writes the reading position.** _Rejected:_ suppressing position writes while the panel is open, which needs a new flag threaded through `onRelocate` and loses the location for anyone who reads on from a hit. _Reversal:_ if a session ends up with a stored position the reader never actually displayed (measurable in `metadata.json`), revisit.
 
@@ -188,7 +188,7 @@ The engine itself is deliberately not unit-tested — it is vendored and locked 
 - Poetry or a heavily-marked-up book, where per-text-node matching behaves differently.
 - One fixed-layout book, to answer the open question rather than assume it.
 
-**Deliberately not covered:** PDF (no engine until C2), and the OS-level dictionary or system find behaviour, which this feature does not touch.
+**Deliberately not covered:** PDF (no engine until C2), and the OS-level dictionary or system find behavior, which this feature does not touch.
 
 ---
 
@@ -212,7 +212,7 @@ The engine itself is deliberately not unit-tested — it is vendored and locked 
 | `src/lib/reader-search.test.ts`          | new — the cases above                                        |
 | `src/components/reader/ReaderSearch.tsx` | new — panel, input, groups, progress, empty state            |
 | `src/components/reader/ReaderView.tsx`   | panel slot, Esc precedence arm, find-command case            |
-| `src/components/reader/ReaderEngine.tsx` | export the palette/its search-highlight colour for the panel |
+| `src/components/reader/ReaderEngine.tsx` | export the palette/its search-highlight color for the panel |
 | `src/stores/reader.store.ts`             | session search state + actions + mutual exclusion with TOC   |
 | `src/components/shared/icons.tsx`        | one search glyph (hand-rolled SVG set, no icon library)      |
 | `electron/main/services/menu.ts`         | the Find item + ⌘F                                           |
@@ -241,7 +241,7 @@ Landed as one slice, gates green, verified in the running app. **789 tests / 34 
 4. **Escape's first step also drops the outlines** (the engine's own `clearSearch()`), because results and outlines are one thing shown two ways — leaving the page outlined under an empty panel would read as stale hits.
 5. **⌘F toggles rather than opens.** The spec says the menu case "calls `toggleSearch()`", so this is its consequence made explicit: the key that opened the panel closes it.
 6. **Two store actions beyond the four the spec listed**: `closeSearch()` (the pair `toggleAsk`/ `closeAsk` already establishes) and `activeCfi`, which is folded into `setSearchState` rather than given an action of its own.
-7. **The highlight colour is a `search` role per palette row** (equal to `link` today) rather than a reuse of `link`, so theming slice 5 has a name to derive.
+7. **The highlight color is a `search` role per palette row** (equal to `link` today) rather than a reuse of `link`, so theming slice 5 has a name to derive.
 8. **`persistedReaderState()` is exported** so AC1.8's partialize case has a real instrument: the test environment has no `localStorage`, so zustand's persist returns the config untouched and `.persist` is never attached. The criterion is decided against the very function the middleware is handed, over the serialized whole.
 
 **Three defects and a naming slip the criteria caught** — the first is the headline, because a criterion caught it:
@@ -249,7 +249,7 @@ Landed as one slice, gates green, verified in the running app. **789 tests / 34 
 - **AC1.2's second direction failed on the first build.** `ReaderView`'s new Escape arm returned early for *every* non-Escape key while the panel was open, so arrow/space paging was dead for as long as the panel stood — measured before the fix (percent stuck at 39%, CFI unmoved) and after (39% → 72%, `…/10/1:114` → `…/10/1:53`). The arm now intercepts **Escape only**: the panel already owns the keys while focus is inside it. A probe that attributed a frame change to a page turn had masked this; the position CFI is what decided it.
 - **`openBook` on the already-open book stranded the reader in `loading`** — found by the probe opening the same book twice. The engine keys its effect on `(bookId, format)`, so nothing would ever report ready and the reader sat under "Opening…" with a blank percentage, permanently. Unreachable from the UI today (the overlay covers every other entry point), so the guard is two lines plus a store case, and this is recorded as a latent hazard rather than a user-visible bug.
 - Minor: the query box and the header button shared the accessible name "Find in this book"; the box is now "Search this book".
-- **A third defect no probe could see, and the owner could** — reported from his own screen, with a screenshot: the traffic lights painted **over the reader's close and contents buttons**, and S1's new magnifier landed hard against the green dot. Every frame any earlier session took had missed it for a structural reason: `Page.captureScreenshot` covers the web contents only, so OS-drawn window chrome never appears in a frame this repo can produce. Fixed against `@shared/window-chrome`'s `TRAFFIC_LIGHT_RIGHT_EDGE` (74px) — the same constant the window's `trafficLightPosition` and the sidebar's wordmark already read — spent as a spacer of the group plus one `px-3` (86px), which also gives the window back its drag handle: the overlay had covered the sidebar's, and the spacer holds no control, so it cannot swallow a click meant for one. Measured after: controls at x = 90 / 122 / 154 / 186, spacer 0→86 full-height with `-webkit-app-region: drag`, and a real mouse click on the *moved* close button still closes the reader. The three modals were checked too — all centred dialogs, so nothing of theirs reaches the dots. This is the one claim in the slice whose instrument was the owner's display and not mine.
+- **A third defect no probe could see, and the owner could** — reported from his own screen, with a screenshot: the traffic lights painted **over the reader's close and contents buttons**, and S1's new magnifier landed hard against the green dot. Every frame any earlier session took had missed it for a structural reason: `Page.captureScreenshot` covers the web contents only, so OS-drawn window chrome never appears in a frame this repo can produce. Fixed against `@shared/window-chrome`'s `TRAFFIC_LIGHT_RIGHT_EDGE` (74px) — the same constant the window's `trafficLightPosition` and the sidebar's wordmark already read — spent as a spacer of the group plus one `px-3` (86px), which also gives the window back its drag handle: the overlay had covered the sidebar's, and the spacer holds no control, so it cannot swallow a click meant for one. Measured after: controls at x = 90 / 122 / 154 / 186, spacer 0→86 full-height with `-webkit-app-region: drag`, and a real mouse click on the *moved* close button still closes the reader. The three modals were checked too — all centered dialogs, so nothing of theirs reaches the dots. This is the one claim in the slice whose instrument was the owner's display and not mine.
 
 **Live measurements**, isolated profile (`MUSAEUM_USER_DATA`) and a synthetic two-book library, so no real book was touched:
 

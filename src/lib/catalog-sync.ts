@@ -49,13 +49,13 @@ export function applyRebuildProgress(
 /**
  * The job's result, in place. `kind` is carried over from the running state
  * rather than taken from the caller: a refresh that turned into a rebuild must
- * not be relabelled on its way out, or the settled line would name a job the
+ * not be relabeled on its way out, or the settled line would name a job the
  * user never watched.
  */
 export function settleCatalogSync(
   sync: CatalogSyncState | null,
   fallbackKind: CatalogSyncKind,
-  outcome: 'done' | 'cancelled' | 'failed',
+  outcome: 'done' | 'canceled' | 'failed',
   books: number | null
 ): CatalogSyncState {
   return {
@@ -63,7 +63,7 @@ export function settleCatalogSync(
     completed: 0,
     total: null,
     outcome,
-    // A cancelled or failed run has no count to report — keeping one would let
+    // A canceled or failed run has no count to report — keeping one would let
     // the line claim books that were never reloaded
     books: outcome === 'done' ? books : null
   }
@@ -96,9 +96,9 @@ export function describeCatalogSync(sync: CatalogSyncState): CatalogSyncLine {
     }
   }
 
-  if (sync.outcome === 'cancelled') {
+  if (sync.outcome === 'canceled') {
     return {
-      text: 'Catalog rebuild cancelled — nothing was written',
+      text: 'Catalog rebuild canceled — nothing was written',
       progress: null,
       tone: 'stopped'
     }

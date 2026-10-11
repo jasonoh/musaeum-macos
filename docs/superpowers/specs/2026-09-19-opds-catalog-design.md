@@ -19,7 +19,7 @@ If the trigger fires, this spec is actionable as written. If it does not, the co
 
 ## What OPDS is, and what it is not
 
-OPDS is a **delivery** protocol: an Atom feed carrying `<link>` elements per publication, which a client renders as a browsable catalogue and downloads from. The client reads the file **locally** afterwards.
+OPDS is a **delivery** protocol: an Atom feed carrying `<link>` elements per publication, which a client renders as a browsable catalog and downloads from. The client reads the file **locally** afterwards.
 
 Notable consequences, both worth stating because they are easy to assume otherwise:
 
@@ -53,7 +53,7 @@ electron/main/index.ts            startOpdsIfEnabled() next to startRestApiIfEna
 
 ### Routes (slice O1 — the useful half)
 
-| Route                                | Kind                   | Media type / behaviour                                   |
+| Route                                | Kind                   | Media type / behavior                                    |
 | ------------------------------------ | ---------------------- | -------------------------------------------------------- |
 | `GET /opds`                          | Navigation Feed        | `kind=navigation`; links to the feeds below              |
 | `GET /opds/new?page=N`               | Acquisition Feed       | `date_added` desc; `rel="http://opds-spec.org/sort/new"` |
@@ -209,7 +209,7 @@ Conditional GET is the one omission worth revisiting cheaply: if a device re-wal
 - **AC2.11** **A bind failure is not fatal**: with the port occupied, the app starts, the library works, and the reason is visible in Settings.
 - **AC2.12** With the NAS unmounted: `/opds` and `/opds/all` still answer 200 from the cache; `/opds/book/...` answers 503; the app is unaffected.
 - **AC2.13** `opds_enabled = false` (the default) means nothing listens at all — verified by a connection attempt being refused.
-- **AC2.14** Exactly one `startOpdsIfEnabled()` call site, and the REST stub's behaviour is unchanged with `rest_api_enabled` set (D3).
+- **AC2.14** Exactly one `startOpdsIfEnabled()` call site, and the REST stub's behavior is unchanged with `rest_api_enabled` set (D3).
 - **AC2.15** `npm run typecheck` (0), `npm run lint` (0), `npm test` green.
 
 **O2 — the browse tree**

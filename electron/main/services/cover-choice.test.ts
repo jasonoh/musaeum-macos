@@ -532,12 +532,12 @@ describe('chooseCoverFromFile (the upload dialog)', () => {
     return { show, asked }
   }
 
-  it('reports a cancellation and writes nothing when the dialog is cancelled', async () => {
+  it('reports a cancellation and writes nothing when the dialog is canceled', async () => {
     await seed('a')
     const { show, asked } = stubDialog(null)
     const before = getBook('a')
 
-    expect(await chooseCoverFromFile('a', show)).toEqual({ cancelled: true })
+    expect(await chooseCoverFromFile('a', show)).toEqual({ canceled: true })
 
     expect(asked).toHaveLength(1)
     // One file, and only files: this dialog picks a jacket, not a folder and not
@@ -559,7 +559,7 @@ describe('chooseCoverFromFile (the upload dialog)', () => {
     const outcome = await chooseCoverFromFile('a', show)
 
     expect(outcome).toEqual(getBook('a'))
-    // The path travelled one way only (D6-a): the sidecar was given it, and
+    // The path traveled one way only (D6-a): the sidecar was given it, and
     // nothing the renderer receives mentions it
     expect(sidecar.call).toHaveBeenCalledWith('set_cover_from_file', {
       book_dir: join(root, 'books/a'),

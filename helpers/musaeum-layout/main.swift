@@ -101,7 +101,7 @@ func pageRect(_ r: NormalizedRect, _ raster: Raster) -> [Double] {
 }
 
 @available(macOS 26.0, *)
-func analyse(_ page: PDFPage, number: Int, scale: CGFloat) async -> [String: Any] {
+func analyze(_ page: PDFPage, number: Int, scale: CGFloat) async -> [String: Any] {
     let started = Date()
     guard let raster = render(page, scale: scale) else {
         return ["page": number, "error": "render failed"]
@@ -190,7 +190,7 @@ struct Main {
                     guard let d = PDFDocument(url: URL(fileURLWithPath: path)),
                         let page = d.page(at: n - 1)
                     else { return ["page": n, "error": "cannot open page"] }
-                    return await analyse(page, number: n, scale: scale)
+                    return await analyze(page, number: n, scale: scale)
                 }
             }
             for _ in 0..<o.concurrency { add() }

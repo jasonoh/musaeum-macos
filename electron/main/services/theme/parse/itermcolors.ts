@@ -7,23 +7,23 @@ import { chroma, hueDelta, lstar, mix, rgbToHex } from '../color'
  *
  * `derive.py` used `plistlib`; there is no plist dependency here (adding one is
  * an escalation, not an implementer's call), so a narrow scanner reads the flat
- * shape iTerm actually writes: a `key` element naming a colour, followed by a
+ * shape iTerm actually writes: a `key` element naming a color, followed by a
  * `dict` carrying `Red|Green|Blue Component` as `real` or `integer`.
  *
  * Where `plistlib` could never hand the prototype a missing slot, this scanner
  * can — so a slot that will not parse is a rejection naming it rather than a
- * silently synthetic colour (D9). The two do **not** agree on every file a
+ * silently synthetic color (D9). The two do **not** agree on every file a
  * `plistlib` reader would accept, in two measured ways, both of them fail-closed
  * by D9: a component written as `<string>` (plistlib plus `float()` reads it and
  * the prototype derives from it; this scanner rejects the slot) and a file with
  * no `Background Color` (the prototype substitutes Ansi 0, and Ansi 7 for the
- * foreground; this scanner rejects). On a file that spells both window colours as
+ * foreground; this scanner rejects). On a file that spells both window colors as
  * `real`/`integer` and carries all sixteen slots, the two agree.
  */
 
 /**
  * ANSI slot -> the plist key it lives under, in the prototype's declaration
- * order. The order is part of the rule: the grey ramp is a stable sort over it.
+ * order. The order is part of the rule: the gray ramp is a stable sort over it.
  */
 const ITERM_SLOTS = [
   ['black', 'Ansi 0 Color'],
@@ -137,7 +137,7 @@ function scanPlist(text: string): PlistDict | null {
   return root
 }
 
-/** One component of a colour entry, or `null` if the entry does not carry one. */
+/** One component of a color entry, or `null` if the entry does not carry one. */
 function component(entry: PlistValue | undefined, name: string): number | null {
   if (typeof entry !== 'object' || entry === null) return null
   const value = entry[name]
@@ -176,13 +176,13 @@ export function parseItermcolors(text: string, name = ''): LoadedTheme {
   if (background === null) missing.push('Background Color')
   const foreground = colorOf(doc['Foreground Color'])
   if (foreground === null) missing.push('Foreground Color')
-  // The explicit null tests are here because a missing window colour only *seems*
+  // The explicit null tests are here because a missing window color only *seems*
   // impossible: each one is also pushed to `missing`, so they can never fire alone.
   if (missing.length > 0 || background === null || foreground === null) {
     return { ok: false, reason: `itermcolors file is missing ${missing.join(', ')}` }
   }
 
-  // All sixteen ANSI slots plus both window colours are present: the check above
+  // All sixteen ANSI slots plus both window colors are present: the check above
   // rejected every one it could not read.
   const slots = Object.fromEntries(colors) as Record<SlotName, Rgb>
   const bg = background
@@ -190,7 +190,7 @@ export function parseItermcolors(text: string, name = ''): LoadedTheme {
   const dark = lstar(bg) < lstar(fg)
 
   // Ramp inference. Terminal files carry no base01/02/03, so the surface stops
-  // above the canvas have to be *reconstructed*: we sort whatever greys the
+  // above the canvas have to be *reconstructed*: we sort whatever grays the
   // palette actually ships, then place control points by interpolation between bg
   // and fg. This is the lossy step the IR absorbs.
   const textDir = (cands: Rgb[]): Rgb => {
@@ -204,20 +204,20 @@ export function parseItermcolors(text: string, name = ''): LoadedTheme {
   }
   const brightest = textDir([slots.br_white, slots.white])
 
-  // Only greys in the background's own hue family may stand in for surfaces: a
+  // Only grays in the background's own hue family may stand in for surfaces: a
   // luminance sort alone picks up desaturated greens/teals out of the ANSI slots,
   // which is how a warm scheme grows a green sidebar.
-  const isGrey = (slot: SlotName): boolean =>
+  const isGray = (slot: SlotName): boolean =>
     chroma(slots[slot]) < 0.035 && (chroma(bg) < 0.01 || hueDelta(slots[slot], bg) < 0.61)
-  const greys = ITERM_SLOTS.map(([slot]) => [slot, lstar(slots[slot])] as const)
-    .filter(([slot]) => isGrey(slot))
+  const grays = ITERM_SLOTS.map(([slot]) => [slot, lstar(slots[slot])] as const)
+    .filter(([slot]) => isGray(slot))
     .sort((a, b) => a[1] - b[1])
   const lo = Math.min(lstar(bg), lstar(fg))
   const hi = Math.max(lstar(bg), lstar(fg))
-  const interior = greys.filter(([, lt]) => lo < lt && lt < hi).map(([slot]) => slots[slot])
+  const interior = grays.filter(([, lt]) => lo < lt && lt < hi).map(([slot]) => slots[slot])
 
-  // Pick a mid-tone for elevation: prefer a real grey from the palette, otherwise
-  // synthesise one in the background's own hue.
+  // Pick a mid-tone for elevation: prefer a real gray from the palette, otherwise
+  // synthesize one in the background's own hue.
   let bg2: Rgb
   let bg3: Rgb
   let border: Rgb
@@ -249,7 +249,7 @@ export function parseItermcolors(text: string, name = ''): LoadedTheme {
     accents,
     // terminal palettes: the bright slot is the vivid one
     accent_hint: rgbToHex(slots.br_yellow),
-    notes: [`ramp inferred from ${greys.length} greys; no base01-03 in source`]
+    notes: [`ramp inferred from ${grays.length} grays; no base01-03 in source`]
   }
   return { ok: true, ir }
 }

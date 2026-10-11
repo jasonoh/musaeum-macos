@@ -302,7 +302,7 @@ export function ReaderView() {
         // The strip's height is derived from the lights' line rather than chosen:
         // this header *is* the window's titlebar while a book is open, and its
         // controls have to sit level with the dots behind the spacer below
-        // (`TITLEBAR_STRIP_HEIGHT`). `h-11` centred the row 4px above them.
+        // (`TITLEBAR_STRIP_HEIGHT`). `h-11` centered the row 4px above them.
         style={{ height: TITLEBAR_STRIP_HEIGHT }}
       >
         {/* The dots' strip, and the window's drag handle while a book is open —

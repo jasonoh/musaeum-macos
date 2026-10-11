@@ -38,10 +38,10 @@ import {
  *    with the document's CSP relaxed to nothing, four requests are attempted and
  *    **zero reach the server**; with the rule removed, all four arrive.
  * 3. **What a computed custom property returns is the substituted token stream,
- *    not a colour** (D3). The read is two-stage: `getComputedStyle(body)` for the
+ *    not a color** (D3). The read is two-stage: `getComputedStyle(body)` for the
  *    raw string, then that string assigned to a probe element whose computed
- *    colour is read back — the round trip is what evaluates `calc()`,
- *    `color-mix()` and `var()` chains. `normalizeColour` in the adapter accepts
+ *    color is read back — the round trip is what evaluates `calc()`,
+ *    `color-mix()` and `var()` chains. `normalizeColor` in the adapter accepts
  *    only the four shapes Chromium hands back.
  * 4. **The stylesheet never reaches the real renderer** (§2.6, `CLAUDE.md` #9):
  *    the CSS text lives in this process and only derived hex values cross back.
@@ -139,7 +139,7 @@ export function resolverWindowOptions(): {
  * Pure. The request filter the session rule is installed with: the http(s)-only
  * URL pattern, which is the one below rather than a bare cancel-all — the
  * `data:` document itself is the first request an unfiltered listener sees, and
- * cancelling it fails the load (`ERR_BLOCKED_BY_CLIENT`, nothing resolves at
+ * canceling it fails the load (`ERR_BLOCKED_BY_CLIENT`, nothing resolves at
  * all). The filter never sees the document, and it still covers every http(s)
  * attempt a stylesheet can make.
  */
@@ -208,12 +208,12 @@ function resolverWindow(): Promise<BrowserWindow> {
  * - **The round trip is what resolves the value.** `getComputedStyle(body)` on a
  *   computed custom property answers the *substituted token stream* —
  *   `hsl(220, 12%, calc(18% - 2%))`, `color-mix( in hsl, #1d2433, #2f3b54 )` —
- *   which is not a colour. Assigning that string to a probe element's `color`
+ *   which is not a color. Assigning that string to a probe element's `color`
  *   and reading the computed value back is what makes the engine evaluate
  *   `calc()`, `color-mix()` and `var()` chains; the sentinel is set first so an
  *   assignment the engine refused (an unusable value) is *visible* as "the
- *   computed colour is still the sentinel", and the raw string is answered
- *   instead — which `normalizeColour` then rejects, the honest outcome for a
+ *   computed color is still the sentinel", and the raw string is answered
+ *   instead — which `normalizeColor` then rejects, the honest outcome for a
  *   value the resolver did not manage to resolve.
  * - **The stylesheet is replaced in place.** The `<style>` element is
  *   found-or-created by id and its `textContent` set, so one document serves

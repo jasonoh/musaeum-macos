@@ -128,7 +128,7 @@ export function useAnchoredScroll(
  * Keyed on the identity, not on `books` itself or its length — a metadata
  * edit, a single-book delete, or a re-fetch of the same query all replace
  * `books` without changing the identity, and the anchor/ensure-visible
- * behaviour for *that* case is deliberate (see `useAnchoredScroll` and
+ * behavior for *that* case is deliberate (see `useAnchoredScroll` and
  * `useBookNavigation`) and must not be touched by this hook.
  *
  * A layout effect, so it runs before paint and before every other effect
@@ -141,7 +141,7 @@ export function useAnchoredScroll(
  * after every layout effect in this commit: if the previously selected book
  * survives into the new result set, ensure-visible legitimately scrolls it
  * back into view after this hook resets to the top. That composes with the
- * rest of selection's behaviour (selection is pruned to survivors, not
+ * rest of selection's behavior (selection is pruned to survivors, not
  * cleared by a narrower query — see `useLibrary`) rather than fighting it.
  * With nothing selected, or a selection that didn't survive, there is
  * nothing for ensure-visible to do and the reset to the top is final.

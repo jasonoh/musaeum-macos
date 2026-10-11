@@ -14,7 +14,7 @@ import * as nas from './nas-manager'
 
 /**
  * Where the formats[0] bug was measured live (1,372 of 7,100 books — see
- * test/invariants.test.ts): these pin invariants 2 and 3 behaviourally, at
+ * test/invariants.test.ts): these pin invariants 2 and 3 behaviorally, at
  * the module that hands a book's files to the OS.
  */
 

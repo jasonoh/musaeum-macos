@@ -91,7 +91,7 @@ Each part ends green (`npm run typecheck && npm run lint && npm test`) and gets 
 
 ## Readings this slice must settle itself, each with the alternative it beats
 
-The spec fixes the behaviour; these are the places where it stops short, and each one is recorded here rather than discovered mid-task. None of them changes an acceptance criterion.
+The spec fixes the behavior; these are the places where it stops short, and each one is recorded here rather than discovered mid-task. None of them changes an acceptance criterion.
 
 ### R1 — inside a shelf, the sort is the shelf's own
 
@@ -99,7 +99,7 @@ D8 says opening a shelf sets `shelf_added desc` and "leaving it restores the lib
 
 ### R2 — *Add to Shelf* is a picker dialog, not a flyout submenu
 
-D9 writes the item as **Add to Shelf ▸** and lists what is inside it: the shelves alphabetically, a check per shelf the book is already on, choosing a checked shelf removes it (with Undo), then **New Shelf…**. A `▸` in this codebase means a second positioned element inside a hand-rolled menu (`BookContextMenu`'s items are buttons in one absolutely-positioned box, with edge flipping computed by `getBoundingClientRect` and no submenu machinery at all). **The alternatives:** (a) a flyout — a second box, its own hover-intent, its own edge flipping, and no focus trap (the menu is not a `useDialogFocus` dialog); (b) **a dialog** — the same list, every clause of AC19 satisfied, opening via `useDialogFocus` (so Escape, Tab containment and first-focus come free), mounted once in `App.tsx` beside `RemoveFromDeviceDialog`. **Chosen: (b)**, and the label becomes **Add to Shelf…**, the codebase's own convention for "this opens a dialog" (`Edit metadata…`, `Choose cover…`, `Delete book…`). The spec's four behavioural clauses are all held; the glyph is not. Reversal is a component change only — the store slot, the writes and the checks do not move.
+D9 writes the item as **Add to Shelf ▸** and lists what is inside it: the shelves alphabetically, a check per shelf the book is already on, choosing a checked shelf removes it (with Undo), then **New Shelf…**. A `▸` in this codebase means a second positioned element inside a hand-rolled menu (`BookContextMenu`'s items are buttons in one absolutely-positioned box, with edge flipping computed by `getBoundingClientRect` and no submenu machinery at all). **The alternatives:** (a) a flyout — a second box, its own hover-intent, its own edge flipping, and no focus trap (the menu is not a `useDialogFocus` dialog); (b) **a dialog** — the same list, every clause of AC19 satisfied, opening via `useDialogFocus` (so Escape, Tab containment and first-focus come free), mounted once in `App.tsx` beside `RemoveFromDeviceDialog`. **Chosen: (b)**, and the label becomes **Add to Shelf…**, the codebase's own convention for "this opens a dialog" (`Edit metadata…`, `Choose cover…`, `Delete book…`). The spec's four behavioral clauses are all held; the glyph is not. Reversal is a component change only — the store slot, the writes and the checks do not move.
 
 ### R3 — the scope is an id, and every name is read from the list
 
@@ -143,7 +143,7 @@ D9's empty-shelf body is *"Drag books here, or use Add to Shelf."* — and in sl
 - The code blocks below are not guaranteed Prettier-formatted: run `npx prettier --write <the files you touched>` before `npm run lint`, which runs with `--max-warnings=0`.
 - Invariant 7: **no element is added above either view.** There is no *row-height test* in the tree — the spec's phrase ("the existing row-height tests still pass untouched") has no file behind it; what is real is the geometry constants (`ROW_HEIGHT`, `CARD_META_HEIGHT`, `CARD_META_MARGIN`, each with its matching DOM shape) in `GridView.tsx`, `ListView.tsx` and `BookCard.tsx`, and `docs/invariants/library-views.md`'s rule that they must match real geometry. So the guard this slice uses is **a walk plus a diff**: `git diff` must show no change to those constants or the cells that carry them, and Task 9's walk cases assert nothing new sits between `<Toolbar />` and `<main>`. If a geometry constant or a cell's block-level child has to move to make this slice work, the slice is wrong.
 - Invariant 9 stays whole: covers and bytes still arrive over `musaeum://`; nothing in this slice builds a `file://` URL or touches `window.Musaeum.files`' paths.
-- **Renderer colours come from design tokens** (`src/lib/theme/palette-scan.test.ts` fails the build otherwise): the new surfaces reuse the tokens already on screen — the sidebar row pair, the dialog card, the chip, the gold primary, the danger ghost.
+- **Renderer colors come from design tokens** (`src/lib/theme/palette-scan.test.ts` fails the build otherwise): the new surfaces reuse the tokens already on screen — the sidebar row pair, the dialog card, the chip, the gold primary, the danger ghost.
 - **No renderer file restates a sentence the main process composes** (`src/lib/storage-copy-scan.test.ts`). Shelf failures render `Error.message` verbatim; the storage status is rendered through `nasStatus.copy.*`; and a renderer *test* does not quote main's sentences as fixtures either.
 - Every mutation goes through one funnel: components call the store action or the `src/lib` module the task names — never `window.Musaeum.shelves.*` inline from a component, except in `ShelfList`, whose create/rename/delete are single-surface actions with no shared vocabulary to drift from (and its failures still go through `reportShelfFailure`).
 - `shelves:changed` is subscribed **once**, in `useLibrary` (Task 5). No second subscriber, no component that reloads the list itself.
@@ -259,7 +259,7 @@ and in `resultSetKey`, one line after `sort`:
   })
 ```
 
-Extend the docblock's own list of normalizations with the third: *"The open shelf is not a normalization but the store's other real behaviour: it scopes a search as well as a browse, so it stays in the key in both branches."*
+Extend the docblock's own list of normalizations with the third: *"The open shelf is not a normalization but the store's other real behavior: it scopes a search as well as a browse, so it stays in the key in both branches."*
 
 - [ ] **Step 4: Pass it from both views**
 
@@ -1075,7 +1075,7 @@ import { useUIStore } from '@/stores/ui.store'
  * sentence is the whole of what a person can act on.
  *
  * A factory rather than a module-level Set with a test-only reset: the memory is
- * the behaviour, so a case holds its own session and the app's instance is one
+ * the behavior, so a case holds its own session and the app's instance is one
  * exported line.
  */
 export function createShelfFailureReporter(say: (message: string) => void): (err: unknown) => void {
@@ -2675,7 +2675,7 @@ describe('the trash entry points ask the shelf first (AC21)', () => {
     expect(useUIStore.getState().deletingSelection).toBe(true)
   })
 
-  it('cancelling closes the shelf dialog and changes nothing else', () => {
+  it('canceling closes the shelf dialog and changes nothing else', () => {
     useUIStore.setState({ shelfRemove: { shelfId: 's1', bookIds: ['b1'] } })
     useUIStore.getState().requestShelfRemove(null)
     expect(useUIStore.getState().shelfRemove).toBeNull()
@@ -2993,7 +2993,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 ## Handoff notes for slice 3 (drag) and slice 4 (Send to ‹device›)
 
-- The shelf rows in `ShelfList` are plain buttons with no drag attributes (Task 8's walk asserts it). Throw targets, `dragover` ring and the `+`-opens-the-name-field behaviour are slice 3's, which is why the `+` here creates on click and does nothing on a drop.
+- The shelf rows in `ShelfList` are plain buttons with no drag attributes (Task 8's walk asserts it). Throw targets, `dragover` ring and the `+`-opens-the-name-field behavior are slice 3's, which is why the `+` here creates on click and does nothing on a drop.
 - `ShelfList`'s row menu is deliberately open-ended: *Rename*, a comment marking where *Send to ‹device›* goes, *Delete Shelf…*. Slice 4 adds one `MenuItem` and the >25 confirmation.
 - Slice 4 sends `bookIds` — and while a shelf is open the natural source is the scope's loaded rows, `useLibraryStore.getState().books.map((b) => b.id)`, not the shelf's membership in SQL. That is a decision for slice 4's plan; noted here because it is the one place the two differ (a book on the shelf whose file is missing is in `books` but not in `count`).
 - `library.store`'s `reconcileScope(existingShelfIds)` already exists and is wired: a slice that adds a second way to leave a shelf (a keyboard shortcut, a view header) should call `setActiveShelf(null)`, not clear `activeShelfId` directly, or the sort will not be restored.
@@ -3038,7 +3038,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 5. **Task 9's and Task 10's walk cases both live in `shelf-list-wiring.test.ts`** (the plan asked for Task 10's there "to keep the file count down"; Task 9's invariant-7 walks joined them).
 6. **Extra cases beyond the plan's list**, each because a real shape was uncovered: R7's *disabled with `copy.label`, not `deleteBlocked`* in `context-menu-wiring.test.ts`; the no-shelf-open bulk case and the "hands over to the dialog that always owned deletion" case in `ui.store.test.ts`; "is mounted once, from the app root" in `shelf-remove-wiring.test.ts`; and the plan's `useLibrary.test.ts` walk gained a case pinning that `loadShelves()` is sequenced *before* `reconcileScope` (the plan described that order only in prose).
 7. **`library-emptiness.ts`'s `shelfId` is required**, matching `storageConnected`'s precedent — a scope is not a detail a second view may silently drop. This is what makes the plan's "do Task 2's Steps 1–3 first" note load-bearing in a second way.
-8. **The two drag sentences are not what ships, and the empty state is a control rather than an instruction about one.** The spec's sidebar copy ("Drag books here to start a shelf") and D9's pane sentence both named the one action slice 2 cannot perform. D9's is now "Add books from the library — right-click a book, then Add to Shelf…" and the sidebar's empty state is a labelled *New shelf* row that starts a shelf. This is `tasks.md`'s option (b), chosen because the false affordance is what a reader with no shelves meets first; slice 3 restores each sentence's drag half and makes that row a drop target.
+8. **The two drag sentences are not what ships, and the empty state is a control rather than an instruction about one.** The spec's sidebar copy ("Drag books here to start a shelf") and D9's pane sentence both named the one action slice 2 cannot perform. D9's is now "Add books from the library — right-click a book, then Add to Shelf…" and the sidebar's empty state is a labeled *New shelf* row that starts a shelf. This is `tasks.md`'s option (b), chosen because the false affordance is what a reader with no shelves meets first; slice 3 restores each sentence's drag half and makes that row a drop target.
 
 **Do not run Prettier over the markdown.** Task 16 says to run `prettier --write` on "the files you touched"; done literally, it rewrote ~400 lines of unrelated formatting across seven already-committed docs (emphasis markers, table padding) — the docs tree is deliberately *not* Prettier-formatted (`npx prettier --check "docs/**/*.md"` fails 48 files). The churn was reverted and the edits re-applied by hand. Format code files; leave prose alone.
 
@@ -3047,7 +3047,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - *Part 2a* — with a shelf open, the rows changed and the sort control offered *Date Added to Shelf* first; `localStorage`'s `musaeum.library` read `{"sort":{"field":"title","direction":"asc"}}` **while the shelf was open on `shelf_added desc`**, which is note 1 confirmed against a real persisted value rather than a unit case.
 - *Part 2b* — `+` → the inline field → Enter created the shelf and the sidebar drew it with its count; double-click opened the rename field prefilled; the row menu's *Delete Shelf…* opened the confirmation naming the shelf; the two sentences were read off the DOM (the placeholder read `Search "Slice 2 probe"`, the empty pane read *This shelf is empty* / *Drag books here, or use Add to Shelf.*).
 - *AC17's search scoping, and Review Focus 5* — with `the` typed in the library (5509 matches), entering the empty shelf showed **Nothing matches "the"**: the scope really reaches the search, and the query survived entering and leaving.
-- *Part 2c* — menu → *Add to Shelf…* → picker → `Added 1 to Slice 2 probe`; the card's trash inside the shelf opened `ShelfRemoveDialog` with **focus on *Remove from Shelf***; *Delete from Library…* handed over to the real `DeleteBookDialog` (cancelled, never confirmed); *Remove from Shelf* produced the toast and its Undo put the book back.
+- *Part 2c* — menu → *Add to Shelf…* → picker → `Added 1 to Slice 2 probe`; the card's trash inside the shelf opened `ShelfRemoveDialog` with **focus on *Remove from Shelf***; *Delete from Library…* handed over to the real `DeleteBookDialog` (canceled, never confirmed); *Remove from Shelf* produced the toast and its Undo put the book back.
 - **The library was left as found**: `shelves.json` is `{"version":1,"shelves":[]}` (it had no shelves before the probe and has none after), 7121 books in the DB, and the book the delete dialog offered is still there.
 
 **Review findings, and what was done with each.** The 2a review (a `delegate_task` reviewer) found **no blocker and no functional defect**, with five named checks passing against the real code and a pristine copy of `882f39b` typechecking clean on both tsconfigs with 42/42 on the four 2a test files. Four nits:
@@ -3067,8 +3067,8 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 Of its eight notes, four were acted on: the comment-in-handler slice (both walks now strip block comments *before* slicing — the first new attempt at this failed against its own comment, which is the same class of spurious match), the detail panel's `revision` matcher (now the deps array), the `if (shelf)` silent no-op in `BookContextMenu` (documented as deliberate: a shelf that has gone has no membership to remove, and inventing a sentence for it would be a renderer restating copy main owns), and the `byBook` flash (below). Three remain as accepted, recorded limits: the `contextMenuHandler` slice still ends at the first `}}`; `useLibrary.test.ts`'s subscription-list slice is bounded by the cleanup rather than by brace matching; and `ShelfList`'s create-field assertion now checks both expressions rather than one.
 
-**The one defect neither review found, because it needed the app running:** the Library row's count is `books.length` — the *current read's* — so while a shelf was open the row labelled "Library" carried the shelf's number, and an empty shelf made it read **"Library 0"**. **Fixed**: the count is rendered on that row only while the library is what is loaded, and each shelf carries its own count on its own row (from main). Measured live after the fix: `Library7121` unscoped, `Library` under a shelf, `Library7121` on leaving.
+**The one defect neither review found, because it needed the app running:** the Library row's count is `books.length` — the *current read's* — so while a shelf was open the row labeled "Library" carried the shelf's number, and an empty shelf made it read **"Library 0"**. **Fixed**: the count is rendered on that row only while the library is what is loaded, and each shelf carries its own count on its own row (from main). Measured live after the fix: `Library7121` unscoped, `Library` under a shelf, `Library7121` on leaving.
 
-**The second defect that only the app could show, and this one the report named outright:** with no shelves, the sidebar said *"Drag books here to start a shelf"* and D9's pane said *"Drag books here, or use Add to Shelf."* — and neither action exists. Drag is slice 3 (`BookCard` sets `draggable={false}`; nothing in the renderer implements a book drag) and *Add to Shelf* is a right-click on a card, of which an empty shelf has none. So the app instructed the reader in the one thing it could not do, and **"it's impossible to create a shelf" was the reasonable reading of a working feature** — creating one is the `+` in the SHELVES header, which the report confirmed live in the packaged build before and after the change (the `+` enabled, the field opening, the shelf created, the probe shelf deleted again). **Fixed** as option (b) of the three `tasks.md` had listed: the empty state is a labelled *New shelf* row that starts a shelf rather than a sentence about one, and the pane names the route that works today. Slice 3 restores each sentence's drag half and makes that row a drop target.
+**The second defect that only the app could show, and this one the report named outright:** with no shelves, the sidebar said *"Drag books here to start a shelf"* and D9's pane said *"Drag books here, or use Add to Shelf."* — and neither action exists. Drag is slice 3 (`BookCard` sets `draggable={false}`; nothing in the renderer implements a book drag) and *Add to Shelf* is a right-click on a card, of which an empty shelf has none. So the app instructed the reader in the one thing it could not do, and **"it's impossible to create a shelf" was the reasonable reading of a working feature** — creating one is the `+` in the SHELVES header, which the report confirmed live in the packaged build before and after the change (the `+` enabled, the field opening, the shelf created, the probe shelf deleted again). **Fixed** as option (b) of the three `tasks.md` had listed: the empty state is a labeled *New shelf* row that starts a shelf rather than a sentence about one, and the pane names the route that works today. Slice 3 restores each sentence's drag half and makes that row a drop target.
 
 **Still open, handed to slice 3:** *drag itself* — the empty-shelf copy gap is closed (option (b), above), but every shelf row is still a plain button and the card is still `draggable={false}`. Everything else in the plan's scope landed.

@@ -86,7 +86,7 @@ describe('the context menu', () => {
 
 describe('persistedUIState', () => {
   it('is the function the store actually persists through', () => {
-    // A source walk, because neither of the behavioural instruments can decide
+    // A source walk, because neither of the behavioral instruments can decide
     // this one: the local `.persist` API zustand attaches is `undefined` in
     // this environment (no `localStorage` in the `node` test env — measured,
     // `useUIStore.persist.getOptions()` is a TypeError), so a case that calls
@@ -173,7 +173,7 @@ describe('the trash entry points ask the shelf first (AC21)', () => {
     expect(useUIStore.getState().deletingSelection).toBe(true)
   })
 
-  it('cancelling closes the shelf dialog and changes nothing else', () => {
+  it('canceling closes the shelf dialog and changes nothing else', () => {
     useUIStore.setState({ shelfRemove: { shelfId: 's1', bookIds: ['b1'] } })
     useUIStore.getState().requestShelfRemove(null)
     expect(useUIStore.getState().shelfRemove).toBeNull()

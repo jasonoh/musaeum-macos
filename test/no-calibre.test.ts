@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest'
  * that carries a converter path again.
  *
  * **Why a source walk rather than a unit case:** the rule is about code that
- * must not exist. A behaviour test can only pin the call sites that exist
+ * must not exist. A behavior test can only pin the call sites that exist
  * today; this fails on the next one the moment it is written. AC3 has no other
  * decider available, because the claim is an absence over three trees.
  *
@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest'
  * `sidecar/tests/test_converter.py` sends an extra `ebook_convert_path` key on
  * purpose, to pin that the dispatch reads *named* keys and so still tolerates a
  * key sent by an older caller — a walk that scanned it would redden on the very
- * case that proves the behaviour. And the rule is *documented by name* in
+ * case that proves the behavior. And the rule is *documented by name* in
  * docblocks; a walk that flagged its own documentation could never be green.
  *
  * **The comment skip is line-leading, so a Python docstring body is not
@@ -33,7 +33,7 @@ import { describe, expect, it } from 'vitest'
  * statement about code that no longer exists, so nothing is left to flag — but a
  * later session writing a docstring *about* the removal should expect this walk
  * to object, and put the sentence in a `#` comment instead. The limit is stated
- * rather than closed: recognising docstring bodies needs a parser, and the
+ * rather than closed: recognizing docstring bodies needs a parser, and the
  * repo's own `test/invariants.test.ts` walk has the same boundary.
  *
  * **Scope is the three trees the criterion names.** `scripts/azw3-oracle.py`'s

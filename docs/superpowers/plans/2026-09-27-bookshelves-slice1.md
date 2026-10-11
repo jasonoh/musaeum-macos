@@ -782,7 +782,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
   - `function replaceAllShelves(file: ShelvesFile): void` — one transaction; manual shelves only; members whose book is not in `books` left out; duplicate shelf ids and duplicate members ignored (first wins)
   - `function listShelves(): ShelfSummary[]` — alphabetical, case-insensitive, then id
   - `function shelvesForBook(bookId: string): ShelfSummary[]` — same order
-  - `getBooks`, `getBooksPage`, `countBooks`, `searchBooksPage` honour `filters.shelfId`; `sort.field === 'shelf_added'` orders by the open shelf's `added_at`, then `id ASC`
+  - `getBooks`, `getBooksPage`, `countBooks`, `searchBooksPage` honor `filters.shelfId`; `sort.field === 'shelf_added'` orders by the open shelf's `added_at`, then `id ASC`
   - `function searchBooks(query: string, sort?: BookSort, scope?: ShelfScope): Book[]`
   - `function getFacets(scope?: ShelfScope): LibraryFacets`
 
@@ -1363,7 +1363,7 @@ describe('writes: file first, cache second, one write each (bookshelves D3)', ()
 
   it('creates a shelf with books in the same single write, skipping ids the library does not hold', async () => {
     const writes = countWrites()
-    const shelf = await shelves.create('Favourites', ['a', 'not-a-book', 'a'])
+    const shelf = await shelves.create('Favorites', ['a', 'not-a-book', 'a'])
     expect(writes()).toBe(1)
     expect(shelf.count).toBe(1)
     expect(manualOnDisk(await onDisk(), shelf.id).books.map((m) => m.id)).toEqual(['a'])
@@ -2254,12 +2254,12 @@ export async function refreshLibrary(): Promise<CatalogSyncOutcome> {
   } else {
     adopt(result.file.books)
     handledRoots.add(root)
-    outcome = { books: result.file.books.length, cancelled: false }
+    outcome = { books: result.file.books.length, canceled: false }
   }
   // Reload re-reads shelves.json too (bookshelves D4) — here, after the swap,
   // and not in `rebuildCatalog`, which the spec keeps away from shelves. A
-  // cancelled walk changed no books, so the shelves have nothing to catch up on.
-  if (!outcome.cancelled) await shelves.adopt(root)
+  // canceled walk changed no books, so the shelves have nothing to catch up on.
+  if (!outcome.canceled) await shelves.adopt(root)
   return outcome
 }
 ```
@@ -2550,7 +2550,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - [ ] **Step 4: `docs/invariants/nas-and-catalog.md`** — in the storage tree, add `shelves.json                     # canonical: every shelf and its members (see docs/invariants/shelves.md)` under `catalog.json`.
 - [ ] **Step 5: `docs/invariants/files-and-deletion.md`** — replace "`book_collections` and `metadata_conflicts` rows for the book are deleted in the same transaction" with `shelf_books` and `metadata_conflicts`, and add one sentence: both delete paths then take the books off every shelf in `shelves.json` with one write per batch, swallowing a failure (`docs/invariants/shelves.md`).
 - [ ] **Step 6: `docs/architecture.md`** — in the `services/` tree, after `library-sync.ts`: `shelves.ts        # every shelf write: one queue, file then cache` and `shelves-file.ts   # shelves.json parse (strict) + atomic write`; in the `ipc/` tree, `shelves.ts`.
-- [ ] **Step 7: `CHANGELOG.md`** — a new `## [Unreleased] — 2026-09-27` section at the top with `### Added`: shelves' storage, service and IPC (slice 1 of the bookshelves design) — no UI yet. `tasks.md:375` — replace the collections line with a bookshelves entry naming slices 2–6 as open, and add the deferred items from the spec's *Rejected and deferred* (smart shelves, manual order within a shelf, sidebar reorder, phone create/rename/delete, search honouring facet filters) each with its revival condition. `requirements.md:474` — mark the collections line superseded by `docs/superpowers/specs/2026-09-27-bookshelves-design.md`.
+- [ ] **Step 7: `CHANGELOG.md`** — a new `## [Unreleased] — 2026-09-27` section at the top with `### Added`: shelves' storage, service and IPC (slice 1 of the bookshelves design) — no UI yet. `tasks.md:375` — replace the collections line with a bookshelves entry naming slices 2–6 as open, and add the deferred items from the spec's *Rejected and deferred* (smart shelves, manual order within a shelf, sidebar reorder, phone create/rename/delete, search honoring facet filters) each with its revival condition. `requirements.md:474` — mark the collections line superseded by `docs/superpowers/specs/2026-09-27-bookshelves-design.md`.
 - [ ] **Step 8: The spec's Status line** — replace "Nothing is built." with "Slice 1 (storage, service, IPC) landed 2026-09-27 — plan `docs/superpowers/plans/2026-09-27-bookshelves-slice1.md`."
 - [ ] **Step 9: Verify and commit**
 

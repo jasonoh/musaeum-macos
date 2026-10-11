@@ -22,7 +22,7 @@ import pypdfium2.raw as raw
 _BOLD_NAME = re.compile(r"bold|black|heavy|semibold|demi", re.I)
 ROTATION_TOLERANCE = 0.05  # radians; an arXiv stamp reads 4.71 (3π/2)
 LINE_LOOKBACK = 8  # how many open lines a glyph may join, newest first
-MERGE_MAX_GLYPHS = 4  # a line this short that overlaps its neighbour is a superscript
+MERGE_MAX_GLYPHS = 4  # a line this short that overlaps its neighbor is a superscript
 
 
 @dataclass
@@ -84,7 +84,7 @@ def _font_size(handle, index: int) -> float:
 
 
 def page_chars(textpage) -> list[Char]:
-    """Every character on a page except pdfium's synthesised line breaks."""
+    """Every character on a page except pdfium's synthesized line breaks."""
     out: list[Char] = []
     buf = ctypes.create_string_buffer(256)
     flags = ctypes.c_int()
@@ -129,14 +129,14 @@ def _overlap(a_bottom: float, a_top: float, b_bottom: float, b_top: float) -> fl
 
 
 def baseline_lines(chars: list[Char]) -> list[list[Char]]:
-    """Characters → lines, top to bottom, each sorted by centre x.
+    """Characters → lines, top to bottom, each sorted by center x.
 
     A glyph joins the open line it overlaps vertically by at least half the
     shorter of the two. Slice 1 grouped by "the same bottom within a tolerance"
     instead, which put an apostrophe — whose box starts well above the baseline
     — on a line of its own. A line of a few glyphs that still overlaps its
-    neighbour is a superscript and is folded in. Spaces are attached last, to
-    the line that contains their centre, because PDFs often give a space a
+    neighbor is a superscript and is folded in. Spaces are attached last, to
+    the line that contains their center, because PDFs often give a space a
     zero-height box; a space near no line is dropped. Callers remove rotated
     characters first.
     """

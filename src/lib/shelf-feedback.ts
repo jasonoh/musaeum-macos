@@ -14,7 +14,7 @@ import { useUIStore } from '@/stores/ui.store'
  * sentence is the whole of what a person can act on.
  *
  * A factory rather than a module-level Set with a test-only reset: the memory is
- * the behaviour, so a case holds its own session and the app's instance is one
+ * the behavior, so a case holds its own session and the app's instance is one
  * exported line.
  */
 export function createShelfFailureReporter(say: (message: string) => void): (err: unknown) => void {

@@ -24,7 +24,7 @@ import { useDialogFocus } from '@/hooks/useDialogFocus'
 /** The model datalist, wired to the Model field by id. */
 const AI_MODELS_LIST_ID = 'musaeum-ai-models'
 
-/** One verdict's colour. `refused`/`no-model-list` are warnings, not failures. */
+/** One verdict's color. `refused`/`no-model-list` are warnings, not failures. */
 const VERDICT_TONE: Record<AiProbeResult['verdict'], string> = {
   ok: 'text-ok-400',
   rejected: 'text-danger-400',
@@ -97,8 +97,8 @@ export function SettingsModal() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [busy, setBusy] = useState(false)
   // The phone API row's own in-flight flag. The switch starts and stops a
-  // socket, so it owns its own `await`: a click on it must neither grey the
-  // whole dialog (a Save elsewhere has nothing to do with it) nor be greyed by
+  // socket, so it owns its own `await`: a click on it must neither gray the
+  // whole dialog (a Save elsewhere has nothing to do with it) nor be grayed by
   // one.
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -407,7 +407,7 @@ export function SettingsModal() {
               <MaintenanceRow
                 title="Rebuild the catalog"
                 description="Recovery: walks every book folder's metadata and rewrites the shared catalog from what it finds. Use it when the catalog is missing or unreadable, or when books on disk aren't showing up here."
-                caveat="Slow — around 21 minutes for a library this size, measured over the network. Nothing is written until the walk finishes, so cancelling it is free; the counter and its Cancel appear in the status bar."
+                caveat="Slow — around 21 minutes for a library this size, measured over the network. Nothing is written until the walk finishes, so canceling it is free; the counter and its Cancel appear in the status bar."
                 action="Rebuild"
                 busy={syncRunning && sync?.kind === 'rebuild'}
                 disabled={!connected || syncRunning}
@@ -647,7 +647,7 @@ function Note({ children }: { children: React.ReactNode }) {
 /**
  * A maintenance action: what it does, what it costs, and the button. The
  * description is the whole point of the row — these two actions used to be
- * unlabelled rows in the sidebar, where "Refresh" and "Rebuild" were
+ * unlabeled rows in the sidebar, where "Refresh" and "Rebuild" were
  * indistinguishable until one of them took twenty minutes, and where Refresh's
  * fallback into a rebuild (`library-sync.refreshLibrary`) was invisible.
  *

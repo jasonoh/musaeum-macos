@@ -61,7 +61,7 @@ def clean_label(label: object) -> str:
     return _WS.sub(" ", clean_text(str(label or ""))).strip()[:120]
 
 
-def normalise_depths(entries: list[Entry]) -> list[Entry]:
+def normalize_depths(entries: list[Entry]) -> list[Entry]:
     """No entry may sit more than one level below the one before it.
 
     Dropping a junk parent would otherwise leave its children two levels deep
@@ -117,7 +117,7 @@ def outline_entries(path: str, pages: Optional[int] = None) -> list[Entry]:
         walk(reader.outline, 0)
     except Exception:
         return []
-    return normalise_depths(found)
+    return normalize_depths(found)
 
 
 MIN_ENTRIES = 2  # an outline with fewer usable entries than this is not a TOC
@@ -131,7 +131,7 @@ def heading_entries(doc: Document) -> list[Entry]:
         for b in page.blocks
         if b.kind == "heading" and b.level in (1, 2) and b.text.strip()
     ]
-    return normalise_depths(out)
+    return normalize_depths(out)
 
 
 def document_entries(path: str, doc: Document) -> list[Entry]:

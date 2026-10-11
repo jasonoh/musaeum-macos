@@ -58,7 +58,7 @@ function describeFailure(reason: DeriveFailure): string {
 }
 
 /**
- * One colour in all eight accent slots: the ramp cases are about the ramps, not the
+ * One color in all eight accent slots: the ramp cases are about the ramps, not the
  * slots. Module scope because two blocks read it (D3's witnesses and A20's sweep).
  */
 function allAccents(hex: string): Record<AccentSlot, string> {
@@ -343,7 +343,7 @@ const ITERM_GRUVBOX: Expected = {
     ['text on warn-500', 6.6, 4.0]
   ],
   adjusted: [],
-  notes: ['ramp inferred from 3 greys; no base01-03 in source']
+  notes: ['ramp inferred from 3 grays; no base01-03 in source']
 }
 
 const ITERM_NORD: Expected = {
@@ -392,7 +392,7 @@ const ITERM_NORD: Expected = {
     ['text on warn-500', 8.0, 4.0]
   ],
   adjusted: [],
-  notes: ['ramp inferred from 3 greys; no base01-03 in source']
+  notes: ['ramp inferred from 3 grays; no base01-03 in source']
 }
 
 /**
@@ -443,30 +443,30 @@ describe('AC2.1 — the prototype’s numbers reproduce', () => {
  * fixture, and the base for the malformed-IR cases. Module scope because two
  * describe blocks read it.
  */
-const GREY = '#808080'
+const GRAY = '#808080'
 const METRONOME: ThemeIr = {
   name: 'metronome',
   author: '',
   variant: 'dark',
   source: 'native',
-  bg: GREY,
-  bg2: GREY,
-  bg3: GREY,
-  border: GREY,
-  muted: GREY,
-  fg: GREY,
-  fg_bright: GREY,
+  bg: GRAY,
+  bg2: GRAY,
+  bg3: GRAY,
+  border: GRAY,
+  muted: GRAY,
+  fg: GRAY,
+  fg_bright: GRAY,
   accents: {
-    red: GREY,
-    orange: GREY,
-    yellow: GREY,
-    green: GREY,
-    cyan: GREY,
-    blue: GREY,
-    purple: GREY,
-    brown: GREY
+    red: GRAY,
+    orange: GRAY,
+    yellow: GRAY,
+    green: GRAY,
+    cyan: GRAY,
+    blue: GRAY,
+    purple: GRAY,
+    brown: GRAY
   },
-  accent_hint: GREY,
+  accent_hint: GRAY,
   notes: []
 }
 
@@ -475,7 +475,7 @@ const METRONOME: ThemeIr = {
  * rejected, not returned with an audit row that reads FAIL.
  */
 describe('AC2.2 — floors are enforced, and a failure is a rejection', () => {
-  it('rejects a canvas and a text colour at the same luminance', () => {
+  it('rejects a canvas and a text color at the same luminance', () => {
     const result = deriveTheme(METRONOME)
     expect(result.ok).toBe(false)
     if (result.ok) throw new Error('unreachable: asserted above')
@@ -500,7 +500,7 @@ describe('AC2.2 — floors are enforced, and a failure is a rejection', () => {
     // aliased `METRONOME.notes`. A loader path *can* carry a floor failure — both
     // adapters validate the file's shape, but neither can know whether the palette
     // it read holds its contrast floors — so this takes a real scheme and moves one
-    // field the derivation reads. base03 is `border`; greyed out, the `warn` text
+    // field the derivation reads. base03 is `border`; grayed out, the `warn` text
     // step lands 0.009 short of 4.5:1 on the panel it is read against.
     const text = readFileSync(join(BUILTIN, 'solarized-dark.yaml'), 'utf8')
     const crippled = text.replace(/^\s*base03:.*$/m, '  base03: "#808080"')
@@ -586,7 +586,7 @@ describe('AC2.3 — on-accent is never unreadable', () => {
  * D3 — the terminal verification, the one thing this port adds to the prototype:
  * after each of the six bounded floor loops, re-check the floor on the value that
  * actually ships and reject if it is unmet. Each case here is the *witness* for
- * one loop — re-instating the prototype's exit-without-re-checking behaviour on
+ * one loop — re-instating the prototype's exit-without-re-checking behavior on
  * that loop reddens it.
  *
  * The reviewer's measurement, and why this block exists: five of the six loops
@@ -596,18 +596,18 @@ describe('AC2.3 — on-accent is never unreadable', () => {
  * the status-`400` loop by the loader case there and by the two cases below, and
  * the other three below.
  *
- * Each case is a *minimal* input — one colour per guard — so a reader can see which
+ * Each case is a *minimal* input — one color per guard — so a reader can see which
  * floors had to hold for the guard to be reached at all. The `on-accent` case took
- * the longest to find: it is unreachable with neutral colours (measured: 33.5M IRs
- * over the whole grey cube, bg, fg and the accent each drawn from all 256 greys,
+ * the longest to find: it is unreachable with neutral colors (measured: 33.5M IRs
+ * over the whole gray cube, bg, fg and the accent each drawn from all 256 grays,
  * both variants, border = bg, zero rejections) and only appears once the accent
  * carries chroma.
  */
 describe('D3 — the terminal verifications, each with a witness', () => {
   /**
    * The shape these cases fill in: `allAccents` (module scope, shared with A20's
-   * sweep) puts one colour in all eight accent slots, and the text clears its own
-   * floor against a black canvas, so each case moves only the colours its guard reads.
+   * sweep) puts one color in all eight accent slots, and the text clears its own
+   * floor against a black canvas, so each case moves only the colors its guard reads.
    */
   const witness = (fields: Partial<ThemeIr>): ThemeIr => ({
     name: 'witness',
@@ -628,9 +628,9 @@ describe('D3 — the terminal verifications, each with a witness', () => {
   })
 
   it('rejects an accent that can never climb off its own canvas', () => {
-    // `gold-400`'s walk mixes 6% toward fg *from the quantised hex*, 20 times. Six
-    // percent of the way from black toward a mid-grey is 0.14 of an 8-bit step, so
-    // every iteration quantises back to #000000: the accent never moves, and the
+    // `gold-400`'s walk mixes 6% toward fg *from the quantized hex*, 20 times. Six
+    // percent of the way from black toward a mid-gray is 0.14 of an 8-bit step, so
+    // every iteration quantizes back to #000000: the accent never moves, and the
     // token ships at exactly the panel's own luminance.
     const result = deriveTheme(witness({ name: 'gold-400-floor' }))
     expect(result.ok).toBe(false)
@@ -650,11 +650,11 @@ describe('D3 — the terminal verifications, each with a witness', () => {
     ])
   })
 
-  it('rejects a scrim the quantiser carries back over its floor', () => {
+  it('rejects a scrim the quantizer carries back over its floor', () => {
     // The narrowest of the six: this canvas's hue survives the push to black, and
     // the walk leaves the scrim at 0.05999 — its last mix lands under the floor and
     // breaks the loop — but the *shipped* value is `rgbToHex` of it, and the
-    // quantised hex measures 0.0608. The prototype returns this theme with its own
+    // quantized hex measures 0.0608. The prototype returns this theme with its own
     // audit row reading FAIL.
     const result = deriveTheme(
       witness({
@@ -734,8 +734,8 @@ describe('D3 — the terminal verifications, each with a witness', () => {
   })
 
   it('rejects a chromatic accent fill that cannot carry 4:1 text', () => {
-    // The narrowest of the six, and the one a search over *grey* accents cannot
-    // find: on a mid-grey canvas the accent ramp deepens `gold-500` all 24 steps
+    // The narrowest of the six, and the one a search over *gray* accents cannot
+    // find: on a mid-gray canvas the accent ramp deepens `gold-500` all 24 steps
     // without either end reaching 4:1 — the panel and the parchment are 4.55:1
     // apart, which the text ramp has already enforced, so the fill has nowhere left
     // to go. It ships 0.012 short. The walk records the deepening all the same.
@@ -783,7 +783,7 @@ describe('D3 — the terminal verifications, each with a witness', () => {
  * `ok: true` and 715 of those carried a row below its floor.
  */
 describe('A20 — no success may carry an audit row below its own floor', () => {
-  /** The shape every case here fills in: one colour per ramp, so nothing else moves. */
+  /** The shape every case here fills in: one color per ramp, so nothing else moves. */
   const irWith = (fields: Partial<ThemeIr>): ThemeIr => ({
     name: 'a20',
     author: '',
@@ -944,7 +944,7 @@ describe('the derivation rejects a malformed IR as a value, never a throw', () =
     expect(result.reason).toEqual({
       kind: 'malformed',
       role: 'bg',
-      detail: expect.stringContaining('hex colour')
+      detail: expect.stringContaining('hex color')
     })
   })
 
@@ -963,7 +963,7 @@ describe('the derivation rejects a malformed IR as a value, never a throw', () =
     }
   })
 
-  it('rejects a value that is not a hex colour, rather than deriving NaN tokens', () => {
+  it('rejects a value that is not a hex color, rather than deriving NaN tokens', () => {
     // The reviewer's second silent success: `{ …ir, fg: 'rgb(1,2,3)' }` returned
     // `ok: true` with 16 of 16 audit ratios NaN.
     const result = deriveTheme(asIr({ ...METRONOME, fg: 'rgb(1,2,3)' }))
@@ -972,15 +972,15 @@ describe('the derivation rejects a malformed IR as a value, never a throw', () =
     expect(result.reason).toEqual({
       kind: 'malformed',
       role: 'fg',
-      detail: expect.stringContaining('hex colour')
+      detail: expect.stringContaining('hex color')
     })
   })
 
-  it('expands a three-digit hex — a floor rejection here, an accepted colour elsewhere', () => {
+  it('expands a three-digit hex — a floor rejection here, an accepted color elsewhere', () => {
     // `{ …ir, bg: '#fff' }` used to return `ok: true` with `scrim = #NaNNaNNaN`.
-    // `#fff` *is* a colour: `normalizeHex` expands it, faithfully to `derive.py`'s own
+    // `#fff` *is* a color: `normalizeHex` expands it, faithfully to `derive.py`'s own
     // `normalize_hex`, so what happens next depends on the palette rather than on the
-    // expansion. On this metronome every colour is #808080, so a white canvas leaves the
+    // expansion. On this metronome every color is #808080, so a white canvas leaves the
     // text stop 1.37:1 from it and the *text floor* rejects — the point being that a
     // ratio was measured at all, on a value whose channels are finite.
     //
@@ -1057,7 +1057,7 @@ describe('the derivation rejects a malformed IR as a value, never a throw', () =
     expect(result.reason).toEqual({
       kind: 'malformed',
       role: 'accents.yellow',
-      detail: expect.stringContaining('hex colour')
+      detail: expect.stringContaining('hex color')
     })
   })
 
@@ -1153,7 +1153,7 @@ describe('the derivation rejects a malformed IR as a value, never a throw', () =
     expect(result.reason).toEqual({
       kind: 'malformed',
       role: 'bg',
-      detail: `expected a hex colour, got ${'q'.repeat(48)}…`
+      detail: `expected a hex color, got ${'q'.repeat(48)}…`
     })
   })
 
@@ -1201,7 +1201,7 @@ describe('the derivation rejects a malformed IR as a value, never a throw', () =
     const result = deriveTheme(asIr({ ...METRONOME, bg: undefined }))
     if (result.ok) throw new Error('unreachable: this IR is rejected above')
     const reason: DeriveFailure = result.reason
-    expect(describeFailure(reason)).toContain('bg: expected a hex colour')
+    expect(describeFailure(reason)).toContain('bg: expected a hex color')
 
     const floor: FloorReason = {
       kind: 'floor',
@@ -1331,7 +1331,7 @@ describe('AC1.4 — the :root defaults still pin the pre-change palette', () => 
 
 /**
  * D1 (slice 7a) — the twelve `--status-*` values `src/index.css` authors are the
- * *derivation* of a canonical default IR, not hand-picked colours.
+ * *derivation* of a canonical default IR, not hand-picked colors.
  *
  * The built-in default's token set carries no status family on purpose (A28), so
  * `:root` is where the app's status values live, and both obvious sources for
@@ -1399,7 +1399,7 @@ describe('D1 (7a) — the :root status values are the canonical default IR’s d
     return vars
   }
 
-  /** A hex colour as the channel triplet `:root` stores it in. */
+  /** A hex color as the channel triplet `:root` stores it in. */
   function asChannels(hex: string): string {
     const body = hex.replace(/^#/, '')
     return [0, 2, 4].map((at) => parseInt(body.slice(at, at + 2), 16)).join(' ')

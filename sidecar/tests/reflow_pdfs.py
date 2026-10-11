@@ -19,7 +19,7 @@ class Text:
     text: str
     size: float = 10.0
     bold: bool = False
-    rotated: bool = False  # 90° anticlockwise, like an arXiv stamp
+    rotated: bool = False  # 90° counterclockwise, like an arXiv stamp
     scaled: bool = False  # `Tf 1` plus a scaling `Tm`, as *Universe* writes it
 
 

@@ -167,7 +167,7 @@ describe('parseSort — the field/direction rule', () => {
     'refuses an unusable field or direction (%s)',
     (query) => {
       // Refused rather than ignored, and case-sensitively: `ASC` is not `asc`,
-      // and a sort this surface cannot honour is not a sort it may invent
+      // and a sort this surface cannot honor is not a sort it may invent
       expect(parseSort(url(`/api/library?${query}`).searchParams, false)).toEqual({ ok: false })
     }
   )

@@ -7,10 +7,10 @@ typography and its whole `reading_state` policy apply to a PDF book without one
 line of change on either platform — the argument the design is built on.
 
 **What this writer deliberately does not do.** It names no typeface, sets no
-colour and does not touch line height, because the reader injects its own
+color and does not touch line height, because the reader injects its own
 stylesheet and derives the page palette from the app's theme
 (`docs/invariants/reader.md`, `src/lib/theme/reader-palette.ts`). A stylesheet
-that set a colour here would fight the theme on both clients.
+that set a color here would fight the theme on both clients.
 
 **The TOC is the outline, whole.** Every usable outline entry at every depth is
 a nav entry, nested as the outline nests, linking to the *heading* it names.

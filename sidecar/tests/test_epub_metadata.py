@@ -490,7 +490,7 @@ def test_a_cover_image_right_at_the_cap_is_still_read(tmp_path):
 
 
 def test_a_normal_epub_still_extracts_title_author_and_cover(tmp_path):
-    # The security hardening must not change behaviour on an ordinary file.
+    # The security hardening must not change behavior on an ordinary file.
     path = _epub(
         tmp_path,
         opf=_package(

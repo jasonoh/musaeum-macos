@@ -111,7 +111,7 @@ describe('parseSearchYield', () => {
     })
   })
 
-  it('ignores a yield it does not recognise instead of throwing', () => {
+  it('ignores a yield it does not recognize instead of throwing', () => {
     // Someone else's JavaScript: one malformed yield must not cost the reader a
     // whole book's results (invariant #12).
     expect(parseSearchYield(undefined)).toBeNull()
