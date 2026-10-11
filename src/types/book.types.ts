@@ -1,3 +1,5 @@
+import type { OwnedFields } from './metadata.types'
+
 export type BookFormat = 'epub' | 'mobi' | 'azw3' | 'pdf'
 
 /**
@@ -174,6 +176,8 @@ export interface Book {
   readStatus: ReadStatus
   nasPath: string | null
   readingState: ReadingState | null
+  /** { field: ISO time the user claimed it }. Travels in metadata.json (`owned_fields`). */
+  ownedFields: OwnedFields
 }
 
 /** Reference compare, except arrays, which are compared by value. */

@@ -16,6 +16,7 @@ import {
   logDeviceTransfer,
   replaceAllBooks,
   searchBooks,
+  setOwnedFields,
   setReadingState,
   updateBook
 } from './db'
@@ -292,5 +293,36 @@ describe('updateBook — sort keys follow the fields they are derived from', () 
     insertBook({ ...makeBook('a', 'The Road'), sortTitle: 'Road, The' })
     updateBook('a', { publisher: 'Knopf' })
     expect(getBook('a')?.sortTitle).toBe('Road, The')
+  })
+})
+
+describe('owned_fields', () => {
+  it('round-trips through insertBook and getBook', () => {
+    insertBook({ ...makeBook('a'), ownedFields: { author: '2026-10-11T10:00:00.000Z' } })
+    expect(getBook('a')?.ownedFields).toEqual({ author: '2026-10-11T10:00:00.000Z' })
+  })
+
+  it('reads a book that never had any as an empty map', () => {
+    insertBook(makeBook('a'))
+    expect(getBook('a')?.ownedFields).toEqual({})
+  })
+
+  it('setOwnedFields replaces the map and bumps last_modified', () => {
+    insertBook({ ...makeBook('a'), lastModified: '2020-01-01T00:00:00.000Z' })
+    setOwnedFields('a', { title: '2026-10-11T10:00:00.000Z' })
+    const after = getBook('a')!
+    expect(after.ownedFields).toEqual({ title: '2026-10-11T10:00:00.000Z' })
+    expect(Date.parse(after.lastModified!)).toBeGreaterThan(Date.parse('2020-01-01T00:00:00.000Z'))
+  })
+
+  it('survives a wholesale replace, which is what adoption does', () => {
+    replaceAllBooks([{ ...makeBook('a'), ownedFields: { tags: '2026-10-11T10:00:00.000Z' } }])
+    expect(getBook('a')?.ownedFields).toEqual({ tags: '2026-10-11T10:00:00.000Z' })
+  })
+
+  it('reads a corrupt column as no locks instead of throwing', () => {
+    insertBook(makeBook('a'))
+    getDb().prepare('UPDATE books SET owned_fields = ? WHERE id = ?').run('{not json', 'a')
+    expect(getBook('a')?.ownedFields).toEqual({})
   })
 })

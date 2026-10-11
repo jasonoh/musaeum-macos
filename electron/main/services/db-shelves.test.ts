@@ -38,6 +38,9 @@ beforeEach(() => {
  * Put a fully migrated database back to the shape it had at user_version 5:
  * the shelf cache gone, 001's collections tables back. Closing and reopening
  * then runs 006 over it exactly as it runs on a real machine's database.
+ *
+ * 007's column is dropped too: the connection was opened at the latest version,
+ * and replaying 007 over a database that already has it would fail.
  */
 function rewindTo005(): void {
   const d = getDb()
@@ -50,6 +53,7 @@ function rewindTo005(): void {
       collection_id TEXT REFERENCES collections(id),
       PRIMARY KEY (book_id, collection_id)
     );
+    ALTER TABLE books DROP COLUMN owned_fields;
   `)
   d.pragma('user_version = 5')
 }
@@ -71,14 +75,17 @@ describe('migration 006 (bookshelves D2)', () => {
     closeDb()
 
     const d = getDb()
-    expect(d.pragma('user_version', { simple: true })).toBe(6)
+    expect(d.pragma('user_version', { simple: true })).toBe(7)
     const names = schemaNames(d)
     expect(names).toEqual(
       expect.arrayContaining(['shelves', 'shelf_books', 'idx_shelf_books_book'])
     )
     expect(names).not.toContain('collections')
     expect(names).not.toContain('book_collections')
-    expect(d.prepare('SELECT * FROM books ORDER BY id').all()).toEqual(before)
+    // 007 runs after 006 on this path and adds the one column, empty
+    expect(d.prepare('SELECT * FROM books ORDER BY id').all()).toEqual(
+      before.map((row) => ({ ...(row as object), owned_fields: null }))
+    )
   })
 
   it('refuses to drop a collections table that holds rows, and leaves the database at 5', () => {

@@ -305,7 +305,9 @@ export async function metadataJsonToBook(
       ? json.read_status
       : 'unread') as ReadStatus,
     nasPath: join('books', dirName),
-    readingState: toReadingState(json.reading_state)
+    readingState: toReadingState(json.reading_state),
+    // Placeholder: reading `owned_fields` off the record is portable-decisions Task 3
+    ownedFields: {}
   }
 }
 

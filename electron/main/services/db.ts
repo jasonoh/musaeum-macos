@@ -11,7 +11,7 @@ import type {
   ReadStatus
 } from '@shared/book.types'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
-import type { ConflictCandidate, MetadataConflict } from '@shared/metadata.types'
+import type { ConflictCandidate, MetadataConflict, OwnedFields } from '@shared/metadata.types'
 import type { ShelfScope, ShelfSummary, ShelvesFile } from '@shared/shelf.types'
 import { isManualShelf } from '@shared/shelf.types'
 import migration001 from '../schema/migrations/001_initial.sql?raw'
@@ -20,6 +20,8 @@ import migration003 from '../schema/migrations/003_reading_state.sql?raw'
 import migration004 from '../schema/migrations/004_device_file_identity.sql?raw'
 import migration005 from '../schema/migrations/005_device_history_outlives_book.sql?raw'
 import migration006 from '../schema/migrations/006_shelves.sql?raw'
+import migration007 from '../schema/migrations/007_owned_fields.sql?raw'
+import { parseOwnedFields } from './owned-fields'
 
 const MIGRATIONS: string[] = [
   migration001,
@@ -27,7 +29,8 @@ const MIGRATIONS: string[] = [
   migration003,
   migration004,
   migration005,
-  migration006
+  migration006,
+  migration007
 ]
 
 let db: Database.Database | null = null
@@ -139,6 +142,7 @@ interface BookRow {
   reading_position: string | null
   reading_percent: number | null
   reading_updated_at: string | null
+  owned_fields: string | null
 }
 
 function rowToBook(r: BookRow): Book {
@@ -178,7 +182,8 @@ function rowToBook(r: BookRow): Book {
           percent: r.reading_percent ?? 0,
           updatedAt: r.reading_updated_at
         }
-      : null
+      : null,
+    ownedFields: parseOwnedFields(r.owned_fields)
   }
 }
 
@@ -555,8 +560,9 @@ export function insertBook(book: Book): void {
         language, description, isbn_10, isbn_13, goodreads_id, openlibrary_id,
         series_name, series_index, series_total, cover_thumb_path, cover_full_path,
         formats, tags, rating, date_added, last_modified, file_size_bytes,
-        read_status, nas_path, reading_position, reading_percent, reading_updated_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        read_status, nas_path, reading_position, reading_percent, reading_updated_at,
+        owned_fields
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       book.id,
@@ -587,7 +593,8 @@ export function insertBook(book: Book): void {
       book.nasPath,
       book.readingState?.position ?? null,
       book.readingState?.percent ?? null,
-      book.readingState?.updatedAt ?? null
+      book.readingState?.updatedAt ?? null,
+      Object.keys(book.ownedFields).length ? JSON.stringify(book.ownedFields) : null
     )
 }
 
@@ -632,6 +639,19 @@ export function setReadingState(id: string, state: ReadingState): void {
        WHERE id = ?`
     )
     .run(state.position, state.percent, state.updatedAt, id)
+}
+
+/**
+ * Replace a book's claim map. Its own writer, like `setReadingState`, because
+ * it is a nested value the generic column map cannot flatten — but unlike a
+ * page turn, a change to what the user holds *is* a change to the record, so
+ * it moves `last_modified`: that is the clock a reconcile compares a remote
+ * release against (see `owned-fields.reconcileOwnedFields`).
+ */
+export function setOwnedFields(id: string, owned: OwnedFields): void {
+  getDb()
+    .prepare('UPDATE books SET owned_fields = ?, last_modified = ? WHERE id = ?')
+    .run(Object.keys(owned).length ? JSON.stringify(owned) : null, new Date().toISOString(), id)
 }
 
 /**
