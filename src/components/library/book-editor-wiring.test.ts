@@ -34,4 +34,15 @@ describe('BookEditor releaseOverride', () => {
     expect(body).toMatch(/if \([^)]*!online[^)]*\) return/)
     expect(body.indexOf('!online')).toBeLessThan(body.indexOf('releaseFieldOverride'))
   })
+
+  it('catches a failed release and shows it through the editor’s error state', () => {
+    const body = bodyOf('releaseOverride')
+    const tryAt = body.search(/\btry\s*\{/)
+    const catchAt = body.search(/\}\s*catch\b/)
+    expect(tryAt, 'a try block').toBeGreaterThanOrEqual(0)
+    expect(catchAt, 'a catch block').toBeGreaterThan(tryAt)
+    expect(tryAt).toBeGreaterThan(body.indexOf('!online'))
+    expect(body.indexOf('releaseFieldOverride')).toBeGreaterThan(tryAt)
+    expect(body.slice(catchAt)).toContain('setError(')
+  })
 })

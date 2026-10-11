@@ -93,12 +93,18 @@ function runMigrations(d: Database.Database): void {
 /**
  * One-time carry of `app_config.field_overrides` (the pre-007 home of the
  * claims, an array of fields per book id) onto the rows it can still resolve.
- * A claim has no recorded time in the old store, so each is seeded at the
- * book's own `last_modified` — which `reconcileOwnedFields` reads as "not older
- * than the record", so the upgrade's own claims survive the first adoption. The
- * config key is left in place and never read again: leaving it is the rollback
- * path, deleting it would be the irreversible one. Never throws — an unreadable
- * map seeds nothing (invariant 12), and the migration still completes.
+ * A claim has no recorded time in the old store, so every one is seeded at a
+ * single instant — the upgrade's own. No record written before 007 can carry a
+ * release (a release only exists as the *absence* of a claim a 007 machine once
+ * held), so the seed must outrank anything the other machine wrote before the
+ * upgrade; stamping at the book's own `last_modified` did not, because the
+ * migration runs before the first adoption and a catalog entry newer than this
+ * row would have read the seeded claim as older and dropped it as a release. A
+ * release made on a 007 machine after the upgrade is later than this instant
+ * and still wins. The config key is left in place and never read again: leaving
+ * it is the rollback path, deleting it would be the irreversible one. Never
+ * throws — an unreadable map seeds nothing (invariant 12), and the migration
+ * still completes.
  */
 function seedOwnedFieldsFromConfig(d: Database.Database): void {
   try {
@@ -107,13 +113,12 @@ function seedOwnedFieldsFromConfig(d: Database.Database): void {
     if (!row) return
     const map: unknown = JSON.parse(row.value)
     if (!map || typeof map !== 'object' || Array.isArray(map)) return
-    const find = d.prepare('SELECT last_modified FROM books WHERE id = ?')
+    const find = d.prepare('SELECT id FROM books WHERE id = ?')
     const write = d.prepare('UPDATE books SET owned_fields = ? WHERE id = ?')
+    const seededAt = new Date().toISOString()
     for (const [bookId, fields] of Object.entries(map)) {
-      const book = find.get(bookId) as { last_modified: string | null } | undefined
-      if (!book || !Array.isArray(fields)) continue
-      const at = book.last_modified ?? new Date().toISOString()
-      const owned = parseOwnedFields(Object.fromEntries(fields.map((f: unknown) => [f, at])))
+      if (!find.get(bookId) || !Array.isArray(fields)) continue
+      const owned = parseOwnedFields(Object.fromEntries(fields.map((f: unknown) => [f, seededAt])))
       if (Object.keys(owned).length) write.run(JSON.stringify(owned), bookId)
     }
   } catch (err) {
@@ -681,12 +686,18 @@ export function setReadingState(id: string, state: ReadingState): void {
  * it is a nested value the generic column map cannot flatten — but unlike a
  * page turn, a change to what the user holds *is* a change to the record, so
  * it moves `last_modified`: that is the clock a reconcile compares a remote
- * release against (see `owned-fields.reconcileOwnedFields`).
+ * release against (see `owned-fields.reconcileOwnedFields`). `at` is that
+ * instant; a caller stamping a claim passes the same one it put in the map, so
+ * the claim's time and the record's are equal and a tie keeps the claim.
  */
-export function setOwnedFields(id: string, owned: OwnedFields): void {
+export function setOwnedFields(
+  id: string,
+  owned: OwnedFields,
+  at: string = new Date().toISOString()
+): void {
   getDb()
     .prepare('UPDATE books SET owned_fields = ?, last_modified = ? WHERE id = ?')
-    .run(Object.keys(owned).length ? JSON.stringify(owned) : null, new Date().toISOString(), id)
+    .run(Object.keys(owned).length ? JSON.stringify(owned) : null, at, id)
 }
 
 /**

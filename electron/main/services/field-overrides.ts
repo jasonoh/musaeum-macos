@@ -61,7 +61,7 @@ export function markFromPatch(
   // the new time, which is what orders it against another machine's release.
   const next: OwnedFields = { ...book.ownedFields }
   for (const field of marked) next[field] = now
-  db.setOwnedFields(bookId, next)
+  db.setOwnedFields(bookId, next, now)
   return Object.keys(next) as HydratedField[]
 }
 

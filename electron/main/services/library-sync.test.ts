@@ -437,6 +437,22 @@ describe('applyCatalog', () => {
       expect(getBook('a')!.ownedFields).toEqual({ author: '2026-10-11T12:00:00.000Z' })
     })
 
+    it('a claim stamped at the upgrade survives a catalog entry written after the row but before the upgrade (seed vs. first adoption)', async () => {
+      // Migration 007 seeds every claim at one instant (now) and runs before the first adoption; the other Mac may have written the book after this row's last_modified. That entry cannot carry a release, so the seed must win.
+      const seededAt = new Date().toISOString()
+      insertBook({
+        ...makeBook('a'),
+        lastModified: '2020-01-01T00:00:00.000Z',
+        ownedFields: { author: seededAt }
+      })
+      await writeCatalog(root, [
+        { ...makeBook('a'), lastModified: '2026-10-01T00:00:00.000Z', ownedFields: {} }
+      ])
+      await librarySync.applyCatalog(root)
+      await librarySync.flushForTests()
+      expect(getBook('a')!.ownedFields).toEqual({ author: seededAt })
+    })
+
     it('pushes a surviving local claim back to catalog.json', async () => {
       insertBook({ ...makeBook('a'), ownedFields: { author: '2026-10-11T12:00:00.000Z' } })
       await writeCatalog(root, [

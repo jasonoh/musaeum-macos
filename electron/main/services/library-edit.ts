@@ -51,13 +51,18 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
  * release is a change to the book's record, so it is written where an edit is —
  * to `metadata.json` and the catalog — and, like an edit, it needs the library
  * online: an offline release would be re-imposed by the next adoption, which
- * would read the other machine's still-held claim as newer news.
+ * would read the other machine's still-held claim as newer news. Releasing a
+ * field that is not held is a no-op beyond the online check.
  */
 export async function releaseFieldOverride(
   id: string,
   field: HydratedField
 ): Promise<HydratedField[]> {
   nas.assertOnline()
+  // Nothing held, nothing to hand back: no record write, no catalog upsert, no
+  // broadcast — a release that changed nothing must not move the record's clock
+  const held = fieldOverrides.list(id)
+  if (!held.includes(field)) return held
   const remaining = fieldOverrides.release(id, field)
   const book = db.getBook(id)
   if (book?.nasPath) {

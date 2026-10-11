@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { sortableAuthor, sortableTitle } from '@shared/book.types'
 import { makeBook } from '../../../test/helpers/book'
 import migration001 from '../schema/migrations/001_initial.sql?raw'
@@ -40,6 +40,18 @@ describe('markFromPatch', () => {
     markFromPatch('a', { title: 'Fair Play', author: null }, before)
 
     expect(list('a')).toEqual(['title'])
+  })
+
+  it('stamps the claim and the row with the same instant, so a tie keeps the claim', () => {
+    const before = makeBook('a', 'Book a')
+    insertBook(before)
+    const at = '2026-10-11T09:08:07.654Z'
+
+    markFromPatch('a', { author: 'Eve' }, before, at)
+
+    const after = getBook('a')!
+    expect(after.lastModified).toBe(at)
+    expect(after.ownedFields.author).toBe(at)
   })
 
   it('accumulates across edits without repeating a field', () => {
@@ -171,8 +183,8 @@ describe('an unreadable claim map', () => {
  * the old map across, once; the key is left in place.
  */
 describe('the upgrade seed', () => {
-  it('turns a pre-upgrade map into records on the books it can resolve (AC6)', () => {
-    // A database exactly as the previous release left it: migrations 001-006
+  /** A database exactly as the previous release left it (migrations 001-006), with the given books and `field_overrides` value. */
+  function writeV6Database(books: [string, string][], fieldOverrides: string): void {
     const path = join(app.getPath('userData'), 'musaeum.db')
     const old = new Database(path)
     old.function('musaeum_sort_title', (t: unknown) =>
@@ -193,23 +205,82 @@ describe('the upgrade seed', () => {
     }
     old.pragma('user_version = 6')
     const insert = old.prepare('INSERT INTO books (id, title, last_modified) VALUES (?, ?, ?)')
-    insert.run('a', 'Book a', '2026-03-04T05:06:07.000Z')
-    insert.run('b', 'Book b', '2026-03-05T05:06:07.000Z')
+    for (const [id, lastModified] of books) insert.run(id, `Book ${id}`, lastModified)
     old
       .prepare("INSERT INTO app_config (key, value) VALUES ('field_overrides', ?)")
-      .run('{"a":["author","title"],"ghost":["tags"],"b":["nope"]}')
+      .run(fieldOverrides)
     old.close()
+  }
 
+  it('turns a pre-upgrade map into records on the books it can resolve (AC6)', () => {
+    writeV6Database(
+      [
+        ['a', '2026-03-04T05:06:07.000Z'],
+        ['b', '2026-03-05T05:06:07.000Z']
+      ],
+      '{"a":["author","title"],"ghost":["tags"],"b":["nope"]}'
+    )
+
+    const before = Date.now()
     // The first getDb() runs migration 007
     const a = getBook('a')!
     expect(a.lastModified).toBe('2026-03-04T05:06:07.000Z')
-    expect(a.ownedFields).toEqual({
-      author: '2026-03-04T05:06:07.000Z',
-      title: '2026-03-04T05:06:07.000Z'
-    }) // each seeded at the book's own last_modified, so a reconcile treats it as "not older than the record"
+    // One instant for the whole upgrade, not each book's own last_modified: no record written before 007 can carry a release, so the seed must outrank all of them
+    const stamps = Object.values(a.ownedFields)
+    expect(Object.keys(a.ownedFields).sort()).toEqual(['author', 'title'])
+    expect(new Set(stamps).size).toBe(1)
+    for (const at of stamps) {
+      expect(new Date(at).toISOString()).toBe(at)
+      expect(Date.parse(at)).toBeGreaterThanOrEqual(before)
+      expect(Date.parse(at)).toBeGreaterThanOrEqual(Date.parse(a.lastModified!))
+    }
     expect(getBook('b')!.ownedFields).toEqual({}) // unknown field name dropped
     expect(getBook('ghost')).toBeNull() // no row: nothing created, nothing thrown
     expect(getConfig('field_overrides')).not.toBeNull() // read once, never rewritten, never deleted
     expect(getDb().pragma('user_version', { simple: true })).toBe(7)
+  })
+
+  it('stamps every book of one upgrade with the same instant', () => {
+    writeV6Database(
+      [
+        ['a', '2026-03-04T05:06:07.000Z'],
+        ['b', '2026-04-05T05:06:07.000Z']
+      ],
+      '{"a":["author"],"b":["title"]}'
+    )
+    expect(getBook('a')!.ownedFields.author).toBe(getBook('b')!.ownedFields.title)
+  })
+
+  describe('with an unusable field_overrides value', () => {
+    const cases: [string, string][] = [
+      ['malformed JSON', '{not json'],
+      ['an array', '[]'],
+      ['a string', '"a string"'],
+      [
+        'a per-book value that is not an array (valid sibling still seeded)',
+        '{"a":"author","b":["title"]}'
+      ]
+    ]
+    it.each(cases)('completes the upgrade and seeds nothing it cannot read: %s', (_name, value) => {
+      const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      try {
+        writeV6Database(
+          [
+            ['a', '2026-03-04T05:06:07.000Z'],
+            ['b', '2026-03-05T05:06:07.000Z']
+          ],
+          value
+        )
+        expect(() => getDb()).not.toThrow()
+        expect(getDb().pragma('user_version', { simple: true })).toBe(7)
+        expect(getBook('a')!.ownedFields).toEqual({}) // never a usable entry
+        const b = getBook('b')!
+        if (value.includes('"b":["title"]')) expect(Object.keys(b.ownedFields)).toEqual(['title'])
+        else expect(b.ownedFields).toEqual({})
+        expect(getConfig('field_overrides')).toBe(value) // left untouched
+      } finally {
+        quiet.mockRestore()
+      }
+    })
   })
 })

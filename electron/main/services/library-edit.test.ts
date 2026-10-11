@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
 import { readCatalog, writeCatalog } from './catalog'
 import { closeDb, getBook, insertBook, setOwnedFields } from './db'
+import { subscribe } from './events'
 import { list } from './field-overrides'
 import { writeMetadataJson } from './importer'
 import { releaseFieldOverride, updateBook } from './library-edit'
@@ -97,6 +98,33 @@ describe('releaseFieldOverride', () => {
     )
     await librarySync.flushForTests()
     expect((await readCatalog(root))!.books.find((b) => b.id === 'a')!.ownedFields).toEqual({})
+  })
+
+  it('releasing a field that is not held writes nothing and announces nothing', async () => {
+    const dir = await seed('a')
+    setOwnedFields('a', { title: CLAIM })
+    const record = await fs.readFile(join(dir, 'metadata.json'), 'utf8')
+    const modified = getBook('a')!.lastModified
+    const events: string[] = []
+    const unsubscribe = subscribe((event) => events.push(event))
+    try {
+      await expect(releaseFieldOverride('a', 'author')).resolves.toEqual(['title'])
+    } finally {
+      unsubscribe()
+    }
+
+    expect(await fs.readFile(join(dir, 'metadata.json'), 'utf8')).toBe(record)
+    expect(getBook('a')!.lastModified).toBe(modified)
+    expect(getBook('a')!.ownedFields).toEqual({ title: CLAIM })
+    expect(events).not.toContain('libraryChanged')
+  })
+
+  it('still refuses offline when the field is not held', async () => {
+    await seed('a')
+    vi.spyOn(nas, 'assertOnline').mockImplementation(() => {
+      throw new Error('offline')
+    })
+    await expect(releaseFieldOverride('a', 'author')).rejects.toThrow('offline')
   })
 
   it('refuses offline, so a release is never re-imposed by the next adoption', async () => {

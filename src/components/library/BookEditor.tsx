@@ -78,7 +78,12 @@ export function BookEditor() {
   const releaseOverride = async (field: HydratedField): Promise<void> => {
     // Offline the service refuses (a release is a change to the record); do not even try
     if (!book || !online) return
-    setOverridden(await window.Musaeum.library.releaseFieldOverride(book.id, field))
+    try {
+      setOverridden(await window.Musaeum.library.releaseFieldOverride(book.id, field))
+    } catch (err) {
+      // An online write can still fail (an SMB hiccup); say so rather than reject unhandled
+      setError(err instanceof Error ? err.message : String(err))
+    }
   }
 
   const save = async () => {
