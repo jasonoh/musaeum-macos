@@ -301,8 +301,8 @@ describe('the review count after a delete', () => {
 
     await deleteBook('c-ov')
 
-    // A dead id in the map is a field no fetch can ever be told about again —
-    // the entry for the deleted book is the one that goes
+    // The claims are a column on the row: they die with it, nothing is told
+    expect(getBook('c-ov')).toBeNull()
     expect(listOverrides('c-ov')).toEqual([])
     expect(listOverrides('shared')).toEqual(['author'])
   })

@@ -76,13 +76,48 @@ function registerFunctions(d: Database.Database): void {
   )
 }
 
+/** Index in MIGRATIONS of `007_owned_fields.sql`. */
+const OWNED_FIELDS_MIGRATION = 6
+
 function runMigrations(d: Database.Database): void {
   const current = d.pragma('user_version', { simple: true }) as number
   for (let v = current; v < MIGRATIONS.length; v++) {
     d.transaction(() => {
       d.exec(MIGRATIONS[v])
+      if (v === OWNED_FIELDS_MIGRATION) seedOwnedFieldsFromConfig(d)
       d.pragma(`user_version = ${v + 1}`)
     })()
+  }
+}
+
+/**
+ * One-time carry of `app_config.field_overrides` (the pre-007 home of the
+ * claims, an array of fields per book id) onto the rows it can still resolve.
+ * A claim has no recorded time in the old store, so each is seeded at the
+ * book's own `last_modified` — which `reconcileOwnedFields` reads as "not older
+ * than the record", so the upgrade's own claims survive the first adoption. The
+ * config key is left in place and never read again: leaving it is the rollback
+ * path, deleting it would be the irreversible one. Never throws — an unreadable
+ * map seeds nothing (invariant 12), and the migration still completes.
+ */
+function seedOwnedFieldsFromConfig(d: Database.Database): void {
+  try {
+    const row = d.prepare("SELECT value FROM app_config WHERE key = 'field_overrides'").get() as
+      { value: string } | undefined
+    if (!row) return
+    const map: unknown = JSON.parse(row.value)
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return
+    const find = d.prepare('SELECT last_modified FROM books WHERE id = ?')
+    const write = d.prepare('UPDATE books SET owned_fields = ? WHERE id = ?')
+    for (const [bookId, fields] of Object.entries(map)) {
+      const book = find.get(bookId) as { last_modified: string | null } | undefined
+      if (!book || !Array.isArray(fields)) continue
+      const at = book.last_modified ?? new Date().toISOString()
+      const owned = parseOwnedFields(Object.fromEntries(fields.map((f: unknown) => [f, at])))
+      if (Object.keys(owned).length) write.run(JSON.stringify(owned), bookId)
+    }
+  } catch (err) {
+    console.error('[migration 007] could not carry field_overrides, seeding nothing:', err)
   }
 }
 
@@ -441,9 +476,9 @@ export function getBook(id: string): Book | null {
 /**
  * Whether the cache holds this book, without building the row.
  *
- * For the callers that are asking about *existence* rather than about a book:
- * `field-overrides.ts` sweeps its map of books that are gone, where reading
- * every column of every entry would be work thrown away.
+ * For the callers that are asking about *existence* rather than about a book
+ * (the shelf service, the REST shelf routes), where reading every column would
+ * be work thrown away.
  */
 export function bookExists(id: string): boolean {
   return getDb().prepare('SELECT 1 FROM books WHERE id = ?').get(id) !== undefined

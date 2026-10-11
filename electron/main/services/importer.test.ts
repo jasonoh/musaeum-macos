@@ -374,6 +374,31 @@ describe('hydrate — a field the user has overridden', () => {
     expect(outcome.ok && outcome.changed).toEqual([])
   })
 
+  it('a lock that arrives through the record keeps a fetch off the field (AC3)', async () => {
+    // Not via markFromPatch or any local edit: the claim is just on the row, as
+    // it is after an adoption of another machine's metadata.json
+    closeDb()
+    const userData = app.getPath('userData')
+    for (const f of ['musaeum.db', 'musaeum.db-wal', 'musaeum.db-shm']) {
+      rmSync(join(userData, f), { force: true })
+    }
+    insertBook({
+      ...makeBook('a', 'Book a'),
+      author: 'Original Author',
+      ownedFields: { author: '2026-10-11T10:00:00.000Z' }
+    })
+    vi.mocked(sidecar.call).mockResolvedValue(reply({ author: 'Fetched Author' }))
+
+    await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getBook('a')?.author).toBe('Original Author')
+    expect(sidecar.call).toHaveBeenCalledWith(
+      'hydrate_metadata',
+      expect.objectContaining({ locked_fields: ['author'] }),
+      300_000
+    )
+  })
+
   it('tells the sidecar which fields the user owns', async () => {
     fieldOverrides.markFromPatch('a', { publisher: 'Penguin' }, makeBook('a', 'Book a'))
     vi.mocked(sidecar.call).mockResolvedValue(reply({}))
@@ -413,8 +438,8 @@ describe('hydrate — a field the user has overridden', () => {
   })
 
   it('reads the override map once per run, not once per field', async () => {
-    // The map is one JSON value holding every book, so a read per field would
-    // parse all of it ten times for a book that has ten fields in play
+    // Each read is a row fetch and a JSON parse, and the same list is both the
+    // RPC param and the reply filter, so a read per field would repeat both
     const reads = vi.spyOn(fieldOverrides, 'list')
     vi.mocked(sidecar.call).mockResolvedValue(reply({ title: 'Fetched Title' }))
 

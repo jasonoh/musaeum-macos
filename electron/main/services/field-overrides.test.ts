@@ -1,10 +1,18 @@
+import Database from 'better-sqlite3'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { sortableAuthor, sortableTitle } from '@shared/book.types'
 import { makeBook } from '../../../test/helpers/book'
-import { closeDb, getBook, insertBook, setConfig, updateBook } from './db'
-import { forget, list, markFromPatch, release } from './field-overrides'
+import migration001 from '../schema/migrations/001_initial.sql?raw'
+import migration002 from '../schema/migrations/002_sort_keys.sql?raw'
+import migration003 from '../schema/migrations/003_reading_state.sql?raw'
+import migration004 from '../schema/migrations/004_device_file_identity.sql?raw'
+import migration005 from '../schema/migrations/005_device_history_outlives_book.sql?raw'
+import migration006 from '../schema/migrations/006_shelves.sql?raw'
+import { closeDb, getBook, getConfig, getDb, insertBook, updateBook } from './db'
+import { list, markFromPatch, release } from './field-overrides'
 
 /**
  * The store behind "a field the user set, which a fetch must not touch".
@@ -100,64 +108,108 @@ describe('release', () => {
   })
 })
 
-describe('an unreadable map', () => {
+describe('the claim map on the row', () => {
+  it('stamps each claim with the time it was made', () => {
+    const before = makeBook('a')
+    insertBook(before)
+    markFromPatch('a', { author: 'Eve' }, before, '2026-10-11T10:00:00.000Z')
+    expect(getBook('a')!.ownedFields).toEqual({ author: '2026-10-11T10:00:00.000Z' })
+  })
+
+  it('refreshes the time when a held field is edited again (Review Focus 4)', () => {
+    const before = makeBook('a')
+    insertBook(before)
+    markFromPatch('a', { author: 'Eve' }, before, '2026-10-11T10:00:00.000Z')
+    markFromPatch('a', { author: 'Ada' }, { ...before, author: 'Eve' }, '2026-10-11T12:00:00.000Z')
+    expect(getBook('a')!.ownedFields).toEqual({ author: '2026-10-11T12:00:00.000Z' })
+  })
+
+  it('release removes the entry and bumps last_modified, leaving the value', () => {
+    const before = { ...makeBook('a'), lastModified: '2020-01-01T00:00:00.000Z' }
+    insertBook(before)
+    markFromPatch('a', { author: 'Eve' }, before, '2026-10-11T10:00:00.000Z')
+    updateBook('a', { author: 'Eve' })
+    release('a', 'author')
+    const after = getBook('a')!
+    expect(after.ownedFields).toEqual({})
+    expect(after.author).toBe('Eve')
+    expect(Date.parse(after.lastModified!)).toBeGreaterThan(Date.parse('2026-10-11T10:00:00.000Z'))
+  })
+
+  it('releasing a field that is not held leaves last_modified alone', () => {
+    insertBook({ ...makeBook('a'), lastModified: '2020-01-01T00:00:00.000Z' })
+    release('a', 'title')
+    expect(getBook('a')!.lastModified).toBe('2020-01-01T00:00:00.000Z')
+  })
+
+  it('a claim for a book that is not in the cache is a no-op, not an error', () => {
+    expect(markFromPatch('ghost', { title: 'x' }, null)).toEqual([])
+  })
+})
+
+describe('an unreadable claim map', () => {
   it('reads as no overrides rather than throwing', () => {
     // A hydration must never fail because this value went bad (invariant 12)
-    insertBook(makeBook('a', 'Book a'))
-    setConfig('field_overrides', '{not json')
-
+    insertBook(makeBook('a'))
+    getDb().prepare('UPDATE books SET owned_fields = ? WHERE id = ?').run('{nope', 'a')
     expect(list('a')).toEqual([])
   })
 
   it('drops field names it does not know', () => {
-    setConfig('field_overrides', JSON.stringify({ a: ['title', 'nonsense'], b: 'not-an-array' }))
-
+    insertBook(makeBook('a'))
+    const at = '2026-10-11T10:00:00.000Z'
+    getDb()
+      .prepare('UPDATE books SET owned_fields = ? WHERE id = ?')
+      .run(JSON.stringify({ title: at, nonsense: at }), 'a')
     expect(list('a')).toEqual(['title'])
-    expect(list('b')).toEqual([])
   })
 })
 
 /**
- * A book that no longer exists cannot be fetched again, so its entry is garbage
- * — and the delete path is where it used to be left behind. Measured on the
- * real library: `app_config.field_overrides` held an id that was not in `books`
- * (six fields, from a book that had been deleted from the detail panel), which
- * is what this pins.
+ * The claims used to live in `app_config.field_overrides`, an array of fields
+ * per book id. Migration 007 adds the column and the same transaction carries
+ * the old map across, once; the key is left in place.
  */
-describe('forget', () => {
-  it('drops one book’s entry and leaves every other book alone', () => {
-    insertBook(makeBook('gone', 'Gone'))
-    insertBook(makeBook('kept', 'Kept'))
-    markFromPatch('gone', { title: 'Gone Away' }, makeBook('gone', 'Gone'))
-    markFromPatch('kept', { title: 'Kept Indeed' }, makeBook('kept', 'Kept'))
+describe('the upgrade seed', () => {
+  it('turns a pre-upgrade map into records on the books it can resolve (AC6)', () => {
+    // A database exactly as the previous release left it: migrations 001-006
+    const path = join(app.getPath('userData'), 'musaeum.db')
+    const old = new Database(path)
+    old.function('musaeum_sort_title', (t: unknown) =>
+      typeof t === 'string' ? sortableTitle(t) : null
+    )
+    old.function('musaeum_author_sort', (a: unknown) =>
+      typeof a === 'string' ? sortableAuthor(a) : null
+    )
+    for (const sql of [
+      migration001,
+      migration002,
+      migration003,
+      migration004,
+      migration005,
+      migration006
+    ]) {
+      old.exec(sql)
+    }
+    old.pragma('user_version = 6')
+    const insert = old.prepare('INSERT INTO books (id, title, last_modified) VALUES (?, ?, ?)')
+    insert.run('a', 'Book a', '2026-03-04T05:06:07.000Z')
+    insert.run('b', 'Book b', '2026-03-05T05:06:07.000Z')
+    old
+      .prepare("INSERT INTO app_config (key, value) VALUES ('field_overrides', ?)")
+      .run('{"a":["author","title"],"ghost":["tags"],"b":["nope"]}')
+    old.close()
 
-    forget('gone')
-
-    expect(list('gone')).toEqual([])
-    expect(list('kept')).toEqual(['title'])
-  })
-
-  it('is a no-op for a book that never had one', () => {
-    expect(() => forget('never-existed')).not.toThrow()
-    expect(list('never-existed')).toEqual([])
-  })
-
-  /**
-   * The two-machine case, which is why the sweep exists at all: a book deleted on
-   * the *other* machine comes back to this one as a catalog without it, so the
-   * cache loses the row and nobody here deleted anything — no caller forgets it.
-   * Confirmed real 2026-09-20 ("I use Musaeum on both machines already"), and
-   * exactly the condition D1 of the field-overrides design wrote down as the
-   * trigger for making overrides portable.
-   */
-  it('drops an entry whose book is gone, on the next write', () => {
-    insertBook(makeBook('live', 'Live'))
-    setConfig('field_overrides', JSON.stringify({ 'dropped-elsewhere': ['title'] }))
-    expect(list('dropped-elsewhere')).toEqual(['title'])
-
-    markFromPatch('live', { title: 'Live Indeed' }, makeBook('live', 'Live'))
-
-    expect(list('dropped-elsewhere')).toEqual([])
-    expect(list('live')).toEqual(['title'])
+    // The first getDb() runs migration 007
+    const a = getBook('a')!
+    expect(a.lastModified).toBe('2026-03-04T05:06:07.000Z')
+    expect(a.ownedFields).toEqual({
+      author: '2026-03-04T05:06:07.000Z',
+      title: '2026-03-04T05:06:07.000Z'
+    }) // each seeded at the book's own last_modified, so a reconcile treats it as "not older than the record"
+    expect(getBook('b')!.ownedFields).toEqual({}) // unknown field name dropped
+    expect(getBook('ghost')).toBeNull() // no row: nothing created, nothing thrown
+    expect(getConfig('field_overrides')).not.toBeNull() // read once, never rewritten, never deleted
+    expect(getDb().pragma('user_version', { simple: true })).toBe(7)
   })
 })

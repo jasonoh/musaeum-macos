@@ -1,7 +1,7 @@
 import type { Book } from '@shared/book.types'
 import { sameBookValue } from '@shared/book.types'
-import type { HydratedField } from '@shared/metadata.types'
-import { HYDRATED_FIELD_LABELS, HYDRATED_KEY_FIELD } from '@shared/metadata.types'
+import type { HydratedField, OwnedFields } from '@shared/metadata.types'
+import { HYDRATED_KEY_FIELD } from '@shared/metadata.types'
 import * as db from './db'
 
 /**
@@ -15,77 +15,18 @@ import * as db from './db'
  * and enforced twice — the sidecar is told not to *propose* a locked field, and
  * the merged result is filtered before it is *written*.
  *
- * Machine-local by design: one JSON value in `app_config`, keyed by book id.
- * The library file does not carry it, so a fetch run from another machine can
- * still move an overridden field. See D1 of
- * `docs/superpowers/specs/2026-09-20-field-overrides-design.md` for that cost
- * and the condition that would move it into `metadata.json`.
+ * The map is the book's own record: `{ field: ISO time }` in the row's
+ * `owned_fields` column, mirrored into `metadata.json` and `catalog.json`, so a
+ * fetch run from another machine honours it too and a claim dies with the row
+ * it belongs to (D1 of the portable-decisions design). The time is when the
+ * claim was made, which is what orders it against another machine's release.
+ * The pre-007 home, `app_config.field_overrides`, is read once by the migration
+ * (`db.ts`) and never again.
  */
-const CONFIG_KEY = 'field_overrides'
-
-/** The vocabulary is `HydratedField` — what a fetch may write is what a user may hold. */
-const FIELD_NAMES = new Set<string>(Object.keys(HYDRATED_FIELD_LABELS))
-
-/** The stored map, or `{}` — an unreadable value degrades to "no overrides". */
-function read(): Record<string, HydratedField[]> {
-  const raw = db.getConfig(CONFIG_KEY)
-  if (!raw) return {}
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    const out: Record<string, HydratedField[]> = {}
-    for (const [bookId, fields] of Object.entries(parsed as Record<string, unknown>)) {
-      if (!Array.isArray(fields)) continue
-      // An unknown name is dropped rather than trusted: it would be a field no
-      // write path could ever match, so keeping it would only mislead the
-      // editor into offering a release for nothing.
-      const known = fields.filter(
-        (f): f is HydratedField => typeof f === 'string' && FIELD_NAMES.has(f)
-      )
-      if (known.length) out[bookId] = known
-    }
-    return out
-  } catch (err) {
-    // Never fatal: a corrupt value means "no overrides", not a failed
-    // hydration and not a failed edit (invariant 12)
-    console.error('[overrides] unreadable field_overrides, ignoring it:', err)
-    return {}
-  }
-}
-
-function write(map: Record<string, HydratedField[]>): void {
-  db.setConfig(CONFIG_KEY, JSON.stringify(pruneDead(map)))
-}
-
-/**
- * Drop the entries whose book is not in the cache any more.
- *
- * This map is the one dependent of a book that no cascade reaches — it lives in
- * `app_config`, not in a `books` table — so every other way a book can leave the
- * cache has to be covered here rather than at each of them: a delete forgets its
- * own book explicitly (immediately, and that is what the delete path's test
- * pins), while an **adoption** drops a book nobody deleted on this machine (the
- * catalog came back without it, which is the everyday case once a second machine
- * edits the same library) and lands here. Pruning on write is what makes the
- * invariant structural — the map only ever holds live books — instead of a rule
- * each new path has to remember, which is the shape of the two bugs this
- * repository has already paid for.
- *
- * Checked per entry rather than by diffing the whole library: the map holds a
- * handful of books, and one indexed lookup each is cheaper than reading 7,000
- * ids to compare.
- */
-function pruneDead(map: Record<string, HydratedField[]>): Record<string, HydratedField[]> {
-  const live: Record<string, HydratedField[]> = {}
-  for (const [bookId, fields] of Object.entries(map)) {
-    if (db.bookExists(bookId)) live[bookId] = fields
-  }
-  return live
-}
 
 /** The fields this book's fetches must not touch, in no particular order. */
 export function list(bookId: string): HydratedField[] {
-  return read()[bookId] ?? []
+  return Object.keys(db.getBook(bookId)?.ownedFields ?? {}) as HydratedField[]
 }
 
 /**
@@ -102,8 +43,11 @@ export function list(bookId: string): HydratedField[] {
 export function markFromPatch(
   bookId: string,
   patch: Partial<Book>,
-  before: Book | null
+  before: Book | null,
+  now: string = new Date().toISOString()
 ): HydratedField[] {
+  const book = db.getBook(bookId)
+  if (!book) return []
   const marked = new Set<HydratedField>()
   for (const [key, value] of Object.entries(patch) as [keyof Book, unknown][]) {
     const field = HYDRATED_KEY_FIELD[key]
@@ -111,45 +55,26 @@ export function markFromPatch(
     if (before && sameBookValue(before[key], value)) continue
     marked.add(field)
   }
+  if (!marked.size) return Object.keys(book.ownedFields) as HydratedField[]
 
-  const current = list(bookId)
-  const next = [...new Set([...current, ...marked])]
-  if (next.length === current.length) return current
-  write({ ...read(), [bookId]: next })
-  return next
+  // A fresh decision about a field already held is still a decision: it takes
+  // the new time, which is what orders it against another machine's release.
+  const next: OwnedFields = { ...book.ownedFields }
+  for (const field of marked) next[field] = now
+  db.setOwnedFields(bookId, next)
+  return Object.keys(next) as HydratedField[]
 }
 
 /**
  * Let a fetch propose this field again. Deliberately does not touch the value:
  * releasing is "you may have an opinion about this again", not "forget what I
- * chose".
+ * chose". A field that is not held changes nothing, `last_modified` included.
  */
 export function release(bookId: string, field: HydratedField): HydratedField[] {
-  const map = read()
-  const next = (map[bookId] ?? []).filter((f) => f !== field)
-  const rest = { ...map }
-  if (next.length) rest[bookId] = next
-  else delete rest[bookId]
-  write(rest)
-  return next
-}
-
-/**
- * Drop a book's entry entirely, because the book is gone.
- *
- * Nothing else owns this: the delete path removes the row, the folder and the
- * catalog entry, and this map lives in `app_config` rather than in the `books`
- * tables — so it is the one dependent a delete has to be *told* about, and it
- * was not. Measured on the real library: an id in `field_overrides` that no
- * `books` row matched, carrying six fields, left behind by deleting the book
- * from the detail panel. Harmless while the book stays gone (nothing will ever
- * ask a fetch about that id again) and unbounded growth otherwise, which is why
- * it goes with the row rather than being pruned by a later sweep.
- */
-export function forget(bookId: string): void {
-  const map = read()
-  if (!(bookId in map)) return
-  const rest = { ...map }
-  delete rest[bookId]
-  write(rest)
+  const book = db.getBook(bookId)
+  if (!book || !(field in book.ownedFields)) return list(bookId)
+  const next: OwnedFields = { ...book.ownedFields }
+  delete next[field]
+  db.setOwnedFields(bookId, next)
+  return Object.keys(next) as HydratedField[]
 }

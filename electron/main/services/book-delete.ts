@@ -5,7 +5,6 @@ import type { BookFormat } from '@shared/book.types'
 import { computeFileSizeBytes } from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
-import * as fieldOverrides from './field-overrides'
 import { writeMetadataJson } from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
@@ -14,12 +13,11 @@ import * as shelves from './shelves'
 /**
  * The row and everything that hangs off it. The conflicts go inside
  * `db.deleteBook` (they are `books` tables, and the FK would otherwise block the
- * delete); the field overrides are the one dependent that lives elsewhere —
- * `app_config` — so the delete has to be told about them explicitly.
+ * delete), and the field overrides are a column on the row, so they die with it:
+ * nothing else needs telling.
  */
 function removeBook(id: string): void {
   db.deleteBook(id)
-  fieldOverrides.forget(id)
 }
 
 /**
