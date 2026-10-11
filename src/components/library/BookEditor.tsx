@@ -76,7 +76,8 @@ export function BookEditor() {
   }
 
   const releaseOverride = async (field: HydratedField): Promise<void> => {
-    if (!book) return
+    // Offline the service refuses (a release is a change to the record); do not even try
+    if (!book || !online) return
     setOverridden(await window.Musaeum.library.releaseFieldOverride(book.id, field))
   }
 

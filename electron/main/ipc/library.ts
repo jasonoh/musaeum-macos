@@ -26,7 +26,7 @@ export function registerLibraryHandlers(): void {
   handle('library:getFieldOverrides', (id: string) => fieldOverrides.list(id))
 
   handle('library:releaseFieldOverride', (id: string, field: HydratedField) =>
-    fieldOverrides.release(id, field)
+    libraryEdit.releaseFieldOverride(id, field)
   )
 
   handle('library:searchBooks', (query: string, sort?: BookSort, scope?: ShelfScope) =>

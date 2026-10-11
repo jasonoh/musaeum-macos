@@ -5,10 +5,11 @@ import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
-import { writeCatalog } from './catalog'
-import { closeDb, getBook, insertBook } from './db'
+import { readCatalog, writeCatalog } from './catalog'
+import { closeDb, getBook, insertBook, setOwnedFields } from './db'
 import { list } from './field-overrides'
-import { updateBook } from './library-edit'
+import { writeMetadataJson } from './importer'
+import { releaseFieldOverride, updateBook } from './library-edit'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
 
@@ -51,7 +52,9 @@ describe('updateBook (the metadata editor save)', () => {
     await updateBook('a', { title: 'New Title' })
 
     expect(getBook('a')?.title).toBe('New Title')
-    expect(JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')).title).toBe('New Title')
+    expect(JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8')).title).toBe(
+      'New Title'
+    )
     const entries = await fs.readdir(dir)
     expect(entries).toContain('New Title.epub')
     expect(entries).not.toContain('Old Title.epub')
@@ -71,5 +74,39 @@ describe('updateBook (the metadata editor save)', () => {
 
     await expect(updateBook('a', { title: 'X' })).rejects.toThrow('offline')
     expect(getBook('a')?.title).toBe('Old Title')
+  })
+})
+
+describe('releaseFieldOverride', () => {
+  const CLAIM = '2026-10-11T10:00:00.000Z'
+
+  it('drops the claim from the row, the record and the catalog', async () => {
+    const dir = await seed('a')
+    // The row, the record and the catalog all hold the claim, as after an edit
+    setOwnedFields('a', { author: CLAIM })
+    await writeMetadataJson(dir, getBook('a')!)
+    await writeCatalog(root, [getBook('a')!])
+    expect(JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8'))).toHaveProperty(
+      'owned_fields'
+    )
+    await expect(releaseFieldOverride('a', 'author')).resolves.toEqual([])
+
+    expect(getBook('a')!.ownedFields).toEqual({})
+    expect(JSON.parse(await fs.readFile(join(dir, 'metadata.json'), 'utf8'))).not.toHaveProperty(
+      'owned_fields'
+    )
+    await librarySync.flushForTests()
+    expect((await readCatalog(root))!.books.find((b) => b.id === 'a')!.ownedFields).toEqual({})
+  })
+
+  it('refuses offline, so a release is never re-imposed by the next adoption', async () => {
+    await seed('a')
+    setOwnedFields('a', { author: CLAIM })
+    vi.spyOn(nas, 'assertOnline').mockImplementation(() => {
+      throw new Error('offline')
+    })
+
+    await expect(releaseFieldOverride('a', 'author')).rejects.toThrow('offline')
+    expect(getBook('a')!.ownedFields).toEqual({ author: CLAIM })
   })
 })

@@ -392,6 +392,70 @@ describe('applyCatalog', () => {
     const written = cat?.books.find((b) => b.id === 'rs-pushback')
     expect(written?.readingState).toEqual(local.readingState)
   })
+
+  /**
+   * The claim map is the second thing adoption reconciles (portable decisions,
+   * slice 1): the catalog on disk is the other machine's view, the local DB is
+   * this machine's.
+   */
+  describe('a claim the user made (portable decisions)', () => {
+    it('a claim the other machine made becomes a held field here (AC4, service half)', async () => {
+      insertBook(makeBook('a'))
+      await writeCatalog(root, [
+        { ...makeBook('a'), ownedFields: { author: '2026-10-11T10:00:00.000Z' } }
+      ])
+      await librarySync.applyCatalog(root)
+      expect(getBook('a')!.ownedFields).toEqual({ author: '2026-10-11T10:00:00.000Z' })
+    })
+
+    it('a release on the other machine drops the claim here and leaves the value (AC5, service half)', async () => {
+      insertBook({
+        ...makeBook('a'),
+        author: 'Eve',
+        ownedFields: { author: '2026-10-11T10:00:00.000Z' }
+      })
+      await writeCatalog(root, [
+        {
+          ...makeBook('a'),
+          author: 'Eve',
+          lastModified: '2026-10-11T12:00:00.000Z',
+          ownedFields: {}
+        }
+      ])
+      await librarySync.applyCatalog(root)
+      const b = getBook('a')!
+      expect(b.ownedFields).toEqual({})
+      expect(b.author).toBe('Eve')
+    })
+
+    it('a claim made here after the catalog was written survives adoption (Review Focus 3)', async () => {
+      insertBook({ ...makeBook('a'), ownedFields: { author: '2026-10-11T12:00:00.000Z' } })
+      await writeCatalog(root, [
+        { ...makeBook('a'), lastModified: '2026-10-11T10:00:00.000Z', ownedFields: {} }
+      ])
+      await librarySync.applyCatalog(root)
+      expect(getBook('a')!.ownedFields).toEqual({ author: '2026-10-11T12:00:00.000Z' })
+    })
+
+    it('pushes a surviving local claim back to catalog.json', async () => {
+      insertBook({ ...makeBook('a'), ownedFields: { author: '2026-10-11T12:00:00.000Z' } })
+      await writeCatalog(root, [
+        { ...makeBook('a'), lastModified: '2026-10-11T10:00:00.000Z', ownedFields: {} }
+      ])
+      await librarySync.applyCatalog(root)
+      await librarySync.flushForTests()
+      expect((await readCatalog(root))!.books[0].ownedFields).toEqual({
+        author: '2026-10-11T12:00:00.000Z'
+      })
+    })
+
+    it('adoption of a book deleted elsewhere leaves nothing behind and does not throw (Review Focus 5)', async () => {
+      insertBook({ ...makeBook('gone'), ownedFields: { title: '2026-10-11T10:00:00.000Z' } })
+      await writeCatalog(root, [])
+      await expect(librarySync.applyCatalog(root)).resolves.toBe(0)
+      expect(getBook('gone')).toBeNull()
+    })
+  })
 })
 
 describe('refreshLibrary', () => {

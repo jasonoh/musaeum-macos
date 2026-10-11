@@ -1,5 +1,6 @@
 import { join } from 'path'
 import type { Book } from '@shared/book.types'
+import type { HydratedField } from '@shared/metadata.types'
 import * as bookFiles from './book-files'
 import * as db from './db'
 import { broadcast } from './events'
@@ -43,4 +44,26 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
     await bookFiles.renameToTitle(bookDir, book.title)
   }
   broadcast('libraryChanged')
+}
+
+/**
+ * Release a held field: the value stays, a fetch may propose it again. A
+ * release is a change to the book's record, so it is written where an edit is —
+ * to `metadata.json` and the catalog — and, like an edit, it needs the library
+ * online: an offline release would be re-imposed by the next adoption, which
+ * would read the other machine's still-held claim as newer news.
+ */
+export async function releaseFieldOverride(
+  id: string,
+  field: HydratedField
+): Promise<HydratedField[]> {
+  nas.assertOnline()
+  const remaining = fieldOverrides.release(id, field)
+  const book = db.getBook(id)
+  if (book?.nasPath) {
+    await importer.writeMetadataJson(join(nas.getLibraryRoot()!, book.nasPath), book)
+    librarySync.upsertCatalog([book])
+  }
+  broadcast('libraryChanged')
+  return remaining
 }

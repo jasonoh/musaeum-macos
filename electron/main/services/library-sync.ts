@@ -3,6 +3,7 @@ import * as catalog from './catalog'
 import * as db from './db'
 import { broadcast } from './events'
 import * as nas from './nas-manager'
+import { reconcileOwnedFields, sameOwnedFields } from './owned-fields'
 import * as shelves from './shelves'
 
 /**
@@ -154,6 +155,36 @@ function preserveLocalReadingState(incoming: Book[]): Book[] {
 }
 
 /**
+ * Reconcile each incoming book's claim map against this machine's before a
+ * wholesale replace — the second reconcile `adopt` runs, for the same reason as
+ * the first: the replace would otherwise let whichever machine wrote last
+ * silently delete the other's decisions. Ordered field by field
+ * (`owned-fields.reconcileOwnedFields`). A book whose result differs from the
+ * catalog's own entry is pushed back in one batched field-merge, like the
+ * reading-state wins are. (`metadata.json` catches up on that book's next write —
+ * recorded as a known residual in the portable-decisions plan.)
+ *
+ * A book this machine holds no claim on takes the incoming map as it is — that
+ * is how the other machine's claim becomes a held field here — and a book the
+ * catalog no longer has is not in `incoming` at all, so nothing is pushed for it.
+ */
+function preserveLocalOwnedFields(incoming: Book[]): Book[] {
+  const localById = new Map(db.getBooks().map((b) => [b.id, b]))
+  const changed: Book[] = []
+  const merged = incoming.map((book) => {
+    const local = localById.get(book.id)
+    if (!local || !Object.keys(local.ownedFields).length) return book
+    const ownedFields = reconcileOwnedFields(local.ownedFields, book.ownedFields, book.lastModified)
+    if (sameOwnedFields(ownedFields, book.ownedFields)) return book
+    const withClaims: Book = { ...book, ownedFields }
+    changed.push(withClaims)
+    return withClaims
+  })
+  if (changed.length > 0) updateCatalogFields(changed, ['ownedFields'])
+  return merged
+}
+
+/**
  * Adopt the catalog at root as the local cache. Returns the book count.
  *
  * Also adopts `shelves.json` (bookshelves D4): this is the picker's "Use This
@@ -188,7 +219,7 @@ export async function applyCatalog(root: string): Promise<number> {
  * delete path, and this is its sibling.
  */
 function adopt(books: Book[]): void {
-  db.replaceAllBooks(preserveLocalReadingState(books))
+  db.replaceAllBooks(preserveLocalOwnedFields(preserveLocalReadingState(books)))
   broadcast('libraryChanged')
   broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
 }
