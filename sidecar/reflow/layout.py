@@ -51,7 +51,9 @@ MIN_FIGURE_PIXELS = 32  # the smallest side a written figure may have (C.4, G4)
 RUNNING_HEAD_PAGES = 0.25  # the share of pages that makes a line a running head
 RUNNING_HEAD_MIN = 3
 RUNNING_HEAD_BAND = 0.08  # of the page height, top and bottom, where it sits
-RUNNING_HEAD_MAX_CHARS = 80
+RUNNING_HEAD_MAX_CHARS = 80  # up to here, RUNNING_HEAD_PAGES decides
+RUNNING_HEAD_LONG_PAGES = 0.5  # past it, this share has to hold — see _furniture_share
+RUNNING_HEAD_LONG_MAX_CHARS = 600  # and past *that* a block is content, however often it repeats
 HEADING_RATIO = 1.15  # a region this much larger than the body may be a heading
 HEADING_MAX_CHARS = 120
 HEADING_MAX_LINES = 2  # at the body's own size, a bold line, not a paragraph
@@ -279,6 +281,16 @@ def mark_running_heads(doc: Document) -> None:
     3,421 instances of the word `the` — those blocks were the pages' real prose,
     dropped because a citation read `(p. 123)` on page one and `(p. 124)` on
     page two.
+
+    **The length cap is a tier, not a wall** (measured 2026-10-11). A flat
+    80-character cap let a *long* repeated block through, and *Universe*'s
+    Cengage footer — 276 to 460 characters — repeats on **323 of its 530 text
+    pages**, so 61% of that book's pages carried the same legal footer inside
+    the flowing prose. A block past `RUNNING_HEAD_MAX_CHARS` is still furniture
+    when it repeats on `RUNNING_HEAD_LONG_PAGES` of the pages rather than a
+    quarter of them, because a long block needs stronger evidence than a
+    three-word running head before it stops being prose; past
+    `RUNNING_HEAD_LONG_MAX_CHARS` it is content however often it repeats.
     """
     text_pages = doc.text_pages
     if len(text_pages) < RUNNING_HEAD_MIN:
@@ -289,14 +301,23 @@ def mark_running_heads(doc: Document) -> None:
             if _is_furniture(block, page):
                 key = _normalize(block.text)
                 seen[key] = seen.get(key, 0) + 1
-    threshold = max(RUNNING_HEAD_MIN, RUNNING_HEAD_PAGES * len(text_pages))
-    repeats = {t for t, n in seen.items() if n >= threshold}
-    if not repeats:
+    pages = len(text_pages)
+    short = max(RUNNING_HEAD_MIN, RUNNING_HEAD_PAGES * pages)
+    long = max(RUNNING_HEAD_MIN, RUNNING_HEAD_LONG_PAGES * pages)
+
+    def repeated(text: str) -> bool:
+        """The block is furniture only if the *book* repeats it often enough."""
+        length = len(text.strip())
+        if length > RUNNING_HEAD_LONG_MAX_CHARS:
+            return False
+        return seen.get(_normalize(text), 0) >= (long if length > RUNNING_HEAD_MAX_CHARS else short)
+
+    if not any(repeated(b.text) for page in text_pages for b in page.blocks if _is_furniture(b, page)):
         return
     for page in text_pages:
         kept: list[Block] = []
         for block in page.blocks:
-            if _is_furniture(block, page) and _normalize(block.text) in repeats:
+            if _is_furniture(block, page) and repeated(block.text):
                 doc.dropped_running_heads.append(block.text)
                 continue
             kept.append(block)
@@ -304,18 +325,18 @@ def mark_running_heads(doc: Document) -> None:
 
 
 def _is_furniture(block: Block, page: PageResult) -> bool:
-    """Is this block page furniture rather than content?"""
+    """Is this block a page-furniture *candidate*?
+
+    Position, kind and the digits test live here; **how often the block repeats
+    is the caller's question** (`mark_running_heads`), because the answer
+    depends on the whole book and this function sees one page.
+    """
     if block.kind in ("figure", "table") or not block.text.strip():
-        return False
-    if len(block.text) > RUNNING_HEAD_MAX_CHARS:
         return False
     height = page.top - page.bottom
     if height <= 0:
         return False
-    in_band = (
-        block.top >= page.bottom + (1 - RUNNING_HEAD_BAND) * height
-        or block.bottom <= page.bottom + RUNNING_HEAD_BAND * height
-    )
+    in_band = block.top >= page.bottom + (1 - RUNNING_HEAD_BAND) * height or block.bottom <= page.bottom + RUNNING_HEAD_BAND * height
     if not in_band:
         return False
     # A bare page number is furniture; a bare number anywhere else is not.

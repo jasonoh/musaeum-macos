@@ -2,8 +2,8 @@ import pytest
 
 from reflow import gate, layout
 from reflow.epub import write_epub
-from reflow.layout import analyze, classify_roles, place_figures, stitch_pages
-from reflow.model import Block, PageResult
+from reflow.layout import analyze, classify_roles, mark_running_heads, place_figures, stitch_pages
+from reflow.model import Block, Document, PageResult
 from reflow.outline import document_entries
 from reflow.vision import LayoutUnavailable, PageLayout, Region
 from tests.reflow_pdfs import Page, Rect, Text, write_pdf
@@ -11,6 +11,31 @@ from tests.reflow_pdfs import Page, Rect, Text, write_pdf
 FOOTER = "CHAPTER 4 THE ORIGIN OF MODERN ASTRONOMY"
 F_BOX = (70, 26, 400, 40)
 BODY_BOX = (70, 620, 420, 712)
+
+# *Universe*'s own footer, at its measured length (276–460 characters).
+FOOTER_LONG = (
+    "Cengage Learning. All Rights Reserved. May not be copied, scanned, or duplicated, in whole or in part. "
+    "Due to electronic rights, some third party content may be suppressed from the eBook and/or eChapter(s)."
+)
+
+
+def band_page(close: str, body: str = "Body of the page continues here.") -> PageResult:
+    """One page: a paragraph mid-page, and a block down in the bottom band."""
+    return PageResult(
+        index=0,
+        chars=500,
+        top=792.0,
+        bottom=0.0,
+        blocks=[Block("para", text=body, top=600.0, bottom=560.0), Block("para", text=close, top=12.0, bottom=0.0)],
+    )
+
+
+def doc_of(pages) -> Document:
+    doc = Document(source="synthetic")
+    for i, page in enumerate(pages):
+        page.index = i
+        doc.pages.append(page)
+    return doc
 
 
 def plain(lines, extra=()):
@@ -57,6 +82,51 @@ def test_a_book_reads_in_order_without_its_stamp_or_its_running_footer(tmp_path)
     assert "arXiv" not in all_text(doc) and "1706" not in all_text(doc)
     assert doc.pages[2].blocks[0].kind == "heading" and doc.pages[2].blocks[0].level == 1
     assert [b.plate for b in doc.pages[3].blocks] == [True] and doc.plates == 1
+
+
+def test_a_long_repeated_footer_is_furniture(tmp_path):
+    """*Universe*'s Cengage footer is 276–460 characters and repeats on **323 of
+    its 530 text pages**. A flat 80-character cap read it as prose, so 61% of
+    that book's pages carried the same legal footer inside the flowing text."""
+    pages = [band_page(f"{FOOTER_LONG} {n}") for n in range(8)]
+    doc = doc_of(pages)
+    mark_running_heads(doc)
+    assert FOOTER_LONG.split()[0] not in all_text(doc)
+    assert len(doc.dropped_running_heads) == 8
+
+
+def test_a_long_band_block_needs_half_the_pages_where_a_short_one_needs_a_quarter():
+    """The two tiers side by side, which is what makes the cap a *tier*. The
+    same repetition — on 3 of 8 pages — drops `CHAPTER FOUR` and keeps the long
+    footer, because a 238-character block needs stronger evidence than a
+    running head before the pipeline calls it furniture.
+
+    The other five pages carry *different* words: the repeat key collapses
+    digits, so `Closing words 4.` and `Closing words 5.` are one block and a
+    footer with a page number in it is the case that key exists for.
+    """
+    words = ("alpha", "bravo", "charlie", "delta", "echo")
+    pages = []
+    for n in range(8):
+        close = "CHAPTER FOUR" if n < 3 else f"Closing words {words[n - 3]}."
+        page = band_page(close)
+        if n < 3:
+            page.blocks.append(Block("para", text=FOOTER_LONG, top=40.0, bottom=28.0))
+        pages.append(page)
+    doc = doc_of(pages)
+    mark_running_heads(doc)
+    assert doc.dropped_running_heads == ["CHAPTER FOUR"] * 3
+    assert "Cengage" in all_text(doc)
+
+
+def test_a_repeated_band_block_past_the_long_ceiling_is_content():
+    """A block over `RUNNING_HEAD_LONG_MAX_CHARS` is content however often it
+    repeats: repetition alone stops being enough evidence at that size."""
+    huge = (FOOTER_LONG + " ") * 8  # ~640 characters
+    doc = doc_of([band_page(f"{huge} {n}") for n in range(8)])
+    mark_running_heads(doc)
+    assert doc.dropped_running_heads == []
+    assert "Cengage" in all_text(doc)
 
 
 def test_the_whole_path_produces_a_package_the_gate_accepts(tmp_path):

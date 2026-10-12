@@ -117,6 +117,44 @@ def test_rotated_only_tokens_are_caught_in_the_spine():
     assert gate.check_rotated(["attention", "03762v5"], stamp)[0].startswith("G3 ")
 
 
+def test_a_long_band_block_is_furniture_only_when_the_book_repeats_it():
+    """*Universe*'s Cengage footer is 276–460 characters and repeats on 323 of
+    its 530 text pages. A flat 80-character cap read it as prose, so the gate
+    counted its words and the pipeline left it in the flow on every page; a long
+    block is furniture when the *book* repeats it, which is a question no single
+    page can answer — hence `long_band` held out and `furniture_keys` deciding."""
+    footer = "Cengage Learning All Rights Reserved May not be copied scanned or duplicated " * 2
+    page = gate.page_evidence(None, row("body words here now", 72, 400) + row(footer, 72, 20), page_box=(0, 0, 612, 792))
+    assert page.segments == [["body", "words", "here", "now"]]
+    assert len(page.long_band) == 1
+    repeated = gate.furniture_keys([page.long_band] * 6)
+    assert [toks for key, toks in page.long_band if key not in repeated] == []
+    once = gate.furniture_keys([page.long_band] + [[]] * 5)
+    assert [toks for key, toks in page.long_band if key not in once] == [page.long_band[0][1]]
+
+
+def test_a_band_block_past_the_long_ceiling_is_never_held_out():
+    """Past `FURNITURE_LONG_MAX_CHARS` repetition stops being enough evidence;
+    the block stays in the gate's segment list rather than becoming a candidate
+    the book could excuse."""
+    huge = "Cengage Learning All Rights Reserved " * 20  # ~760 characters
+    page = gate.page_evidence(None, row(huge, 72, 20), page_box=(0, 0, 612, 792))
+    assert page.long_band == [] and page.segments == [gate.tokens(huge)]
+
+
+def test_check_toc_fails_a_nav_too_thin_for_the_book(tmp_path):
+    """*Modernist Cuisine*'s usable outline is empty, so G5 ran with
+    `expected=None` — and it passed whatever nav the artifact carried, which was
+    **two entries for a 355-page book** (`MODERNIST`, `CUISINE`). With the
+    source's page count the check has a floor it can fail on."""
+    nav = '<ol><li><a href="text/a.xhtml#h1">MODERNIST</a></li><li><a href="text/a.xhtml#h2">CUISINE</a></li></ol>'
+    epub = make_epub(tmp_path / "thin.epub", [("a.xhtml", '<h1 id="h1">MODERNIST</h1><h1 id="h2">CUISINE</h1>')], nav)
+    assert gate.check_toc(epub, None) == []  # no page count: the old behaviour
+    fails = gate.check_toc(epub, None, pages=355)
+    assert len(fails) == 1 and "2 entries for 355 pages" in fails[0]
+    assert gate.check_toc(epub, None, pages=2) == []
+
+
 def test_check_figures_catches_mislabeled_bytes_slivers_and_counts(tmp_path):
     epub = make_epub(
         tmp_path / "f.epub",

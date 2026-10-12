@@ -44,10 +44,13 @@ CONTAINER_NS = "{urn:oasis:names:tc:opendocument:xmlns:container}"
 TRIGRAM_RECALL_MIN = 0.95
 WORD_LOSS_MAX = 0.03
 TOC_HEADING_SHARE_MIN = 0.90
+TOC_MAX_PAGES_PER_ENTRY = 50
 TITLE_SIMILARITY = 0.8
 MIN_IMAGE_SIDE = 32
 FURNITURE_BAND = 0.08
 FURNITURE_MAX_CHARS = 80
+FURNITURE_LONG_MAX_CHARS = 600
+FURNITURE_LONG_PAGES = 0.5
 PLATE_MAX_CHARS = 50
 INK_SCALE = 0.25
 INK_THRESHOLD = 245
@@ -120,17 +123,22 @@ def check_golden(spine: str, passages: Sequence[str]) -> list[str]:
 @dataclass
 class PageEvidence:
     segments: list[list[str]] = field(default_factory=list)
-    upright: list[str] = field(default_factory=list)
     rotated: list[str] = field(default_factory=list)
+    upright: list[str] = field(default_factory=list)
     plate_expected: bool = False
+    # Band segments longer than FURNITURE_MAX_CHARS, as (digit-normalised text,
+    # tokens): whether one is furniture is a question about the *book* — it is
+    # furniture because it repeats — so the caller settles it with
+    # `furniture_keys` rather than this function guessing from one page.
+    long_band: list[tuple[str, list[str]]] = field(default_factory=list)
 
 
 def _in_any(c: Char, boxes: Sequence[Box]) -> bool:
     return any(b[0] <= c.cx <= b[2] and b[1] <= c.cy <= b[3] for b in boxes)
 
 
-def _is_furniture(seg: list[Char], text: str, page_box: Optional[Box]) -> bool:
-    if page_box is None or len(text.strip()) > FURNITURE_MAX_CHARS:
+def _in_band(seg: Sequence[Char], page_box: Optional[Box]) -> bool:
+    if page_box is None:
         return False
     height = page_box[3] - page_box[1]
     top = max(c.top for c in seg)
@@ -138,12 +146,47 @@ def _is_furniture(seg: list[Char], text: str, page_box: Optional[Box]) -> bool:
     return bottom >= page_box[3] - FURNITURE_BAND * height or top <= page_box[1] + FURNITURE_BAND * height
 
 
+def _is_furniture(seg: list[Char], text: str, page_box: Optional[Box]) -> bool:
+    return len(text.strip()) <= FURNITURE_MAX_CHARS and _in_band(seg, page_box)
+
+
+def _normalize(text: str) -> str:
+    """The key furniture repeats under: digits collapse, case and space fold."""
+    return " ".join(re.sub(r"\d+", "#", text).split()).lower()
+
+
+def furniture_keys(pages: Iterable[Iterable[tuple[str, list[str]]]]) -> set[str]:
+    """Which *long* band blocks the book repeats often enough to be furniture.
+
+    The gate's counterpart of the pipeline's `layout.mark_running_heads`, with
+    the same two tiers, because the two must agree about what an artifact is
+    allowed to be missing: a short band line is excused outright (this is the
+    rule the gate has always had) while a block past `FURNITURE_MAX_CHARS` has to
+    repeat on `FURNITURE_LONG_PAGES` of the pages. Measured 2026-10-11 on
+    *Universe*: its 276–460-character Cengage footer repeats on **323 of 530**
+    text pages, and with only the short tier the pipeline kept it in the flow on
+    every one of them.
+
+    The count is over the pages the caller walked, where the pipeline counts
+    *text* pages; at a share of a half the difference does not move a decision.
+    """
+    bands = [b for page in pages for b in page]
+    threshold = max(3, FURNITURE_LONG_PAGES * len(bands))
+    counts: Counter = Counter(key for key, _ in bands)
+    return {key for key, n in counts.items() if n >= threshold}
+
+
 def _has_ink(page) -> bool:
     image = page.render(scale=INK_SCALE).to_pil().convert("L")
     return image.getextrema()[0] < INK_THRESHOLD
 
 
-def page_evidence(page, chars: Sequence[Char], exclude: Sequence[Box] = (), page_box: Optional[Box] = None) -> PageEvidence:
+def page_evidence(
+    page,
+    chars: Sequence[Char],
+    exclude: Sequence[Box] = (),
+    page_box: Optional[Box] = None,
+) -> PageEvidence:
     """What the gate needs from one page of the source PDF.
 
     A *segment* is a run of characters on one baseline with no gap wider than
@@ -169,16 +212,16 @@ def page_evidence(page, chars: Sequence[Char], exclude: Sequence[Box] = (), page
         prev: Optional[Char] = None
         for c in line:
             if prev is not None and not c.is_space and c.left - prev.right > limit:
-                _emit(seg, ev.segments, page_box)
+                _emit(seg, ev, page_box)
                 seg = []
             seg.append(c)
             if not c.is_space:
                 prev = c
-        _emit(seg, ev.segments, page_box)
+        _emit(seg, ev, page_box)
     return ev
 
 
-def _emit(seg: list[Char], out: list[list[str]], page_box: Optional[Box]) -> None:
+def _emit(seg: list[Char], ev: PageEvidence, page_box: Optional[Box]) -> None:
     glyphs = [c for c in seg if not c.is_space]
     if not glyphs:
         return
@@ -186,10 +229,22 @@ def _emit(seg: list[Char], out: list[list[str]], page_box: Optional[Box]) -> Non
     if _is_furniture(glyphs, text, page_box):
         return
     toks = tokens(text)
-    if text.rstrip().endswith(("-", "￾", "‐")) and toks:
+    if text.rstrip().endswith(("-", "\ufffe", "‐")) and toks:
         toks = toks[:-1]
-    if toks:
-        out.append(toks)
+    if not toks:
+        return
+    if _in_band(glyphs, page_box):
+        # A short band line is furniture outright (`_is_furniture` has already
+        # returned for those). A long one is a *candidate* the book decides
+        # (`furniture_keys`), and past the ceiling repetition stops being
+        # evidence at all: it is content, and the gate counts its words.
+        length = len(text.strip())
+        if length > FURNITURE_LONG_MAX_CHARS:
+            ev.segments.append(toks)
+        elif length > FURNITURE_MAX_CHARS:
+            ev.long_band.append((_normalize(text), toks))
+        return
+    ev.segments.append(toks)
 
 
 def trigram_recall(segments: Iterable[list[str]], spine_tokens: Sequence[str]) -> tuple[float, int]:
@@ -296,7 +351,22 @@ def nav_entries(zf: zipfile.ZipFile) -> list[tuple[str, int, str]]:
     return out
 
 
-def check_toc(epub_path: str, expected: Optional[list[tuple[str, int]]]) -> list[str]:
+def check_toc(epub_path: str, expected: Optional[list[tuple[str, int]]], pages: Optional[int] = None) -> list[str]:
+    """G5: the nav against the outline, and against the book's own size.
+
+    `expected=None` means the source's outline offered no usable entries (the
+    page-label case, C.5 item 9), so there is nothing to compare entry for
+    entry — but the check must still be able to *fail*, and until 2026-10-11 it
+    could not: with no expectation it ran the heading-share test on whatever nav
+    the artifact happened to carry, so a 355-page book whose TOC was two entries
+    (*Modernist Cuisine*: `MODERNIST`, `CUISINE` — its usable outline is empty,
+    so the heading pass supplied the TOC) passed with `expected=None`. `pages`
+    is the source's page count; when it is given, a nav must carry at least one
+    entry per `TOC_MAX_PAGES_PER_ENTRY` pages. The bar is a floor, not a target:
+    a book with no chapters at all reflows as one section and fails it, which is
+    the honest reading of "you cannot navigate this book" (reversal condition:
+    the first real book whose only defect is that it has no chapters).
+    """
     fails: list[str] = []
     with zipfile.ZipFile(epub_path) as zf:
         entries = nav_entries(zf)
@@ -304,6 +374,10 @@ def check_toc(epub_path: str, expected: Optional[list[tuple[str, int]]]) -> list
         ids: dict[str, dict[str, ElementTree.Element]] = {}
         if not entries:
             return ["G5 the nav has no entries"]
+        if pages is not None:
+            needed = -(-pages // TOC_MAX_PAGES_PER_ENTRY)
+            if len(entries) < needed:
+                fails.append(f"G5 {len(entries)} entries for {pages} pages (needs {needed})")
         if expected is not None:
             got = [(_norm_title(t), d) for t, d, _ in entries]
             want = [(_norm_title(t), d) for t, d in expected]

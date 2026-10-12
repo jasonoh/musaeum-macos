@@ -55,7 +55,13 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 # 1 was the slice-1R spike. Bump this whenever a change in `reflow/` moves the
 # artifact's bytes: the stamp re-checks it, which is how a new converter version
 # re-runs a pass instead of serving the old rendering (D9).
-CONVERTER_VERSION = 2
+#
+# 3 — 2026-10-11, the content rules: the well-formed Roman-folio test in
+# `outline.py`, the two-tier furniture rule in `layout.py`, and the figure/text
+# precedence in `regions.py` all change what a pass writes, so every artifact
+# already cached on the share holds the old rendering. Without this bump the
+# rules are inert on exactly the books that have been read.
+CONVERTER_VERSION = 3
 STAMP_VERSION = 1
 DERIVED = "derived"
 EPUB_NAME = "reflow.epub"

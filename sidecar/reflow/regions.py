@@ -179,11 +179,22 @@ class _Unit:
     rotated: int = 0
 
 
-def _units(layout: Optional[PageLayout], page_box: Box, figure_boxes: Sequence[Box]) -> list[_Unit]:
+def _units(layout: Optional[PageLayout], page_box: Box, figure_boxes: Sequence[Box]) -> tuple[list[_Unit], list[Box]]:
+    """The page's text units in Vision's order, and the figure *label* boxes.
+
+    A Vision region that lies mostly inside a written crop is one of the
+    figure's own labels and is dropped — but a region the crop merely *overlaps*
+    survives, and its box comes back here as a surviving unit. Telling the two
+    apart is what stops an oversized crop from truncating a heading: measured on
+    *Universe*, `A User's` / `Guide to the Sky` was cut to `A User's` because the
+    wrapped title's second line fell inside a figure's box.
+    """
     usable = layout is not None and layout.error is None and bool(layout.regions or layout.tables)
     regions: list[Region] = list(layout.regions) if usable else [Region(0, page_box, "")]
     tables: list[Table] = list(layout.tables) if usable else []
-    regions = [r for r in regions if not any(_share_inside(r.bbox, f) >= FIGURE_OVERLAP for f in figure_boxes)]
+    inside_figure = [r for r in regions if any(_share_inside(r.bbox, f) >= FIGURE_OVERLAP for f in figure_boxes)]
+    labels = [r.bbox for r in inside_figure]
+    regions = [r for r in regions if r not in inside_figure]
     units: list[_Unit] = []
     for table in tables:
         inside = [r for r in regions if _share_inside(r.bbox, table.bbox) >= TABLE_OVERLAP]
@@ -196,7 +207,7 @@ def _units(layout: Optional[PageLayout], page_box: Box, figure_boxes: Sequence[B
         regions = [r for r in regions if r not in inside]
     units.extend(_Unit(float(r.order), r.bbox, r.text) for r in regions)
     units.sort(key=lambda u: u.order)
-    return units
+    return units, labels
 
 
 def _continues(previous: Block, last_line: list[Char], first_line: list[Char], text: str) -> bool:
@@ -270,15 +281,25 @@ def build_page_text(
     non-fatal, and counted by the caller as a layout error.
     """
     result = PageText()
-    units = _units(layout, page_box, figure_boxes)
+    units, labels = _units(layout, page_box, figure_boxes)
     boxes = [u.box for u in units]
     rotated = [c for c in chars if c.rotated]
     dropped: list[Char] = []
     for c in chars:
-        if any(_contains(f, c.cx, c.cy, 0.0) for f in figure_boxes):
+        if any(_contains(b, c.cx, c.cy, 0.0) for b in labels):
+            # One of the figure's own labels: already in the picture.
             dropped.append(c)
             continue
         i = _nearest(boxes, c.cx, c.cy)
+        home = i is not None and _contains(boxes[i], c.cx, c.cy, 0.0)
+        if not home and any(_contains(f, c.cx, c.cy, 0.0) for f in figure_boxes):
+            # Inside a crop that no surviving region owns: the crop's own
+            # artwork text (a plate's lettering, a chart's embedded title).
+            # A region the crop only *overlaps* keeps its characters — that is
+            # the `home` case above, and what stops an oversized crop from
+            # truncating a wrapped chapter title.
+            dropped.append(c)
+            continue
         if i is None:
             if not c.is_space and not c.rotated:
                 result.orphans += 1

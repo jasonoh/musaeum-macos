@@ -101,6 +101,7 @@ def gate_book(
     results["G1"] = gate.check_golden(spine, passages)
 
     segments: list[list[str]] = []
+    long_bands: list[list[tuple[str, list[str]]]] = []
     rotated: list[str] = []
     upright: list[str] = []
     pdf_counter: Counter = Counter()
@@ -116,9 +117,19 @@ def gate_book(
             upright.extend(ev.upright)
             if i not in skip_pages:
                 segments.extend(ev.segments)
+                long_bands.append(ev.long_band)
                 pdf_counter.update(ev.upright)
     finally:
         pdf.close()
+
+    # A long band block is furniture because the *book* repeats it, so the
+    # decision needs every page: the gate holds those out and this puts back the
+    # ones the book does not repeat (`gate.furniture_keys`).
+    repeats = gate.furniture_keys(long_bands)
+    for band in long_bands:
+        for key, toks in band:
+            if key not in repeats:
+                segments.append(toks)
 
     recall, trigrams = gate.trigram_recall(segments, spine_tokens)
     if recall < gate.TRIGRAM_RECALL_MIN:
@@ -128,7 +139,7 @@ def gate_book(
         epub_path, expected_figures=expected_figures, expected_plates=plates if expected_plates is None else expected_plates
     )
     outline = outline_entries(pdf_path, pages=pages)
-    results["G5"] = gate.check_toc(epub_path, [(e.title, e.depth) for e in outline] if len(outline) >= 2 else None)
+    results["G5"] = gate.check_toc(epub_path, [(e.title, e.depth) for e in outline] if len(outline) >= 2 else None, pages=pages)
     loss, missing = gate.word_loss(pdf_counter, Counter(spine_tokens), excluded_words or Counter())
     if loss > gate.WORD_LOSS_MAX:
         results["G6"].append(f"G6 {loss:.1%} of words lost (top: {missing.most_common(6)})")

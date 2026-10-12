@@ -143,6 +143,19 @@ def test_a_table_replaces_the_paragraphs_inside_it():
     assert result.blocks[1].rows == [["fish", "63"], ["eggs", "57"]]
 
 
+def test_an_oversized_crop_does_not_truncate_a_heading_that_straddles_it():
+    """*Universe*: the wrapped chapter title `A User's` / `Guide to the Sky` was
+    cut to `A User's`, because the title's second line fell inside a figure's
+    box and every character inside a written crop used to be the figure's. A
+    region the crop merely *overlaps* keeps its characters; the crop's own
+    labels — the regions that lie mostly inside it — still go."""
+    title = glyphs("A User's", 72, 730, size=13, bold=True) + glyphs("Guide to the Sky", 72, 716, size=13, bold=True)
+    body = glyphs("Body text here.", 72, 600)
+    regions = layout(((70, 712, 300, 745), ""), ((70, 595, 300, 612), ""))
+    result = build_page_text(0, title + body, regions, [(70, 710, 300, 726)], PAGE)
+    assert texts(result) == ["A User's Guide to the Sky", "Body text here."]
+
+
 def test_a_written_figure_swallows_its_label_and_records_it():
     body = glyphs("Body text here.", 72, 700)
     label = glyphs("Label inside", 320, 340)

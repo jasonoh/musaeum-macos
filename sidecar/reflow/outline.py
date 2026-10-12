@@ -30,7 +30,19 @@ _WS = re.compile(r"\s+")
 # `ix` went but `viii`, `xii` and `xiii` — seven entries of that book's 355 —
 # came through as the whole TOC.
 _JUNK_LABEL = re.compile(r"^(cover|untitled|page|blank|front|back|spread|end)[\s_-]*\d*$", re.I)
-_ROMAN = re.compile(r"^[ivxlcdm]+$", re.I)
+# A folio is a *well-formed* Roman numeral, and it is written in one case —
+# all lower (`viii`, `xii`) or all upper (`XIV`), never title-case. Both halves
+# are load-bearing, and each was measured on 2026-10-11 against the labels it
+# must keep: the loose `^[ivxlcdm]+$` this replaced matched **every** letter of
+# `Civil`, `Mild`, `DIM`, `Lid`, `Mix`, `Div` and `dim`, so a chapter called
+# *Civil* or *Mild* was dropped from the outline as a page label, while the
+# well-formedness test alone still swallows things a title-case test does not:
+# `Dim`, `Div`, `Mix`, `Civ` and `Liv` are all valid Roman numerals (500+4,
+# 1000+9, 100+4, 50+4…), and `DIM` is not one, so the two tests are independent.
+# The residue is named rather than hidden: an outline label spelled in one case
+# that is *both* a real word and a well-formed numeral — lower-case `mix`,
+# upper-case `DIV` — is still dropped. It is a strictly smaller set than before.
+_ROMAN = re.compile(r"^m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$", re.I)
 
 # --- slice 1R: the outline at every depth (spec Annex C.5, item 9) ---------
 
@@ -52,9 +64,18 @@ def is_junk(label: str) -> bool:
     return (
         not text
         or bool(_JUNK_LABEL.match(text))
-        or bool(_ROMAN.match(text))
         or not re.search(r"[A-Za-z]{3}", text)
+        or _roman_folio(text)
     )
+
+
+def _roman_folio(text: str) -> bool:
+    """A Roman folio: a well-formed numeral, written in a single case.
+
+    `viii` and `XIV` are folios; `Civil`, `Mild` and `DIM` are titles — see the
+    note on `_ROMAN` for the measurement behind each half of the rule.
+    """
+    return bool(_ROMAN.match(text)) and (text.islower() or text.isupper())
 
 
 def clean_label(label: object) -> str:

@@ -3,7 +3,7 @@ import zipfile
 from reflow import gate
 from reflow.epub import link_entries, write_epub
 from reflow.model import Block, Document, PageResult
-from reflow.outline import Entry, document_entries, outline_entries
+from reflow.outline import Entry, document_entries, is_junk, outline_entries
 from tests.reflow_pdfs import OutlineItem, Page, Text, write_pdf
 
 
@@ -87,6 +87,19 @@ def test_outline_depth_sets_the_heading_level(tmp_path):
     doc = _doc(tmp_path, [[h, P("x")]], [Entry("Chapter One", 0, 0)])
     link_entries(doc)
     assert h.level == 1
+
+
+def test_a_folio_is_junk_and_a_title_that_spells_one_is_not():
+    """The Roman-folio rule, measured 2026-10-11. The loose `^[ivxlcdm]+$` this
+    replaced matched **every** letter of `Civil`, `Mild`, `DIM`, `Lid`, `Mix`,
+    `Div` and `dim`, so a chapter called *Civil* was dropped from the outline as
+    a page label — while `viii`, `xii`, `xiii` and `ix` are folios that have to
+    go, because *Modernist Cuisine*'s TOC was `viii, xii, xiii, end1…` and no
+    entry could land on a heading (G5: 0 of 7)."""
+    folios = ("", "3", "cover4", "end1", "viii", "xii", "xiii", "ix", "xiv", "xxiv", "XIV")
+    titles = ("Civil", "Mild", "DIM", "Lid", "Mix", "Div", "dim", "Introduction", "The Outer", "Astrobiology:")
+    assert [f for f in folios if not is_junk(f)] == []
+    assert [t for t in titles if is_junk(t)] == []
 
 
 def test_a_page_label_outline_falls_back_to_the_headings(tmp_path):
