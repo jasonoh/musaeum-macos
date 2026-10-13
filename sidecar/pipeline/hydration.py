@@ -67,13 +67,16 @@ def hydrate_metadata(
             }
 
     # 5. Merge + conflicts
-    merged, conflicts = merge_metadata(sources, source_preferences, locked)
+    merged, conflicts, missing = merge_metadata(sources, source_preferences, locked)
 
     # Identifiers baked into the file (or seeded from Calibre) are definitive —
     # online fetches may match a different edition of the same work. Not when
     # the user owns this field: then their value is the definitive one.
     if identifiers and "identifiers" not in locked:
         merged.setdefault("identifiers", {}).update(identifiers)
+    # …and a supply the union saw, so it is not reported missing even locked
+    if identifiers:
+        missing = [f for f in missing if f != "identifiers"]
 
     # 6. Cover candidates: online sources + embedded cover (EPUB or PDF).
     # A locked cover gathers no candidate at all: selecting one would spend a
@@ -99,6 +102,7 @@ def hydrate_metadata(
         "metadata": merged,
         "conflicts": conflicts,
         "cover": cover_result["cover"],
+        "missing_fields": missing,
     }
 
 

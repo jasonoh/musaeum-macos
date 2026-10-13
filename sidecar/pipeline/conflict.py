@@ -23,6 +23,48 @@ SOURCE_PRIORITY = {
 # Fields where disagreement queues a review conflict
 REVIEWED_FIELDS = ("title", "author", "series")
 
+# The fields the merge owns — a field no source supplies is blanked by the main
+# process (portable-decisions D6/D7), so the vocabulary is stated here once, in
+# the same names the locks use (`HydratedField` in the TS types).
+MERGE_FIELDS = (
+    "title",
+    "author",
+    "series",
+    "publisher",
+    "published_date",
+    "language",
+    "description",
+    "identifiers",
+    "tags",
+)
+
+# One supply test per field, matching the value each merge branch reads.
+_SUPPLY = {
+    "title": lambda d: d.get("title"),
+    "author": lambda d: (d.get("authors") or [{}])[0].get("name"),
+    "series": lambda d: d.get("series"),
+    "publisher": lambda d: d.get("publisher"),
+    "published_date": lambda d: d.get("published_date"),
+    "language": lambda d: d.get("language"),
+    "description": lambda d: d.get("description"),
+    "identifiers": lambda d: d.get("identifiers"),
+    "tags": lambda d: d.get("tags"),
+}
+
+
+def unsupplied_fields(sources: dict) -> list:
+    """The merge-owned fields no source had a value for.
+
+    Computed over the raw sources and **ignoring the lock** (D3 as written): a
+    locked field is still absent when nothing supplies it, so it is blanked all
+    the same — the lock only keeps the merge from proposing a candidate.
+    """
+    return [
+        field
+        for field in MERGE_FIELDS
+        if not any(data and _SUPPLY[field](data) for data in sources.values())
+    ]
+
 
 def _norm(value: str) -> str:
     return re.sub(r"[^\w\s]", "", (value or "").lower()).strip()
@@ -42,7 +84,8 @@ def merge_metadata(sources: dict, preferences: dict, locked_fields=()) -> tuple:
     (the main process also drops them from the reply before writing — see the
     field-overrides design, D3/D6).
 
-    Returns (merged: dict, conflicts: list of {field, candidates}).
+    Returns (merged: dict, conflicts: list of {field, candidates},
+    missing_fields: list of merge-owned field names no source supplied).
     """
     merged = {}
     conflicts = []
@@ -149,4 +192,4 @@ def merge_metadata(sources: dict, preferences: dict, locked_fields=()) -> tuple:
     if fetched:
         merged["metadata_sources"] = fetched
 
-    return merged, conflicts
+    return merged, conflicts, unsupplied_fields(sources)

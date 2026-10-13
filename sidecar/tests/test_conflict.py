@@ -39,7 +39,7 @@ def _book(title=None, author=None, **rest) -> dict:
 
 
 def test_higher_priority_source_wins_the_title():
-    merged, _ = merge_metadata(
+    merged, _, _ = merge_metadata(
         {
             "embedded": _book(title="the hobbit or there and back again"),
             "google_books": _book(title="The Hobbit"),
@@ -73,7 +73,7 @@ def test_priority_order_runs_google_over_openlibrary_over_calibre_over_embedded(
 def test_empty_source_records_are_not_candidates():
     # A fetcher that found nothing returns a falsy record rather than being
     # omitted; it must not win a field by being present.
-    merged, conflicts = merge_metadata(
+    merged, conflicts, _ = merge_metadata(
         {"google_books": {}, "embedded": _book(title="Piranesi")},
         {},
     )
@@ -83,7 +83,7 @@ def test_empty_source_records_are_not_candidates():
 
 
 def test_a_field_no_source_supplies_is_absent_from_the_merge():
-    merged, _ = merge_metadata({"embedded": _book(title="Piranesi")}, {})
+    merged, _, _ = merge_metadata({"embedded": _book(title="Piranesi")}, {})
 
     assert "publisher" not in merged
     assert "series" not in merged
@@ -93,7 +93,7 @@ def test_a_field_no_source_supplies_is_absent_from_the_merge():
 
 
 def test_disagreeing_titles_queue_a_conflict_carrying_every_candidate():
-    merged, conflicts = merge_metadata(
+    merged, conflicts, _ = merge_metadata(
         {
             "embedded": _book(title="Hobbit"),
             "google_books": _book(title="The Hobbit"),
@@ -112,7 +112,7 @@ def test_disagreeing_titles_queue_a_conflict_carrying_every_candidate():
 
 
 def test_disagreeing_authors_queue_a_conflict():
-    merged, conflicts = merge_metadata(
+    merged, conflicts, _ = merge_metadata(
         {
             "embedded": _book(title="Dune", author="Frank Herbert"),
             "google_books": _book(title="Dune", author="Frank P. Herbert"),
@@ -125,7 +125,7 @@ def test_disagreeing_authors_queue_a_conflict():
 
 
 def test_agreement_does_not_queue_anything():
-    _, conflicts = merge_metadata(
+    _, conflicts, _ = merge_metadata(
         {
             "embedded": _book(title="Dune", author="Frank Herbert"),
             "google_books": _book(title="Dune", author="Frank Herbert"),
@@ -139,7 +139,7 @@ def test_agreement_does_not_queue_anything():
 def test_punctuation_and_case_alone_are_not_a_disagreement():
     # Comparison is on a normalized form; queueing "Dune" against "DUNE!"
     # would fill the review queue with nothing.
-    merged, conflicts = merge_metadata(
+    merged, conflicts, _ = merge_metadata(
         {
             "embedded": _book(title="DUNE!", author="frank herbert"),
             "google_books": _book(title="Dune", author="Frank Herbert"),
@@ -153,7 +153,7 @@ def test_punctuation_and_case_alone_are_not_a_disagreement():
 
 
 def test_a_single_source_never_conflicts_with_itself():
-    merged, conflicts = merge_metadata(
+    merged, conflicts, _ = merge_metadata(
         {"embedded": _book(title="Piranesi", author="Susanna Clarke")}, {}
     )
 
@@ -163,7 +163,7 @@ def test_a_single_source_never_conflicts_with_itself():
 
 
 def test_author_sort_comes_from_the_winning_source():
-    merged, _ = merge_metadata(
+    merged, _, _ = merge_metadata(
         {
             "embedded": {"authors": [{"name": "Frank Herbert", "sort": "wrong, sort"}]},
             "google_books": {
@@ -180,7 +180,7 @@ def test_author_sort_comes_from_the_winning_source():
 
 
 def test_publisher_date_and_language_resolve_by_priority_without_queueing():
-    merged, conflicts = merge_metadata(
+    merged, conflicts, _ = merge_metadata(
         {
             "embedded": {
                 "publisher": "Unknown",
@@ -205,7 +205,7 @@ def test_publisher_date_and_language_resolve_by_priority_without_queueing():
 def test_longest_description_wins_regardless_of_source_priority():
     # Length is the cheap proxy for quality: a one-line Google blurb loses to
     # a full embedded jacket copy.
-    merged, conflicts = merge_metadata(
+    merged, conflicts, _ = merge_metadata(
         {
             "google_books": {"description": "A novel."},
             "embedded": {"description": "A novel about a desert planet and spice."},
@@ -224,7 +224,7 @@ def test_series_from_goodreads_beats_a_lower_priority_source():
     expanse = {"series_name": "The Expanse", "name": "The Expanse", "series_index": 1.0}
     wrong = {"series_name": "Expanse Novels", "name": "Expanse Novels", "series_index": 1.0}
 
-    merged, _ = merge_metadata(
+    merged, _, _ = merge_metadata(
         {"goodreads": {"series": expanse}, "embedded": {"series": wrong}}, {}
     )
 
@@ -235,7 +235,7 @@ def test_disagreeing_series_names_queue_a_conflict_with_serialized_candidates():
     expanse = {"name": "The Expanse", "series_index": 1.0}
     wrong = {"name": "Expanse Novels", "series_index": 1.0}
 
-    _, conflicts = merge_metadata(
+    _, conflicts, _ = merge_metadata(
         {"goodreads": {"series": expanse}, "embedded": {"series": wrong}}, {}
     )
 
@@ -248,7 +248,7 @@ def test_disagreeing_series_names_queue_a_conflict_with_serialized_candidates():
 def test_same_series_name_with_a_different_index_does_not_queue():
     # Only the name is compared; an index that differs between sources is not
     # worth a review prompt.
-    _, conflicts = merge_metadata(
+    _, conflicts, _ = merge_metadata(
         {
             "goodreads": {"series": {"name": "The Expanse", "series_index": 1.0}},
             "embedded": {"series": {"name": "The Expanse", "series_index": 1.5}},
@@ -284,7 +284,7 @@ def test_a_learned_preference_is_capped_and_stays_field_scoped():
 
     # embedded (1) + a capped 5 x 0.5 = 3.5 still loses to google_books (4),
     # however many past resolutions are recorded
-    merged, _ = merge_metadata(sources, {"title": {"embedded": 99}})
+    merged, _, _ = merge_metadata(sources, {"title": {"embedded": 99}})
     assert merged["title"] == "The Hobbit"
     # ...and a title preference does not carry over to publisher
     assert merged["publisher"] == "Houghton Mifflin"
@@ -294,7 +294,7 @@ def test_a_learned_preference_is_capped_and_stays_field_scoped():
 
 
 def test_identifiers_union_across_sources_with_the_best_source_overriding():
-    merged, _ = merge_metadata(
+    merged, _, _ = merge_metadata(
         {
             "embedded": {"identifiers": {"isbn_13": "9780000000001", "goodreads": "42"}},
             "google_books": {"identifiers": {"isbn_13": "9780547928227"}},
@@ -308,7 +308,7 @@ def test_identifiers_union_across_sources_with_the_best_source_overriding():
 
 
 def test_blank_identifier_values_are_dropped():
-    merged, _ = merge_metadata(
+    merged, _, _ = merge_metadata(
         {"google_books": {"identifiers": {"isbn_13": "9780547928227", "goodreads": None}}},
         {},
     )
@@ -317,7 +317,7 @@ def test_blank_identifier_values_are_dropped():
 
 
 def test_tags_union_deduplicates_and_caps_at_twelve():
-    merged, _ = merge_metadata(
+    merged, _, _ = merge_metadata(
         {
             "embedded": {"tags": ["Fantasy", "Classics"]},
             "google_books": {"tags": ["Fantasy"] + [f"t{i}" for i in range(20)]},
@@ -330,7 +330,7 @@ def test_tags_union_deduplicates_and_caps_at_twelve():
 
 
 def test_provenance_records_every_source_that_reported_a_fetch_time():
-    merged, _ = merge_metadata(
+    merged, _, _ = merge_metadata(
         {
             "google_books": {
                 "title": "Dune",
@@ -352,7 +352,7 @@ def test_provenance_records_every_source_that_reported_a_fetch_time():
 
 
 def test_match_confidence_defaults_to_full_when_a_fetcher_omits_it():
-    merged, _ = merge_metadata(
+    merged, _, _ = merge_metadata(
         {"openlibrary": {"title": "Dune", "fetched_at": "2026-09-16T00:00:00Z"}}, {}
     )
 
@@ -360,7 +360,51 @@ def test_match_confidence_defaults_to_full_when_a_fetcher_omits_it():
 
 
 def test_no_sources_at_all_merges_to_nothing_rather_than_raising():
-    merged, conflicts = merge_metadata({}, {})
+    merged, conflicts, _ = merge_metadata({}, {})
 
     assert merged == {}
     assert conflicts == []
+
+
+# --- what no source supplied (portable decisions D6/D7) --------------------
+
+
+def test_a_field_no_source_supplies_is_reported_missing():
+    _, _, missing = merge_metadata({"embedded": _book(title="A")}, {})
+
+    # title is supplied by the one source; everything else the merge owns is not
+    assert set(missing) == {
+        "author",
+        "series",
+        "publisher",
+        "published_date",
+        "language",
+        "description",
+        "identifiers",
+        "tags",
+    }
+
+
+def test_a_locked_field_nothing_supplies_is_still_missing():
+    # D3 as written: a lock does not protect a field against the absence rule
+    _, _, missing = merge_metadata({"embedded": _book(title="A")}, {}, ["publisher"])
+
+    assert "publisher" in missing
+
+
+def test_a_locked_field_a_source_supplies_is_not_missing():
+    # The file's own value is a supply, so the field is not blanked — the lock
+    # does not change that, it only keeps the merge from proposing a *candidate*
+    _, _, missing = merge_metadata(
+        {"embedded": _book(title="A", publisher="P")}, {}, ["publisher"]
+    )
+
+    assert "publisher" not in missing
+
+
+def test_the_identifier_union_counts_as_a_supply():
+    _, _, missing = merge_metadata(
+        {"embedded": {"identifiers": {"isbn_13": "9781707274123"}}}, {}
+    )
+
+    assert "identifiers" not in missing

@@ -71,7 +71,7 @@ def test_a_locked_title_is_neither_merged_nor_queued():
         "embedded": _book(title="Embedded Title"),
     }
 
-    merged, conflicts = merge_metadata(sources, {}, ["title"])
+    merged, conflicts, _ = merge_metadata(sources, {}, ["title"])
 
     assert "title" not in merged
     assert conflicts == []
@@ -83,7 +83,7 @@ def test_a_locked_author_queues_no_conflict():
         "embedded": _book(author="Eve Rodsky"),
     }
 
-    merged, conflicts = merge_metadata(sources, {}, ["author"])
+    merged, conflicts, _ = merge_metadata(sources, {}, ["author"])
 
     assert "author" not in merged
     assert conflicts == []
@@ -95,7 +95,7 @@ def test_a_locked_series_queues_no_conflict():
         "embedded": _book(series={"name": "B", "index": 1}),
     }
 
-    merged, conflicts = merge_metadata(sources, {}, ["series"])
+    merged, conflicts, _ = merge_metadata(sources, {}, ["series"])
 
     assert "series" not in merged
     assert conflicts == []
@@ -105,7 +105,7 @@ def test_the_fields_that_are_not_locked_still_merge():
     # The lock is per field, not per run
     sources = {"google_books": _book(title="Fetched Title", publisher="Penguin")}
 
-    merged, _ = merge_metadata(sources, {}, ["publisher"])
+    merged, _, _ = merge_metadata(sources, {}, ["publisher"])
 
     assert merged["title"] == "Fetched Title"
     assert "publisher" not in merged
@@ -118,7 +118,7 @@ def test_locked_identifiers_and_tags_are_not_unioned():
         "embedded": {"identifiers": {"isbn_10": "1707274126"}, "tags": ["opera"]},
     }
 
-    merged, _ = merge_metadata(sources, {}, ["identifiers", "tags"])
+    merged, _, _ = merge_metadata(sources, {}, ["identifiers", "tags"])
 
     assert "identifiers" not in merged
     assert "tags" not in merged
@@ -193,3 +193,25 @@ def test_no_locks_means_nothing_changes(tmp_path, monkeypatch):
     )
 
     assert result["metadata"]["identifiers"]["isbn_13"] == "9781707274123"
+
+
+def test_the_reply_reports_the_fields_no_source_supplied(tmp_path, monkeypatch):
+    path = _epub(tmp_path, "0306406152")
+    _offline(monkeypatch)
+    book_dir = str(tmp_path / "out")
+    os.makedirs(book_dir)
+
+    result = hydration.hydrate_metadata(
+        book_id="missing", file_path=path, book_dir=book_dir, known={}, source_preferences={}
+    )
+
+    # The file supplies title, identifiers and language; the offline fetches
+    # supply nothing, so the rest are reported missing
+    assert set(result["missing_fields"]) == {
+        "author",
+        "series",
+        "publisher",
+        "published_date",
+        "description",
+        "tags",
+    }
