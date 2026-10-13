@@ -23,7 +23,7 @@
 |---|---|---|
 | T1 | Sort keys derived in `db.updateBook` (invariant 4) | done |
 | T2 | Window navigation guards + `openExternal` allowlist | done |
-| T3 | CI workflow + lint fails on warnings | done (CI unproven until first push) |
+| T3 | CI workflow + lint fails on warnings | done 2026-09-24; **the "unproven until the first push" caveat is spent as of 2026-10-13** — `.github/workflows/ci.yml` has produced a green run for every push since the first one (`macos-14`, `fetch-depth: 0` for the vendor-history check, `npm ci` → `npm run typecheck` → `npm run lint` → `npm test` → a fresh `sidecar/.venv` + pytest), from N1's `d4d3ef6` through N5's `d842c4d` (run `38442895120`), with the commits a push carried together sharing that push's run. Named residue, and it is not covered anywhere else: the workflow runs **no `npm run build`** — the instrument both tsconfig flips were proved with, because electron-vite's type emission fails where typecheck and lint alike pass |
 | T4 | Sidecar dispatch never drops a reply | done |
 | T5 | Doc drift + untrack `.obsidian/workspace.json` | done |
 | T6 | `library:updateBook` orchestration moves to `services/` | done |
