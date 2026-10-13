@@ -9,9 +9,23 @@ export default tseslint.config(
   // in the main tree, so a live worktree would silently break `npm run lint`.
   // `.obsidian/` is the vault the docs are browsed in — its plugin bundles are
   // minified third-party JS, and linting them turned the gate red for 635 errors
-  // that had nothing to do with this repo's code.
+  // that had nothing to do with this repo's code. `.delta/` is the same class as
+  // `.claude/` and reached the gate the same way: it holds scratch copies of this
+  // repo (`.delta/worktrees/`, `.delta/clones/`) with their own tsconfigs, it is
+  // hidden from git by `.git/info/exclude` — which ESLint's flat config does not
+  // read — and by 2026-10-13 six stale copies had made `npm run lint` report
+  // 1,567 parsing errors, every one of them in a file this repo does not own.
   {
-    ignores: ['out/', 'dist/', 'node_modules/', 'sidecar/', 'vendor/**', '.claude/', '.obsidian/']
+    ignores: [
+      'out/',
+      'dist/',
+      'node_modules/',
+      'sidecar/',
+      'vendor/**',
+      '.claude/',
+      '.obsidian/',
+      '.delta/'
+    ]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
