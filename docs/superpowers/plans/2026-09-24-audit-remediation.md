@@ -621,3 +621,30 @@ Decided with the user 2026-09-24.
 | **N5** renderer tests + flip | test-author | `src/lib/theme/css.test.ts` (15), `src/lib/theme/reader-palette.test.ts` (13), `ask-context.test.ts` (2), `ask-session.test.ts` (2), `theme/palette-scan.test.ts` (2), `add-books.test.ts` (1), `ai-providers.test.ts` (1), `reader-search.test.ts` (1), `stores/reader.store.test.ts` (1) — 9 files, 38; then add the flag to `tsconfig.web.json`. Needs N4. |
 
 Order: N1 ∥ N2 ∥ N4 → N3 → N5. `book.types.ts` is in both projects, so N3's flip waits on N4 too.
+
+### The N-series re-measured 2026-10-13, at `d4d3ef6` (N1 landed)
+
+The lists above are the figures this plan was written against on 2026-09-24. These are the remainder on the tree N1 landed on, taken with the rules' own command — re-measure again before starting, and quote the delta rather than the written number.
+
+- **N2 — main source: 9 files, 27 instances** (written as 8/22). Two files are missing from the list above: `services/device-covers.ts` (6, the largest single file in the slice) and `ipc/metadata.ts` (1). The rest are as written: `ipc/nas.ts` (5), `services/api/bind.ts` (4), `services/storage-kind.ts` (3), `services/importer.ts` (3), `services/db.ts` (3), `services/nas-manager.ts` (1), `services/api/auth.ts` (1).
+- **N3 — main tests + the `tsconfig.node.json` flip: 18 files, 91** (written as 11/58). New since it was written: `annotations.test.ts` (8), `shelves.test.ts` (5), `reflow.test.ts` (5), `library-sync.test.ts` (3), `cover-choice.test.ts` (3), `book-delete.test.ts` (1), `ipc/shelves.test.ts` (1). Grown: `catalog.test.ts` 12 → 14, `importer.test.ts` 9 → 12, `api/shape.test.ts` 2 → 4. And N1 took the three theme test files out of it entirely (33 instances).
+- **N4 — renderer source + `src/types`: 8 files, 14 — still exact**, the second of the two lists that have not moved.
+- **N5 — renderer tests + the `tsconfig.web.json` flip: 15 files, 67** (written as 9/38). New since it was written: `cover-picker-wiring.test.ts` (11), `cover-candidate-state.test.ts` (7), `annotations.test.ts` (5), `library.store.test.ts` (3), `drag-regions.test.ts` (2), `shelves.store.test.ts` (1).
+- **Project totals at `d4d3ef6`:** `tsconfig.node.json` **120** (208 as written, 194 before N1), `tsconfig.web.json` **81** (as written). `src/types/book.types.ts` (2) is in both projects, so N3's and N5's flips still each wait on it, exactly as the order line says.
+
+### N2 starts here
+
+```bash
+git log --oneline -3                                   # d4d3ef6 is N1 — N2 starts there, not at this plan's own base
+npm run typecheck && npm run lint && npm test            # 0, 0, 2121 passed (97 files) — N1's numbers, and this slice must not move them
+sidecar/.venv/bin/python -m pytest sidecar/tests -q      # 413 passed, and it must stay 413
+npx tsc --noEmit -p tsconfig.node.json --noUncheckedIndexedAccess 2>&1 | grep -E '^electron/main/(ipc|services|api)/' | grep -v '\.test\.ts' | cut -d'(' -f1 | sort | uniq -c | sort -rn
+```
+
+That last command is the slice's acceptance check: before the work it prints the nine files above and 27 instances; after it, **nothing** in those nine — with `npm run typecheck` (the flag off) still 0, so nothing narrowed is left lying.
+
+Read, in this order: this file's rules at `:609-613`; `CLAUDE.md`'s invariants — **3** (nothing reads `formats[0]`), **4** (sort keys derived at every write path) and **8** (business logic stays in `services/`), the three a narrowing edit in `services/db.ts` or `ipc/nas.ts` can bend; then the nine files, of which `services/db.ts` already carries the list's own annotation (`:60` and `:377` invoke a possibly-undefined function, `:793`) and `services/device-covers.ts` was not in the list at all.
+
+**The two instruments N1 established are this slice's too**, and both are one command. The acceptance check above, whose _discrimination_ is its own pre-change count — it printed exactly these 27 before the work, which is what proves the flag reaches these files at all. And the **emitted-JS diff**, which is how a typing-only slice answers "no behaviour change" at all: `git archive HEAD <dir> | tar -x -C <scratch>/head --strip-components=<n>`, then `npx esbuild --target=es2022 <file>` each touched source file at `HEAD` and from the working copy (no `--loader`, which esbuild refuses once it is given a path) and `diff -ru` the two trees — `!`s and annotations vanish, so what is left is the runtime delta the record quotes. N1's was two constructs, both semantic no-ops, with two of its four files byte-identical.
+
+The slice is 27 instances in 9 files, all under `electron/main/`: no renderer file, no `src/types/`, no sidecar, no `vendor/`. **The flag does not go in on this slice** — `tsconfig.node.json` gets it in N3, once that project is at zero. Bookkeeping in the same commit: this file's **Progress** table, N2's row. Stage named paths only.

@@ -12,10 +12,10 @@ The working backlog: what is open, what it is blocked on, and where its design l
 
 ### Audit remediation — the 2026-09-24 whole-codebase audit
 
-Plan: `docs/superpowers/plans/2026-09-24-audit-remediation.md`; its Progress table is current, and each landed task is one commit whose subject begins `audit(T<n>)`. **Done:** T1–T13, U2 (Electron 37 → 44.4.5, `@electron/rebuild` 4.2, better-sqlite3 13, Node floor 22.12, packaged DMG re-checked on an isolated profile) and U3. **Open:**
+Plan: `docs/superpowers/plans/2026-09-24-audit-remediation.md`; its Progress table is current, and each landed task is one commit whose subject begins `audit(T<n>)` or `audit(N<n>)`. **Done:** T1–T13, U2 (Electron 37 → 44.4.5, `@electron/rebuild` 4.2, better-sqlite3 13, Node floor 22.12, packaged DMG re-checked on an isolated profile), U3 and N1. **Open:**
 
 - [ ] **U1 — `sandbox: true` on the main window.** Marked **USER**: it needs an in-app check, so it is not to be done unattended.
-- [ ] **N1–N5 — adopt `noUncheckedIndexedAccess`**, in five stages: the theme subsystem (main), the rest of the main source, main tests plus the `tsconfig.node.json` flip, the renderer source plus `src/types`, renderer tests plus the `tsconfig.web.json` flip.
+- [ ] **N2–N5 — the rest of `noUncheckedIndexedAccess`**, in four stages. **N1, the theme subsystem, landed 2026-10-13 as `d4d3ef6`: 74 instances → 0 across its seven files, with the flag still off.** What is left, re-measured after N1 at `d4d3ef6` — every written figure has drifted, so re-measure rather than copy the plan's table: **N2**, the rest of the main source, **9 files / 27** (written 8/22 — `services/device-covers.ts` (6) and `ipc/metadata.ts` (1) are missing from the plan's list); **N3**, main tests plus the `tsconfig.node.json` flip, **18 files / 91** (written 11/58), which needs N2 and `src/types/book.types.ts` from N4 first; **N4**, renderer source plus `src/types`, **8 files / 14** (still exact); **N5**, renderer tests plus the `tsconfig.web.json` flip, **15 files / 67** (written 9/38), which needs N4. Start block and both instruments: the plan's `### N2 starts here`.
 - T3's CI workflow is **unproven until the first push**.
 
 ## Phase 1.5 — polish before real-library use
