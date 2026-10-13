@@ -634,6 +634,8 @@ The lists above are the figures this plan was written against on 2026-09-24. The
 
 ### N2 starts here
 
+> Superseded as a starting point by _N5 starts here_ at the foot of this file — N2, N3 and N4 have landed since. Kept as the record of what N2 was dispatched with.
+
 ```bash
 git log --oneline -3                                   # d4d3ef6 is N1 — N2 starts there, not at this plan's own base
 npm run typecheck && npm run lint && npm test            # 0, 0, 2121 passed (97 files) — N1's numbers, and this slice must not move them
@@ -648,3 +650,40 @@ Read, in this order: this file's rules at `:609-613`; `CLAUDE.md`'s invariants �
 **The two instruments N1 established are this slice's too**, and both are one command. The acceptance check above, whose _discrimination_ is its own pre-change count — it printed exactly these 27 before the work, which is what proves the flag reaches these files at all. And the **emitted-JS diff**, which is how a typing-only slice answers "no behaviour change" at all: `git archive HEAD <dir> | tar -x -C <scratch>/head --strip-components=<n>`, then `npx esbuild --target=es2022 <file>` each touched source file at `HEAD` and from the working copy (no `--loader`, which esbuild refuses once it is given a path) and `diff -ru` the two trees — `!`s and annotations vanish, so what is left is the runtime delta the record quotes. N1's was two constructs, both semantic no-ops, with two of its four files byte-identical.
 
 The slice is 27 instances in 9 files, all under `electron/main/`: no renderer file, no `src/types/`, no sidecar, no `vendor/`. **The flag does not go in on this slice** — `tsconfig.node.json` gets it in N3, once that project is at zero. Bookkeeping in the same commit: this file's **Progress** table, N2's row. Stage named paths only.
+
+### The N-series re-measured 2026-10-13, at `9a2a420` (N2, N3 and N4 landed)
+
+Three of the four remaining slices have landed, so this is the series' last measurement before it closes. Taken with the rules' own commands, at the HEAD above.
+
+- **N2 — main source: 9 files, 27 → 0** (`a11057f`). Node project 120 → 93. Emitted JS byte-identical for four of the nine files (`api/auth.ts`, `api/bind.ts`, `nas-manager.ts`, `storage-kind.ts`); the other five carried six hunks, all behaviour-neutral.
+- **N4 — renderer source + `src/types`: 8 files, 14 → 0** (`4829484`). Web project 81 → 67, and the node project 93 → 91 because `src/types/book.types.ts` is in both. Emitted JS byte-identical for five of the eight, `types/book.types.ts` among them — so `sortableAuthor`, invariant 4's own derivation, was provably untouched.
+- **N3 — main tests + the `tsconfig.node.json` flip: 18 files, 91 → 0** (`9a2a420`). **The node flag is now ON**: `npx tsc --noEmit -p tsconfig.node.json` is 0 and `npm run build` exits 0. Its diff is 70 single-`!` lines, three lines gaining a second `!`, `importer.test.ts`'s eight declaration rewrites and one own-line block form; emitted JS is byte-identical for 17 of the 18 files, the delta being exactly those eight lines.
+- **N5 — renderer tests + the `tsconfig.web.json` flip: 15 files, 67 — the whole remainder, and it has not moved since `d4d3ef6`.** Both halves of the written 9/38 are stale.
+- **Project totals at `9a2a420`:** `tsconfig.node.json` **0** with the flag on (120 at `d4d3ef6`, 208 as written); `tsconfig.web.json` **67** under the CLI flag (81 at `d4d3ef6`, as written) — and **every one of the 67 is a test file**: that project's `src/` with `*.test.ts` excluded is **0**, which is N4's result holding.
+
+### N5 starts here
+
+```bash
+git log --oneline -4                                     # 9a2a420 is N3 — N2, N3 and N4 have landed, and N5 starts there
+npm run typecheck && npm run lint && npm test            # 0, 0, 2121 passed (97 files) — the numbers this slice must not move
+sidecar/.venv/bin/python -m pytest sidecar/tests -q      # 413 passed, and it must stay 413
+npx tsc --noEmit -p tsconfig.web.json --noUncheckedIndexedAccess 2>&1 | grep -E '^src/' | grep '\.test\.ts' | cut -d'(' -f1 | sort | uniq -c | sort -rn
+```
+
+That last command is the acceptance check: before the work it prints the fifteen files and 67 instances below; after it, **nothing** — and then `tsconfig.web.json` gains `"noUncheckedIndexedAccess": true`, after which `npm run typecheck` must still be 0 **and `npm run build` must exit 0**. That build is the flip's real consumer and the ordinary gate cannot see it: N3's flip was proved that way, and a flipped tsconfig that breaks electron-vite type emission passes typecheck and lint alike.
+
+The fifteen files, re-measured at `9a2a420` — exact, in the order the acceptance check prints them: `src/lib/theme/css.test.ts` (15), `src/lib/theme/reader-palette.test.ts` (13), `src/components/library/cover-picker-wiring.test.ts` (11), `src/lib/cover-candidate-state.test.ts` (7), `src/lib/annotations.test.ts` (5), `src/stores/library.store.test.ts` (3), `src/lib/theme/palette-scan.test.ts` (2), `src/lib/ask-session.test.ts` (2), `src/lib/ask-context.test.ts` (2), `src/components/reader/drag-regions.test.ts` (2), `src/stores/shelves.store.test.ts` (1), `src/stores/reader.store.test.ts` (1), `src/lib/reader-search.test.ts` (1), `src/lib/ai-providers.test.ts` (1), `src/lib/add-books.test.ts` (1).
+
+Read, in this order: this file's rules at `:609-613`; `CLAUDE.md`'s invariants — **3** (nothing reads `formats[0]`), **5** (reading position _and_ read status survive the round trip) and **11** (`vendor/foliate-js/` is never edited), the three a test-file edit in these suites can bend; then the fifteen files.
+
+What N3 learned, and N5 inherits:
+
+- **The rules are more permissive inside tests**: "tests may use `!` or a small `at(i)` helper freely" (`:611`). What is _not_ permitted is changing what a test asserts — no matcher, `it()` name, fixture or asserted value moves to make a type error go away.
+- **The suite's case count is the "no behaviour change" instrument for a test slice**, and it is stronger here than the emitted-JS diff: 97 files / 2121 passed before and after. A different total is a deleted case or a run that never happened, and those two read identically in a report.
+- **Where a destructuring pattern cannot take a `!`** — `const [result] = await X()` — the fix is the local-binding rewrite `const result = (await X())[0]!` rather than an assertion at each use site, precisely so that no `expect(...)` argument changes text. N3 did that eight times in `importer.test.ts` and quoted the emitted-JS delta as the proof it is one evaluation.
+- **Judge the diff mechanically before believing a "typing only" claim.** N3's was reconciled by pairing every removed line with its added line and requiring `added.replace(/!/g, '') === removed` for each pair: of 82 removed lines, 70 were single-`!` and three gained a second `!`, and the eleven that did not match were the eight rewrites plus three lines that already carried a `!`.
+- **Pre-existing prettier dirt is left alone, and this repo has some.** Measured at `9a2a420`: `electron/main/services/annotations.test.ts` (6 differing lines) and `conflicts.test.ts` (8) are over `printWidth` 100 at HEAD, and `tsconfig.node.json` was too (its `include` array). The N-series' own precedent, and N1's before it, is to leave it, record it and not reformat — so expect `prettier --check` to fail on files this slice never touches, and do not "fix" them.
+
+**Environment facts already paid for:** `npm install` has run (its postinstall rebuilt better-sqlite3) and `sidecar/.venv` exists; `.delta/` is in `eslint.config.mjs`'s ignores, so `npm run lint` is 0 on this tree; `npm test` must be invoked only as `npm test`, because it runs Electron-as-Node so the better-sqlite3 native ABI matches; the dev database is `~/Library/Application Support/Musaeum/musaeum.db` (WAL, readable while the app runs). Nothing in this slice needs the app launched. `CHANGELOG.md` and `docs/roadmap-history.md` are deliberately not updated by this series — it is typing-only, so there is nothing a user can see.
+
+N5 is 15 files, past `CLAUDE.md`'s ~10-file escalation bound, so it is delegated as N3 was: one implementer in the tree at a time; the brief carries the rules, the baseline numbers, the scope and out-of-scope lists and "do not commit"; and the parent re-runs every gate, the bang-only reconciliation and the emitted-JS diff before it commits.
