@@ -85,11 +85,12 @@ function validateReadingState(raw: UntrustedReadingState): ReadingState | null {
 function fromCatalogEntry(book: Book): Book {
   const normalized = withSortKeys(book)
   const ownedFields = parseOwnedFields(normalized.ownedFields)
+  const readStatusAt = typeof normalized.readStatusAt === 'string' ? normalized.readStatusAt : null
   const readingState = validateReadingState(normalized.readingState)
   if (readingState === null && normalized.readingState == null) {
-    return { ...normalized, ownedFields }
+    return { ...normalized, ownedFields, readStatusAt }
   }
-  return { ...normalized, readingState, ownedFields }
+  return { ...normalized, readingState, ownedFields, readStatusAt }
 }
 
 export async function readCatalogDetailed(root: string): Promise<CatalogReadState> {
@@ -256,6 +257,8 @@ export interface MetadataJson {
   } | null
   /** The per-field claim map, `{ field: ISO timestamp }`; typed `unknown` because it is validated on read (`parseOwnedFields`). */
   owned_fields?: unknown
+  /** ISO time a read status was last set, mirrored by the `books.read_status_at` column (portable-decisions D5). */
+  read_status_at?: string | null
   date_added?: string | null
   last_modified?: string | null
 }
@@ -311,7 +314,7 @@ export async function metadataJsonToBook(
     readStatus: (READ_STATUSES.has(json.read_status ?? '')
       ? json.read_status
       : 'unread') as ReadStatus,
-    readStatusAt: null, // Task 2 replaces this with the record read
+    readStatusAt: typeof json.read_status_at === 'string' ? json.read_status_at : null,
     nasPath: join('books', dirName),
     readingState: toReadingState(json.reading_state),
     ownedFields: parseOwnedFields(json.owned_fields)

@@ -627,6 +627,7 @@ export async function writeMetadataJson(
     formats: book.formats,
     rating: book.rating,
     read_status: book.readStatus,
+    read_status_at: book.readStatusAt,
     reading_state: book.readingState
       ? {
           position: book.readingState.position,

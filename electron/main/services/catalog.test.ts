@@ -620,3 +620,44 @@ describe('owned_fields on the record', () => {
     expect((await metadataJsonToBook(json, 'a', dir)).ownedFields).toEqual(book.ownedFields)
   })
 })
+
+describe('read_status_at (portable decisions D5)', () => {
+  it('reads the record member, and reads an absent one as no clock', async () => {
+    const withClock = await metadataJsonToBook(
+      { id: 'a', title: 'A', read_status: 'read', read_status_at: '2026-10-13T09:00:00.000Z' },
+      'a',
+      root
+    )
+    expect(withClock.readStatusAt).toBe('2026-10-13T09:00:00.000Z')
+
+    const without = await metadataJsonToBook(
+      { id: 'b', title: 'B', read_status: 'read' },
+      'b',
+      root
+    )
+    expect(without.readStatusAt).toBeNull()
+  })
+
+  it('reads a hand-edited non-string as no clock, never a throw', async () => {
+    const bad = { id: 'c', title: 'C', read_status_at: 42 } as unknown as MetadataJson
+    await expect(metadataJsonToBook(bad, 'c', root)).resolves.toMatchObject({ readStatusAt: null })
+  })
+
+  it('writes the clock the book carries, and round-trips it back', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'musaeum-rsa-'))
+    await writeMetadataJson(dir, {
+      ...makeBook('rt'),
+      readStatus: 'reading',
+      readStatusAt: '2026-10-13T09:00:00.000Z'
+    })
+
+    const written = JSON.parse(
+      await fs.readFile(join(dir, 'metadata.json'), 'utf8')
+    ) as MetadataJson
+    expect(written.read_status_at).toBe('2026-10-13T09:00:00.000Z')
+
+    const back = await metadataJsonToBook(written, 'rt', dir)
+    expect(back.readStatusAt).toBe('2026-10-13T09:00:00.000Z')
+    rmSync(dir, { recursive: true, force: true })
+  })
+})
