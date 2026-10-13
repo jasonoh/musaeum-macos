@@ -38,7 +38,7 @@ The five conditions most likely to bite a person using this, none of which the A
 2. **A hand-edited `metadata.json` whose `read_status_at` is a number, object or empty string.** Expect "no clock" and no crash, never a `Date.parse` on a non-string. Pinned by Task 2's validator case.
 3. **Equal instants spelled differently** (`…T10:00:00Z` vs `…T10:00:00.000Z`) on the *status* clock — the quirk slice 1 learned the hard way. Expect the incoming record's status. Pinned by Task 4's tie case.
 4. **`read_status` present but `read_status_at` absent on both sides.** Expect the incoming record (adoption is otherwise authoritative), not a retained local status. Pinned by Task 4.
-5. **A status change in the detail panel that changes nothing** (saving the row with the same status). Expect no clock movement and no record write. Pinned by Task 3's restating-patch case.
+5. **A status change in the detail panel that changes nothing** (saving the row with the same status). Expect no clock movement — that is the half this slice pins; a restating save still rewrites `metadata.json` and whole-record-upserts the catalog, which is pre-existing `library-edit.updateBook` behavior this slice does not change (the whole-branch review's finding). Pinned by Task 3's restating-patch case.
 
 ---
 
