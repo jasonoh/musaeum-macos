@@ -56,6 +56,54 @@ describe('invariant 3 — no code reads `formats` by position', () => {
 })
 
 /**
+ * Audit U1's flag, enforced: **the main window is created sandboxed.**
+ *
+ * `sandbox: false` at `electron/main/index.ts:180` passes `npm run typecheck`,
+ * `npm run lint`, `npm test` and `npm run build` alike, so without a decider the
+ * flag's whole proof is a comment. It cannot be decided by a behaviour case —
+ * `index.ts` is not importable under vitest, because importing it runs the
+ * `whenReady` microtasks that reach `services/menu.ts` and exit 1 before
+ * `createWindow()` is ever called (A25, stated in `services/theme/store.test.ts`)
+ * — so this reads the source as text, the instrument the three existing source
+ * walks already use.
+ *
+ * Two halves, because either alone has a hole. The positive half pins the flag
+ * *inside* `createWindow`'s `new BrowserWindow({ … })` options, so a
+ * restructured object that drops the member altogether reddens instead of
+ * passing vacuously. The absence half walks all of `electron/main/` for a
+ * `sandbox: false` anywhere — a new window, or a flip in a place this slice
+ * never thought to look — and reports each hit as `file:line`.
+ *
+ * The forbidden token is composed rather than spelled, so the case cannot match
+ * its own source if the walk is ever widened to `test/`.
+ */
+describe('audit U1 — the main window is created sandboxed', () => {
+  it('sets `sandbox: true` in `createWindow`, and no code turns it off', () => {
+    const root = process.cwd()
+    const source = readFileSync(join(root, 'electron/main/index.ts'), 'utf8')
+
+    // Positive half: the flag must sit inside `createWindow`'s window options.
+    const start = source.indexOf('new BrowserWindow({')
+    // A slice that silently found nothing would satisfy nothing below, loudly.
+    expect(start).toBeGreaterThan(-1)
+    const options = source.slice(start, source.indexOf('})', start))
+    expect(options).toMatch(/sandbox:\s*true/)
+
+    // Absence half: no `sandbox: false` anywhere in the main process.
+    const forbidden = new RegExp('sandbox' + '\\s*:\\s*' + 'false')
+    const offenders = sources(join(root, 'electron/main')).flatMap((path) =>
+      readFileSync(path, 'utf8')
+        .split('\n')
+        .map((text, i) => ({ text: text.trim(), at: i + 1 }))
+        // A whole-line comment that names the rule is documentation, not a flip.
+        .filter(({ text }) => !/^(\/\/|\*|\/\*)/.test(text) && forbidden.test(text))
+        .map(({ text, at }) => `${path.slice(root.length + 1)}:${at}  ${text.slice(0, 120)}`)
+    )
+    expect(offenders).toEqual([])
+  })
+})
+
+/**
  * Invariant 8, enforced in its sharpest form: **an IPC handler does no file,
  * path or process work of its own** — that is orchestration, and it belongs in
  * `electron/main/services/` where it can be tested without the IPC layer. The
