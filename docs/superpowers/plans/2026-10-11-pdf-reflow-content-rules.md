@@ -2,8 +2,8 @@
 
 **Date:** 2026-10-11
 **Slice:** 6 of `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md` (follows slice 1R's review; the spec's own table stops at 5, which is the docs-only _record_ and is written)
-**Status:** **In flight, in the working tree, uncommitted.** Code and its deciders are done and green; the corpus re-run and the record are not. Nothing below is on `main`.
-**Annex to:** `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md` — the readings here settle four items `tasks.md`'s C2 entry lists as open, and they amend **Annex C.5 items 5 and 9** and **C.4 G2 and G5**. The parent spec is the authority for every product decision; this document settles _rules_ inside them.
+**Status:** **Landed 2026-10-12 as `2c213fd` ("pdf cleanup") — one commit carrying all ten source files below, this annex, the parent spec's _Status_ paragraph and `tasks.md`'s record (13 files, +461 / −38).** The rules and their deciders are green (`pytest sidecar/tests` **408 passed**, `-k reflow` **137**; mutation campaign **8/8 killed**, every row restored), the corpus re-run is the parent spec's Annex C.7 run 3, and the doc half — the spec's Annex C.4/C.5 amendments, `tasks.md` and `CHANGELOG.md` — is this session's follow-up commit.
+**Annex to:** `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md` — the readings here settle four items `tasks.md`'s C2 entry lists as open, and they amend **Annex C.5 items 5, 6 and 9** and **C.4 G2 and G5**. The parent spec is the authority for every product decision; this document settles _rules_ inside them.
 **Read first:** `tasks.md` → C2; the spec's **Annex C** in full (C.4's gate table, C.5's numbered rules, C.7's two runs); `docs/invariants/reader.md` (_Reading in the app_); `docs/invariants/files-and-deletion.md` (_The `derived/` folder_).
 
 ---
@@ -38,7 +38,7 @@ Numbered `R` because the parent spec's decisions are `D1`–`D10` and its review
 
 ## File table
 
-Branched from `main` at `5a68e81`. All ten files are **modified in the working tree and uncommitted**.
+Branched from `main` at `5a68e81`; landed there as **`2c213fd`** ("pdf cleanup", 2026-10-12). The ten files below are the whole of the code change, plus this annex, the parent spec's _Status_ paragraph and `tasks.md` — `git show --stat 2c213fd` is the record.
 
 | File                                    | What changed                                                                                                                                                                                                                                                                                                          |
 | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -53,7 +53,7 @@ Branched from `main` at `5a68e81`. All ten files are **modified in the working t
 | `sidecar/tests/test_reflow_regions.py`  | +1 — the straddling crop (R3)                                                                                                                                                                                                                                                                                         |
 | `sidecar/tests/test_reflow_gate.py`     | +3 — `long_band` + `furniture_keys`, the ceiling, the G5 floor (R2, R4)                                                                                                                                                                                                                                               |
 
-`git diff --stat`: **10 files, +323 / −35.**
+`git diff --stat` at review time: **10 files, +323 / −35** — the landed commit `2c213fd` carries **13 files, +461 / −38**, which is those ten plus this annex, the parent spec's _Status_ paragraph and `tasks.md`.
 
 ---
 
@@ -101,14 +101,15 @@ sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --production      # ~30 min
 
 ---
 
-## What remains, in order
+## What landed, in the annex's own order
 
-1. **Run the corpus** (`--production`, ~30 min) and read it against C.7 run 2, with the G5 expectation above.
-2. **Run the JS gates** — `npm run typecheck && npm run lint && npm test`. Lint needs `--ignore-pattern '.delta'` in this clone: `.delta/worktrees/` holds another session's in-flight worktrees and `eslint.config.mjs:14` does not ignore them (6475 errors, all `No tsconfigRootDir was set`). **Do not delete `.delta/`.**
-3. **Amend the parent spec**: Annex C.5 items 5 and 9 gain R1–R3's rules in place, C.4's G2 and G5 gain R2's and R4's, and the header's _Status_ gains this annex. The spec is the authority for the rules; this annex only settles them.
-4. **Write the record into `tasks.md`** — the C2 entry's _(2)_ clause closes, and the C2 bullet gains this annex's path and the run's numbers.
-5. **`CHANGELOG.md`** — _Added_/_Fixed_ bullets a user would notice: a book's real chapter names no longer disappear from the contents panel, a licence footer no longer prints 323 times, a wrapped chapter title is no longer cut in half. **Written on landing, not now** — the work is uncommitted and the entry would claim something not yet in history.
-6. **Then the minors C2's _(5)_ still lists**, none of them touched here: the smoke poll does not cap `Retry-After` and treats a 503 busy as a FAIL; `GET …?format=reflow` calls the sidecar even for a cached artifact (`resolveReflowFile` without `ensure` is the option); the 422 branch has never been exercised live; and nothing caps passes across books against the four sidecar threads hydration and Kindle conversion share.
+1. **The corpus re-run — done 2026-10-12** (`--production`, ~12 min on this machine, exit 1), and it is the parent spec's **Annex C.7 run 3**. It is the **first *production* run** of the corpus — the mode that re-lays the source for the gate's exclusions and checks byte stability, the cache, a moved source and folder hygiene — so its numbers are a new baseline, not a fall from run 2's. **The score is `1/6`, not the `3/6` this annex predicted, and the prediction is half right.** *Modernist Cuisine*'s G5 is the one failure this slice owns — 2 entries for 355 pages against R4's floor of 8, exactly the move predicted. *Universe*'s G3 and G5 (87%) and *Politics*' G5 (68%) are run 2's numbers unchanged. *Attention*'s G2/G6 and *Sequence to Sequence*'s G1/G2/G6 were measured against the previous commit before being blamed on this slice: `layout.py`, `outline.py` and `regions.py` at `5a68e81`, run in the same spike mode, fail identically (G2 88.4% of 3,800 and G6 5.5% for *Attention*; G2 92.3% and G6 3.9% for *Sequence to Sequence*), so the difference is the helper's own reading of those pages on a later macOS than run 2 recorded, not the rules. Slice 2's bar fails in exactly one place: **Universe is not byte-stable** — the same source, laid out twice by the same code, produced different content, and this is the first run that checks that bar. **And that failure is this slice's:** the same production check with `layout.py`, `outline.py` and `regions.py` at `5a68e81` is byte-stable (content digest `ef9c4ab505e804ef` twice, same stamp, G5 221 of 255). **Pinned to the tier, module by module:** with only `layout.py` at `5a68e81` — R1, R3, R4 and R5 all still in — the same `--production` check is byte-stable (identical content digests, first pass 89.1 s, G5 223 of 255, G3's witness `alabama, pane, researchers`, unchanged from the new code's run). Combined with the rule-level measurement below, the tier both fails to remove the footer and destabilises the pass for the book it was written for.
+2. **Two of the four rules did not do their job, measured against the artifacts rather than against a synthetic case.** The furniture **tier does not remove *Universe*'s Cengage footer**: the footer repeats identically on every page of the source's text layer, while the block the pass builds for it varies page to page (welded to each page's figure credit, its two lines zipped in a varying order), so the artifact carries **244** footer paragraphs normalizing to **77** variants, the commonest on 38 of 534 text pages against the 267 the tier needs. The **folio repair decides differently for 0 of the corpus's 308 outline entries** — a live defect in the rule, not one any book in this set hit. R3 is the one with a visible effect: *Universe*'s wrapped heading `A User's Guide to the Sky` survives whole as an `h3`, where run 2 recorded it cut to `A User's`. Both negatives are in the parent spec (C.5 item 5, C.7 run 3) and in `tasks.md` → C2, as measured negatives rather than closed fixes.
+3. **The JS gates — done 2026-10-12:** `npm run typecheck` 0, `npm run lint` 0, `npm test` **2008 passed | 4 skipped** (94 files), `pytest sidecar/tests` **408 passed**, `-k reflow` **137**. The lint workaround this item used to name was **not needed**: `--ignore-pattern '.delta'` was there for another session's in-flight worktrees, which `eslint.config.mjs:14` did not ignore (6475 errors, all `No tsconfigRootDir was set`), and `.delta/worktrees/` is empty now — `eslint .` runs clean as it stands.
+4. **The parent spec's amendments — done 2026-10-12:** Annex C.5 item 5 carries R2's tiers, **item 6 carries R3** (this annex's own summary named items 5 and 9 — R3 is the crop's side of which characters a written figure owns, and item 6 is where that rule lives), item 9 carries R1, C.4's G2 and G5 carry R2's and R4's, C.7 gains run 3, and the header's _Status_ is rewritten. The spec is the authority for the rules; this annex only settled them.
+5. **The `tasks.md` record — done:** the C2 entry's _(2)_ clause closes, the bullet carries this annex's path and the run's numbers, and the `[~]` marker becomes `[x]`.
+6. **`CHANGELOG.md` — done:** the 2026-10-09 _Unreleased_ block gains three bullets under _Fixed_ — a book's real chapter names, the wrapped chapter title, and the one-off re-prepare the converter-version bump causes — and, under _Notes_, the Cengage footer as a **measured negative** rather than a fix: the rule was written for it and the corpus run shows it still there. Written on landing, which was `2c213fd`.
+7. **Then the minors C2's _(5)_ still lists**, none of them touched here: the smoke poll does not cap `Retry-After` and treats a 503 busy as a FAIL; `GET …?format=reflow` calls the sidecar even for a cached artifact (`resolveReflowFile` without `ensure` is the option); the 422 branch has never been exercised live; and nothing caps passes across books against the four sidecar threads hydration and Kindle conversion share.
 
 **Owner decisions still open, untouched by this slice** — C2's _(1)_ and _(4)_: open questions **7–9** (may G2/G6 keep excluding what only the pipeline's record knows — the same artifacts score 1/6 under `--gate-only`; is _Universe_'s G3 witness repaired in the check; what is G5's bar on a book whose outline entries have no heading) and D8's three deviations (no `version` member on the payload, a `reason` member on the 422, `API_VERSION` stays 1). Each carries a recommendation in the spec and is awaiting the owner's word.
 
@@ -117,18 +118,17 @@ sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --production      # ~30 min
 ## Start here
 
 ```bash
-cd /Users/jasonoh/Projects/musaeum-macos
-git log --oneline -3          # HEAD is 5a68e81 ("americanized"); this slice is uncommitted
-git status --short            # 10 modified files — read the annex's file table against it
-git diff --stat               # 10 files, +323 / −35
+cd /Users/oh/Projects/musaeum-macos
+git log --oneline -3          # landed as 2c213fd ("pdf cleanup"), 2026-10-12
+git show --stat 2c213fd       # 13 files, +461 / −38 — the ten below, this annex, the spec's Status, tasks.md
 sidecar/.venv/bin/python -m pytest sidecar/tests -q      # 408 passed; -k reflow is 137
 ```
 
 Then read, in this order:
 
-1. **`tasks.md` → the C2 bullet and the `[~]` entry under it** — what the feature is, what is closed, what is not, and the two owner decisions waiting.
-2. **This annex's _Readings_ and _What remains_** — the four rules that were settled, why each alternative lost, and the six steps left, in order.
-3. **The parent spec's Annex C.4 and C.7** — the gate's eight checks and run 2's per-book table, which the corpus re-run is read against.
+1. **`tasks.md` → the C2 bullet** — what the feature is, what is closed, what is not, and the two owner decisions waiting.
+2. **This annex's _Readings_ and _What landed_** — the four rules that were settled, why each alternative lost, and the seven steps with their outcomes, in order.
+3. **The parent spec's Annex C.4 and C.7** — the gate's eight checks and run 2's and run 3's per-book tables.
 4. **`sidecar/reflow/gate.py`'s `furniture_keys` and `_emit`, beside `layout.py`'s `mark_running_heads`** — the same rule implemented twice on purpose, once from the artifact's side and once from the source's, and the pair that has to agree for G2's recall to mean anything.
 
-The three commands in the block above are what the counts in this document belong to. The corpus run (~30 min) is the first thing to do, not a later step: it is the only instrument that proves AC6 and the only thing that re-takes C.7 run 2's numbers.
+The three commands in the block above are what the counts in this document belong to. The corpus run (~30 min on the annex's estimate, ~12 min measured) was the first thing done, not a later step: it is the only instrument that proves AC6's *mechanism* and the only thing that re-takes C.7 run 2's numbers — and on 2026-10-12 it also falsified two of this annex's own claims about what the rules do, which is why _What landed_ leads with the run rather than closing with it.
