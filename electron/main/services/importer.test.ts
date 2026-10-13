@@ -94,13 +94,15 @@ interface HydrationReply {
     height: number
     changed?: boolean
   } | null
+  missing_fields?: string[]
 }
 
 function reply(
   metadata: Record<string, unknown> = {},
-  cover: HydrationReply['cover'] = null
+  cover: HydrationReply['cover'] = null,
+  missing_fields: string[] = []
 ): HydrationReply {
-  return { metadata, conflicts: [], cover }
+  return { metadata, conflicts: [], cover, missing_fields }
 }
 
 const COVER = {
@@ -446,6 +448,107 @@ describe('hydrate — a field the user has overridden', () => {
     await hydrate('a', join(dir, 'Book a.epub'), dir)
 
     expect(reads).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('hydrate — absence is not silence (D6)', () => {
+  const REMOTE = { google_books: { fetched_at: '2026-10-13T09:00:00Z', match_confidence: 0.9 } }
+  let root: string
+  let dir: string
+
+  beforeEach(async () => {
+    closeDb()
+    const userData = app.getPath('userData')
+    for (const f of ['musaeum.db', 'musaeum.db-wal', 'musaeum.db-shm']) {
+      rmSync(join(userData, f), { force: true })
+    }
+    librarySync.resetForTests()
+    root = mkdtempSync(join(tmpdir(), 'musaeum-blank-'))
+    await nas.setLibraryRoot(root)
+    await writeCatalog(root, [])
+    dir = join(root, 'books/a')
+    await fs.mkdir(dir, { recursive: true })
+    insertBook(makeBook('a', 'Book a'))
+  })
+
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    await librarySync.flushForTests()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('blanks a field no source supplied when a remote source answered', async () => {
+    updateBook('a', { publisher: 'Stale House' })
+    vi.mocked(sidecar.call).mockResolvedValue(
+      reply({ title: 'Book a', metadata_sources: REMOTE }, null, ['publisher'])
+    )
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getBook('a')?.publisher).toBeNull()
+    expect(outcome).toMatchObject({ ok: true })
+    expect(outcome.ok && outcome.changed).toContain('publisher')
+  })
+
+  it('leaves the field alone when no remote source answered (D4)', async () => {
+    updateBook('a', { publisher: 'Kept House' })
+    // embedded and calibre are local sources; neither is a remote answer
+    vi.mocked(sidecar.call).mockResolvedValue(
+      reply(
+        {
+          title: 'Book a',
+          metadata_sources: {
+            embedded: { fetched_at: '2026-10-13T09:00:00Z', match_confidence: 1 }
+          }
+        },
+        null,
+        ['publisher']
+      )
+    )
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getBook('a')?.publisher).toBe('Kept House')
+    expect(outcome.ok && outcome.changed).not.toContain('publisher')
+  })
+
+  it('blanks a locked field nothing supplied (D3 as written)', async () => {
+    // The user claimed the field; nothing in the reply supplies it
+    updateBook('a', { publisher: 'User Chose This' })
+    fieldOverrides.markFromPatch('a', { publisher: 'User Chose This' }, makeBook('a', 'Book a'))
+    vi.mocked(sidecar.call).mockResolvedValue(
+      reply({ title: 'Book a', metadata_sources: REMOTE }, null, ['publisher'])
+    )
+
+    await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getBook('a')?.publisher).toBeNull()
+  })
+
+  it('blanks nothing when the sidecar omits the member', async () => {
+    updateBook('a', { publisher: 'Kept House' })
+    const noMember = reply({ title: 'Book a', metadata_sources: REMOTE })
+    delete (noMember as { missing_fields?: string[] }).missing_fields
+    vi.mocked(sidecar.call).mockResolvedValue(noMember)
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getBook('a')?.publisher).toBe('Kept House')
+    expect(outcome.ok && outcome.changed).not.toContain('publisher')
+  })
+
+  it('names what it blanked, so the blast radius is visible (spec Risk 2)', async () => {
+    updateBook('a', { publisher: 'Stale House' })
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    vi.mocked(sidecar.call).mockResolvedValue(
+      reply({ title: 'Book a', metadata_sources: REMOTE }, null, ['publisher'])
+    )
+
+    await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    const logged = info.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(logged).toContain('publisher')
+    expect(logged).toContain('Stale House')
   })
 })
 

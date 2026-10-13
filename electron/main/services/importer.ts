@@ -103,6 +103,13 @@ interface HydrationResult {
     /** Present since the feedback work; absent on a sidecar that predates it. */
     changed?: boolean
   } | null
+  /**
+   * The merge-owned fields no source supplied, from the sidecar's own candidate
+   * view. The main process blanks these unless the run had no remote answer
+   * (D4/D6). Optional: a sidecar too old to report it means "blank nothing",
+   * never "blank everything" (D7).
+   */
+  missing_fields?: string[]
 }
 
 function emit(job: ImportProgress, step: ImportStep, extra?: Partial<ImportProgress>): void {
@@ -484,6 +491,41 @@ const HYDRATION_KEY_FIELD: Partial<Record<keyof HydrationResult['metadata'], Hyd
   identifiers: 'identifiers'
 }
 
+/** Who counts as a *remote* answer — the sources D4's guard keys on. */
+const REMOTE_SOURCES = new Set(['google_books', 'openlibrary', 'goodreads'])
+
+/**
+ * Whether this run heard from a remote source at all. `metadata_sources` is
+ * written only by sources that fetched (the conflict merge stamps `fetched_at`
+ * on the online ones), so an empty or local-only map means every remote fetch
+ * failed — and a failed fetch says nothing, so it must blank nothing (D4).
+ */
+function heardFromRemoteSource(sources: HydrationResult['metadata']['metadata_sources']): boolean {
+  return !!sources && Object.keys(sources).some((name) => REMOTE_SOURCES.has(name))
+}
+
+/**
+ * A blank patch: the columns a blanked field clears. `null` is allowed even
+ * where the `Book` column is non-null (`title`) — a blank is the *absence* of a
+ * value, and that is exactly what the merge reports when no source supplies the
+ * field (D6). Typed apart from `Partial<Book>` only because `Book.title` is a
+ * non-null `string`, which `Partial<Book>` cannot hold as `null`.
+ */
+type BlankPatch = Partial<{ [K in keyof Book]: Book[K] | null }>
+
+/** What a blanked `HydratedField` clears, and to what. `cover` is absent on purpose — a cover is selected, never blanked. */
+const BLANK_FIELD: Partial<Record<HydratedField, BlankPatch>> = {
+  title: { title: null, sortTitle: null },
+  author: { author: null, authorSort: null },
+  series: { seriesName: null, seriesIndex: null, seriesTotal: null },
+  description: { description: null },
+  publisher: { publisher: null },
+  published_date: { publishedDate: null },
+  language: { language: null },
+  identifiers: { isbn10: null, isbn13: null, goodreadsId: null, openlibraryId: null },
+  tags: { tags: [] }
+}
+
 /**
  * The sidecar's reply, stripped of everything the user has overridden: their
  * keys from the merged record, their conflicts from the queue, and the cover
@@ -556,6 +598,24 @@ function applyHydration(bookId: string, result: HydrationResult): HydratedField[
     set('coverFullPath', result.cover.full)
     set('coverThumbPath', result.cover.thumb)
     if (coverChanged) changed.add('cover')
+  }
+  // D6/D7: the merge owns the fields it supplies, so a field with no candidate
+  // is written blank — but only when a remote source answered this run (D4),
+  // because a run whose fetches all failed has no opinion to blank against.
+  if (heardFromRemoteSource(result.metadata.metadata_sources)) {
+    for (const field of result.missing_fields ?? []) {
+      const blank = BLANK_FIELD[field as HydratedField]
+      if (!blank) continue
+      const previous = Object.entries(blank)
+        .filter(([key, value]) => !sameBookValue(before[key as keyof Book], value))
+        .map(([key]) => `${key}=${JSON.stringify(before[key as keyof Book])}`)
+      for (const [key, value] of Object.entries(blank)) set(key as keyof Book, value)
+      // Spec Risk 2: D6 is destructive by design, so the blast radius is named
+      // in the log — the field and what it held — not only felt as a surprise.
+      if (previous.length) {
+        console.info(`[hydrate] blanked ${field} on ${bookId}: ${previous.join(', ')}`)
+      }
+    }
   }
   db.updateBook(bookId, updates)
 
