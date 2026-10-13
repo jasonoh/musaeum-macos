@@ -93,7 +93,7 @@ describe('AC8b — the wider search is asked about this book, and only on a pres
     // file, the book dir and `known` from the row itself, so a second argument
     // here would be a value the renderer decided — and the renderer decides
     // none of those three (the rule AC5 holds the service to, from this side).
-    expect(call?.[1].trim()).toBe('book.id')
+    expect(call?.[1]!.trim()).toBe('book.id')
   })
 
   it('asks it once, from the press, and derives the group through the pure rule', () => {
@@ -134,7 +134,7 @@ describe('AC11 — an uploaded image names the book, and never a path', () => {
       /window\.Musaeum\s*\.\s*metadata\s*\.\s*chooseCoverFromFile\s*\(\s*([^)]*)\)/
     )
     expect(call).not.toBeNull()
-    expect(call?.[1].trim()).toBe('book.id')
+    expect(call?.[1]!.trim()).toBe('book.id')
 
     // One press, one call, and nothing that could open a dialog from this side
     expect(picker.match(/chooseCoverFromFile\s*\(/g)).toHaveLength(1)
@@ -256,7 +256,7 @@ describe('the picker’s entry point is a control, not decoration', () => {
     const tokenOf = (cls: string, kind: 'text' | 'bg') => {
       const found = new RegExp(`(?:^|\\s)${kind}-([a-z0-9-]+)(?:\\s|$)`).exec(resting(cls))
       expect(found, `no resting ${kind}-* token in "${cls.trim()}"`).toBeTruthy()
-      return found![1]
+      return found![1]!
     }
     const rgb = (name: string): number[] => {
       const hit = new RegExp(`--${name}:\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)`).exec(css)
@@ -268,14 +268,14 @@ describe('the picker’s entry point is a control, not decoration', () => {
       return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
     }
     const luminance = ([r, g, b]: number[]) =>
-      0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+      0.2126 * channel(r!) + 0.7152 * channel(g!) + 0.0722 * channel(b!)
     const ratio = (a: number[], b: number[]) => {
       const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
-      return (hi + 0.05) / (lo + 0.05)
+      return (hi! + 0.05) / (lo! + 0.05)
     }
 
-    const label = rgb(tokenOf(control![1], 'text'))
-    const surface = rgb(tokenOf(panel![1], 'bg'))
+    const label = rgb(tokenOf(control![1]!, 'text'))
+    const surface = rgb(tokenOf(panel![1]!, 'bg'))
     const measured = ratio(label, surface)
 
     // 4.5:1 is WCAG AA for small text, and this is 11px semibold — so it is the

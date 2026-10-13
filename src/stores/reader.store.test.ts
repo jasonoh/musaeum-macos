@@ -214,7 +214,7 @@ describe('the ask stream', () => {
 
     get().aiDone({ requestId: 'q1', reason: 'stop' })
     expect(get().askSession.phase).toBe('idle')
-    expect(get().askSession.turns[1].streaming).toBeUndefined()
+    expect(get().askSession.turns[1]!.streaming).toBeUndefined()
   })
 
   it('reports a failed question as an error rather than a silent stop', () => {

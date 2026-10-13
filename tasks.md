@@ -12,10 +12,9 @@ The working backlog: what is open, what it is blocked on, and where its design l
 
 ### Audit remediation — the 2026-09-24 whole-codebase audit
 
-Plan: `docs/superpowers/plans/2026-09-24-audit-remediation.md`; its Progress table is current, and each landed task is one commit whose subject begins `audit(T<n>)` or `audit(N<n>)`. **Done:** T1–T13, U2 (Electron 37 → 44.4.5, `@electron/rebuild` 4.2, better-sqlite3 13, Node floor 22.12, packaged DMG re-checked on an isolated profile), U3, and N1–N4 with the `tsconfig.node.json` flip. **Open:**
+Plan: `docs/superpowers/plans/2026-09-24-audit-remediation.md`; its Progress table is current, and each landed task is one commit whose subject begins `audit(T<n>)` or `audit(N<n>)`. **Done:** T1–T13, U2 (Electron 37 → 44.4.5, `@electron/rebuild` 4.2, better-sqlite3 13, Node floor 22.12, packaged DMG re-checked on an isolated profile), U3, and N1–N5 with both `noUncheckedIndexedAccess` flips (`tsconfig.node.json` in N3, `tsconfig.web.json` in N5 — 67 → 0 across its 15 renderer test files, which closes the series; the plan's Progress table carries each slice's own file and instance counts). **Open:**
 
 - [ ] **U1 — `sandbox: true` on the main window.** Marked **USER**: it needs an in-app check, so it is not to be done unattended.
-- [ ] **N5 — the last `noUncheckedIndexedAccess` slice, and the one that closes the series**: renderer tests plus the `tsconfig.web.json` flip, re-measured at `9a2a420` as **15 files / 67** (written 9/38), needing N4 — which has landed. The three before it are done: **N1** (`d4d3ef6`, 74 → 0 across its 7 files), **N2** (`a11057f`, 27 → 0 across 9), **N4** (`4829484`, 14 → 0 across 8) and **N3** (`9a2a420`, 91 → 0 across 18, which turned the flag ON in `tsconfig.node.json` — `npm run build` exits 0). So the node project is at zero with the flag written into the file, and this project's `src/` without tests is at zero under it. Every figure in the plan's own N-series table has drifted at least once; re-measure rather than copy it. Start block, the fifteen-file list and the instruments: the plan's `### N5 starts here`.
 - T3's CI workflow is **unproven until the first push**.
 
 ## Phase 1.5 — polish before real-library use

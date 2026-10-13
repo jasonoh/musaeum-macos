@@ -95,7 +95,7 @@ describe('AI_PROVIDERS', () => {
       'llamacpp'
     ])
     // And Custom is last, so it reads as the escape hatch rather than a peer
-    expect(AI_PROVIDERS[AI_PROVIDERS.length - 1].id).toBe(CUSTOM_PROVIDER_ID)
+    expect(AI_PROVIDERS[AI_PROVIDERS.length - 1]!.id).toBe(CUSTOM_PROVIDER_ID)
   })
 
   it('does not ship Anthropic, deliberately', () => {

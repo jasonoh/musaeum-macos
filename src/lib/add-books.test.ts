@@ -67,7 +67,7 @@ describe('importBooksFromDialog — what the picker hands back', () => {
   it('reports a failed picker on the toast surface, not in the console', async () => {
     stubImport({ fromDialog: async () => Promise.reject(new Error('Library is offline')) })
     await importBooksFromDialog()
-    expect(vi.mocked(notifyError).mock.calls[0][0]).toBeInstanceOf(Error)
+    expect(vi.mocked(notifyError).mock.calls[0]![0]).toBeInstanceOf(Error)
   })
 
   it('reports a failed import the same way', async () => {

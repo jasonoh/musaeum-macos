@@ -37,7 +37,7 @@ function ask(overrides: Partial<AskContext> = {}) {
   })
 }
 
-const userTurn = (assembled: ReturnType<typeof ask>) => assembled.messages[1].content
+const userTurn = (assembled: ReturnType<typeof ask>) => assembled.messages[1]!.content
 
 describe('the payload rungs (AC13, AC14)', () => {
   it('at the pointer rung carries none of the section text', () => {
@@ -328,7 +328,7 @@ describe('the assembled request (D9)', () => {
 
     expect(assembled.messages).toHaveLength(2)
     expect(assembled.messages[0]).toEqual({ role: 'system', content: assembled.system })
-    expect(assembled.messages[1].role).toBe('user')
+    expect(assembled.messages[1]!.role).toBe('user')
   })
 
   it('refuses an ask with no question rather than posting a pointer-only request', () => {

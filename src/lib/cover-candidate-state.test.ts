@@ -119,8 +119,8 @@ describe('candidateMark', () => {
   it('says nothing about a candidate that is neither', () => {
     const { tiles } = candidateTiles([embedded, candidate({ winner: true })])
 
-    expect(tiles[0].label).toBe('')
-    expect(tiles[1].label).toBe('A fetch would write this')
+    expect(tiles[0]!.label).toBe('')
+    expect(tiles[1]!.label).toBe('A fetch would write this')
   })
 })
 
@@ -178,9 +178,9 @@ describe('candidateTiles', () => {
     const { tiles } = candidateTiles([candidate({ winner: true }), embedded])
 
     expect(tiles.map((t) => t.candidate.source)).toEqual(['openlibrary', 'embedded'])
-    expect(tiles[0].candidate.thumb).toBe('data:image/jpeg;base64,AAAA')
+    expect(tiles[0]!.candidate.thumb).toBe('data:image/jpeg;base64,AAAA')
     // …and the file's own candidate still has no url, in the payload as here
-    expect('url' in tiles[1].candidate).toBe(false)
+    expect('url' in tiles[1]!.candidate).toBe(false)
   })
 
   it('gives an empty payload its own sentence rather than the none-is-yours one', () => {
@@ -229,7 +229,7 @@ describe('searchedTiles', () => {
     expect(tiles.map((t) => t.candidate.source)).toEqual(['google_books', 'google_books'])
     // The thumb is the renderer's only legal way to show a hit (the CSP names no
     // remote origin), so it crosses this derivation untouched
-    expect(tiles[0].candidate.thumb).toBe('data:image/jpeg;base64,AAAA')
+    expect(tiles[0]!.candidate.thumb).toBe('data:image/jpeg;base64,AAAA')
   })
 
   it('never offers the fetched mark, and says the searched sentence instead', () => {
@@ -258,8 +258,8 @@ describe('searchedTiles', () => {
     const { tiles, notice } = searchedTiles([searchHit({ applied: true }), secondHit])
 
     expect(tiles.map((t) => t.mark)).toEqual(['applied', 'neither'])
-    expect(tiles[0].label).toBe(TILE_LABELS.applied)
-    expect(tiles[1].label).toBe('')
+    expect(tiles[0]!.label).toBe(TILE_LABELS.applied)
+    expect(tiles[1]!.label).toBe('')
     expect(notice).toBeNull()
   })
 })

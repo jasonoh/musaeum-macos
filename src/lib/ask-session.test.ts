@@ -52,7 +52,7 @@ describe('reduceAsk — the transcript', () => {
     let session = asking()
     for (const delta of ['She is ', 'a girl ', 'in the book.'])
       session = reduceAsk(session, { type: 'chunk', requestId: 'q1', delta })
-    expect(session.turns[1].text).toBe('She is a girl in the book.')
+    expect(session.turns[1]!.text).toBe('She is a girl in the book.')
   })
 
   it('ignores a chunk for another request — by identity, not by value', () => {
@@ -100,7 +100,7 @@ describe('reduceAsk — the transcript', () => {
     let session = reduceAsk(asking(), { type: 'chunk', requestId: 'q1', delta: 'It was the' })
     session = reduceAsk(session, { type: 'settle', requestId: 'q1', reason: 'length' })
     expect(session.notice).toBe(TRUNCATED_NOTICE)
-    expect(session.turns[1].text).toBe('It was the')
+    expect(session.turns[1]!.text).toBe('It was the')
   })
 
   it('treats a timeout as an error, keeping what arrived', () => {

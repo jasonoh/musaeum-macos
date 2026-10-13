@@ -103,7 +103,7 @@ describe('invalidate (AC16, AC23)', () => {
     // A `shelves:changed` has landed: the cache is dropped and the consumer
     // re-asks on the new revision
     useShelvesStore.getState().invalidate()
-    answers[0]([SCIFI])
+    answers[0]!([SCIFI])
     await inFlight
     // Committing it now would put a pre-change membership back under the key and
     // leave it there — the consumer that re-asked has no reason to ask again

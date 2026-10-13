@@ -194,7 +194,7 @@ describe('planAnnotations (AC14, AC16, R12/R13)', () => {
   it('names the draw as a highlight (AC16)', async () => {
     const plan = await planAnnotations([ann()], '#d4a24e', stubSource())
     expect(plan.rows).toHaveLength(1)
-    expect(plan.rows[0].kind).toBe('highlight')
+    expect(plan.rows[0]!.kind).toBe('highlight')
     expect(plan.rows[0]).toMatchObject({ id: 'a1', cfi: ann().cfi, color: '#d4a24e' })
     // …and the vocabulary is the plan's alone: the search path's own draw is an
     // `outline` the engine applies inside `search()`, never through this plan.
@@ -208,8 +208,8 @@ describe('planAnnotations (AC14, AC16, R12/R13)', () => {
     const a = await planAnnotations([ann()], '#d4a24e', stubSource())
     const b = await planAnnotations([ann()], '#cb4b16', stubSource())
 
-    expect(a.rows[0].color).toBe('#d4a24e')
-    expect(b.rows[0].color).toBe('#cb4b16')
+    expect(a.rows[0]!.color).toBe('#d4a24e')
+    expect(b.rows[0]!.color).toBe('#cb4b16')
     expect(a.rows).not.toEqual(b.rows)
   })
 
@@ -255,8 +255,8 @@ describe('annotationGroups (R17)', () => {
     ])
 
     expect(groups.map((group) => group.label)).toEqual(['Chapter 1', 'Chapter 2'])
-    expect(groups[0].items.map((item) => item.id)).toEqual(['a', 'c'])
-    expect(groups[1].items.map((item) => item.id)).toEqual(['b'])
+    expect(groups[0]!.items.map((item) => item.id)).toEqual(['a', 'c'])
+    expect(groups[1]!.items.map((item) => item.id)).toEqual(['b'])
   })
 
   it('names an unlabelled section by its place, the rule the find panel uses', () => {

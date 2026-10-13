@@ -220,12 +220,12 @@ describe('a read that is overtaken', () => {
     const second = useLibraryStore.getState().load()
 
     // the newer read answers first …
-    resolvers[1]([book('b1')])
+    resolvers[1]!([book('b1')])
     await second
     expect(ids()).toEqual(['b1'])
 
     // … and the older one lands afterwards, which must change nothing
-    resolvers[0]([book('a1')])
+    resolvers[0]!([book('a1')])
     await first
     expect(ids()).toEqual(['b1'])
     // The overtaken read is not allowed to clear the winner's loading flag either
@@ -235,7 +235,7 @@ describe('a read that is overtaken', () => {
   it('still commits a read nothing overtook', async () => {
     const resolvers = stubDeferredLibrary()
     const load = useLibraryStore.getState().load()
-    resolvers[0]([book('only')])
+    resolvers[0]!([book('only')])
     await load
     expect(ids()).toEqual(['only'])
   })

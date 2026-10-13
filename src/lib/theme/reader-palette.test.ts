@@ -39,7 +39,7 @@ function rootVars(): Record<string, string> {
   const block = css.match(/:root\s*\{([\s\S]*?)\}/)
   if (!block) throw new Error('src/index.css has no :root block')
   const vars: Record<string, string> = {}
-  for (const m of block[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]] = m[2].trim()
+  for (const m of block[1]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]!] = m[2]!.trim()
   return vars
 }
 
@@ -56,7 +56,7 @@ function hexFromChannels(channels: string): string {
 
 /** `:root`, as a token set — so the default is not restated here as literals. */
 function tokensFromRoot(vars: Record<string, string>): ThemeTokens {
-  const inkAt = (step: string): string => hexFromChannels(vars[`--ink-${step}`])
+  const inkAt = (step: string): string => hexFromChannels(vars[`--ink-${step}`]!)
   return {
     ink: {
       '950': inkAt('950'),
@@ -68,18 +68,18 @@ function tokensFromRoot(vars: Record<string, string>): ThemeTokens {
       '500': inkAt('500')
     },
     parchment: {
-      parchment: hexFromChannels(vars['--parchment']),
-      parchment_dim: hexFromChannels(vars['--parchment-dim']),
-      parchment_faint: hexFromChannels(vars['--parchment-faint'])
+      parchment: hexFromChannels(vars['--parchment']!),
+      parchment_dim: hexFromChannels(vars['--parchment-dim']!),
+      parchment_faint: hexFromChannels(vars['--parchment-faint']!)
     },
     gold: {
-      '300': hexFromChannels(vars['--gold-300']),
-      '400': hexFromChannels(vars['--gold-400']),
-      '500': hexFromChannels(vars['--gold-500']),
-      '600': hexFromChannels(vars['--gold-600'])
+      '300': hexFromChannels(vars['--gold-300']!),
+      '400': hexFromChannels(vars['--gold-400']!),
+      '500': hexFromChannels(vars['--gold-500']!),
+      '600': hexFromChannels(vars['--gold-600']!)
     },
-    on_acc: hexFromChannels(vars['--on-accent']),
-    scrim: hexFromChannels(vars['--scrim']),
+    on_acc: hexFromChannels(vars['--on-accent']!),
+    scrim: hexFromChannels(vars['--scrim']!),
     // The engine's strength for a dark canvas — the bridge `css.ts` scales the
     // three authored alphas with (A24), not one of the alphas themselves.
     shadow: 0.55,

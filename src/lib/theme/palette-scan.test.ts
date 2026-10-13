@@ -100,8 +100,8 @@ function sourceFiles(): string[] {
       else if (SCANNED.some((ext) => entry.name.endsWith(ext))) found.push(child)
     }
   }
-  visit(ROOTS[0])
-  found.push(ROOTS[1])
+  visit(ROOTS[0]!)
+  found.push(ROOTS[1]!)
   return found
 }
 

@@ -21,7 +21,7 @@ function rootVars(): Record<string, string> {
   const block = css.match(/:root\s*\{([\s\S]*?)\}/)
   if (!block) throw new Error('src/index.css has no :root block')
   const vars: Record<string, string> = {}
-  for (const m of block[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]] = m[2].trim()
+  for (const m of block[1]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]!] = m[2]!.trim()
   return vars
 }
 
@@ -32,9 +32,9 @@ function rootVars(): Record<string, string> {
 function rootColorScheme(): string {
   const css = readFileSync(ROOT_CSS, 'utf8')
   const block = css.match(/:root\s*\{([\s\S]*?)\}/)
-  const scheme = block?.[1].match(/color-scheme\s*:\s*([a-z]+)\s*;/)
+  const scheme = block?.[1]!.match(/color-scheme\s*:\s*([a-z]+)\s*;/)
   if (!scheme) throw new Error(':root declares no color-scheme')
-  return scheme[1]
+  return scheme[1]!
 }
 
 /** '13 11 9' → '#0d0b09', the inverse of `hexToChannels`. */
@@ -50,7 +50,7 @@ function hexFromChannels(channels: string): string {
 
 /** `:root`, as a token set — so nothing here re-states the palette as a literal. */
 function tokensFromRoot(vars: Record<string, string>): ThemeTokens {
-  const inkAt = (step: string): string => hexFromChannels(vars[`--ink-${step}`])
+  const inkAt = (step: string): string => hexFromChannels(vars[`--ink-${step}`]!)
   return {
     ink: {
       '950': inkAt('950'),
@@ -62,18 +62,18 @@ function tokensFromRoot(vars: Record<string, string>): ThemeTokens {
       '500': inkAt('500')
     },
     parchment: {
-      parchment: hexFromChannels(vars['--parchment']),
-      parchment_dim: hexFromChannels(vars['--parchment-dim']),
-      parchment_faint: hexFromChannels(vars['--parchment-faint'])
+      parchment: hexFromChannels(vars['--parchment']!),
+      parchment_dim: hexFromChannels(vars['--parchment-dim']!),
+      parchment_faint: hexFromChannels(vars['--parchment-faint']!)
     },
     gold: {
-      '300': hexFromChannels(vars['--gold-300']),
-      '400': hexFromChannels(vars['--gold-400']),
-      '500': hexFromChannels(vars['--gold-500']),
-      '600': hexFromChannels(vars['--gold-600'])
+      '300': hexFromChannels(vars['--gold-300']!),
+      '400': hexFromChannels(vars['--gold-400']!),
+      '500': hexFromChannels(vars['--gold-500']!),
+      '600': hexFromChannels(vars['--gold-600']!)
     },
-    on_acc: hexFromChannels(vars['--on-accent']),
-    scrim: hexFromChannels(vars['--scrim']),
+    on_acc: hexFromChannels(vars['--on-accent']!),
+    scrim: hexFromChannels(vars['--scrim']!),
     shadow: 0.55,
     dark: true
   }

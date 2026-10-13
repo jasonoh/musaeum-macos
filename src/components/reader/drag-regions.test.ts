@@ -102,7 +102,7 @@ describe('the selection chip against the window’s drag regions', () => {
   it('marks the chip as no-drag, so a rect in the top band is still clickable', () => {
     expect(CHIP).toContain('<button')
     const [, ...rest] = CHIP.split('<button')
-    const tag = rest[0].slice(0, rest[0].indexOf('>'))
+    const tag = rest[0]!.slice(0, rest[0]!.indexOf('>'))
     // The chip's own class list, not the whole tag: the assertion is about the
     // attribute a click actually reads, and `toContain` over the tag would pass
     // for a marker on the wrong element.

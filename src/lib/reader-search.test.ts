@@ -62,7 +62,7 @@ function gated(yields: SearchYield[]) {
   })
   const source: SearchSource = {
     async *search() {
-      yield yields[0]
+      yield yields[0]!
       await gate
       for (const value of yields.slice(1)) yield value
     }
