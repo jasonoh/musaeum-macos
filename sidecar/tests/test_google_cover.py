@@ -1,13 +1,16 @@
 """The jacket Google holds, and the tile it answers with when it holds none.
 
-Two things changed in `fetchers/google_books.py` and each has its own decider.
+Three things changed in `fetchers/google_books.py` and each has its own decider.
 The fetcher now asks for the **biggest** rendition rather than the biggest one
 *advertised*: measured 2026-09-21, 11 of 11 sampled volumes advertised only
 `thumbnail`/`smallThumbnail` (~128 px) and the same volumes answered a `zoom=0`
 request with 575x750 … 2164x3398. And it refuses to hand back Google's
 "image not available" tile, which is **byte-identical across unrelated volumes**
 and large enough to win a cover contest against most embedded covers — the trap
-that makes a naive `zoom=1 → zoom=0` rewrite a regression rather than a fix.
+that makes a naive `zoom=1 → zoom=0` rewrite a regression rather than a fix. And
+an ISBN match whose volume carries no `title` is rejected rather than returned as
+a full record with `title: None`, which hydration would read as a remote source
+having answered while it supplied nothing.
 
 Numbers, provenance and the census that re-measures the tile live in
 `docs/superpowers/specs/2026-09-21-cover-choice-design.md`. Every case here is

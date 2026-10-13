@@ -49,6 +49,15 @@ def fetch_openlibrary(
     if confidence < 0.55:
         return None
 
+    # A doc with no title is not an answer. On the ISBN path the confidence above
+    # is forced to 0.95, so it never meets the 0.55 floor that already rejects a
+    # title-less match on the title path — without this, a doc that carries no
+    # title comes back as a full record with `title: None`, which hydration reads
+    # as a remote source having answered while it supplied nothing. A match that
+    # carries no title does not deserve that confidence.
+    if not best.get("title"):
+        return None
+
     identifiers = {}
     for isbn in best.get("isbn", []):
         if len(isbn) == 13 and "isbn_13" not in identifiers:

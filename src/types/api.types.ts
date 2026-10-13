@@ -117,7 +117,9 @@ export interface MusaeumAPI {
      */
     searchBooks(query: string, sort?: BookSort, scope?: ShelfScope): Promise<Book[]>
     updateBook(id: string, updates: Partial<Book>): Promise<void>
-    /** Fields the user has set, which a metadata fetch must not touch. */
+    /** Fields the user has set, which a metadata fetch must not replace (a lock
+     * stops a fetch replacing a value, it does not exempt the field from the
+     * absence rule, so a field no source supplies is still blanked). */
     getFieldOverrides(id: string): Promise<HydratedField[]>
     /** Hand one field back to Musaeum. The value is untouched. */
     releaseFieldOverride(id: string, field: HydratedField): Promise<HydratedField[]>

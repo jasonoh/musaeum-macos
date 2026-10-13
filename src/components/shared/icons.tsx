@@ -42,9 +42,11 @@ export const SearchIcon = ({ className }: IconProps) => (
 )
 
 /**
- * A field the user has set, which a metadata fetch will not touch. A padlock
- * rather than a tick or a dot: the state is "held", and the click beside it
- * hands it back rather than clearing the value.
+ * A field the user has set, which a metadata fetch will not replace — a lock
+ * stops a fetch replacing a value, it does not exempt the field from the absence
+ * rule, so a field no source supplies is still blanked. A padlock rather than a
+ * tick or a dot: the state is "held", and the click beside it hands it back
+ * rather than clearing the value.
  */
 export const LockIcon = ({ className }: IconProps) => (
   <svg {...base(className)}>

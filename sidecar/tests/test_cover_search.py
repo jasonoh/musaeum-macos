@@ -731,6 +731,23 @@ def test_known_isbns_is_empty_when_there_is_nothing_to_ask_or_nothing_to_read(mo
     assert openlibrary.known_isbns(isbn_13="9780262345064") == []
 
 
+# --- an ISBN answer must carry a title -------------------------------------
+
+
+def test_an_isbn_answer_with_no_title_is_not_an_answer(monkeypatch):
+    """`fetch_openlibrary`'s twin of the Google guard (the same bug in the sibling
+    fetcher). The ISBN path forces confidence to 0.95, so it never meets the 0.55
+    floor the title path relies on to reject a match against `""`. A doc that
+    carries no title would otherwise come back as a full record with `title: None`
+    — an online answer in shape only, which hydration reads as a remote source
+    having replied (D4) while it supplied nothing. It must return `None`. The
+    stub's doc carries only `isbn`, so it is exactly that shape."""
+    seen: list = []
+    _openlibrary(monkeypatch, ["9780262345064"], seen)
+
+    assert openlibrary.fetch_openlibrary(isbn_13="9780262345064") is None
+
+
 # --- the query string, end to end through the pipeline --------------------
 
 

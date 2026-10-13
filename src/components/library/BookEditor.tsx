@@ -21,7 +21,9 @@ import { EMPTY_FORM, editsSince, toForm, type FormState } from '@/lib/book-form'
  * Sort keys left blank fall back to the derived form (shown as placeholder).
  *
  * A field the user changed here is *theirs* from then on: it is recorded as an
- * override and a metadata fetch will not touch it. This panel is therefore also
+ * override and a metadata fetch will not replace it — a lock stops a fetch
+ * proposing a value, it does not exempt the field from the absence rule, so a
+ * field no source supplies is still blanked. This panel is therefore also
  * where that is undone — the padlock beside a held field hands it back without
  * changing its value (see `docs/superpowers/specs/2026-09-20-field-overrides-design.md`).
  */
@@ -43,7 +45,7 @@ export function BookEditor() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   /**
-   * The fields this book's fetches must not touch. Read when the panel opens
+   * The fields this book's fetches must not replace. Read when the panel opens
    * for a book — it is mounted under a per-book key, so each book re-reads its
    * own — and replaced wholesale by a release, which is the only thing that
    * changes it from here.
