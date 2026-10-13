@@ -12,9 +12,9 @@ The working backlog: what is open, what it is blocked on, and where its design l
 
 ### Audit remediation — the 2026-09-24 whole-codebase audit
 
-Plan: `docs/superpowers/plans/2026-09-24-audit-remediation.md`; its Progress table is current, and each landed task is one commit whose subject begins `audit(T<n>)` or `audit(N<n>)`. **Done:** T1–T13, U2 (Electron 37 → 44.4.5, `@electron/rebuild` 4.2, better-sqlite3 13, Node floor 22.12, packaged DMG re-checked on an isolated profile), U3, and N1–N5 with both `noUncheckedIndexedAccess` flips (`tsconfig.node.json` in N3, `tsconfig.web.json` in N5 — 67 → 0 across its 15 renderer test files, which closes the series; the plan's Progress table carries each slice's own file and instance counts). **Open:**
+Plan: `docs/superpowers/plans/2026-09-24-audit-remediation.md`; its Progress table is current, and each landed task is one commit whose subject begins `audit(T<n>)` or `audit(N<n>)`. **Done:** T1–T13, U2 (Electron 37 → 44.4.5, `@electron/rebuild` 4.2, better-sqlite3 13, Node floor 22.12, packaged DMG re-checked on an isolated profile), U3, and N1–N5 with both `noUncheckedIndexedAccess` flips (`tsconfig.node.json` in N3, `tsconfig.web.json` in N5 — 67 → 0 across its 15 renderer test files, which closes the series; the plan's Progress table carries each slice's own file and instance counts). **Open:** none — U1, the last row, closed 2026-10-13.
 
-- [ ] **U1 — `sandbox: true` on the main window.** Marked **USER**: it needs an in-app check, so it is not to be done unattended.
+- [x] **U1 — `sandbox: true` on the main window.** Landed 2026-10-13 (audit plan row U1, commit `adc7302`): flipped at `electron/main/index.ts:167` and checked live on an isolated profile — a real-file drop through `getPathForFile`, the reader, Settings and a device send all work while the renderer's argv carries `--enable-sandbox`. No test pins the flag (`createWindow` has no harness), so the comment at `:167` and the plan row are the record. **T3's residue is discharged in the same push** — `ci.yml` now runs `npm run build` (step 8 of run `38444671236`).
 
 ## Phase 1.5 — polish before real-library use
 
