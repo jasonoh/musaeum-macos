@@ -26,8 +26,11 @@ function listen(listener: (event: ChannelKey, payload?: unknown) => void): () =>
 }
 
 /** Just enough of a `BrowserWindow` for `broadcast` to reach `webContents.send`. */
-function fakeWindow(send: (channel: string, payload?: unknown) => void): BrowserWindow {
-  return { isDestroyed: () => false, webContents: { send } } as unknown as BrowserWindow
+function fakeWindow(
+  send: (channel: string, payload?: unknown) => void,
+  destroyed = false
+): BrowserWindow {
+  return { isDestroyed: () => destroyed, webContents: { send } } as unknown as BrowserWindow
 }
 
 afterEach(() => {
@@ -113,5 +116,19 @@ describe('events', () => {
 
     expect(send).toHaveBeenCalledWith(EVENT_CHANNELS.themeChanged, 'payload')
     expect(listener).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not push to a window that has been destroyed', () => {
+    const send = vi.fn()
+    const listener = vi.fn()
+    events.setMainWindow(fakeWindow(send, true))
+    listen(listener)
+
+    events.broadcast('themeChanged', 'payload')
+
+    expect(send).not.toHaveBeenCalled()
+    // The guard drops the *window*, not main's own listeners: a destroyed window
+    // is the state every quit passes through, and these still have to run.
+    expect(listener).toHaveBeenCalledTimes(1)
   })
 })
