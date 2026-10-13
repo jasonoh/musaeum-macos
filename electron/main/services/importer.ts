@@ -287,6 +287,7 @@ async function importOne(filePath: string, options: ImportOptions = {}): Promise
       lastModified: now,
       fileSizeBytes: stat.size,
       readStatus: 'unread',
+      readStatusAt: null,
       nasPath: join('books', bookId),
       readingState: null,
       ownedFields: {}

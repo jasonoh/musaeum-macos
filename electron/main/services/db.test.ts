@@ -1,7 +1,9 @@
 import { rmSync } from 'fs'
 import { join } from 'path'
+import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { beforeEach, describe, expect, it } from 'vitest'
+import migration008 from '../schema/migrations/008_read_status_at.sql?raw'
 import { makeBook } from '../../../test/helpers/book'
 import {
   closeDb,
@@ -126,9 +128,9 @@ describe('searchBooks ordering', () => {
 
   it('returns all matches regardless of direction', () => {
     seedMatches()
-    expect(searchBooks('Voyage', { field: 'title', direction: 'desc' }).map((b) => b.title)).toEqual(
-      ['Voyage Charlie', 'Voyage Bravo', 'Voyage Alpha']
-    )
+    expect(
+      searchBooks('Voyage', { field: 'title', direction: 'desc' }).map((b) => b.title)
+    ).toEqual(['Voyage Charlie', 'Voyage Bravo', 'Voyage Alpha'])
   })
 
   it('sorts the whole library when the query is only punctuation', () => {
@@ -235,7 +237,11 @@ describe('replaceAllBooks', () => {
 describe('reading state', () => {
   it('round-trips through insert and read', () => {
     const book = makeBook('rs-1')
-    book.readingState = { position: 'epubcfi(/6/4!/2/10)', percent: 0.42, updatedAt: '2026-08-13T10:00:00Z' }
+    book.readingState = {
+      position: 'epubcfi(/6/4!/2/10)',
+      percent: 0.42,
+      updatedAt: '2026-08-13T10:00:00Z'
+    }
     insertBook(book)
 
     expect(getBook('rs-1')?.readingState).toEqual({
@@ -324,5 +330,34 @@ describe('owned_fields', () => {
     insertBook(makeBook('a'))
     getDb().prepare('UPDATE books SET owned_fields = ? WHERE id = ?').run('{not json', 'a')
     expect(getBook('a')?.ownedFields).toEqual({})
+  })
+})
+
+describe('read status clock', () => {
+  it('round-trips readStatusAt through the row', () => {
+    insertBook({ ...makeBook('clock'), readStatusAt: '2026-10-13T09:00:00.000Z' })
+    expect(getBook('clock')?.readStatusAt).toBe('2026-10-13T09:00:00.000Z')
+  })
+})
+
+describe('migration 008 — the read-status clock', () => {
+  it('adds the column and seeds it from the old shared clock', () => {
+    const d = new Database(':memory:')
+    d.exec('CREATE TABLE books (id TEXT PRIMARY KEY, reading_updated_at TEXT)')
+    d.prepare('INSERT INTO books (id, reading_updated_at) VALUES (?, ?)').run(
+      'opened',
+      '2026-08-13T10:00:00Z'
+    )
+    d.prepare('INSERT INTO books (id, reading_updated_at) VALUES (?, ?)').run('never', null)
+
+    d.exec(migration008)
+
+    expect(d.prepare('SELECT read_status_at FROM books WHERE id = ?').get('opened')).toEqual({
+      read_status_at: '2026-08-13T10:00:00Z'
+    })
+    expect(d.prepare('SELECT read_status_at FROM books WHERE id = ?').get('never')).toEqual({
+      read_status_at: null
+    })
+    d.close()
   })
 })

@@ -54,6 +54,7 @@ function rewindTo005(): void {
       PRIMARY KEY (book_id, collection_id)
     );
     ALTER TABLE books DROP COLUMN owned_fields;
+    ALTER TABLE books DROP COLUMN read_status_at;
   `)
   d.pragma('user_version = 5')
 }
@@ -75,16 +76,16 @@ describe('migration 006 (bookshelves D2)', () => {
     closeDb()
 
     const d = getDb()
-    expect(d.pragma('user_version', { simple: true })).toBe(7)
+    expect(d.pragma('user_version', { simple: true })).toBe(8)
     const names = schemaNames(d)
     expect(names).toEqual(
       expect.arrayContaining(['shelves', 'shelf_books', 'idx_shelf_books_book'])
     )
     expect(names).not.toContain('collections')
     expect(names).not.toContain('book_collections')
-    // 007 runs after 006 on this path and adds the one column, empty
+    // 007 and 008 run after 006 on this path and add their columns, empty
     expect(d.prepare('SELECT * FROM books ORDER BY id').all()).toEqual(
-      before.map((row) => ({ ...(row as object), owned_fields: null }))
+      before.map((row) => ({ ...(row as object), owned_fields: null, read_status_at: null }))
     )
   })
 

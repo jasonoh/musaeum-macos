@@ -174,6 +174,8 @@ export interface Book {
   lastModified: string | null
   fileSizeBytes: number | null
   readStatus: ReadStatus
+  /** ISO time the user (or the reader's automatic advance) last set `readStatus`. `null` = no clock recorded; travels in metadata.json (`read_status_at`). */
+  readStatusAt: string | null
   nasPath: string | null
   readingState: ReadingState | null
   /** { field: ISO time the user claimed it }. Travels in metadata.json (`owned_fields`). */

@@ -311,6 +311,7 @@ export async function metadataJsonToBook(
     readStatus: (READ_STATUSES.has(json.read_status ?? '')
       ? json.read_status
       : 'unread') as ReadStatus,
+    readStatusAt: null, // Task 2 replaces this with the record read
     nasPath: join('books', dirName),
     readingState: toReadingState(json.reading_state),
     ownedFields: parseOwnedFields(json.owned_fields)

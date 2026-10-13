@@ -323,6 +323,7 @@ function insertMigratedBooks(records: MigratedBookRecord[]): void {
         lastModified: now,
         fileSizeBytes: r.file_size_bytes ?? null,
         readStatus: (r.read_status ?? 'unread') as ReadStatus,
+        readStatusAt: null,
         nasPath: join('books', r.id),
         readingState: null,
         ownedFields: {}

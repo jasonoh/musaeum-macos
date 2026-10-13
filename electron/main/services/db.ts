@@ -21,6 +21,7 @@ import migration004 from '../schema/migrations/004_device_file_identity.sql?raw'
 import migration005 from '../schema/migrations/005_device_history_outlives_book.sql?raw'
 import migration006 from '../schema/migrations/006_shelves.sql?raw'
 import migration007 from '../schema/migrations/007_owned_fields.sql?raw'
+import migration008 from '../schema/migrations/008_read_status_at.sql?raw'
 import { parseOwnedFields } from './owned-fields'
 
 const MIGRATIONS: string[] = [
@@ -30,7 +31,8 @@ const MIGRATIONS: string[] = [
   migration004,
   migration005,
   migration006,
-  migration007
+  migration007,
+  migration008
 ]
 
 let db: Database.Database | null = null
@@ -183,6 +185,7 @@ interface BookRow {
   reading_percent: number | null
   reading_updated_at: string | null
   owned_fields: string | null
+  read_status_at: string | null
 }
 
 function rowToBook(r: BookRow): Book {
@@ -212,6 +215,7 @@ function rowToBook(r: BookRow): Book {
     lastModified: r.last_modified,
     fileSizeBytes: r.file_size_bytes,
     readStatus: (r.read_status ?? READ_STATUS_FALLBACK) as ReadStatus,
+    readStatusAt: r.read_status_at,
     nasPath: r.nas_path,
     // `updated_at` is the presence marker: a row with no timestamp has never
     // been opened, and reporting `percent: 0` would render as 0% progress
@@ -603,8 +607,8 @@ export function insertBook(book: Book): void {
         series_name, series_index, series_total, cover_thumb_path, cover_full_path,
         formats, tags, rating, date_added, last_modified, file_size_bytes,
         read_status, nas_path, reading_position, reading_percent, reading_updated_at,
-        owned_fields
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        owned_fields, read_status_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       book.id,
@@ -636,7 +640,8 @@ export function insertBook(book: Book): void {
       book.readingState?.position ?? null,
       book.readingState?.percent ?? null,
       book.readingState?.updatedAt ?? null,
-      Object.keys(book.ownedFields).length ? JSON.stringify(book.ownedFields) : null
+      Object.keys(book.ownedFields).length ? JSON.stringify(book.ownedFields) : null,
+      book.readStatusAt
     )
 }
 

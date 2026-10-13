@@ -222,7 +222,7 @@ describe('the upgrade seed', () => {
     )
 
     const before = Date.now()
-    // The first getDb() runs migration 007
+    // The first getDb() runs migrations 007–008
     const a = getBook('a')!
     expect(a.lastModified).toBe('2026-03-04T05:06:07.000Z')
     // One instant for the whole upgrade, not each book's own last_modified: no record written before 007 can carry a release, so the seed must outrank all of them
@@ -237,7 +237,7 @@ describe('the upgrade seed', () => {
     expect(getBook('b')!.ownedFields).toEqual({}) // unknown field name dropped
     expect(getBook('ghost')).toBeNull() // no row: nothing created, nothing thrown
     expect(getConfig('field_overrides')).not.toBeNull() // read once, never rewritten, never deleted
-    expect(getDb().pragma('user_version', { simple: true })).toBe(7)
+    expect(getDb().pragma('user_version', { simple: true })).toBe(8)
   })
 
   it('stamps every book of one upgrade with the same instant', () => {
@@ -272,7 +272,7 @@ describe('the upgrade seed', () => {
           value
         )
         expect(() => getDb()).not.toThrow()
-        expect(getDb().pragma('user_version', { simple: true })).toBe(7)
+        expect(getDb().pragma('user_version', { simple: true })).toBe(8)
         expect(getBook('a')!.ownedFields).toEqual({}) // never a usable entry
         const b = getBook('b')!
         if (value.includes('"b":["title"]')) expect(Object.keys(b.ownedFields)).toEqual(['title'])
