@@ -164,7 +164,20 @@ function createWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      // Sandboxed (audit plan U1). The preload is the whole question, and it
+      // answers it: it touches only `contextBridge`, `ipcRenderer` and
+      // `webUtils` — all three on the sandboxed-preload allowlist — plus
+      // `EVENT_CHANNELS`, a constant electron-vite inlines into the bundle. The
+      // built `out/preload/index.js` is CommonJS, a single file, with exactly
+      // one `require("electron")` and no dynamic import, which is what a
+      // sandboxed preload can load at all.
+      // Verified in the running app 2026-10-13 (isolated profile): the
+      // renderer's own argv carries `--enable-sandbox` (the pre-flip build's
+      // reads `--no-sandbox --no-zygote`); a dropped file resolves to its real
+      // path through `getPathForFile` and imports; the reader renders; Settings
+      // opens; a send reaches the device. No test pins this — `createWindow`
+      // has no harness (A25); the audit plan's U1 row carries the evidence.
+      sandbox: true
     }
   })
 
