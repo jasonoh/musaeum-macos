@@ -318,7 +318,7 @@ describe('the write re-reads the file (AC6, R1)', () => {
     type Spy = { mock: { calls: unknown[][]; invocationCallOrder: number[] } }
     const order = (spy: Spy, id: string): number[] =>
       spy.mock.invocationCallOrder.filter((_, i) =>
-        String(spy.mock.calls[i][0]).includes(join('books', id, ''))
+        String(spy.mock.calls[i]![0]).includes(join('books', id, ''))
       )
 
     const a = [...order(write, 'a'), ...order(rename, 'a')].sort((x, y) => x - y)
@@ -384,7 +384,7 @@ describe('removing (spec D8)', () => {
     const left = await remove('a', second.id, 'epub')
 
     expect(left).toHaveLength(1)
-    expect(left[0].cfi).toBe('cfi-1')
+    expect(left[0]!.cfi).toBe('cfi-1')
     expect((await onDisk('a')).annotations).toHaveLength(1)
   })
 })
@@ -430,13 +430,13 @@ describe('the artifact a cfi points into (AC7, R2, R6)', () => {
     for (const one of moved) {
       await writeStamp(one.converter ?? TRIPLE, one.source ?? SOURCE)
       const marked = (await list('a', 'reflow')).annotations
-      expect(marked[0].stale, JSON.stringify(one)).toBe(true)
+      expect(marked[0]!.stale, JSON.stringify(one)).toBe(true)
     }
 
     // …and a re-run that writes the stamp it was made against is not a different artifact (the
     // reproducibility bar: two passes over an unchanged source write byte-identical output)
     await writeStamp()
-    expect((await list('a', 'reflow')).annotations[0].stale).toBe(false)
+    expect((await list('a', 'reflow')).annotations[0]!.stale).toBe(false)
   })
 
   it('marks every derived annotation stale when the stamp cannot be read at all (R6)', async () => {
@@ -444,11 +444,11 @@ describe('the artifact a cfi points into (AC7, R2, R6)', () => {
     await create(input({ format: 'reflow' }))
 
     rmSync(stampPath('a'), { force: true })
-    expect((await list('a', 'reflow')).annotations[0].stale).toBe(true)
+    expect((await list('a', 'reflow')).annotations[0]!.stale).toBe(true)
 
     await writeStamp()
     await fs.writeFile(stampPath('a'), 'not json{', 'utf8')
-    expect((await list('a', 'reflow')).annotations[0].stale).toBe(true)
+    expect((await list('a', 'reflow')).annotations[0]!.stale).toBe(true)
 
     // …and a stamp the pass's own condition could not use is not a match either: a converter
     // that is not a record, a source missing a term, and a stamp missing either. Each is an
@@ -461,7 +461,7 @@ describe('the artifact a cfi points into (AC7, R2, R6)', () => {
       { converter: TRIPLE, source: SOURCE }
     ]) {
       await fs.writeFile(stampPath('a'), JSON.stringify(unusable), 'utf8')
-      expect((await list('a', 'reflow')).annotations[0].stale, JSON.stringify(unusable)).toBe(true)
+      expect((await list('a', 'reflow')).annotations[0]!.stale, JSON.stringify(unusable)).toBe(true)
     }
 
     // …and such a stamp is not an identity this build will *mint* either: an annotation made
@@ -479,7 +479,7 @@ describe('the artifact a cfi points into (AC7, R2, R6)', () => {
 
   it('never marks a source annotation stale for the book’s own file', async () => {
     await create(input({ format: 'epub' }))
-    expect((await list('a', 'epub')).annotations[0].stale).toBe(false)
+    expect((await list('a', 'epub')).annotations[0]!.stale).toBe(false)
   })
 
   it('marks an annotation made against another artifact stale, per annotation rather than per list', async () => {

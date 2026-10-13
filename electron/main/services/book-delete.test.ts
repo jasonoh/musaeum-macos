@@ -400,7 +400,7 @@ describe('deleting a book takes it off every shelf (bookshelves D5)', () => {
     unsubscribe()
 
     expect(getBook('a')).toBeNull()
-    expect(shelves.list()[0].count).toBe(0)
+    expect(shelves.list()[0]!.count).toBe(0)
     expect(error).toHaveBeenCalled()
     expect(events).toContain('shelvesChanged')
   })

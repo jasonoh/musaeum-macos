@@ -613,7 +613,7 @@ describe('the import duplicate gate', () => {
 
       const src = join(inbox, 'Dune.epub')
       await fs.writeFile(src, 'ebook bytes')
-      const [result] = await addFiles([src])
+      const result = (await addFiles([src]))[0]!
 
       expect(result.success).toBe(true)
       expect(progress.map((p) => p.step)).not.toContain('awaiting_dedup_decision')
@@ -669,7 +669,7 @@ describe('the import duplicate gate', () => {
 
       const src = join(inbox, 'some-scan.epub')
       await fs.writeFile(src, 'ebook bytes')
-      const [result] = await addFiles([src], { duplicate: 'add-new' })
+      const result = (await addFiles([src], { duplicate: 'add-new' }))[0]!
       await settleHydration()
 
       expect(result).toMatchObject({ fileName: 'some-scan.epub', success: true })
@@ -695,7 +695,7 @@ describe('the import duplicate gate', () => {
 
       const src = join(inbox, 'some-scan.epub')
       await fs.writeFile(src, 'ebook bytes')
-      const [result] = await addFiles([src], { duplicate: 'add-new' })
+      const result = (await addFiles([src], { duplicate: 'add-new' }))[0]!
       await settleHydration()
 
       // Decided over the return value, not over the emit — this is the value
@@ -713,7 +713,7 @@ describe('the import duplicate gate', () => {
       const src = join(inbox, 'the_dispossessed.epub')
       await fs.writeFile(src, 'ebook bytes')
 
-      const [result] = await addFiles([src], { duplicate: 'add-new' })
+      const result = (await addFiles([src], { duplicate: 'add-new' }))[0]!
       await settleHydration()
 
       expect(result).toMatchObject({ success: true })
@@ -730,7 +730,7 @@ describe('the import duplicate gate', () => {
       const src = join(inbox, 'Dune.epub')
       await fs.writeFile(src, 'ebook bytes')
 
-      const [result] = await addFiles([src], { duplicate: 'add-new' })
+      const result = (await addFiles([src], { duplicate: 'add-new' }))[0]!
       await settleHydration()
 
       expect(result).toMatchObject({ success: true })
@@ -745,7 +745,7 @@ describe('the import duplicate gate', () => {
       const src = join(inbox, 'Dune.epub')
       await fs.writeFile(src, 'ebook bytes')
 
-      const [result] = await addFiles([src], { duplicate: 'reject' })
+      const result = (await addFiles([src], { duplicate: 'reject' }))[0]!
 
       expect(result).toMatchObject({ fileName: 'Dune.epub', success: false })
       expect(result.skipped).toBeUndefined()
@@ -810,7 +810,7 @@ describe('the import duplicate gate', () => {
       const { settled, jobId } = await startImport('Dune.epub')
 
       resolveDuplicate(jobId, { action: 'add_new' })
-      const [result] = await settled
+      const result = (await settled)[0]!
       await settleHydration()
 
       expect(result).toMatchObject({ jobId, fileName: 'Dune.epub', success: true })
@@ -830,7 +830,7 @@ describe('the import duplicate gate', () => {
       const { settled, jobId } = await startImport('Dune.epub')
 
       resolveDuplicate(jobId, { action: 'add_new' })
-      const [result] = await settled
+      const result = (await settled)[0]!
       await settleHydration()
 
       // add_new is the *unchanged* pipeline: copy, insert, then hydrate

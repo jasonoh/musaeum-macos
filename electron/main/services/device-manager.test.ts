@@ -448,7 +448,7 @@ describe('on-device presence', () => {
     mountVolume('Kindle', 8_000_000_000)
     await putOnDevice('Kindle', 'Leviathan Wakes.azw3')
     await poll()
-    expect(getConnectedDevices()[0].freeBytes).toBe(8_000_000_000)
+    expect(getConnectedDevices()[0]!.freeBytes).toBe(8_000_000_000)
 
     // A book was sent: the same device, with less room on it
     setVolumeFreeBytes('Kindle', 7_500_000_000)
@@ -456,9 +456,9 @@ describe('on-device presence', () => {
 
     await poll()
 
-    expect(getConnectedDevices()[0].freeBytes).toBe(7_500_000_000)
+    expect(getConnectedDevices()[0]!.freeBytes).toBe(7_500_000_000)
     expect(channels(spy)).toEqual(['deviceChanged'])
-    expect(spy.mock.calls[0][1]).toMatchObject({ id: 'kindle:Kindle', freeBytes: 7_500_000_000 })
+    expect(spy.mock.calls[0]![1]).toMatchObject({ id: 'kindle:Kindle', freeBytes: 7_500_000_000 })
 
     // An unchanged reading is not news
     spy.mockClear()
@@ -581,7 +581,7 @@ describe('on-device presence', () => {
     await poll()
 
     expect(channels(spy)).toEqual(['deviceContentsChanged'])
-    expect(spy.mock.calls[0][1]).toBe('kindle:Kindle')
+    expect(spy.mock.calls[0]![1]).toBe('kindle:Kindle')
     expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['b'])
   })
 

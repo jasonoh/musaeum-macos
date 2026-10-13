@@ -97,8 +97,8 @@ describe('readCatalogDetailed', () => {
     const result = await readCatalogDetailed(root)
     expect(result.state).toBe('ok')
     if (result.state === 'ok') {
-      expect(result.file.books[0].sortTitle).toBe('Traitor Baru Cormorant, The')
-      expect(result.file.books[0].authorSort).toBe('Dickinson, Seth')
+      expect(result.file.books[0]!.sortTitle).toBe('Traitor Baru Cormorant, The')
+      expect(result.file.books[0]!.authorSort).toBe('Dickinson, Seth')
     }
   })
 
@@ -113,8 +113,8 @@ describe('readCatalogDetailed', () => {
     ])
     const result = await readCatalogDetailed(root)
     if (result.state === 'ok') {
-      expect(result.file.books[0].sortTitle).toBe('Hobbit')
-      expect(result.file.books[0].authorSort).toBe('Tolkien')
+      expect(result.file.books[0]!.sortTitle).toBe('Hobbit')
+      expect(result.file.books[0]!.authorSort).toBe('Tolkien')
     }
   })
 
@@ -137,7 +137,7 @@ describe('readCatalogDetailed', () => {
     const result = await readCatalogDetailed(root)
     expect(result.state).toBe('ok')
     if (result.state === 'ok') {
-      expect(result.file.books[0].readingState).toEqual({
+      expect(result.file.books[0]!.readingState).toEqual({
         position: null,
         percent: 1,
         updatedAt: ''
@@ -155,7 +155,7 @@ describe('readCatalogDetailed', () => {
     await writeCatalog(root, [book])
     const result = await readCatalogDetailed(root)
     if (result.state === 'ok') {
-      expect(result.file.books[0].readingState).toEqual(book.readingState)
+      expect(result.file.books[0]!.readingState).toEqual(book.readingState)
     }
   })
 
@@ -200,7 +200,7 @@ describe('mergeBookFields', () => {
       rating: 5,
       readStatus: 'reading'
     })
-    expect(merged[0].readingState).toEqual(staleLocal.readingState)
+    expect(merged[0]!.readingState).toEqual(staleLocal.readingState)
   })
 
   it('inserts a book the catalog does not hold at all', () => {
@@ -217,7 +217,7 @@ describe('mergeBookFields', () => {
       ['readStatus']
     )
     expect(existing.readStatus).toBe('unread')
-    expect(merged[0].readStatus).toBe('read')
+    expect(merged[0]!.readStatus).toBe('read')
   })
 })
 
@@ -249,7 +249,7 @@ describe('updateFieldsInCatalog', () => {
       rating: 4,
       readStatus: 'reading'
     })
-    expect(cat?.books[0].readingState?.position).toBe('p1')
+    expect(cat?.books[0]!.readingState?.position).toBe('p1')
   })
 
   it('inserts the whole record when the catalog has no entry for the book', async () => {
@@ -262,7 +262,7 @@ describe('updateFieldsInCatalog', () => {
     )
     const cat = await readCatalog(root)
     expect(cat?.books.map((b) => b.id)).toEqual(['new'])
-    expect(cat?.books[0].title).toBe('Never Cataloged')
+    expect(cat?.books[0]!.title).toBe('Never Cataloged')
   })
 })
 
@@ -412,7 +412,7 @@ describe('rebuildFromBookDirs', () => {
     await writeBookDir('uuid-bbb', { ...makeMetadataJson('shared-id', 'Second') })
     const books = await rebuildFromBookDirs(root)
     expect(books.map((b) => b.id)).toEqual(['shared-id'])
-    expect(books[0].title).toBe('Second')
+    expect(books[0]!.title).toBe('Second')
     const cat = await readCatalog(root)
     expect(cat?.books.length).toBe(1)
   })
@@ -530,7 +530,7 @@ describe('writeMetadataJson atomicity', () => {
 
     const books = await rebuildFromBookDirs(root)
     expect(books.map((b) => b.id)).toEqual(['atomic-3'])
-    expect(books[0].title).toBe('Survivor')
+    expect(books[0]!.title).toBe('Survivor')
   })
 })
 
@@ -603,13 +603,13 @@ describe('owned_fields on the record', () => {
 
   it('validates owned_fields on a catalog entry too', async () => {
     await writeCatalog(root, [{ ...makeBook('a'), ownedFields: 'garbage' as never }])
-    expect((await readCatalog(root))!.books[0].ownedFields).toEqual({})
+    expect((await readCatalog(root))!.books[0]!.ownedFields).toEqual({})
   })
 
   it('keeps a well-formed owned_fields on a catalog entry', async () => {
     const ownedFields = { author: '2026-10-11T10:00:00.000Z' }
     await writeCatalog(root, [{ ...makeBook('a'), ownedFields }])
-    expect((await readCatalog(root))!.books[0].ownedFields).toEqual(ownedFields)
+    expect((await readCatalog(root))!.books[0]!.ownedFields).toEqual(ownedFields)
   })
 
   it('survives a metadata.json round-trip', async () => {

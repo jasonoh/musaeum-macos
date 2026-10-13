@@ -108,7 +108,7 @@ describe('ensure', () => {
     await seedPdf('b2')
     answerWith(PRODUCED)
     await ensure('b2')
-    const timeout = vi.mocked(sidecar.call).mock.calls[0][2] as number
+    const timeout = vi.mocked(sidecar.call).mock.calls[0]![2] as number
     expect(timeout).toBe(REFLOW_TIMEOUT_MS)
     expect(timeout).toBeGreaterThan(120_000)
   })
@@ -229,7 +229,7 @@ describe('the frames', () => {
     answerWith(PRODUCED)
     await ensure('b11')
 
-    const handler = vi.mocked(sidecar.onNotification).mock.calls[0][1] as (params: unknown) => void
+    const handler = vi.mocked(sidecar.onNotification).mock.calls[0]![1] as (params: unknown) => void
     vi.mocked(events.broadcast).mockClear()
     handler({ book_id: 'b11', phase: 'layout', completed: 3, total: 9 })
 
@@ -246,7 +246,7 @@ describe('the frames', () => {
     answerWith(PRODUCED)
     await ensure('b12')
 
-    const handler = vi.mocked(sidecar.onNotification).mock.calls[0][1] as (params: unknown) => void
+    const handler = vi.mocked(sidecar.onNotification).mock.calls[0]![1] as (params: unknown) => void
     vi.mocked(events.broadcast).mockClear()
     handler({ book_id: 'b12', phase: 'fallback', reason: 'no page carries a text layer' })
 
@@ -261,7 +261,7 @@ describe('the frames', () => {
     answerWith(PRODUCED)
     await ensure('b13')
 
-    const handler = vi.mocked(sidecar.onNotification).mock.calls[0][1] as (params: unknown) => void
+    const handler = vi.mocked(sidecar.onNotification).mock.calls[0]![1] as (params: unknown) => void
     vi.mocked(events.broadcast).mockClear()
     handler({ phase: 'layout' })
     handler({ book_id: 'b13' })
@@ -293,7 +293,7 @@ describe('the service’s view of a pass (D8)', () => {
     expect(wireStatus('b16')).toEqual({ phase: 'start', completed: 0, total: 0 })
 
     // `ensure` subscribed synchronously, so the handler is there before the call is.
-    const handler = vi.mocked(sidecar.onNotification).mock.calls[0][1] as (params: unknown) => void
+    const handler = vi.mocked(sidecar.onNotification).mock.calls[0]![1] as (params: unknown) => void
     handler({ book_id: 'b16', phase: 'layout', completed: 12, total: 24 })
     expect(wireStatus('b16')).toEqual({ phase: 'layout', completed: 12, total: 24 })
     // Another book's frame is not this book's status.

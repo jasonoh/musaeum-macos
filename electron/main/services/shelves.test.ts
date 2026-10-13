@@ -103,7 +103,7 @@ describe('writes: file first, cache second, one write each (bookshelves D3)', ()
   it('addBooks is idempotent: alreadyOn the second time, the first added_at kept, no write for a no-op (AC4)', async () => {
     const shelf = await shelves.create('To Read')
     await shelves.addBooks(shelf.id, ['a'])
-    const first = manualOnDisk(await onDisk(), shelf.id).books[0].added_at
+    const first = manualOnDisk(await onDisk(), shelf.id).books[0]!.added_at
     const writes = countWrites()
 
     expect(await shelves.addBooks(shelf.id, ['a', 'b'])).toEqual({ added: 1, alreadyOn: 1 })
@@ -148,9 +148,9 @@ describe('writes: file first, cache second, one write each (bookshelves D3)', ()
     const shelf = await shelves.create('To Read', ['a'])
     const [original] = await shelves.removeBooks(shelf.id, ['a'])
     await shelves.addBooks(shelf.id, ['a']) // re-added before the Undo
-    const readded = manualOnDisk(await onDisk(), shelf.id).books[0].added_at
+    const readded = manualOnDisk(await onDisk(), shelf.id).books[0]!.added_at
     await shelves.restoreBooks(shelf.id, [
-      original,
+      original!,
       { bookId: 'b', addedAt: '' },
       { bookId: 7, addedAt: 'x' } as unknown as { bookId: string; addedAt: string }
     ])
@@ -165,10 +165,10 @@ describe('writes: file first, cache second, one write each (bookshelves D3)', ()
 
     await expect(shelves.addBooks(shelf.id, ['b'])).rejects.toThrow('share dropped')
     expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe(before)
-    expect(shelves.list()[0].count).toBe(1)
+    expect(shelves.list()[0]!.count).toBe(1)
 
     await expect(shelves.addBooks(shelf.id, ['b'])).resolves.toEqual({ added: 1, alreadyOn: 0 })
-    expect(shelves.list()[0].count).toBe(2)
+    expect(shelves.list()[0]!.count).toBe(2)
   })
 
   it('names the shelves a book is on', async () => {

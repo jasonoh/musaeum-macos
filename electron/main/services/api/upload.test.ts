@@ -201,7 +201,7 @@ describe('receiveUpload — the body, streamed under its bounds', () => {
     // import is running. This is the byte-for-byte half of the criterion.
     let handed: { size: number; digest: string } | null = null
     vi.mocked(importer.addFiles).mockImplementation((async (paths: string[]) => {
-      handed = { size: statSync(paths[0]).size, digest: sha(await fs.readFile(paths[0])) }
+      handed = { size: statSync(paths[0]!).size, digest: sha(await fs.readFile(paths[0]!)) }
       return OK_IMPORT
     }) as typeof importer.addFiles)
 
@@ -215,7 +215,7 @@ describe('receiveUpload — the body, streamed under its bounds', () => {
     await vi.waitFor(() => {
       const files = scratchPaths(root).filter((p) => p.endsWith('Dune.epub'))
       expect(files).toHaveLength(1)
-      midFlight = statSync(files[0]).size
+      midFlight = statSync(files[0]!).size
       expect(midFlight).toBeGreaterThan(0)
     })
     expect(midFlight).toBeLessThan(whole.length)
@@ -270,7 +270,7 @@ describe('receiveUpload — the body, streamed under its bounds', () => {
       // The file is there and non-empty at the moment the import runs — the
       // ordering D2's whole landing-zone choice depends on.
       seen.push({ paths, options })
-      expect(statSync(paths[0]).size).toBeGreaterThan(0)
+      expect(statSync(paths[0]!).size).toBeGreaterThan(0)
       return OK_IMPORT
     }) as typeof importer.addFiles)
 
@@ -284,12 +284,12 @@ describe('receiveUpload — the body, streamed under its bounds', () => {
     // The client's own name is kept (the importer titles the book from the
     // basename), the uuid is the *directory* — so two phones sending
     // `book.epub` at the same moment cannot collide.
-    expect(seen[0].paths[0].startsWith(root + '/')).toBe(true)
-    expect(seen[0].paths[0].endsWith(join('Dune Messiah.epub'))).toBe(true)
-    expect(seen[0].paths[0]).not.toBe(join(root, 'Dune Messiah.epub'))
+    expect(seen[0]!.paths[0]!.startsWith(root + '/')).toBe(true)
+    expect(seen[0]!.paths[0]!.endsWith(join('Dune Messiah.epub'))).toBe(true)
+    expect(seen[0]!.paths[0]!).not.toBe(join(root, 'Dune Messiah.epub'))
     // D3: the gate is answered by policy, never awaited — a phone mid-upload has
     // nobody to ask.
-    expect(seen[0].options).toEqual({ duplicate: 'add-new' })
+    expect(seen[0]!.options).toEqual({ duplicate: 'add-new' })
   })
 
   it('answers too-large at the cap, and never calls the importer', async () => {

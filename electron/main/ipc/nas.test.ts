@@ -99,8 +99,8 @@ describe('pickLibraryRoot', () => {
 
     expect(asked).toHaveLength(1)
     // The folder is still there, so the hint is the folder itself
-    expect(asked[0].defaultPath).toBe(root)
-    expect(asked[0].title).toBe('Locate Library Folder')
+    expect(asked[0]!.defaultPath).toBe(root)
+    expect(asked[0]!.title).toBe('Locate Library Folder')
   })
 
   it('pre-points at the nearest surviving parent when the folder has moved (D6)', async () => {
@@ -111,7 +111,7 @@ describe('pickLibraryRoot', () => {
 
     // `showOpenDialog` ignores a `defaultPath` that does not exist, so a hint
     // that has vanished is worse than none
-    expect(asked[0].defaultPath).toBe(root)
+    expect(asked[0]!.defaultPath).toBe(root)
   })
 
   it('offers no hint, and says so in the title, on the ordinary path', async () => {
@@ -119,8 +119,8 @@ describe('pickLibraryRoot', () => {
 
     await pickLibraryRoot(undefined, show)
 
-    expect(asked[0].defaultPath).toBeUndefined()
-    expect(asked[0].title).toBe('Choose Library Folder')
+    expect(asked[0]!.defaultPath).toBeUndefined()
+    expect(asked[0]!.title).toBe('Choose Library Folder')
   })
 
   it('writes nothing when the dialog is canceled', async () => {

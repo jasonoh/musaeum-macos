@@ -107,7 +107,7 @@ describe('startBulkHydrate', () => {
     // No call may begin before its predecessor ended — this is the rate-limit
     // guarantee, and the reason the loop awaits rather than fanning out
     for (let i = 1; i < calls.length; i++) {
-      expect(calls[i].start).toBeGreaterThanOrEqual(calls[i - 1].end)
+      expect(calls[i]!.start).toBeGreaterThanOrEqual(calls[i - 1]!.end)
     }
   })
 
@@ -211,7 +211,7 @@ describe('bulk hydrate reporting', () => {
     const sent = spy.mock.calls
       .filter(([channel]) => channel === 'bulkHydrateProgress')
       .map(([, payload]) => payload as BulkHydrateProgress)
-    return sent[sent.length - 1]
+    return sent[sent.length - 1]!
   }
 
   it('counts the duplicates a run found, without touching either book', async () => {

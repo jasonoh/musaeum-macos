@@ -320,7 +320,7 @@ describe('activation', () => {
       at: expect.any(String)
     })
     expect(listen).toHaveBeenCalledTimes(1)
-    expect(listen.mock.calls[0].slice(1)).toEqual(['100.64.0.1', DEFAULT_REST_API_PORT])
+    expect(listen.mock.calls[0]!.slice(1)).toEqual(['100.64.0.1', DEFAULT_REST_API_PORT])
   })
 
   it('names the port the OS actually assigned', async () => {

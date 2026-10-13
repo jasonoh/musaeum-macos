@@ -112,7 +112,7 @@ const CRC_TABLE = ((): Int32Array => {
 
 function crc32(bytes: Buffer): number {
   let c = 0xffffffff
-  for (const byte of bytes) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8)
+  for (const byte of bytes) c = CRC_TABLE[(c ^ byte) & 0xff]! ^ (c >>> 8)
   return (c ^ 0xffffffff) >>> 0
 }
 
@@ -331,7 +331,7 @@ describe('the upload route', () => {
     const folder = join(library, 'books', answer.book.id)
     const written = readdirSync(folder).filter((name) => name.endsWith('.epub'))
     expect(written).toHaveLength(1)
-    expect(sha256(readFileSync(join(folder, written[0])))).toBe(sha256(BOOK))
+    expect(sha256(readFileSync(join(folder, written[0]!)))).toBe(sha256(BOOK))
 
     // The scratch directory is the route's own, and it is empty on the way out
     expect(scratchIsEmpty()).toEqual([])

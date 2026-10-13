@@ -158,7 +158,7 @@ const DOC = readFileSync(join(process.cwd(), 'docs', 'rest-api.md'), 'utf8')
 function docPayloads(): Map<string, unknown> {
   const found = new Map<string, unknown>()
   for (const [, name, body] of DOC.matchAll(/```json payload=([a-z-]+)\n([\s\S]*?)\n```/g)) {
-    found.set(name, JSON.parse(body))
+    found.set(name!, JSON.parse(body!))
   }
   return found
 }
@@ -404,8 +404,8 @@ describe('the shelves member, on every book payload (bookshelves D10)', () => {
       shelves: new Map([[ID, SHELVES]])
     })
 
-    expect(page.books[0].shelves).toEqual(SHELVES)
-    expect(page.books[1].shelves).toEqual([])
+    expect(page.books[0]!.shelves).toEqual(SHELVES)
+    expect(page.books[1]!.shelves).toEqual([])
   })
 
   it('is on every write answer too — reading, import and the membership toggle', () => {

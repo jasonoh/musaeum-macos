@@ -542,7 +542,7 @@ describe('chooseCoverFromFile (the upload dialog)', () => {
     expect(asked).toHaveLength(1)
     // One file, and only files: this dialog picks a jacket, not a folder and not
     // a batch
-    expect(asked[0].properties).toEqual(['openFile'])
+    expect(asked[0]!.properties).toEqual(['openFile'])
     // Nothing reached the engine, and the book is untouched: a cancellation is an
     // answer, not a failure and not a write
     expect(sidecar.call).not.toHaveBeenCalled()
@@ -598,11 +598,12 @@ describe('AC5 — searchCovers sends the same triple coverCandidates sends', () 
       new RegExp(`sidecar\\.call<[^>]+>\\(\\s*'${method}'\\s*,\\s*\\{([\\s\\S]*?)\\}\\s*\\)`)
     )
     if (!body) throw new Error(`no sidecar.call for ${method} in ${COVER_CHOICE}`)
-    return body[1]
+    return body[1]!
   }
 
   /** The keys a payload object sends, in source order. */
-  const keys = (body: string): string[] => [...body.matchAll(/(\w+)\s*:/g)].map((match) => match[1])
+  const keys = (body: string): string[] =>
+    [...body.matchAll(/(\w+)\s*:/g)].map((match) => match[1]!)
 
   /** The three lines that carry the triple, trimmed to survive prettier. */
   const triple = (body: string): string[] =>

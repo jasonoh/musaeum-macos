@@ -486,7 +486,7 @@ describe('applyCatalog', () => {
       ])
       await librarySync.applyCatalog(root)
       await librarySync.flushForTests()
-      expect((await readCatalog(root))!.books[0].ownedFields).toEqual({
+      expect((await readCatalog(root))!.books[0]!.ownedFields).toEqual({
         author: '2026-10-11T12:00:00.000Z'
       })
     })
@@ -692,11 +692,11 @@ describe('shelf adoption beside the catalog’s (bookshelves D4)', () => {
     await writeCatalog(root, [makeBook('a')])
     await writeShelvesFile(root, shelvesFile(['a', 'b']))
     await librarySync.syncOnConnect()
-    expect(shelves.list()[0].count).toBe(1)
+    expect(shelves.list()[0]!.count).toBe(1)
 
     await writeCatalog(root, [makeBook('a'), makeBook('b')])
     await librarySync.refreshLibrary()
-    expect(shelves.list()[0].count).toBe(2)
+    expect(shelves.list()[0]!.count).toBe(2)
   })
 
   it('empties the shelf cache when the library has no shelves.json', async () => {

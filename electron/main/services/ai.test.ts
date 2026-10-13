@@ -354,9 +354,9 @@ describe('ask', () => {
 
     // The request the endpoint actually saw
     expect(stub.requests).toHaveLength(1)
-    expect(stub.requests[0].url).toBe('/v1/chat/completions')
-    expect(stub.requests[0].body).toMatchObject({ model: 'test-model', stream: true })
-    expect(stub.requests[0].headers.authorization).toBeUndefined()
+    expect(stub.requests[0]!.url).toBe('/v1/chat/completions')
+    expect(stub.requests[0]!.body).toMatchObject({ model: 'test-model', stream: true })
+    expect(stub.requests[0]!.headers.authorization).toBeUndefined()
   })
 
   it('sends the key as a bearer token when one is set', async () => {
@@ -369,7 +369,7 @@ describe('ask', () => {
 
     askOnce('req-key')
     await waitForTerminal('req-key')
-    expect(stub.requests[0].headers.authorization).toBe('Bearer sk-test-key-1234')
+    expect(stub.requests[0]!.headers.authorization).toBe('Bearer sk-test-key-1234')
   })
 
   it('releases its slot when it settles, so a late cancel is a no-op', async () => {
@@ -552,9 +552,9 @@ describe('probe', () => {
     await probe({ baseUrl: stub.url, model: 'gpt-a', apiKey: 'sk-good' })
 
     expect(stub.requests).toHaveLength(1)
-    expect(stub.requests[0].url).toBe('/v1/models')
-    expect(stub.requests[0].body).toBeNull()
-    expect(stub.requests[0].headers.authorization).toBe('Bearer sk-good')
+    expect(stub.requests[0]!.url).toBe('/v1/models')
+    expect(stub.requests[0]!.body).toBeNull()
+    expect(stub.requests[0]!.headers.authorization).toBe('Bearer sk-good')
   })
 
   it('sends no authorization header when no key is set, and says which that is', async () => {
@@ -563,7 +563,7 @@ describe('probe', () => {
     const stub = await probeStub(401, '{"error":{"message":"Missing bearer authentication"}}')
     const result = await probe({ baseUrl: stub.url, model: null, apiKey: null })
 
-    expect(stub.requests[0].headers.authorization).toBeUndefined()
+    expect(stub.requests[0]!.headers.authorization).toBeUndefined()
     expect(result.hasKey).toBe(false)
     expect(result.verdict).toBe('rejected')
     expect(result.message).toMatch(/wants a key .*none is set/)
@@ -722,7 +722,7 @@ describe('probe', () => {
     const stub = await probeStub(401, '{"error":{"message":"nope"}}')
     const result = await probe({ baseUrl: stub.url, model: null, apiKey: null })
 
-    expect(stub.requests[0].headers.authorization).toBe('Bearer sk-from-env')
+    expect(stub.requests[0]!.headers.authorization).toBe('Bearer sk-from-env')
     expect(result.hasKey).toBe(true)
     expect(result.message).toContain('rejected the key')
   })

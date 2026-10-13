@@ -37,7 +37,7 @@ async function seed(id: string, title = `Book ${id}`): Promise<string> {
 function soleConflictId(): number {
   const queue = getConflictQueue()
   expect(queue).toHaveLength(1)
-  return queue[0].id
+  return queue[0]!.id
 }
 
 beforeEach(async () => {

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 describe('shelves IPC — the preload and the handlers name the same channels', () => {
   const channels = (file: string): string[] =>
     [...readFileSync(join(process.cwd(), file), 'utf8').matchAll(/'(shelves:[A-Za-z]+)'/g)]
-      .map((m) => m[1])
+      .map((m) => m[1]!)
       .sort()
 
   it('registers exactly the eight channels the preload invokes', () => {
