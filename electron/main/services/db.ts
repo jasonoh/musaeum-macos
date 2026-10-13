@@ -708,27 +708,20 @@ export function setOwnedFields(
 }
 
 /**
- * Move a book's reading-state clock without touching where it is.
+ * Move a book's read-status clock without touching where it is.
  *
- * `read_status` is one of the two fields `services/reading-state.ts` treats as
- * reading state, and this column is that state's clock — the thing
- * `library-sync.ts` compares to decide whether this machine's copy is newer
- * than the catalog's. Every *automatic* writer already moves it (a progress
- * save records the position and the status together), but a change the user
- * made in the detail panel did not, so it was a decision adoption could not
- * see: measured on the real library, a book un-marked from Reading held Unread
- * in `metadata.json` and Reading in `catalog.json`, and the next launch's
- * adoption took the catalog's.
- *
- * A status-only change therefore yields a state with a null position.
- * `rowToBook` reads a non-null `reading_updated_at` as "this machine has
- * reading state for this book", and every consumer of the position treats
- * "no position" as "open at the beginning" — the reader's `initial.position`
- * guard skips `goTo` and paints the first page, which is exactly what the
- * null state it replaces did.
+ * `read_status` is the field this stamp orders: `library-sync.ts` compares it
+ * to the catalog's `read_status_at` to decide whether this machine's *status*
+ * is newer, independently of the position's own clock (`reading_updated_at`).
+ * A status change the user made in the detail panel once moved the position
+ * clock instead — one clock for both halves — so a status decision could keep
+ * an older local position against the catalog's newer one (the residual
+ * `docs/invariants/reader.md` recorded); this column ends that.
+ * `services/reading-state.ts` is the only caller, on both the manual decision
+ * (`noteStatusChange`) and the reader's automatic advance (`saveProgress`).
  */
-export function touchReadingState(id: string, updatedAt: string): void {
-  getDb().prepare('UPDATE books SET reading_updated_at = ? WHERE id = ?').run(updatedAt, id)
+export function touchReadStatusAt(id: string, at: string): void {
+  getDb().prepare('UPDATE books SET read_status_at = ? WHERE id = ?').run(at, id)
 }
 
 /**

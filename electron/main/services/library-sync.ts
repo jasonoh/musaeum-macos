@@ -110,21 +110,18 @@ function parseUpdatedAt(updatedAt: string | undefined): number | null {
  * while offline (`reading-state.ts` parks the report in memory instead, so
  * quitting offline loses it if nothing here restores it). A wholesale
  * replace with the incoming (stale) catalog view would silently erase the
- * newer local position. Local wins only when it is *strictly* newer, and
- * only when its `updatedAt` actually parses — equal or unparseable-local
- * timestamps keep the incoming record, since adoption is otherwise
- * authoritative. Books whose local state won are pushed back to catalog.json
- * in one batched write so the NAS catches up rather than staying stale.
+ * newer local state.
  *
- * **Both halves of reading state travel together**, because a local win is a
- * win for the record: `read_status` is the other field `reading-state.ts`
- * calls reading state, and a reconcile that carried the newer *position* while
- * taking the catalog's older *status* is how a decision came back undone —
- * measured on the real library, two books un-marked from Reading held Unread
- * in `metadata.json` and Reading in `catalog.json`, and the next launch's
- * adoption put Reading back. A manual change moves the same clock the
- * automatic writers move (`reading-state.noteStatusChange`), so a decision the
- * user made after the catalog's last reading event outranks it.
+ * **The two halves are judged on clocks of their own** (portable-decisions
+ * D5): the position by `readingState.updatedAt`, the status by `readStatusAt`.
+ * They were one record on one clock, so a status decision made here kept an
+ * *older* local position against the catalog's newer one — the residual
+ * `docs/invariants/reader.md` recorded, and the thing this splits. Each field
+ * keeps the local value only when the local clock is *strictly* newer and
+ * parses; equal or unparseable-local keeps the incoming record, since adoption
+ * is otherwise authoritative. Books whose local value won are pushed back to
+ * catalog.json in one batched field-merge so the NAS catches up rather than
+ * staying stale.
  *
  * Reads the local cache once — this runs on every connect/refresh over the
  * whole library (~6,900 books), not per book.
@@ -134,23 +131,34 @@ function preserveLocalReadingState(incoming: Book[]): Book[] {
   const changed: Book[] = []
   const merged = incoming.map((book) => {
     const local = localById.get(book.id)
-    const localState = local?.readingState
-    const localTime = parseUpdatedAt(localState?.updatedAt)
-    if (localTime === null || !localState) return book
-    const incomingTime = parseUpdatedAt(book.readingState?.updatedAt)
-    if (incomingTime !== null && incomingTime >= localTime) return book
-    const withLocalState: Book = {
-      ...book,
-      readingState: localState,
-      readStatus: local.readStatus
+    if (!local) return book
+    let out = book
+
+    const localPosition = parseUpdatedAt(local.readingState?.updatedAt)
+    if (local.readingState && localPosition !== null) {
+      const incomingPosition = parseUpdatedAt(book.readingState?.updatedAt)
+      if (incomingPosition === null || incomingPosition < localPosition) {
+        out = { ...out, readingState: local.readingState }
+      }
     }
-    changed.push(withLocalState)
-    return withLocalState
+
+    const localStatus = parseUpdatedAt(local.readStatusAt ?? undefined)
+    if (localStatus !== null) {
+      const incomingStatus = parseUpdatedAt(book.readStatusAt ?? undefined)
+      if (incomingStatus === null || incomingStatus < localStatus) {
+        out = { ...out, readStatus: local.readStatus, readStatusAt: local.readStatusAt }
+      }
+    }
+
+    if (out !== book) changed.push(out)
+    return out
   })
   // Field-merge, not upsert: the rest of each record is the catalog's own
   // (just-read) copy, and the enqueued write re-reads — so replacing the
   // whole entry could undo an edit that landed in between.
-  if (changed.length > 0) updateCatalogFields(changed, ['readingState', 'readStatus'])
+  if (changed.length > 0) {
+    updateCatalogFields(changed, ['readingState', 'readStatus', 'readStatusAt'])
+  }
   return merged
 }
 

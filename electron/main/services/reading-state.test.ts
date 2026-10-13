@@ -117,9 +117,7 @@ describe('saveProgress write tiering', () => {
     // Machine B edited this book after machine A's snapshot of it. Reading is
     // not an edit, so A's stale title/tags/rating must not ride along with
     // the position it pushes.
-    await writeCatalog(root, [
-      { ...makeBook('b10', 'Edited On B'), tags: ['from-b'], rating: 5 }
-    ])
+    await writeCatalog(root, [{ ...makeBook('b10', 'Edited On B'), tags: ['from-b'], rating: 5 }])
 
     await saveProgress({ bookId: 'b10', position: 'p1', percent: 0.5, final: true }, 1_000)
     await librarySync.flushForTests()
@@ -150,6 +148,16 @@ describe('saveProgress write tiering', () => {
 
     await saveProgress({ bookId: 'b5', position: 'p2', percent: 0.99, final: true }, 40_000)
     expect(getBook('b5')?.readStatus).toBe('read')
+  })
+
+  it('stamps the status clock when it advances the status', async () => {
+    await seed('b-clock')
+    await saveProgress({ bookId: 'b-clock', position: 'p1', percent: 0.1, final: false }, 1_000)
+
+    const book = getBook('b-clock')
+    expect(book?.readStatus).toBe('reading')
+    // The advance is a status change, so its clock is the same reading event
+    expect(book?.readStatusAt).toBe(book?.readingState?.updatedAt)
   })
 
   it('clamps a percent outside 0-1', async () => {
@@ -265,23 +273,27 @@ describe('flushPending', () => {
 
 describe('noteStatusChange', () => {
   /**
-   * `reading_updated_at` is what adoption orders the two copies by, so a
-   * decision that does not move it is a decision adoption cannot see.
+   * `read_status_at` is what adoption orders the *status* by, so a decision
+   * that does not move it is a decision adoption cannot see — and moving the
+   * *position* clock instead is what let a status decision drag an older
+   * position with it (the residual slice 2 ends).
    */
-  it('moves the reading-state clock, so adoption can order the decision', () => {
+  it('stamps the status clock, so adoption can order the decision', () => {
     insertBook(makeBook('nsc'))
     noteStatusChange('nsc', { readStatus: 'reading' }, makeBook('nsc'))
 
-    const stamped = getBook('nsc')?.readingState?.updatedAt
+    const stamped = getBook('nsc')?.readStatusAt
     expect(stamped).toBeTruthy()
     expect(Number.isNaN(Date.parse(stamped!))).toBe(false)
+    // The position clock is untouched: this was a status decision, not a page turn
+    expect(getBook('nsc')?.readingState).toBeNull()
   })
 
-  it('leaves the clock alone when the patch restates the row', () => {
+  it('stamps nothing when the patch restates the row', () => {
     insertBook(makeBook('nsc-same')) // readStatus is 'unread'
     noteStatusChange('nsc-same', { readStatus: 'unread' }, makeBook('nsc-same'))
 
-    expect(getBook('nsc-same')?.readingState).toBeNull()
+    expect(getBook('nsc-same')?.readStatusAt).toBeNull()
   })
 })
 

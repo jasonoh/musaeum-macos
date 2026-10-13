@@ -23,8 +23,8 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
   // captured first (design D5)
   const before = db.getBook(id)
   db.updateBook(id, updates)
-  // A read-status change is a decision about reading state, so it moves that
-  // state's clock — before the `getBook` below, so the metadata.json written
+  // A read-status change is a decision about the status, so it moves the
+  // status clock — before the `getBook` below, so the metadata.json written
   // after it carries the same clock. Without it the decision is one adoption
   // cannot order, and the next launch's catalog wins (`CLAUDE.md` #5).
   readingState.noteStatusChange(id, updates, before)

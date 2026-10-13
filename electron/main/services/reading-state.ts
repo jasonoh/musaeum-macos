@@ -33,7 +33,7 @@ const JSON_INTERVAL_MS = 30_000
  * data loss that did not exist while catalog upserts only ever followed an
  * edit or a hydration.
  */
-const READING_FIELDS: readonly (keyof Book)[] = ['readingState', 'readStatus']
+const READING_FIELDS: readonly (keyof Book)[] = ['readingState', 'readStatus', 'readStatusAt']
 
 const lastJsonWrite = new Map<string, number>()
 /** Books whose latest position has not reached the NAS yet — flushed at quit. */
@@ -52,13 +52,13 @@ export function nextReadStatus(current: ReadStatus, percent: number): ReadStatus
  * Record that the *user* decided this book's read status — the one signal that
  * outranks an automatic one.
  *
- * `read_status` is one of the two fields this module treats as reading state
- * (`READING_FIELDS`), and `reading_updated_at` is that state's clock; every
- * automatic writer moves it in the same call that records the position. A
- * manual change did not, so it was invisible to `library-sync.ts`'s adoption
- * comparison — the incoming catalog record is ordered by that clock and wins
- * outright on a tie — and the decision came back reverted on the next launch
- * even with the canonical `metadata.json` holding it.
+ * `read_status_at` is that decision's clock; `library-sync.ts` compares it to
+ * the catalog's to order the two machines' status opinions. A manual change
+ * that does not move it is invisible to adoption — the incoming catalog record
+ * wins outright on a tie — and the decision came back reverted on the next
+ * launch even with the canonical `metadata.json` holding it. It is the
+ * *status* clock, not the position's: a status decision must not drag an older
+ * local position with it (that shared clock is the residual slice 2 ends).
  *
  * Pass the patch **and the row as it was before the write**: what makes this a
  * decision is the difference, and after the write every patch restates the row
@@ -67,7 +67,7 @@ export function nextReadStatus(current: ReadStatus, percent: number): ReadStatus
 export function noteStatusChange(bookId: string, patch: Partial<Book>, before: Book | null): void {
   if (!('readStatus' in patch)) return
   if (before && before.readStatus === patch.readStatus) return
-  db.touchReadingState(bookId, new Date().toISOString())
+  db.touchReadStatusAt(bookId, new Date().toISOString())
 }
 
 /**
@@ -91,7 +91,13 @@ export async function saveProgress(
   db.setReadingState(book.id, state)
 
   const status = advanceStatus ? nextReadStatus(book.readStatus, state.percent) : book.readStatus
-  if (status !== book.readStatus) db.updateBook(book.id, { readStatus: status })
+  if (status !== book.readStatus) {
+    db.updateBook(book.id, { readStatus: status })
+    // The advance is a status change, so it stamps the status clock at the same
+    // instant as the position — otherwise an automatic advance would carry no
+    // clock and lose to an older catalog status on the next adoption.
+    db.touchReadStatusAt(book.id, state.updatedAt)
+  }
 
   const root = nas.getLibraryRoot()
   if (!root || !nas.isOnline() || !book.nasPath) {

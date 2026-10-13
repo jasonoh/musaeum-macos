@@ -193,9 +193,12 @@ describe('syncOnConnect', () => {
       const local = readingBook('rs-manual-later')
       decideUnread('rs-manual-later', local)
 
-      // Another machine read further in it after the decision
+      // Another machine read further in it after the decision — the reading
+      // event carries the status clock too, so both the position and the status
+      // are the catalog's
       const incoming = makeBook('rs-manual-later')
       incoming.readStatus = 'reading'
+      incoming.readStatusAt = '2099-01-01T00:00:00Z'
       incoming.readingState = {
         position: 'cfi-elsewhere',
         percent: 0.4,
@@ -207,6 +210,76 @@ describe('syncOnConnect', () => {
 
       expect(getBook('rs-manual-later')?.readStatus).toBe('reading')
       expect(getBook('rs-manual-later')?.readingState?.position).toBe('cfi-elsewhere')
+    })
+
+    /** AC8 — a status decision here and a newer position from the catalog both survive. */
+    it('keeps this machine’s status and takes the catalog’s newer position', async () => {
+      const local = makeBook('rs-both')
+      local.readStatus = 'unread'
+      local.readStatusAt = '2026-08-13T12:00:00Z' // the decision
+      local.readingState = { position: 'cfi-old', percent: 0.1, updatedAt: '2026-08-13T09:00:00Z' }
+      insertBook(local)
+
+      const incoming = makeBook('rs-both')
+      incoming.readStatus = 'reading'
+      incoming.readStatusAt = '2026-08-13T11:00:00Z' // older than the decision
+      incoming.readingState = {
+        position: 'cfi-new',
+        percent: 0.4,
+        updatedAt: '2026-08-13T11:00:00Z'
+      }
+      await writeCatalog(root, [incoming])
+
+      await librarySync.syncOnConnect()
+      await librarySync.flushForTests()
+
+      expect(getBook('rs-both')?.readStatus).toBe('unread') // local status clock newer
+      expect(getBook('rs-both')?.readingState?.position).toBe('cfi-new') // catalog position clock newer
+    })
+
+    /** AC9 — a newer catalog status beats an older local one. */
+    it('takes a status the catalog recorded later than this machine’s', async () => {
+      const local = makeBook('rs-cat-status')
+      local.readStatus = 'unread'
+      local.readStatusAt = '2026-08-13T09:00:00Z'
+      insertBook(local)
+
+      const incoming = makeBook('rs-cat-status')
+      incoming.readStatus = 'read'
+      incoming.readStatusAt = '2026-08-13T12:00:00Z'
+      await writeCatalog(root, [incoming])
+
+      await librarySync.syncOnConnect()
+
+      expect(getBook('rs-cat-status')?.readStatus).toBe('read')
+    })
+
+    it('keeps the incoming status on a differently-spelled tie of instants', async () => {
+      const local = makeBook('rs-status-tie')
+      local.readStatus = 'read'
+      local.readStatusAt = '2026-08-13T12:00:00Z'
+      insertBook(local)
+
+      const incoming = makeBook('rs-status-tie')
+      incoming.readStatus = 'unread'
+      incoming.readStatusAt = '2026-08-13T12:00:00.000Z' // the same instant
+      await writeCatalog(root, [incoming])
+
+      await librarySync.syncOnConnect()
+      expect(getBook('rs-status-tie')?.readStatus).toBe('unread')
+    })
+
+    it('keeps the incoming status when neither side has a status clock', async () => {
+      const local = makeBook('rs-no-clock')
+      local.readStatus = 'read'
+      insertBook(local)
+
+      const incoming = makeBook('rs-no-clock')
+      incoming.readStatus = 'unread'
+      await writeCatalog(root, [incoming])
+
+      await librarySync.syncOnConnect()
+      expect(getBook('rs-no-clock')?.readStatus).toBe('unread')
     })
   })
 
