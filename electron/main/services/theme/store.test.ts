@@ -86,7 +86,9 @@ function rootVars(): Record<string, string> {
   const block = css.match(/:root\s*\{([\s\S]*?)\}/)
   if (!block) throw new Error('src/index.css has no :root block')
   const vars: Record<string, string> = {}
-  for (const m of block[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]] = m[2].trim()
+  for (const m of block[1]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
+    vars[m[1]!] = m[2]!.trim()
+  }
   return vars
 }
 
@@ -462,7 +464,7 @@ describe('AC3.4 — storage is not trusted', () => {
     setConfig('theme_tokens', 'not json')
     expect(() => getThemeView()).not.toThrow()
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(String(warn.mock.calls[0][0])).toContain('theme_tokens is not JSON')
+    expect(String(warn.mock.calls[0]![0])).toContain('theme_tokens is not JSON')
     warn.mockRestore()
   })
 
@@ -611,7 +613,7 @@ describe('invariant 12 — an unopenable database degrades the read, it does not
     try {
       activeTheme()
       expect(warn).toHaveBeenCalledTimes(1)
-      expect(String(warn.mock.calls[0][0])).toContain('[theme]')
+      expect(String(warn.mock.calls[0]![0])).toContain('[theme]')
     } finally {
       warn.mockRestore()
       closeDb()
@@ -816,7 +818,7 @@ describe('D3 — readLibrary validates every row and never throws', () => {
       expect(read).toEqual([])
       if (!view) throw new Error('the view did not return')
       expect(view.active.tokens).toEqual(MUSAEUM_DEFAULT_TOKENS)
-      expect(view.options[0].id).toBe(DEFAULT_THEME_ID)
+      expect(view.options[0]!.id).toBe(DEFAULT_THEME_ID)
       expect(logged).toContain('[theme]')
     } finally {
       closeDb()
@@ -854,7 +856,7 @@ describe('D3 — upsertLibrary is one transaction, validate then write', () => {
     // Replaced *in place*: an append would move the row behind nord, and the
     // picker would reorder itself every time a dropped file was re-scanned.
     expect(after.map((theme) => theme.id)).toEqual(['iterm:gruvbox', 'iterm:nord'])
-    expect(after[0].name).toBe('Gruvbox from ProtonDrive')
+    expect(after[0]!.name).toBe('Gruvbox from ProtonDrive')
 
     upsertLibrary([recordFromFile(join(BUILTIN, 'nord.yaml'), 'base16:nord')])
     expect(readLibrary().map((theme) => theme.id)).toEqual([
@@ -926,7 +928,7 @@ describe('D4 — the ladder resolves a library id, and re-derives the one it can
     // them behind the user's back (D9) — building the list is not the moment to
     // re-derive 13 rows.
     expect(rowOf('iterm:gruvbox').stale).toBe(true)
-    expect(readLibrary()[0].engineVersion).toBe(0)
+    expect(readLibrary()[0]!.engineVersion).toBe(0)
 
     const result = setTheme('iterm:gruvbox')
     if (!result.ok) throw new Error(`the imported id was rejected: ${result.reason}`)
@@ -1023,11 +1025,11 @@ describe('D9/D10 — the view carries the picker’s rows and the drop-box folde
 
     const { options } = getThemeView()
     expect(options).toHaveLength(corpus.length + 2)
-    expect(options[0].id).toBe(DEFAULT_THEME_ID)
+    expect(options[0]!.id).toBe(DEFAULT_THEME_ID)
     expect(options.slice(1, corpus.length + 1).map((row) => row.id)).toEqual(
       corpus.map((stem) => `builtin:${stem}`)
     )
-    expect(options[options.length - 1].id).toBe('iterm:gruvbox')
+    expect(options[options.length - 1]!.id).toBe('iterm:gruvbox')
   })
 
   it('fills a row from a record of any provider, Obsidian included', () => {
@@ -1083,6 +1085,7 @@ describe('D9/D10 — the view carries the picker’s rows and the drop-box folde
     }
 
     const [defaultRow] = options
+    if (defaultRow === undefined) throw new Error('the view offered no rows')
     expect(defaultRow.provider).toBe('native')
     expect(defaultRow.variant).toBe('dark')
     expect(defaultRow.sourcePath).toBeNull()

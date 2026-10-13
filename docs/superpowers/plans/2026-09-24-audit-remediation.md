@@ -37,7 +37,7 @@
 | U1 | **USER** — main window `sandbox: true` (needs in-app check) | todo |
 | U2 | **USER** — Electron 37 → supported major + `@electron/rebuild` 4 | done 2026-09-25 — Electron 44.4.5, `@electron/rebuild` 4.2, better-sqlite3 13 (N-API prebuilds); `musaeum://` needed `corsEnabled` on 44 (pinned in `test/invariants.test.ts`); Node floor 22.12 (CI too). Packaged DMG checked on an isolated profile: `isPackaged` true, import + cover, reader renders, REST smoke 70/70 |
 | U3 | **USER** — decide the deferred list at the end of this file | decided 2026-09-24 — see U3 below |
-| N1 | `noUncheckedIndexedAccess` — theme subsystem (main) | todo |
+| N1 | `noUncheckedIndexedAccess` — theme subsystem (main) | done 2026-10-13 — 74 error instances → 0 across its 7 files (list re-measured at `9b20f21`: still exact); the flag stays off, N3/N5 flip it. Emitted-JS delta across the four source files is two behaviour-neutral constructs (paired `INK_STOPS`, base16's accents guard) — `obsidian.ts` and `itermcolors.ts` emit byte-identical JS |
 | N2 | `noUncheckedIndexedAccess` — rest of main source | todo |
 | N3 | `noUncheckedIndexedAccess` — main tests; flip `tsconfig.node.json` | todo |
 | N4 | `noUncheckedIndexedAccess` — renderer source + `src/types` | todo |

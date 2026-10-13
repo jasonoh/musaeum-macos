@@ -1288,8 +1288,8 @@ describe('AC1.4 — the :root defaults still pin the pre-change palette', () => 
     const block = css.match(/:root\s*\{([\s\S]*?)\}/)
     if (!block) throw new Error('src/index.css has no :root block')
     const vars: Record<string, string> = {}
-    for (const m of block[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
-      vars[m[1]] = m[2].trim()
+    for (const m of block[1]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
+      vars[m[1]!] = m[2]!.trim()
     }
     return vars
   }
@@ -1305,12 +1305,12 @@ describe('AC1.4 — the :root defaults still pin the pre-change palette', () => 
 
   it.each(Object.entries(PRE_CHANGE))('parses %s back to its hex literal', (name, hex) => {
     expect(vars[name]).toBeDefined()
-    expect(toHex(vars[name])).toBe(hex)
+    expect(toHex(vars[name]!)).toBe(hex)
   })
 
   it('carries on-accent as the pre-change accent foreground', () => {
     expect(vars['--on-accent']).toBeDefined()
-    expect(toHex(vars['--on-accent'])).toBe('#0d0b09')
+    expect(toHex(vars['--on-accent']!)).toBe('#0d0b09')
   })
 
   it('keeps the scrim byte-equal to ink-950', () => {
@@ -1395,7 +1395,9 @@ describe('D1 (7a) — the :root status values are the canonical default IR’s d
     const block = css.match(/:root\s*\{([\s\S]*?)\}/)
     if (!block) throw new Error('src/index.css has no :root block')
     const vars: Record<string, string> = {}
-    for (const m of block[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]] = m[2].trim()
+    for (const m of block[1]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
+      vars[m[1]!] = m[2]!.trim()
+    }
     return vars
   }
 

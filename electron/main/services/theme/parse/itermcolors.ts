@@ -193,7 +193,8 @@ export function parseItermcolors(text: string, name = ''): LoadedTheme {
   // above the canvas have to be *reconstructed*: we sort whatever grays the
   // palette actually ships, then place control points by interpolation between bg
   // and fg. This is the lossy step the IR absorbs.
-  const textDir = (cands: Rgb[]): Rgb => {
+  /** `max(cands, key=lstar)` — non-empty by signature, as its one caller passes a pair. */
+  const textDir = (cands: [Rgb, ...Rgb[]]): Rgb => {
     let best = cands[0]
     for (const c of cands.slice(1)) {
       // `max(…, key=lstar)` keeps the FIRST maximal element, so a tie stays put.
@@ -221,10 +222,14 @@ export function parseItermcolors(text: string, name = ''): LoadedTheme {
   let bg2: Rgb
   let bg3: Rgb
   let border: Rgb
+  // The guard below is the bound for all three reads: with at least two interior
+  // grays the first and the last exist and the midpoint index lies between them, so
+  // they are asserted rather than re-checked — and the `else` stays the branch for
+  // 0 and 1 grays, which is the case the guard is actually about.
   if (interior.length >= 2) {
-    bg2 = interior[0]
-    bg3 = interior[Math.floor(interior.length / 2)]
-    border = interior[interior.length - 1]
+    bg2 = interior[0]!
+    bg3 = interior[Math.floor(interior.length / 2)]!
+    border = interior[interior.length - 1]!
   } else {
     bg2 = mix(bg, fg, 0.1)
     bg3 = mix(bg, fg, 0.18)

@@ -46,7 +46,9 @@ const ACCENT_KEYS: Record<AccentSlot, string> = {
  */
 function searchLine(text: string, key: string, body: string): string | null {
   const m = text.match(new RegExp(`^${key}\\s*:\\s*"?${body}"?`, 'm'))
-  return m ? m[1].trim() : null
+  // `body` is the pattern's one capture group and every caller writes it, so a match
+  // always fills `m[1]` — this is the read that is bounded by that, not by a check.
+  return m ? m[1]!.trim() : null
 }
 
 export function parseBase16(text: string): Base16ParseResult {
@@ -80,26 +82,37 @@ export function base16ToIr(scheme: Base16Scheme): ThemeIr {
   const { meta, palette } = scheme
   const accents = {} as Record<AccentSlot, string>
   for (const [slot, key] of Object.entries(ACCENT_KEYS)) {
-    accents[slot as AccentSlot] = palette[key]
+    // A real check, because a *hand-built* scheme can be short a slot where
+    // `parseBase16`'s cannot be: the accent is then left absent rather than filled
+    // with a color the file never carried, and the derivation rejects that role
+    // (the two-step case in `derive.test.ts` pins exactly that).
+    const value = palette[key]
+    if (value !== undefined) accents[slot as AccentSlot] = value
   }
   // The prototype passes `variant` through and tests it as `=== 'dark'`, so anything
   // the file does not spell exactly `dark` behaves as a light scheme here too.
   const declared = meta.variant ?? 'dark'
   const variant: ThemeVariant = declared === 'dark' ? 'dark' : 'light'
+  // These eight are the IR's own fields, and unlike the accents above an absent one
+  // has no fallback: `parseBase16` returns `ok: false` unless every one of the
+  // sixteen slots read, and it is the only producer of a `Base16Scheme` outside
+  // tests — so the reads cannot miss and are asserted rather than guarded. A guard
+  // would have to invent a color (D9), and for `muted` an invented `''` would
+  // *reject* a theme the optional-field fallback is there to serve.
   return {
     name: meta.name ?? 'untitled',
     author: meta.author ?? '',
     variant,
     source: 'base16',
-    bg: palette.base00,
-    bg2: palette.base01,
-    bg3: palette.base02,
-    border: palette.base03,
-    muted: palette.base04,
-    fg: palette.base05,
-    fg_bright: palette.base07,
+    bg: palette.base00!,
+    bg2: palette.base01!,
+    bg3: palette.base02!,
+    border: palette.base03!,
+    muted: palette.base04!,
+    fg: palette.base05!,
+    fg_bright: palette.base07!,
     accents,
-    accent_hint: palette.base09,
+    accent_hint: palette.base09!,
     notes: []
   }
 }

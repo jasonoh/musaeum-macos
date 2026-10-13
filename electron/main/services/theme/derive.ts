@@ -58,9 +58,28 @@ export const TEXT_FLOORS: Record<TextStop, number> = {
 
 type TextStop = 'parchment' | 'parchment_dim' | 'parchment_faint'
 
-/** The surface ladder's control points, in the prototype's order (950 → 500). */
-const INK_STOPS: InkStep[] = ['950', '900', '850', '800', '700', '600', '500']
-const INK_CONTROL = [0.0, 0.1, 0.19, 0.3, 0.42, 0.58, 0.8]
+/**
+ * The seven color roles a theme must supply, as the validator below spells them.
+ * `muted` is deliberately not among them: it is the one optional role, and the
+ * status ramp falls back to `fg` for it.
+ */
+type ColorRole =
+  'bg' | 'fg' | 'border' | 'accents.red' | 'accents.orange' | 'accents.yellow' | 'accents.green'
+
+/**
+ * The surface ladder's control points, in the prototype's order (950 → 500), as
+ * pairs rather than as two parallel arrays: the prototype zips them by position,
+ * and a pair makes a positional read impossible to get wrong.
+ */
+const INK_STOPS: [InkStep, number][] = [
+  ['950', 0.0],
+  ['900', 0.1],
+  ['850', 0.19],
+  ['800', 0.3],
+  ['700', 0.42],
+  ['600', 0.58],
+  ['500', 0.8]
+]
 
 const TEXT_STOPS: [TextStop, number][] = [
   ['parchment', 0.0],
@@ -77,9 +96,11 @@ const STATUS_SLOTS: [StatusFamily, 'red' | 'green' | 'yellow'][] = [
 
 /**
  * `max(seq, key=…)`: Python returns the FIRST maximal element, so a tie keeps
- * the earlier candidate rather than the better-looking one.
+ * the earlier candidate rather than the better-looking one. Non-empty by
+ * signature — `max` on an empty sequence is an error in the prototype too, and
+ * every call site here passes a fixed, non-empty list.
  */
-function maxBy<T>(items: T[], value: (item: T) => number): T {
+function maxBy<T>(items: [T, ...T[]], value: (item: T) => number): T {
   let best = items[0]
   let bestValue = value(best)
   for (const item of items.slice(1)) {
@@ -97,7 +118,7 @@ function maxBy<T>(items: T[], value: (item: T) => number): T {
  * ratio tie is broken by the hex string rather than by position — Python's
  * tuple comparison, which is not what `maxBy` above does.
  */
-function bestOn(fill: string, ends: string[]): [number, string] {
+function bestOn(fill: string, ends: [string, ...string[]]): [number, string] {
   let best: [number, string] = [contrast(hexToRgb(ends[0]), hexToRgb(fill)), ends[0]]
   for (const end of ends.slice(1)) {
     const candidate: [number, string] = [contrast(hexToRgb(end), hexToRgb(fill)), end]
@@ -200,7 +221,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
   const reject = (reason: DeriveFailure): DeriveResult => ({ ok: false, reason, adjusted, notes })
 
   const accents = (ir.accents ?? {}) as Record<string, unknown>
-  const required: [string, unknown][] = [
+  const required: [ColorRole | 'muted', unknown][] = [
     ['bg', ir.bg],
     ['fg', ir.fg],
     ['border', ir.border],
@@ -214,7 +235,12 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
   // swallowed here while every other required field rejected it, so a caller that
   // spelled "no muted" as `null` got the `fg` status ramp and no rejection at all.
   if (ir.muted !== undefined) required.push(['muted', ir.muted])
-  const norm: Record<string, string> = {}
+  // The loop below returns unless *every* role in `required` read as a color, so by
+  // the time the tokens are assembled all seven are present and only `muted` may be
+  // missing. The record says exactly that, which is also what keeps the eight reads
+  // below from being widened to `string | undefined` (they cannot miss) — the same
+  // construction the `ink`, `parchment` and `status` tables in this file use.
+  const norm = {} as Record<ColorRole, string> & { muted?: string }
   for (const [role, value] of required) {
     const normalized = typeof value === 'string' ? normalizeHex(value) : null
     if (normalized === null) {
@@ -252,13 +278,12 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
     notes.push('border tone off-axis; span synthesized from bg->fg')
   }
   const ink = {} as Record<InkStep, string>
-  INK_STOPS.forEach((name, i) => {
-    const t = INK_CONTROL[i]
+  for (const [name, t] of INK_STOPS) {
     // `'linear'` here is the prototype's name for a componentwise sRGB mix, NOT an
     // interpolation in linear light. The asymmetry with every other ramp in this
     // file is deliberate: it is what keeps the source palette's own drift.
     ink[name] = rgbToHex(t === 0 ? bg : mix(bg, span, t, 'linear'))
-  })
+  }
 
   // -- text ramp: fg dimmed toward the canvas, floors enforced per role
   const parchment = {} as Record<TextStop, string>
@@ -359,7 +384,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
   // text end AND walk the fill until the pair holds 4:1 -- a light scheme's bright
   // accent is simply not a surface that can carry text, and the fix is to deepen
   // the fill, not to paper over it.
-  const onEnds = [ink['950'], parchment.parchment]
+  const onEnds: [string, string] = [ink['950'], parchment.parchment]
   let fill = gold['500']
   let onAcc: string
   let moved = false
@@ -484,7 +509,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
     // canvas. Both floors move together -- walking the value to satisfy one can
     // walk it out of the other (measured: iterm gruvbox landed at exactly 3.00:1
     // against the canvas while holding 5.47:1 for its text).
-    const statEnds = [ink['950'], parchment.parchment, '#ffffff']
+    const statEnds: [string, string, string] = [ink['950'], parchment.parchment, '#ffffff']
     const panel = hexToRgb(ink['850'])
     const score = (c: Rgb): number => {
       let on = 0
@@ -496,7 +521,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
     let fillRgb = base
     for (let i = 0; i < 40; i += 1) {
       if (score(fillRgb) >= 1.0) break
-      const cand = [
+      const cand: [Rgb, Rgb, Rgb, Rgb] = [
         adjustLight(fillRgb, 0.07, false),
         adjustLight(fillRgb, 0.07, true),
         mix(fillRgb, [0, 0, 0], 0.08),

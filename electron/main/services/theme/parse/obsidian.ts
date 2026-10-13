@@ -110,8 +110,11 @@ const ACCENT_ORDER: readonly AccentSlot[] = [
  * `muted` and `faint` cross-reference each other's canonical name last: a theme
  * that declares only one of the two dim text tones has still named a tone for
  * the other, and that is closer to its intent than a surface color.
+ *
+ * Each ladder is a non-empty tuple *by type*: `blameVar` falls back to a ladder's
+ * own first name, so a ladder with no rung has none to fall back to.
  */
-export const OBSIDIAN_ROLE_LADDER: Record<ObsidianRole, readonly string[]> = {
+export const OBSIDIAN_ROLE_LADDER: Record<ObsidianRole, readonly [string, ...string[]]> = {
   canvas: ['--background-secondary', '--halcyon-base-blue-01', '--color-base-00'],
   panel: ['--background-primary', '--halcyon-base-blue-02', '--color-base-10'],
   raised: ['--background-primary-alt', '--halcyon-base-blue-03', '--color-base-20'],
@@ -147,7 +150,7 @@ export const OBSIDIAN_ROLE_LADDER: Record<ObsidianRole, readonly string[]> = {
  * No `--color-base-*` rung: those are grays, and an accent that is gray is a
  * color the theme did not declare.
  */
-export const OBSIDIAN_ACCENT_LADDER: Record<AccentSlot, readonly string[]> = {
+export const OBSIDIAN_ACCENT_LADDER: Record<AccentSlot, readonly [string, ...string[]]> = {
   red: ['--color-red', '--halcyon-palette-salmon'],
   orange: ['--color-orange', '--halcyon-palette-orange'],
   yellow: ['--color-yellow', '--halcyon-palette-yellow'],
@@ -241,7 +244,10 @@ export function normalizeColor(raw: string): { hex: string; droppedAlpha: boolea
 
   const hex = /^#([0-9a-fA-F]+)$/.exec(text)
   if (hex !== null) {
-    const body = hex[1]
+    // A mandatory capture group — `/^#([0-9a-fA-F]+)$/` cannot match without filling
+    // it — which is also all three of the `!`s below: the two other patterns' bodies
+    // and `parts[3]`, the last bounded by the length check that selects it.
+    const body = hex[1]!
     const expanded =
       body.length === 3
         ? body
@@ -256,22 +262,22 @@ export function normalizeColor(raw: string): { hex: string; droppedAlpha: boolea
 
   const fn = /^(rgb|rgba)\((.*)\)$/i.exec(text)
   if (fn !== null) {
-    const parts = splitComponents(fn[2])
+    const parts = splitComponents(fn[2]!)
     if (parts.length !== 3 && parts.length !== 4) return null
     const channels = parts.slice(0, 3).map(rgbChannel)
     if (channels.some((channel) => channel === null)) return null
-    const alpha = parts.length === 4 ? alphaOf(parts[3]) : 1
+    const alpha = parts.length === 4 ? alphaOf(parts[3]!) : 1
     if (alpha === null) return null
     return { hex: hexOf(channels as number[]), droppedAlpha: alpha < 1 }
   }
 
   const srgb = /^color\(\s*srgb\s+(.*)\)$/i.exec(text)
   if (srgb !== null) {
-    const parts = splitComponents(srgb[1])
+    const parts = splitComponents(srgb[1]!)
     if (parts.length !== 3 && parts.length !== 4) return null
     const channels = parts.slice(0, 3).map(srgbChannel)
     if (channels.some((channel) => channel === null)) return null
-    const alpha = parts.length === 4 ? alphaOf(parts[3]) : 1
+    const alpha = parts.length === 4 ? alphaOf(parts[3]!) : 1
     if (alpha === null) return null
     return { hex: hexOf(channels as number[]), droppedAlpha: alpha < 1 }
   }

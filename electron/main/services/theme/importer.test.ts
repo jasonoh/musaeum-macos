@@ -223,13 +223,13 @@ describe('AC4.2 — import is validated before it is stored', () => {
 
     expect(batch.imported).toHaveLength(4)
     expect(batch.rejected).toHaveLength(1)
-    expect(batch.rejected[0].path).toBe(broken)
+    expect(batch.rejected[0]!.path).toBe(broken)
     // The reason is the engine's own string, not a summary written here: the
     // row the user reads has to be the failure the parser actually had.
     const loaded = loadThemeFile(broken)
     if (loaded.ok) throw new Error('expected the broken fixture to fail to load')
-    expect(batch.rejected[0].reason).toBe(loaded.reason)
-    expect(batch.rejected[0].reason).toMatch(/plist/)
+    expect(batch.rejected[0]!.reason).toBe(loaded.reason)
+    expect(batch.rejected[0]!.reason).toMatch(/plist/)
   })
 
   it('makes the four usable: each resolves through setTheme and renders its own canvas', async () => {
@@ -283,7 +283,7 @@ describe('AC4.2 — import is validated before it is stored', () => {
     expect(alone.rejected.map((row) => row.path)).toEqual([missing])
     const batch = await importPaths([missing, GRUVBOX_YAML])
     expect(batch.rejected.map((row) => row.path)).toEqual([missing])
-    expect(batch.rejected[0].reason).toContain(missing)
+    expect(batch.rejected[0]!.reason).toContain(missing)
     // The good member beside it still imported.
     expect(batch.imported.map((theme) => theme.id)).toEqual(['base16:gruvbox-dark-hard'])
   })
@@ -573,7 +573,7 @@ describe('D6 — a batch survives a write that cannot land', () => {
 
     expect(batch.imported.map((theme) => theme.id)).toEqual(['base16:first-theme'])
     expect(batch.rejected.map((rejection) => rejection.path)).toEqual([second])
-    expect(batch.rejected[0].reason).toContain('poisoned by the test')
+    expect(batch.rejected[0]!.reason).toContain('poisoned by the test')
     // The first file is imported and usable: a batch is not one transaction, and a
     // failure is reported per path rather than thrown at the caller (#12).
     expect(readLibrary().map((theme) => theme.id)).toEqual(['base16:first-theme'])
@@ -707,8 +707,8 @@ describe('slice 6 — a .css is a folder, and the resolver is injected', () => {
     const looseBatch = await importPaths([loose], { resolveCss: resolver })
     expect(looseBatch.imported).toEqual([])
     expect(looseBatch.rejected).toHaveLength(1)
-    expect(looseBatch.rejected[0].path).toBe(loose)
-    expect(looseBatch.rejected[0].reason).toContain(
+    expect(looseBatch.rejected[0]!.path).toBe(loose)
+    expect(looseBatch.rejected[0]!.reason).toContain(
       'an Obsidian theme is a folder containing theme.css'
     )
 
@@ -716,7 +716,7 @@ describe('slice 6 — a .css is a folder, and the resolver is injected', () => {
     // theme: `dirname` of a bare file name names no folder.
     const bareBatch = await importPaths([OBSIDIAN_THEME_FILE], { resolveCss: resolver })
     expect(bareBatch.rejected).toHaveLength(1)
-    expect(bareBatch.rejected[0].reason).toContain('is not inside a theme folder')
+    expect(bareBatch.rejected[0]!.reason).toContain('is not inside a theme folder')
 
     expect(asked).toEqual([])
   })
@@ -773,7 +773,7 @@ describe('slice 6 — a .css is a folder, and the resolver is injected', () => {
       'obsidian:Good'
     ])
     expect(batch.rejected.map((row) => row.path)).toEqual([broken])
-    expect(batch.rejected[0].reason).toContain('--background-secondary')
+    expect(batch.rejected[0]!.reason).toContain('--background-secondary')
     // The refused file left no row behind, and the two around it are usable.
     expect(readLibrary().map((theme) => theme.id)).toEqual([
       'base16:gruvbox-dark-hard',
@@ -805,7 +805,7 @@ describe('slice 6 — a .css is a folder, and the resolver is injected', () => {
     expect(applied.view.active.engineVersion).toBe(0)
     // "Keep the stored values" means exactly that: the tokens are the ones the
     // import derived, not a fresh derivation from a file nothing can re-read.
-    expect(applied.view.active.tokens).toEqual(stored[0].tokens)
+    expect(applied.view.active.tokens).toEqual(stored[0]!.tokens)
     // And the two places the flag surfaces both say so.
     expect(applied.view.stale).toBe(true)
     expect(rowOf('obsidian:Stale').stale).toBe(true)
