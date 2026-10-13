@@ -149,5 +149,5 @@ function parseIPv4(address: string): [number, number, number, number] | null {
     if (value > 255) return null
     octets.push(value)
   }
-  return [octets[0], octets[1], octets[2], octets[3]]
+  return [octets[0]!, octets[1]!, octets[2]!, octets[3]!]
 }

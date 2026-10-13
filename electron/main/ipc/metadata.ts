@@ -95,6 +95,7 @@ export async function chooseCoverFromFile(
   // A cancellation is an answer, not an error: nothing was written and there is
   // no book to report, so the renderer is told which of the two it is rather than
   // checking a path it never had.
-  if (result.canceled || !result.filePaths.length) return { canceled: true }
-  return coverChoice.chooseUploadedCover(bookId, result.filePaths[0])
+  const [chosen] = result.filePaths
+  if (result.canceled || !chosen) return { canceled: true }
+  return coverChoice.chooseUploadedCover(bookId, chosen)
 }

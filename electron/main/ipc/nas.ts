@@ -57,8 +57,8 @@ export async function pickLibraryRoot(
     properties: ['openDirectory', 'createDirectory'],
     ...(hint ? { defaultPath: hint } : {})
   })
-  if (result.canceled || !result.filePaths.length) return null
-  const root = result.filePaths[0]
+  const [root] = result.filePaths
+  if (result.canceled || !root) return null
 
   // Peek for an existing library before wiring the root in, and hold the
   // automatic on-connect apply until the user has answered

@@ -83,7 +83,7 @@ function runMigrations(d: Database.Database): void {
   const current = d.pragma('user_version', { simple: true }) as number
   for (let v = current; v < MIGRATIONS.length; v++) {
     d.transaction(() => {
-      d.exec(MIGRATIONS[v])
+      d.exec(MIGRATIONS[v]!)
       if (v === OWNED_FIELDS_MIGRATION) seedOwnedFieldsFromConfig(d)
       d.pragma(`user_version = ${v + 1}`)
     })()
@@ -468,7 +468,9 @@ function orderClause(
   }
   // Direction applies to every key, so descending 'series' fully reverses
   // series order rather than only flipping the index within each series
-  const keys = (SORT_SQL[sort.field] ?? SORT_SQL.title)(tablePrefix).map((expr) => `${expr} ${dir}`)
+  const keys = (SORT_SQL[sort.field] ?? SORT_SQL.title)!(tablePrefix).map(
+    (expr) => `${expr} ${dir}`
+  )
   keys.push(tiebreak)
   return { sql: keys.join(', '), params: [] }
 }
@@ -1052,8 +1054,8 @@ export function getSourcePreferences(): Record<string, Record<string, number>> {
     .all() as { field: string; chosen_source: string; n: number }[]
   const prefs: Record<string, Record<string, number>> = {}
   for (const r of rows) {
-    prefs[r.field] ??= {}
-    prefs[r.field][r.chosen_source] = r.n
+    const row = (prefs[r.field] ??= {})
+    row[r.chosen_source] = r.n
   }
   return prefs
 }

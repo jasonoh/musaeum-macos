@@ -249,7 +249,7 @@ function clearRetry(): void {
 
 function scheduleReconnect(): void {
   if (retryTimer) return
-  const delay = RECONNECT_BACKOFF_MS[Math.min(retryAttempt, RECONNECT_BACKOFF_MS.length - 1)]
+  const delay = RECONNECT_BACKOFF_MS[Math.min(retryAttempt, RECONNECT_BACKOFF_MS.length - 1)]!
   nextRetryAt = Date.now() + delay
   broadcast('nasStatusChanged', getStatus())
   retryTimer = setTimeout(async () => {

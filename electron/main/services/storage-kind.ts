@@ -108,9 +108,9 @@ export function parseMountTable(table: string): MountEntry[] {
   for (const line of table.split('\n')) {
     const match = /^(.+?) on (.+) \(([^)]*)\)$/.exec(line.trim())
     if (!match) continue
-    const fsType = match[3].split(',')[0].trim().toLowerCase()
+    const fsType = match[3]!.split(',')[0]!.trim().toLowerCase()
     if (!fsType) continue
-    entries.push({ mountPoint: match[2].replace(/\\040/g, ' '), fsType })
+    entries.push({ mountPoint: match[2]!.replace(/\\040/g, ' '), fsType })
   }
   return entries
 }

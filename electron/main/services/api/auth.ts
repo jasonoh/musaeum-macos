@@ -35,7 +35,7 @@ const BEARER = /^Bearer +(\S+)$/i
 export function bearerFrom(header: string | undefined | null): string | null {
   if (!header) return null
   const match = BEARER.exec(header.trim())
-  return match ? match[1] : null
+  return match ? match[1]! : null
 }
 
 /**

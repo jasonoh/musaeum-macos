@@ -525,9 +525,10 @@ function applyHydration(bookId: string, result: HydrationResult): HydratedField[
 
   if (m.title) set('title', m.title)
   if (m.sort_title || m.title) set('sortTitle', m.sort_title ?? sortableTitle(m.title!))
-  if (m.authors?.length) {
-    set('author', m.authors[0].name)
-    set('authorSort', m.authors[0].sort ?? sortableAuthor(m.authors[0].name))
+  const firstAuthor = m.authors?.[0]
+  if (firstAuthor) {
+    set('author', firstAuthor.name)
+    set('authorSort', firstAuthor.sort ?? sortableAuthor(firstAuthor.name))
   }
   if (m.publisher) set('publisher', m.publisher)
   if (m.published_date) set('publishedDate', m.published_date)

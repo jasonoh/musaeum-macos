@@ -327,6 +327,7 @@ export async function fillDeviceCovers(input: FillDeviceCoversInput): Promise<Co
   const wanted = new Map<string, DeviceCoverOwner>()
   for (const claims of byPath.values()) {
     const owner = claims[0]
+    if (!owner) continue
     if (claims.length > 1 && claims.some((claim) => claim.bookId !== owner.bookId)) {
       report.unnamed++
       continue
