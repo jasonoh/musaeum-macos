@@ -1,0 +1,332 @@
+[
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 6,
+  "kind": "footnote",
+  "text": "Copyright 2012 Cengage Learning. All Rights Reserved. May not be copied, scanned, or duplicated, in whole or in part. Due to electronic rights, some third party content may be suppressed from the eBook and/or eChapter(s). Editorial review has deemed that any suppressed content does not materially affect the overall learning experience. Cengage Learning reserves the right to remove additional content at any time if subsequent rights restrictions require it.",
+  "top": 0.02083,
+  "bottom": 0.010421,
+  "furniture": true,
+  "why": "the legal footer, whole"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 9,
+  "kind": "footnote",
+  "text": "Copyright 2012 Cengage Learning. All Rights Reserved. May not be copied, deemed that any suppressed content does not materially affe r duplicated, in whole or in part. Due to electronic rights, some third party content may be suppressed from the eBook and/or eChapter(s). Editorial review has ll learning experience. Cengage Learning reserves the right to remove additional content at any time if subsequent rights restrictions require it.",
+  "top": 0.02083,
+  "bottom": 0.00834,
+  "furniture": true,
+  "why": "the same footer with its two text-layer lines zipped together"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 12,
+  "kind": "footnote",
+  "text": "Copyright 2012 Cengage Learning. All Rights Reserved. May not be copied, scann deemed that any suppressed content does not materially affect the hts, some third party content may be suppressed from the eBook and/or eChapter(s). Editorial review has right to remove additional content at any time if subsequent rights restrictions require it.",
+  "top": 0.02083,
+  "bottom": 0.00834,
+  "furniture": true,
+  "why": "a third zip order — the block text varies page to page, which is why no key repeats"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 20,
+  "kind": "footnote",
+  "text": "Copyright 2012 Cengage Learning. All Rights Reserved. May not be copie deemed that any suppressed content does not materially af",
+  "top": 0.02083,
+  "bottom": 0.010421,
+  "furniture": true,
+  "why": "the shortest whole footer"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 10,
+  "kind": "footnote",
+  "text": "Copyright 2012 Cengage Lea deemed that hts, some third party content may be suppressed from the eBook and/or eChapter(s). Editorial review has right to remove additional content at any time if subsequent rights restrictions require it.",
+  "top": 0.018748,
+  "bottom": 0.012503,
+  "furniture": true,
+  "why": "a variant damaged enough that no phrase of it survives: its position is all there is to go on"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 24,
+  "kind": "footnote",
+  "text": "k and/or eChapter(s). Editorial review has hts restrictions require it.",
+  "top": 0.021073,
+  "bottom": 0.009068,
+  "furniture": true,
+  "why": "a footer fragment cut short by the zipping: the margin, not the length, is what carries it"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 56,
+  "kind": "heading",
+  "text": "C H A PT E R 3 CYC L ES O F TH E SU N A N D M OO N",
+  "top": 0.05834,
+  "bottom": 0.043755,
+  "furniture": true,
+  "why": "a running head, and the page number welded into its tail"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 59,
+  "kind": "footnote",
+  "text": "PA RT 1 TH E S KY",
+  "top": 0.056245,
+  "bottom": 0.045837,
+  "furniture": true,
+  "why": "a part divider in the same band"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 19,
+  "kind": "heading",
+  "text": "A N OTE TO TH E STU D E NT",
+  "top": 0.060421,
+  "bottom": 0.047918,
+  "furniture": true,
+  "why": "a section frontispiece repeated on three pages"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 11,
+  "kind": "para",
+  "text": "1 2 3 4 5 6 7 16 15 14 13 12",
+  "top": 0.07917,
+  "bottom": 0.066667,
+  "furniture": true,
+  "why": "the print-run line"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 9,
+  "kind": "heading",
+  "text": "E I G H T H E D I TI O N",
+  "top": 0.906245,
+  "bottom": 0.893755,
+  "furniture": false,
+  "why": "a title-page display line: the same shape, above the band, and kept"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 91,
+  "kind": "para",
+  "text": "V = V1.04 × 10° = 1020 m/s",
+  "top": 0.172912,
+  "bottom": 0.160421,
+  "furniture": false,
+  "why": "an equation — letter-spaced by the very test the rule uses, and content"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 502,
+  "kind": "para",
+  "text": "Star a Ari b CM a a Hya a UMi b Cet",
+  "top": 0.906245,
+  "bottom": 0.807369,
+  "furniture": false,
+  "why": "a figure key, letter-spaced, outside the band"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 293,
+  "kind": "para",
+  "text": "L 5 (surface area) 3 s T4",
+  "top": 0.739579,
+  "bottom": 0.727088,
+  "furniture": false,
+  "why": "another equation"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 56,
+  "kind": "para",
+  "text": "the changing phases of the moon. Occasionally, however, the moon displays more complicated moods when it turns copper red in a lunar eclipse. For billions of years, the man in the moon has looked down on Earth. Ancient civilizations saw the same cycle of phases that you see (■ Figure 3-4), and even the dinosaurs may have noticed",
+  "top": 0.945837,
+  "bottom": 0.414585,
+  "furniture": false,
+  "why": "prose whose first line is in the page's top band, reaching down the page"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 56,
+  "kind": "para",
+  "text": "at the left and the word “New” at the right. Push a pin through the edge of the paper at Earth’s North Pole to make a pivot and, under the word “Full,” write on the paper “Eastern Horizon.” Under the word “New,” write “Western Horizon.” The paper now represents the horizon you see when you stand facing south.",
+  "top": 0.949579,
+  "bottom": 0.863423,
+  "furniture": false,
+  "why": "the same page's second column"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 72,
+  "kind": "para",
+  "text": "Uniformly rotating circles were key elements of ancient astronomy. Claudius Ptolemy created a mathematical model of the li i i hi h h l f ll d ll i l ll d h",
+  "top": 0.954163,
+  "bottom": 0.927088,
+  "furniture": false,
+  "why": "a paragraph lying wholly inside the top band — the position test alone would take it"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 57,
+  "kind": "para",
+  "text": "The Phases of the Moon",
+  "top": 0.957905,
+  "bottom": 0.93576,
+  "furniture": false,
+  "why": "a real title in the band"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 58,
+  "kind": "para",
+  "text": "23",
+  "top": 0.204163,
+  "bottom": 0.193755,
+  "furniture": false,
+  "why": "a bare page number: the shipped rule drops these only when they repeat"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 57,
+  "kind": "heading",
+  "text": "South",
+  "top": 0.066667,
+  "bottom": 0.056245,
+  "furniture": false,
+  "why": "a figure label in the band"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 57,
+  "kind": "footnote",
+  "text": "Line art on this page © Cengage Learning 2014",
+  "top": 0.037497,
+  "bottom": 0.027088,
+  "furniture": false,
+  "why": "a figure credit in the band, under the display cap"
+ },
+ {
+  "book": "Universe Solar Systems, Stars, and Galaxies",
+  "page": 238,
+  "kind": "para",
+  "text": "It may eventually vanish or develop further. Even the Great Red Spot may someday vanish.",
+  "top": 0.07083,
+  "bottom": 0.045837,
+  "furniture": false,
+  "why": "prose ending low on its page"
+ },
+ {
+  "book": "Modernist Cuisine Volume 1 History & Fundamentals",
+  "page": 76,
+  "kind": "para",
+  "text": "60 is little point in trying to hide; it's much better to participate and be part ofthe community of people sharing ideas.",
+  "top": 0.027083,
+  "bottom": 0.016667,
+  "furniture": false,
+  "why": "the reversal case: a real prose line at the page's foot, welded to its page number"
+ },
+ {
+  "book": "Modernist Cuisine Volume 1 History & Fundamentals",
+  "page": 216,
+  "kind": "para",
+  "text": "200 important when you are handling plant foods as it is when you are preparing meat and seafood, despite perceptions to the contrary.",
+  "top": 0.027083,
+  "bottom": 0.016667,
+  "furniture": false,
+  "why": "the same shape on another page"
+ },
+ {
+  "book": "Modernist Cuisine Volume 1 History & Fundamentals",
+  "page": 78,
+  "kind": "footnote",
+  "text": "VOLUME 1 ·HISTORY AND FUNDAMENTALS",
+  "top": 0.025,
+  "bottom": 0.016667,
+  "furniture": true,
+  "why": "one of *Modernist*'s one-line margin running heads"
+ },
+ {
+  "book": "Modernist Cuisine Volume 1 History & Fundamentals",
+  "page": 233,
+  "kind": "footnote",
+  "text": "FOOD AND HEAlTH",
+  "top": 0.025,
+  "bottom": 0.014583,
+  "furniture": true,
+  "why": "the same, in its running section name"
+ },
+ {
+  "book": "Modernist Cuisine Volume 1 History & Fundamentals",
+  "page": 250,
+  "kind": "footnote",
+  "text": "VOLU M E 1 · HISTORY AND FUNDAMENTALS",
+  "top": 0.025,
+  "bottom": 0.014583,
+  "furniture": true,
+  "why": "the same head in its letter-spaced setting"
+ },
+ {
+  "book": "Modernist Cuisine Volume 1 History & Fundamentals",
+  "page": 301,
+  "kind": "para",
+  "text": "1,000",
+  "top": 0.0875,
+  "bottom": 0.077083,
+  "furniture": false,
+  "why": "a table's value in the band: content"
+ },
+ {
+  "book": "Politics, Philosophy, Culture",
+  "page": 3,
+  "kind": "footnote",
+  "text": "E D I T E D W I T H A N I N T R O D U C T I O N B Y",
+  "top": 0.083894,
+  "bottom": 0.065661,
+  "furniture": true,
+  "why": "a title-page line"
+ },
+ {
+  "book": "Politics, Philosophy, Culture",
+  "page": 3,
+  "kind": "footnote",
+  "text": "L A W R E N e E D. K R I T Z M A N",
+  "top": 0.049772,
+  "bottom": 0.031675,
+  "furniture": true,
+  "why": "the editor's name beside it"
+ },
+ {
+  "book": "Politics, Philosophy, Culture",
+  "page": 87,
+  "kind": "para",
+  "text": "62 Theories of the Political: History, Power and the Law city with laws enabling it to endure without him.",
+  "top": 0.975105,
+  "bottom": 0.923073,
+  "furniture": false,
+  "why": "a running head welded to the body line under it: the block is not wholly in the margin"
+ },
+ {
+  "book": "Politics, Philosophy, Culture",
+  "page": 220,
+  "kind": "footnote",
+  "text": "15. Enrico Berlinguer (1922-84). Former Secretary-General of the Italian Communist party who advocated a moderate brand of communism [L. O.K.].",
+  "top": 0.07239,
+  "bottom": 0.038251,
+  "furniture": false,
+  "why": "a real footnote in the band — the band is not the margin"
+ },
+ {
+  "book": "Attention is All You Need",
+  "page": 1,
+  "kind": "para",
+  "text": "31st Conference on Neural Information Processing Systems (NIPS 2017), Long Beach, CA, USA.",
+  "top": 0.075,
+  "bottom": 0.0625,
+  "furniture": false,
+  "why": "the venue line: longer than the display cap, in the band, and content"
+ }
+]

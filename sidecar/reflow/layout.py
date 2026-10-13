@@ -28,6 +28,7 @@ from typing import Callable, Optional
 
 import pypdfium2 as pdfium
 
+from . import furniture
 from .chars import page_chars
 from .model import MIN_PAGE_CHARS, Block, Box, Document, PageResult
 from .regions import build_page_text, join_lines
@@ -48,12 +49,10 @@ PLATE_MAX_PIXELS = 1400  # a plate's long side
 FIGURE_PNG_MAX_SHARE = 0.06  # above this share of the page a figure is JPEG
 INK_THRESHOLD = 245  # a pixel darker than this at analysis scale is ink
 MIN_FIGURE_PIXELS = 32  # the smallest side a written figure may have (C.4, G4)
-RUNNING_HEAD_PAGES = 0.25  # the share of pages that makes a line a running head
+RUNNING_HEAD_PAGES = 0.25  # the share of pages that makes a *short* band line a running head
 RUNNING_HEAD_MIN = 3
-RUNNING_HEAD_BAND = 0.08  # of the page height, top and bottom, where it sits
-RUNNING_HEAD_MAX_CHARS = 80  # up to here, RUNNING_HEAD_PAGES decides
-RUNNING_HEAD_LONG_PAGES = 0.5  # past it, this share has to hold — see _furniture_share
-RUNNING_HEAD_LONG_MAX_CHARS = 600  # and past *that* a block is content, however often it repeats
+RUNNING_HEAD_BAND = furniture.BAND  # of the page height, top and bottom, where it sits
+RUNNING_HEAD_MAX_CHARS = furniture.MAX_CHARS  # up to here repetition decides; past it, only the shape does
 HEADING_RATIO = 1.15  # a region this much larger than the body may be a heading
 HEADING_MAX_CHARS = 120
 HEADING_MAX_LINES = 2  # at the body's own size, a bold line, not a paragraph
@@ -261,36 +260,35 @@ def render_plate(page: pdfium.PdfPage) -> Optional[Crop]:
     return Crop(buffer.getvalue(), image.width, image.height, "jpeg")
 
 
-# --- running heads ---------------------------------------------------------
+# --- page furniture --------------------------------------------------------
 def _normalize(text: str) -> str:
     return _WS.sub(" ", re.sub(r"\d+", "#", text)).strip().lower()
 
 
 def mark_running_heads(doc: Document) -> None:
-    """Drop the repeated page furniture, and record what was dropped.
+    """Drop the page furniture, and record what was dropped.
 
-    A running head is a line that (a) repeats across many pages, (b) sits in the
-    page's top or bottom band, and (c) differs between pages only by digits.
     Without this, every page of a textbook opens with its own header inside the
-    flowing text — the loudest possible reflow defect.
+    flowing text — the loudest possible reflow defect — and a legal footer
+    prints on 61% of a book's pages. Two routes drop a block, and they are not
+    the same kind of question:
 
-    The position and length tests are not decoration. Without them the digit
-    normalization alone decides the question, so every numeric block normalizes
-    to `#`, "appears" on every page, and is deleted: measured on *Universe*,
-    442 blocks went that way on the first run, which is why its text was missing
-    3,421 instances of the word `the` — those blocks were the pages' real prose,
-    dropped because a citation read `(p. 123)` on page one and `(p. 124)` on
-    page two.
+    - **By shape** (`furniture.shaped`): a letter-spaced running head, or a
+      printed notice lying in the page's own outer margin. One page answers
+      this, which is what keeps the pass reproducible — see that module for why
+      the tier this replaces could not.
+    - **By repetition**, unchanged since slice 1R: a *short* band line (up to
+      `RUNNING_HEAD_MAX_CHARS`) whose digit-normalized text recurs on
+      `RUNNING_HEAD_PAGES` of the text pages. The length and position tests are
+      not decoration — without them the digit normalization alone decides, every
+      numeric block normalizes to `#`, "appears" on every page, and is deleted:
+      measured on *Universe*, 442 blocks went that way on the first run, which
+      is why its text was missing 3,421 instances of the word `the`.
 
-    **The length cap is a tier, not a wall** (measured 2026-10-11). A flat
-    80-character cap let a *long* repeated block through, and *Universe*'s
-    Cengage footer — 276 to 460 characters — repeats on **323 of its 530 text
-    pages**, so 61% of that book's pages carried the same legal footer inside
-    the flowing prose. A block past `RUNNING_HEAD_MAX_CHARS` is still furniture
-    when it repeats on `RUNNING_HEAD_LONG_PAGES` of the pages rather than a
-    quarter of them, because a long block needs stronger evidence than a
-    three-word running head before it stops being prose; past
-    `RUNNING_HEAD_LONG_MAX_CHARS` it is content however often it repeats.
+    The repetition route catches almost nothing in a book whose running head
+    names its own chapter, because the key varies page to page; that is the
+    defect the shape route exists for, and the reason the tier — a second,
+    *book-wide* threshold on long blocks — was removed rather than loosened.
     """
     text_pages = doc.text_pages
     if len(text_pages) < RUNNING_HEAD_MIN:
@@ -298,46 +296,51 @@ def mark_running_heads(doc: Document) -> None:
     seen: dict[str, int] = {}
     for page in text_pages:
         for block in page.blocks:
-            if _is_furniture(block, page):
+            if _is_short_band_line(block, page):
                 key = _normalize(block.text)
                 seen[key] = seen.get(key, 0) + 1
-    pages = len(text_pages)
-    short = max(RUNNING_HEAD_MIN, RUNNING_HEAD_PAGES * pages)
-    long = max(RUNNING_HEAD_MIN, RUNNING_HEAD_LONG_PAGES * pages)
-
-    def repeated(text: str) -> bool:
-        """The block is furniture only if the *book* repeats it often enough."""
-        length = len(text.strip())
-        if length > RUNNING_HEAD_LONG_MAX_CHARS:
-            return False
-        return seen.get(_normalize(text), 0) >= (long if length > RUNNING_HEAD_MAX_CHARS else short)
-
-    if not any(repeated(b.text) for page in text_pages for b in page.blocks if _is_furniture(b, page)):
-        return
+    threshold = max(RUNNING_HEAD_MIN, RUNNING_HEAD_PAGES * len(text_pages))
     for page in text_pages:
         kept: list[Block] = []
         for block in page.blocks:
-            if _is_furniture(block, page) and repeated(block.text):
+            if _is_printed_furniture(block, page):
+                doc.dropped_running_heads.append(block.text)
+                continue
+            if _is_short_band_line(block, page) and seen.get(_normalize(block.text), 0) >= threshold:
                 doc.dropped_running_heads.append(block.text)
                 continue
             kept.append(block)
         page.blocks = kept
 
 
-def _is_furniture(block: Block, page: PageResult) -> bool:
-    """Is this block a page-furniture *candidate*?
+def _is_printed_furniture(block: Block, page: PageResult) -> bool:
+    """Is this block printer's work by its *shape* — a question one page answers?
 
-    Position, kind and the digits test live here; **how often the block repeats
-    is the caller's question** (`mark_running_heads`), because the answer
-    depends on the whole book and this function sees one page.
+    The rule itself is `furniture.shaped`; this only hands it the block's box
+    against its page's. A figure or a table is never furniture, whatever its
+    position: its words are already in the picture or in its cells.
+    """
+    if block.kind in ("figure", "table"):
+        return False
+    return furniture.shaped(block.top, block.bottom, page.bottom, page.top, block.text)
+
+
+def _is_short_band_line(block: Block, page: PageResult) -> bool:
+    """The rule the pipeline has always had: a short line in the page's band.
+
+    Position, length, kind and the digits test live here; **how often the block
+    repeats is the caller's question** (`mark_running_heads`), because the
+    answer depends on the whole book and this function sees one page.
+
+    A bare page number is furniture; a bare number anywhere else is not — hence
+    the digit test, and hence the ceiling that keeps a table's `1,000` out of it
+    when the table is not in the band.
     """
     if block.kind in ("figure", "table") or not block.text.strip():
         return False
-    height = page.top - page.bottom
-    if height <= 0:
+    if len(block.text) > RUNNING_HEAD_MAX_CHARS:
         return False
-    in_band = block.top >= page.bottom + (1 - RUNNING_HEAD_BAND) * height or block.bottom <= page.bottom + RUNNING_HEAD_BAND * height
-    if not in_band:
+    if not furniture.in_band(block.top, block.bottom, page.bottom, page.top):
         return False
     # A bare page number is furniture; a bare number anywhere else is not.
     apart_from_digits = re.sub(r"[\d#\s]", "", _normalize(block.text))

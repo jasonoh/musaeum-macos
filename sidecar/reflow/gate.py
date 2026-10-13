@@ -31,6 +31,7 @@ from html import unescape
 from typing import Iterable, Optional, Sequence
 from xml.etree import ElementTree
 
+from . import furniture
 from .chars import Char, baseline_lines
 from .regions import line_text
 
@@ -47,10 +48,6 @@ TOC_HEADING_SHARE_MIN = 0.90
 TOC_MAX_PAGES_PER_ENTRY = 50
 TITLE_SIMILARITY = 0.8
 MIN_IMAGE_SIDE = 32
-FURNITURE_BAND = 0.08
-FURNITURE_MAX_CHARS = 80
-FURNITURE_LONG_MAX_CHARS = 600
-FURNITURE_LONG_PAGES = 0.5
 PLATE_MAX_CHARS = 50
 INK_SCALE = 0.25
 INK_THRESHOLD = 245
@@ -126,54 +123,48 @@ class PageEvidence:
     rotated: list[str] = field(default_factory=list)
     upright: list[str] = field(default_factory=list)
     plate_expected: bool = False
-    # Band segments longer than FURNITURE_MAX_CHARS, as (digit-normalised text,
-    # tokens): whether one is furniture is a question about the *book* — it is
-    # furniture because it repeats — so the caller settles it with
-    # `furniture_keys` rather than this function guessing from one page.
-    long_band: list[tuple[str, list[str]]] = field(default_factory=list)
 
 
 def _in_any(c: Char, boxes: Sequence[Box]) -> bool:
     return any(b[0] <= c.cx <= b[2] and b[1] <= c.cy <= b[3] for b in boxes)
 
 
+def _bounds(seg: Sequence[Char]) -> tuple[float, float]:
+    return max(c.top for c in seg), min(c.bottom for c in seg)
+
+
 def _in_band(seg: Sequence[Char], page_box: Optional[Box]) -> bool:
     if page_box is None:
         return False
-    height = page_box[3] - page_box[1]
-    top = max(c.top for c in seg)
-    bottom = min(c.bottom for c in seg)
-    return bottom >= page_box[3] - FURNITURE_BAND * height or top <= page_box[1] + FURNITURE_BAND * height
+    top, bottom = _bounds(seg)
+    return furniture.in_band(top, bottom, page_box[1], page_box[3])
 
 
-def _is_furniture(seg: list[Char], text: str, page_box: Optional[Box]) -> bool:
-    return len(text.strip()) <= FURNITURE_MAX_CHARS and _in_band(seg, page_box)
+def _is_furniture(seg: Sequence[Char], text: str, page_box: Optional[Box]) -> bool:
+    """Is this line page furniture rather than the book's words?
 
-
-def _normalize(text: str) -> str:
-    """The key furniture repeats under: digits collapse, case and space fold."""
-    return " ".join(re.sub(r"\d+", "#", text).split()).lower()
-
-
-def furniture_keys(pages: Iterable[Iterable[tuple[str, list[str]]]]) -> set[str]:
-    """Which *long* band blocks the book repeats often enough to be furniture.
-
-    The gate's counterpart of the pipeline's `layout.mark_running_heads`, with
-    the same two tiers, because the two must agree about what an artifact is
-    allowed to be missing: a short band line is excused outright (this is the
-    rule the gate has always had) while a block past `FURNITURE_MAX_CHARS` has to
-    repeat on `FURNITURE_LONG_PAGES` of the pages. Measured 2026-10-11 on
-    *Universe*: its 276–460-character Cengage footer repeats on **323 of 530**
-    text pages, and with only the short tier the pipeline kept it in the flow on
-    every one of them.
-
-    The count is over the pages the caller walked, where the pipeline counts
-    *text* pages; at a share of a half the difference does not move a decision.
+    The gate's side of `layout.mark_running_heads`, and it has to agree with it:
+    counting the words a *correct* drop removed is exactly how the artifact of a
+    broken rule passed. Two routes, and the first is the one this check has
+    always had — a band line of the display cap (80 characters) or fewer is
+    excused outright, so G2 never demands a word that can only be a running head.
+    The second is the pipeline's shape route, read here off the text layer's own
+    line rather than Vision's region (`reflow.furniture` carries it once for
+    both): a letter-spaced line, or anything the page prints in its outer margin.
+    The gate's route is a *superset* of the pipeline's on purpose — it may excuse
+    a line the pipeline kept, which costs G2 a little evidence and can never make
+    it demand a word the pipeline was right to drop.
     """
-    bands = [b for page in pages for b in page]
-    threshold = max(3, FURNITURE_LONG_PAGES * len(bands))
-    counts: Counter = Counter(key for key, _ in bands)
-    return {key for key, n in counts.items() if n >= threshold}
+    text = text.strip()
+    if not text or page_box is None:
+        return False
+    if _in_band(seg, page_box):
+        if len(text) <= furniture.MAX_CHARS:
+            return True
+        if furniture.letter_spaced(text):
+            return True
+    top, bottom = _bounds(seg)
+    return furniture.shaped(top, bottom, page_box[1], page_box[3], text)
 
 
 def _has_ink(page) -> bool:
@@ -232,17 +223,6 @@ def _emit(seg: list[Char], ev: PageEvidence, page_box: Optional[Box]) -> None:
     if text.rstrip().endswith(("-", "\ufffe", "‐")) and toks:
         toks = toks[:-1]
     if not toks:
-        return
-    if _in_band(glyphs, page_box):
-        # A short band line is furniture outright (`_is_furniture` has already
-        # returned for those). A long one is a *candidate* the book decides
-        # (`furniture_keys`), and past the ceiling repetition stops being
-        # evidence at all: it is content, and the gate counts its words.
-        length = len(text.strip())
-        if length > FURNITURE_LONG_MAX_CHARS:
-            ev.segments.append(toks)
-        elif length > FURNITURE_MAX_CHARS:
-            ev.long_band.append((_normalize(text), toks))
         return
     ev.segments.append(toks)
 
@@ -448,3 +428,89 @@ def check_package(epub_path: str) -> list[str]:
             except ElementTree.ParseError:
                 pass
     return problems
+
+
+# --- the band-furniture census (B's own decider) ----------------------------
+# The two shapes a reader sees as furniture in the flowing text, matched on the
+# artifact's own words. A rights notice, in the forms a printed page carries
+# one; every one of *Universe*'s 244 Cengage footer paragraphs carries the
+# first, whole or in fragments, and the noise a pass leaves behind is what the
+# census is for.
+_NOTICE = re.compile(
+    r"all rights reserved|rights reserved|may not be copied|prior written permission|rights restrictions",
+    re.I,
+)
+_BLOCK = re.compile(r"<(?:p|h[1-6])\b[^>]*>(.*?)</(?:p|h[1-6])>", re.S | re.I)
+
+
+def _running_head(text: str) -> bool:
+    """A letter-spaced line of capitals — the head's own shape.
+
+    Both extra halves are load-bearing and were measured, not assumed. The
+    letters must dominate, because an artifact has no pages to scope the test to
+    a band and a letter-spaced *equation* is not a running head: *Universe*'s
+    `K 5 °C 1 273`, `L 5 M3.5 5 43.5 5 128` and `2.0 2 MV 5 25 1 5(2.12)` are
+    upper case, letter-spaced by the same test the rule uses, and two-thirds
+    numerals. The capitals requirement is what excludes the book's own prose
+    that happens to be set out letter by letter.
+    """
+    letters = [c for c in text if c.isalpha()]
+    if len(letters) < 2 or len(letters) * 2 < len([c for c in text if not c.isspace()]):
+        return False
+    return sum(1 for c in letters if c.isupper()) * 5 >= len(letters) * 4 and furniture.letter_spaced(text)
+
+
+def _key(text: str) -> str:
+    """What a shape repeats under: digits collapse, case and space fold."""
+    return " ".join(re.sub(r"\d+", "#", text.lower()).split())
+
+
+def furniture_census(epub_path: str) -> dict:
+    """How much printer's furniture an artifact still prints in its flowing text.
+
+    B's own decider, and it exists because **not one of the eight checks counts
+    a word an artifact *added***: G2 and G6 measure the words a pass *lost*, so
+    *Universe*'s ~500 blocks of running head, page number and legal footer read
+    as a pass on every check the gate has. This reads the artifact's own blocks
+    and counts the two shapes a reader sees as furniture — a rights notice and a
+    letter-spaced running head — with the whole flow as the denominator.
+
+    **A shape the artifact carries once is a page's own, not the printer's**, and
+    it is not counted: *Modernist Cuisine* and *Politics, Philosophy, Culture*
+    each carry exactly one rights notice — their copyright page, front matter a
+    reader may want — and *Politics*' title page sets `P O L I T I C S` and
+    `C U L T U R E` in the same capitals a running head uses. What is *furniture*
+    is what the printer repeats, so only a shape carried twice or more **under
+    one digit-normalized text** counts, which is also what lets a running head
+    that carries a different page number on every page still register. That is
+    the one place this instrument uses repetition, and a share of *two* is the
+    opposite of the fragile thing: the tier needed a per-page key to recur on
+    half the book's pages.
+
+    It is deliberately not the rule (`reflow.furniture`). The rule asks *where* a
+    block sits on its page, and an artifact has no pages; counting by shape alone
+    is what keeps this an independent instrument rather than the rule marking its
+    own homework.
+    """
+    blocks = 0
+    notices: Counter = Counter()
+    heads: Counter = Counter()
+    with zipfile.ZipFile(epub_path) as zf:
+        for name in spine_documents(zf):
+            raw = zf.read(name).decode("utf-8", "replace")
+            for match in _BLOCK.finditer(_HEAD.sub(" ", raw)):
+                text = " ".join(unescape(_TAG.sub(" ", match.group(1))).split())
+                if not text:
+                    continue
+                blocks += 1
+                if _NOTICE.search(text):
+                    notices[_key(text)] += 1
+                elif _running_head(text):
+                    heads[_key(text)] += 1
+    repeated = lambda counts: sum(n for n in counts.values() if n > 1)  # noqa: E731
+    return {
+        "blocks": blocks,
+        "notices": repeated(notices),
+        "heads": repeated(heads),
+        "furniture": repeated(notices) + repeated(heads),
+    }

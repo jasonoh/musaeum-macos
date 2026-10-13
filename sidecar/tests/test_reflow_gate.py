@@ -9,6 +9,7 @@ from reflow import gate
 from reflow.chars import Char
 from reflow.outline import Entry, outline_entries
 from tests.reflow_pdfs import OutlineItem, Page, Rect, Text, write_pdf
+from tests.test_reflow_furniture import cases
 
 OPF = """<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
@@ -117,29 +118,43 @@ def test_rotated_only_tokens_are_caught_in_the_spine():
     assert gate.check_rotated(["attention", "03762v5"], stamp)[0].startswith("G3 ")
 
 
-def test_a_long_band_block_is_furniture_only_when_the_book_repeats_it():
-    """*Universe*'s Cengage footer is 276–460 characters and repeats on 323 of
-    its 530 text pages. A flat 80-character cap read it as prose, so the gate
-    counted its words and the pipeline left it in the flow on every page; a long
-    block is furniture when the *book* repeats it, which is a question no single
-    page can answer — hence `long_band` held out and `furniture_keys` deciding."""
+def test_the_gates_furniture_rule_agrees_with_the_pipelines():
+    """The gate's half of `reflow.furniture`, read on the same real blocks: a line
+    of the text layer, with its own box. Agreement is what makes G2 mean
+    anything — count the words a *correct* drop removed and a book fails on its
+    own furniture, which is how the artifact of a broken rule passed.
+
+    The fixture is asserted in the direction that matters: every block the
+    pipeline drops, the gate must drop too. The other direction is a documented
+    asymmetry — the gate excuses *any* band line of 80 characters or fewer, the
+    rule it has always had, so a short band line the pipeline keeps is not
+    counted either. A long one is: the last two cases here are exactly that.
+    """
+    box = (0.0, 0.0, 612.0, 792.0)
+    checked = 0
+    for case in cases():
+        chars = [Char("x", 0.0, case["bottom"] * 792, 10.0, case["top"] * 792)]
+        got = gate._is_furniture(chars, case["text"], box)
+        if case["furniture"] or len(case["text"]) > gate.furniture.MAX_CHARS:
+            checked += 1
+            assert got == case["furniture"], f"{case['book']} p{case['page']}: {case['why']} — got {got}"
+    assert checked >= 20
+
+
+def test_a_long_band_line_the_book_prints_is_no_longer_held_out_for_the_book():
+    """The tier held a long band block out of G2 until the whole book had been
+    read and a `furniture_keys` count excused it; a line in the page's own outer
+    margin is printer's work on its face, and one that carries a book's words is
+    counted where it stands."""
     footer = "Cengage Learning All Rights Reserved May not be copied scanned or duplicated " * 2
-    page = gate.page_evidence(None, row("body words here now", 72, 400) + row(footer, 72, 20), page_box=(0, 0, 612, 792))
+    page = gate.page_evidence(None, row("body words here now", 72, 400) + row(footer, 72, 6), page_box=(0, 0, 612, 792))
     assert page.segments == [["body", "words", "here", "now"]]
-    assert len(page.long_band) == 1
-    repeated = gate.furniture_keys([page.long_band] * 6)
-    assert [toks for key, toks in page.long_band if key not in repeated] == []
-    once = gate.furniture_keys([page.long_band] + [[]] * 5)
-    assert [toks for key, toks in page.long_band if key not in once] == [page.long_band[0][1]]
-
-
-def test_a_band_block_past_the_long_ceiling_is_never_held_out():
-    """Past `FURNITURE_LONG_MAX_CHARS` repetition stops being enough evidence;
-    the block stays in the gate's segment list rather than becoming a candidate
-    the book could excuse."""
-    huge = "Cengage Learning All Rights Reserved " * 20  # ~760 characters
-    page = gate.page_evidence(None, row(huge, 72, 20), page_box=(0, 0, 612, 792))
-    assert page.long_band == [] and page.segments == [gate.tokens(huge)]
+    # A long *prose* line in the band, just clear of the page's own margin
+    # (its bottom at 2.5% of the page): the gate counts its words, where the
+    # tier would have held it out for the book to excuse.
+    prose = row("the last line of a real paragraph that happens to end low on its page, and keeps going", 72, 20)
+    page = gate.page_evidence(None, row("body words here now", 72, 400) + prose, page_box=(0, 0, 612, 792))
+    assert page.segments[-1][:3] == ["the", "last", "line"]
 
 
 def test_check_toc_fails_a_nav_too_thin_for_the_book(tmp_path):
@@ -207,6 +222,49 @@ def test_word_loss_excludes_what_was_dropped_on_purpose():
     art = Counter("the cat sat on the mat".split())
     loss, missing = gate.word_loss(pdf, art, Counter(["page", "12"]))
     assert loss == 0.0 and not missing
+
+
+NOTICE = "Copyright 2012 Cengage Learning. All Rights Reserved. May not be copied, scanned, or duplicated, in whole"
+HEAD = "C H A PT E R 3 CYC L ES O F TH E SU N A N D M OO N"
+
+
+def test_the_census_counts_what_the_printer_repeats_and_not_what_a_page_owns(tmp_path):
+    """B's decider, and the only instrument here that can see a word a pass
+    *added*: G2 and G6 measure loss, so *Universe*'s ~500 furniture blocks read
+    as a pass on all eight checks. A shape the artifact carries **once** is a
+    page's own — *Modernist Cuisine*'s and *Politics*' copyright page, *Politics*'
+    `P O L I T I C S` — and counting it would fail those books on their front
+    matter."""
+    once = make_epub(
+        tmp_path / "once.epub",
+        [("a.xhtml", f"<p>{NOTICE}</p><p>{HEAD}</p><p>The moon orbits Earth about once a month.</p>")],
+        "<ol/>",
+    )
+    assert gate.furniture_census(once) == {"blocks": 3, "notices": 0, "heads": 0, "furniture": 0}
+    twice = make_epub(
+        tmp_path / "twice.epub",
+        [
+            ("a.xhtml", f"<p>{NOTICE}</p><p>{HEAD}</p><p>The moon orbits Earth about once a month.</p>"),
+            # The same notice on another page, one *year* different: the key
+            # collapses digits, which is what lets a page-numbered head register.
+            ("b.xhtml", f"<p>{NOTICE.replace('2012', '2013')}</p><p>{HEAD}</p>"),
+        ],
+        "<ol/>",
+    )
+    assert gate.furniture_census(twice) == {"blocks": 5, "notices": 2, "heads": 2, "furniture": 4}
+
+
+def test_the_census_leaves_the_books_own_words_alone(tmp_path):
+    """*Universe*'s 17 letter-spaced blocks outside the band are equations and
+    figure keys, and two of them are what the capitals half of the head test
+    exists for."""
+    body = (
+        "<p>V = V1.04 × 10° = 1020 m/s</p>"
+        "<p>Star a Ari b CM a a Hya a UMi b Cet</p>"
+        "<p>L 5 (surface area) 3 s T4</p>"
+    )
+    epub = make_epub(tmp_path / "equations.epub", [("a.xhtml", body)], "<ol/>")
+    assert gate.furniture_census(epub) == {"blocks": 3, "notices": 0, "heads": 0, "furniture": 0}
 
 
 def test_check_package_flags_a_compressed_mimetype(tmp_path):

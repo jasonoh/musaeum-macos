@@ -6,6 +6,7 @@
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --gate-only dist/reflow-spike-slice1
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --production
     sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --production --book "Attention"
+    sidecar/.venv/bin/python scripts/pdf-reflow-probe.py --census-only dist/reflow-production
 
 The corpus is the six books named in the design's *Open questions for review*
 (a two-column textbook, the paper the owner reads, a paper in the reflow set
@@ -24,7 +25,12 @@ Each artifact is judged by the gate of the spec's Annex C.4
 writer it runs the production pass (`sidecar/reflow/produce.py`) over a *copy* of
 each corpus PDF placed in `--out`, because the mount is read-only and the pass
 writes `derived/` beside the book — and it measures the bar slice 2 is signed off
-on (byte-stability across two runs, the cache, the stamp, no residue).
+on (byte-stability across two runs, the cache, the stamp, no residue), printing
+`gate.furniture_census` for each artifact as it goes.
+
+`--census-only <dir>` reads that census off artifacts already on disk — the
+decider on its own, and how a before/after is re-taken without laying a book out
+again.
 """
 
 from __future__ import annotations
@@ -101,7 +107,6 @@ def gate_book(
     results["G1"] = gate.check_golden(spine, passages)
 
     segments: list[list[str]] = []
-    long_bands: list[list[tuple[str, list[str]]]] = []
     rotated: list[str] = []
     upright: list[str] = []
     pdf_counter: Counter = Counter()
@@ -117,19 +122,9 @@ def gate_book(
             upright.extend(ev.upright)
             if i not in skip_pages:
                 segments.extend(ev.segments)
-                long_bands.append(ev.long_band)
                 pdf_counter.update(ev.upright)
     finally:
         pdf.close()
-
-    # A long band block is furniture because the *book* repeats it, so the
-    # decision needs every page: the gate holds those out and this puts back the
-    # ones the book does not repeat (`gate.furniture_keys`).
-    repeats = gate.furniture_keys(long_bands)
-    for band in long_bands:
-        for key, toks in band:
-            if key not in repeats:
-                segments.append(toks)
 
     recall, trigrams = gate.trigram_recall(segments, spine_tokens)
     if recall < gate.TRIGRAM_RECALL_MIN:
@@ -516,6 +511,10 @@ def production_book(title: str, why: str, book_dir: str, pdf: str, golden: dict)
     rec["stamp_mtime"] = stamp["source"]["mtime"] if stamp else None
     rec["source_mtime"] = later
     rec["gate"] = gate_artifact(title, pdf, epub_path, golden, rec)
+    # B's own decider (`gate.furniture_census`), measured on the artifact this
+    # run wrote: the gate's eight checks cannot see a word the pass *added*, so
+    # the furniture left in the flowing text needs an instrument of its own.
+    rec["census"] = gate.furniture_census(epub_path)
     return rec
 
 
@@ -559,6 +558,15 @@ def production_failed(records: list[dict]) -> list[str]:
             bad.append(f"{title}: {rec['residue']} left behind")
         if rec.get("stamp_mtime") != rec.get("source_mtime"):
             bad.append(f"{title}: the stamp does not name the touched source")
+        census = rec.get("census") or {}
+        if census and census.get("furniture"):
+            # B's decider, and the only check here that can see a word the pass
+            # *added*: G2 and G6 measure loss, so printer's furniture left in the
+            # flowing text read as a pass on all eight.
+            bad.append(
+                f"{title}: {census['furniture']} furniture blocks in the flowing text "
+                f"({census['notices']} notices, {census['heads']} running heads, of {census['blocks']})"
+            )
     return bad
 
 
@@ -613,6 +621,12 @@ def print_production(records: list[dict], report: str) -> None:
         f"{sum(1 for r in written if r.get('stamp_reran'))} re-ran the pass on a touched source, "
         f"{sum(1 for r in written if r.get('only_derived_changed'))} wrote only derived/"
     )
+    for rec in written:
+        census = rec.get("census") or {}
+        print(
+            f"census  {rec['title'][:42]:42s} {census.get('furniture', 0):>4d} furniture of {census.get('blocks', 0):>6d} blocks "
+            f"({census.get('notices', 0)} notices, {census.get('heads', 0)} running heads)"
+        )
     for rec in records:
         for attempt in (rec.get("attempts") or []) + (rec.get("touched") or []):
             # A refusal is a *fallback* — no artifact and one reason (D6). A
@@ -667,12 +681,54 @@ def production(directory: str, root: str, only: Optional[str]) -> int:
     return 1 if production_failed(records) or gate_regression(records) else 0
 
 
+def census_only(directory: str, only: Optional[str]) -> int:
+    """Print B's census for artifacts already on disk — the decider on its own.
+
+    The production path prints the census per book as it writes one; this reads
+    the same function over artifacts a run has already left behind, which is how
+    a before/after is re-taken without laying a book out again (the census is a
+    property of the *artifact*, so a re-layout would be measuring a different
+    one). It re-writes `<directory>/census.json` with what it read, so a run's
+    own report — whose `census` member is this same reading, taken when the run
+    happened — never has to be the last word on an artifact that has not changed:
+    the reading lives beside it, re-takeable by anyone. Exit 0 when every
+    artifact it read is free of printer's furniture.
+    """
+    found = sorted(glob.glob(os.path.join(directory, "**", "derived", "reflow.epub"), recursive=True))
+    found += sorted(glob.glob(os.path.join(directory, "*.epub")))
+    if only:
+        found = [p for p in found if only.lower() in p.lower()]
+    if not found:
+        print(f"no artifacts under {directory}", file=sys.stderr)
+        return 2
+    failed = 0
+    read = []
+    for path in found:
+        census = gate.furniture_census(path)
+        title = os.path.basename(os.path.dirname(os.path.dirname(path))) if "derived" in path else os.path.basename(path)
+        print(
+            f"{'PASS' if not census['furniture'] else 'FAIL'}  {title[:48]:50s} "
+            f"{census['furniture']:>4d} furniture of {census['blocks']:>6d} blocks "
+            f"({census['notices']} notices, {census['heads']} running heads)"
+        )
+        failed += bool(census["furniture"])
+        read.append({"title": title, "artifact": os.path.relpath(path, directory), **census})
+    print(f"census: {len(found) - failed}/{len(found)} artifacts free of printer's furniture")
+    out = os.path.join(directory, "census.json")
+    with open(out, "w") as fh:
+        json.dump({"directory": directory, "books": read}, fh, indent=2)
+        fh.write("\n")
+    print(f"written {out}")
+    return 1 if failed else 0
+
+
 def main(argv: list[str]) -> int:
     out_dir = "dist/reflow-spike"
     explicit_out = False
     limit: Optional[int] = None
     only: Optional[str] = None
     gate_dir: Optional[str] = None
+    census_dir: Optional[str] = None
     production_mode = False
     i = 1
     while i < len(argv):
@@ -690,6 +746,9 @@ def main(argv: list[str]) -> int:
         elif arg == "--gate-only":
             i += 1
             gate_dir = argv[i]
+        elif arg == "--census-only":
+            i += 1
+            census_dir = argv[i]
         elif arg == "--production":
             production_mode = True
         else:
@@ -697,6 +756,8 @@ def main(argv: list[str]) -> int:
             return 2
         i += 1
 
+    if census_dir:
+        return census_only(os.path.abspath(census_dir), only)
     root = library_root()
     if production_mode:
         return production(os.path.abspath(out_dir if explicit_out else "dist/reflow-production"), root, only)

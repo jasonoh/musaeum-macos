@@ -20,13 +20,19 @@ FOOTER_LONG = (
 
 
 def band_page(close: str, body: str = "Body of the page continues here.") -> PageResult:
-    """One page: a paragraph mid-page, and a block down in the bottom band."""
+    """One page: a paragraph mid-page, and a block down in the bottom band.
+
+    The band block sits at `top=50`, `bottom=38` of a 792pt page — inside the 8%
+    band (its bottom is at 4.8%) and *outside* the page's own outer margin
+    (2.5%), which is what makes it a question for the repetition route rather
+    than for `reflow.furniture`'s shape route.
+    """
     return PageResult(
         index=0,
         chars=500,
         top=792.0,
         bottom=0.0,
-        blocks=[Block("para", text=body, top=600.0, bottom=560.0), Block("para", text=close, top=12.0, bottom=0.0)],
+        blocks=[Block("para", text=body, top=600.0, bottom=560.0), Block("para", text=close, top=50.0, bottom=38.0)],
     )
 
 
@@ -84,34 +90,28 @@ def test_a_book_reads_in_order_without_its_stamp_or_its_running_footer(tmp_path)
     assert [b.plate for b in doc.pages[3].blocks] == [True] and doc.plates == 1
 
 
-def test_a_long_repeated_footer_is_furniture(tmp_path):
-    """*Universe*'s Cengage footer is 276–460 characters and repeats on **323 of
-    its 530 text pages**. A flat 80-character cap read it as prose, so 61% of
-    that book's pages carried the same legal footer inside the flowing text."""
-    pages = [band_page(f"{FOOTER_LONG} {n}") for n in range(8)]
-    doc = doc_of(pages)
-    mark_running_heads(doc)
-    assert FOOTER_LONG.split()[0] not in all_text(doc)
-    assert len(doc.dropped_running_heads) == 8
+def test_a_short_band_line_repeating_on_a_quarter_of_the_pages_is_furniture():
+    """The rule slice 1R shipped, and the one route that still *counts*: a band
+    line of up to `RUNNING_HEAD_MAX_CHARS` whose digit-normalized text recurs on
+    a quarter of the text pages. It is what keeps a book clean when the running
+    head is the same words all the way through — and it is nowhere near enough
+    for a book whose head names its own chapter, which is why the *shape* route
+    exists (`test_reflow_furniture.py`).
 
+    The other five pages carry different words: the repeat key collapses digits,
+    so `Closing words 4.` and `Closing words 5.` are one block and a footer with
+    a page number in it is the case that key exists for.
 
-def test_a_long_band_block_needs_half_the_pages_where_a_short_one_needs_a_quarter():
-    """The two tiers side by side, which is what makes the cap a *tier*. The
-    same repetition — on 3 of 8 pages — drops `CHAPTER FOUR` and keeps the long
-    footer, because a 238-character block needs stronger evidence than a
-    running head before the pipeline calls it furniture.
-
-    The other five pages carry *different* words: the repeat key collapses
-    digits, so `Closing words 4.` and `Closing words 5.` are one block and a
-    footer with a page number in it is the case that key exists for.
+    The long footer beside it stays: the tier that would have taken it at half
+    the pages asked a question one page cannot answer, and was removed rather
+    than loosened (annex → *The decision*).
     """
     words = ("alpha", "bravo", "charlie", "delta", "echo")
     pages = []
     for n in range(8):
         close = "CHAPTER FOUR" if n < 3 else f"Closing words {words[n - 3]}."
         page = band_page(close)
-        if n < 3:
-            page.blocks.append(Block("para", text=FOOTER_LONG, top=40.0, bottom=28.0))
+        page.blocks.append(Block("para", text=FOOTER_LONG, top=40.0, bottom=28.0))
         pages.append(page)
     doc = doc_of(pages)
     mark_running_heads(doc)
@@ -119,14 +119,26 @@ def test_a_long_band_block_needs_half_the_pages_where_a_short_one_needs_a_quarte
     assert "Cengage" in all_text(doc)
 
 
-def test_a_repeated_band_block_past_the_long_ceiling_is_content():
-    """A block over `RUNNING_HEAD_LONG_MAX_CHARS` is content however often it
-    repeats: repetition alone stops being enough evidence at that size."""
-    huge = (FOOTER_LONG + " ") * 8  # ~640 characters
-    doc = doc_of([band_page(f"{huge} {n}") for n in range(8)])
+def test_the_repetition_route_is_not_what_takes_the_furniture():
+    """A band line that repeats *nowhere but its own page* is still dropped when
+    its shape is the printer's — the tier's failure inverted. A rule that only
+    fires on repetition did nothing at all on *Universe*, whose running head
+    names its own chapter and so never repeats under one key; every head below is
+    a different chapter's, and the count of each is one."""
+    heads = [
+        "C H A PT E R 1 H E RE A N D N O W",
+        "C H A PT E R 2 A USE R\u2019S G U I D E TO TH E S K Y",
+        "C H A PT E R 3 CYC L ES O F TH E SU N A N D M OO N",
+        "C H A PT E R 4 TH E O RIGI N O F M O D E R N ASTRO N O M Y",
+        "C H A PT E R 5 LIG HT A N D TE L ESCO P E S",
+        "C H A PT E R 6 ATO MS A N D SP ECTR A",
+    ]
+    doc = doc_of([band_page("CHAPTER FOUR", body=f"Body {n} of the page.") for n in range(len(heads))])
+    for page, head in zip(doc.pages, heads):
+        page.blocks[1].top, page.blocks[1].bottom = 0.06, 0.045
+        page.blocks[1].text = head
     mark_running_heads(doc)
-    assert doc.dropped_running_heads == []
-    assert "Cengage" in all_text(doc)
+    assert doc.dropped_running_heads == heads
 
 
 def test_the_whole_path_produces_a_package_the_gate_accepts(tmp_path):

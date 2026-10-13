@@ -61,7 +61,14 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 # precedence in `regions.py` all change what a pass writes, so every artifact
 # already cached on the share holds the old rendering. Without this bump the
 # rules are inert on exactly the books that have been read.
-CONVERTER_VERSION = 3
+#
+# 4 — 2026-10-13, the furniture rule rewritten: the tier is gone and
+# `reflow/furniture.py` replaces it, so a pass drops a running head, its welded
+# page number and the legal footer by *shape* rather than by a book-wide repeat
+# count. The bytes move on every book that carries any furniture, which is the
+# same reason 3 existed: a cached artifact would otherwise keep the rendering
+# this change was made to remove.
+CONVERTER_VERSION = 4
 STAMP_VERSION = 1
 DERIVED = "derived"
 EPUB_NAME = "reflow.epub"
