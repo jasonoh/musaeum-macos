@@ -74,8 +74,6 @@ Each case below covers what failed, how it was found, and what prevents it now.
 4. **Verify against reality, not fixtures.** Tests are the lock; hardware, measurement and adversarial review are the detectors.
 5. **Make the system say what an action did, in the user's terms.** "No new metadata found" and "Couldn't send, retry" are features.
 
-**[Link: the essay this connects to.]**
-
 ## Artifacts
 
 - **`CLAUDE.md`**, the agent-brief index, with personal paths and secrets setup scrubbed
