@@ -52,7 +52,8 @@ export function DeleteSelectionDialog() {
       }
       // Keep the survivors selected so the report doubles as the retry
       setResult(res)
-      if (res.failed.length === 1) selectBook(res.failed[0].id)
+      const [only] = res.failed
+      if (res.failed.length === 1 && only) selectBook(only.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

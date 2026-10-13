@@ -40,7 +40,7 @@ export function fieldSummary(fields: HydratedField[]): string {
     const rest = labels.length - (MAX_NAMED_FIELDS - 1)
     return `${labels.slice(0, MAX_NAMED_FIELDS - 1).join(', ')} and ${rest} more`
   }
-  if (labels.length === 1) return labels[0]
+  if (labels.length === 1) return labels[0]!
   return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`
 }
 

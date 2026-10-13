@@ -283,5 +283,5 @@ export function nextHit(
   const hits = results.flatMap((group) => group.hits)
   if (hits.length === 0) return null
   const at = activeCfi ? hits.findIndex((hit) => hit.cfi === activeCfi) : -1
-  return hits[(at + 1) % hits.length]
+  return hits[(at + 1) % hits.length] ?? null
 }

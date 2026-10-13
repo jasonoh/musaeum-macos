@@ -102,7 +102,7 @@ export function matchProvider(baseUrl: string | null): string {
 
 /** The row a provider id names, or Custom — a select value is not trusted. */
 export function providerById(id: string): AiProvider {
-  return AI_PROVIDERS.find((p) => p.id === id) ?? AI_PROVIDERS[AI_PROVIDERS.length - 1]
+  return AI_PROVIDERS.find((p) => p.id === id) ?? AI_PROVIDERS[AI_PROVIDERS.length - 1]!
 }
 
 /**

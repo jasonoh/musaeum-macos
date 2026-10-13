@@ -173,8 +173,8 @@ export function useBookNavigation({
       e.preventDefault() // arrows would otherwise scroll the container away
       if (next === index) return
       // ⇧ extends the range from the anchor; a plain arrow collapses to one
-      if (e.shiftKey) extendSelectionTo(books[next].id)
-      else selectBook(books[next].id)
+      if (e.shiftKey) extendSelectionTo(books[next]!.id)
+      else selectBook(books[next]!.id)
     }
 
     window.addEventListener('keydown', onKey)

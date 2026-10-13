@@ -184,7 +184,7 @@ function unwrap(text: string): string {
 /** A key line, tolerating leading list markers, quotes, bold and backticks. */
 function keyValue(line: string, key: 'recall' | 'opening'): string | null {
   const match = line.match(new RegExp(`^[\\s>*_\`#"-]*\\**${key}\\**\\s*[:：]\\s*(.*)$`, 'i'))
-  return match ? match[1] : null
+  return match ? match[1]! : null
 }
 
 /**
@@ -218,7 +218,7 @@ export function parseProbe(reply: string | null | undefined): ParsedProbe {
   const opening: string[] = []
 
   for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]
+    const raw = lines[i]!
 
     const recallValue = keyValue(raw, 'recall')
     if (recallValue !== null) {
@@ -238,7 +238,7 @@ export function parseProbe(reply: string | null | undefined): ParsedProbe {
       // contract, so keep reading until a blank line, a new key line, or one
       // wrap too many.
       for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim()
+        const next = lines[j]!.trim()
         if (!next || KEY_LINE.test(next)) break
         if (opening.length >= MAX_OPENING_LINES) break
         opening.push(unwrap(next))

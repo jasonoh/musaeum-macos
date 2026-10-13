@@ -36,6 +36,7 @@ export function useDialogFocus(): (el: HTMLElement | null) => void {
       }
       const first = items[0]
       const last = items[items.length - 1]
+      if (!first || !last) return
       const active = document.activeElement
       if (e.shiftKey && (active === first || !el.contains(active))) {
         e.preventDefault()

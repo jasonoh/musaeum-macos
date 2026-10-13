@@ -487,13 +487,13 @@ export function sortableAuthor(name: string | null | undefined): string | null {
 
   const parts = clean.split(' ')
   const suffix =
-    parts.length > 2 && NAME_SUFFIXES.has(parts[parts.length - 1].toLowerCase())
+    parts.length > 2 && NAME_SUFFIXES.has(parts[parts.length - 1]!.toLowerCase())
       ? parts.pop()!
       : null
   if (parts.length < 2) return clean
 
   let firstOfLast = parts.length - 1
-  while (firstOfLast > 1 && NAME_PARTICLES.has(parts[firstOfLast - 1].toLowerCase())) {
+  while (firstOfLast > 1 && NAME_PARTICLES.has(parts[firstOfLast - 1]!.toLowerCase())) {
     firstOfLast--
   }
   const last = parts.slice(firstOfLast).join(' ')
