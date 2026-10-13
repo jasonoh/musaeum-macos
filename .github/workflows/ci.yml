@@ -26,6 +26,12 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      # The build is the instrument both `noUncheckedIndexedAccess` flips were
+      # proved with: electron-vite emits the main/preload bundles through tsc,
+      # and that emission fails where typecheck and lint alike pass. Last open
+      # row of the audit plan (T3's named residue) — the one gate the workflow
+      # was missing.
+      - run: npm run build
       - run: npm test
       - run: python -m venv sidecar/.venv && sidecar/.venv/bin/pip install -r sidecar/requirements.txt -r sidecar/requirements-dev.txt
       - run: sidecar/.venv/bin/python -m pytest sidecar/tests -q
