@@ -100,7 +100,7 @@ Measured 2026-10-02: there is **no `sidecar/.venv` on this machine**; system `py
 
 Run:
 ```bash
-cd /Users/jasonoh/Projects/musaeum-macos
+cd /Users/oh/Projects/musaeum-macos
 python3.12 -m venv sidecar/.venv
 sidecar/.venv/bin/pip install -r sidecar/requirements.txt -r sidecar/requirements-dev.txt
 git check-ignore sidecar/.venv

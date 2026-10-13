@@ -309,7 +309,7 @@ Expected: PASS (9 passed), then **356 passed, 2 skipped**.
 ```bash
 rm -rf /tmp/sidecar-pack && mkdir /tmp/sidecar-pack
 rsync -a --exclude .venv --exclude __pycache__ --exclude tests --exclude requirements-dev.txt sidecar/ /tmp/sidecar-pack/
-cd / && /Users/jasonoh/Projects/musaeum-macos/sidecar/.venv/bin/python - <<'PY'
+cd / && /Users/oh/Projects/musaeum-macos/sidecar/.venv/bin/python - <<'PY'
 import sys
 sys.path.insert(0, "/tmp/sidecar-pack")
 from conversion.converter import convert_format

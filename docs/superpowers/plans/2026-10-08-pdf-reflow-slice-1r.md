@@ -10,10 +10,10 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-07-pdf-reflow-reader-design.md` — read **D4R** and **Annex C** (C.4 is the gate, C.5 the algorithm). Annex B is withdrawn; do not build from it.
 
-**Working directory for every command:** `/Users/jasonoh/Projects/musaeum-macos/.delta/worktrees/ab42yb3tr1jv/musaeum-macos` (a clone, branch `feat/pdf-reflow-vision`). This clone has no venv; use the main repo's:
+**Working directory for every command:** `/Users/oh/Projects/musaeum-macos/.delta/worktrees/ab42yb3tr1jv/musaeum-macos` (a clone, branch `feat/pdf-reflow-vision`). This clone has no venv; use the main repo's:
 
 ```bash
-PY=/Users/jasonoh/Projects/musaeum-macos/sidecar/.venv/bin/python
+PY=/Users/oh/Projects/musaeum-macos/sidecar/.venv/bin/python
 ```
 
 ## Resume here (2026-10-08)

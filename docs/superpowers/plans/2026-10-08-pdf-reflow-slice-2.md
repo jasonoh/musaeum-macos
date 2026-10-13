@@ -13,7 +13,7 @@
 **Working directory for every command:** this clone's root, on branch `feat/pdf-reflow-slice-2`. The clone has no venv and no built helper:
 
 ```bash
-PY=/Users/jasonoh/Projects/musaeum-macos/sidecar/.venv/bin/python
+PY=/Users/oh/Projects/musaeum-macos/sidecar/.venv/bin/python
 ./scripts/build-layout-helper.sh          # needs the Xcode toolchain; 149 KB, gitignored
 ```
 
