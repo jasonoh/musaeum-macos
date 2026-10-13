@@ -505,17 +505,24 @@ function heardFromRemoteSource(sources: HydrationResult['metadata']['metadata_so
 }
 
 /**
- * A blank patch: the columns a blanked field clears. `null` is allowed even
- * where the `Book` column is non-null (`title`) — a blank is the *absence* of a
- * value, and that is exactly what the merge reports when no source supplies the
- * field (D6). Typed apart from `Partial<Book>` only because `Book.title` is a
- * non-null `string`, which `Partial<Book>` cannot hold as `null`.
+ * A blank patch: the columns a blanked field clears. `null` is allowed on every
+ * key, because a blank is the *absence* of a value — exactly what the merge
+ * reports when no source supplies the field (D6). The schema's one non-null
+ * column, `title`, is exempt from blanking and so has no entry here (see
+ * `BLANK_FIELD`).
  */
 type BlankPatch = Partial<{ [K in keyof Book]: Book[K] | null }>
 
-/** What a blanked `HydratedField` clears, and to what. `cover` is absent on purpose — a cover is selected, never blanked. */
-const BLANK_FIELD: Partial<Record<HydratedField, BlankPatch>> = {
-  title: { title: null, sortTitle: null },
+/**
+ * What a blanked `HydratedField` clears, and to what. `cover` is absent on
+ * purpose — a cover is selected, never blanked. `title` is absent too, and must
+ * stay so: `books.title` is the schema's only `NOT NULL` column, so blanking it
+ * makes `updateBook` emit `title = NULL`, which SQLite rejects *atomically* —
+ * the whole update is dropped, the cover and conflict inserts with it. A title
+ * cannot be absent, so the absence rule (D6) is exempt for it; `sortTitle` has
+ * no entry without it (invariant 4).
+ */
+export const BLANK_FIELD: Partial<Record<HydratedField, BlankPatch>> = {
   author: { author: null, authorSort: null },
   series: { seriesName: null, seriesIndex: null, seriesTotal: null },
   description: { description: null },

@@ -18,7 +18,7 @@ directions get their own case.
 
 import json
 
-from pipeline.conflict import merge_metadata
+from pipeline.conflict import MERGE_FIELDS, merge_metadata
 
 
 def _fields(conflicts: list) -> set:
@@ -408,3 +408,22 @@ def test_the_identifier_union_counts_as_a_supply():
     )
 
     assert "identifiers" not in missing
+
+
+def test_the_merge_vocabulary_is_the_frozen_nine():
+    # The main process blanks these names on the row, so `MERGE_FIELDS` here and
+    # `BLANK_FIELD` in `electron/main/services/importer.ts` must name the same
+    # fields — two languages, no type to couple them. Frozen as a literal rather
+    # than derived, so a rename on either side fails the same test. The TS side
+    # carries the same nine minus `title` (a NOT NULL column cannot be blanked).
+    assert set(MERGE_FIELDS) == {
+        "title",
+        "author",
+        "series",
+        "publisher",
+        "published_date",
+        "language",
+        "description",
+        "identifiers",
+        "tags",
+    }

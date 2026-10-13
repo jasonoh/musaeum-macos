@@ -10,6 +10,7 @@ import { writeCatalog } from './catalog'
 import { closeDb, getBook, getBooks, getConflictQueue, insertBook, updateBook } from './db'
 import * as events from './events'
 import {
+  BLANK_FIELD,
   abortPendingDecisions,
   addFiles,
   hydrate,
@@ -549,6 +550,27 @@ describe('hydrate — absence is not silence (D6)', () => {
     const logged = info.mock.calls.map((c) => String(c[0])).join('\n')
     expect(logged).toContain('publisher')
     expect(logged).toContain('Stale House')
+  })
+})
+
+describe('the blankable vocabulary', () => {
+  it('names the sidecar MERGE_FIELDS, less the `title` exemption', () => {
+    // `BLANK_FIELD` and `sidecar/pipeline/conflict.py`'s `MERGE_FIELDS` must name
+    // the same fields, but nothing couples the two languages: an unknown name
+    // hits `if (!blank) continue` and the field silently stops being blanked.
+    // Frozen as a literal — not read off the Python side — so a rename on either
+    // side fails here. `title` is the deliberate difference: the schema's only
+    // `NOT NULL` column cannot be blanked (see `BLANK_FIELD`).
+    expect(Object.keys(BLANK_FIELD).sort()).toEqual([
+      'author',
+      'description',
+      'identifiers',
+      'language',
+      'published_date',
+      'publisher',
+      'series',
+      'tags'
+    ])
   })
 })
 
