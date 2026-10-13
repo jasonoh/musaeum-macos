@@ -661,6 +661,8 @@ Three of the four remaining slices have landed, so this is the series' last meas
 - **N5 — renderer tests + the `tsconfig.web.json` flip: 15 files, 67 — the whole remainder, and it has not moved since `d4d3ef6`.** Both halves of the written 9/38 are stale.
 - **Project totals at `9a2a420`:** `tsconfig.node.json` **0** with the flag on (120 at `d4d3ef6`, 208 as written); `tsconfig.web.json` **67** under the CLI flag (81 at `d4d3ef6`, as written) — and **every one of the 67 is a test file**: that project's `src/` with `*.test.ts` excluded is **0**, which is N4's result holding.
 
+**The series closed at `d842c4d` (N5)** — `tsconfig.web.json` gained the flag beside `strict`, `npm run build` exits 0, and both projects now stand at zero with the flag written into their own file: `npx tsc --noEmit -p tsconfig.node.json` and `-p tsconfig.web.json` are 0 each, so the two counts above (node 0 after N3, web 67 under the CLI flag) are both 0. N5's own record is its Progress row; no later slice is owed by this series.
+
 ### N5 starts here
 
 > Consumed — N5 landed in this commit, which is the slice that closes the series. Kept as the record of what N5 was dispatched with.
