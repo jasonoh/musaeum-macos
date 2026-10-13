@@ -133,6 +133,14 @@ def fetch_google_books(
         return None
 
     info = best.get("volumeInfo", {})
+    # A volume with no title is not an answer. On the ISBN path the confidence
+    # above is forced to 0.98, so it never meets the 0.55 floor that already
+    # rejects a title-less match on the title path — without this, an empty
+    # `volumeInfo` comes back as a full record with `title: None`, which
+    # hydration reads as a remote source having answered while it supplied
+    # nothing. A match that carries no title does not deserve that confidence.
+    if not info.get("title"):
+        return None
     identifiers = {}
     for ident in info.get("industryIdentifiers", []):
         if ident.get("type") == "ISBN_13":

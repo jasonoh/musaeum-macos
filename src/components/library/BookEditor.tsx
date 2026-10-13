@@ -150,11 +150,12 @@ export function BookEditor() {
             <p className="flex items-start gap-2 rounded-md border border-gold-500/25 bg-gold-500/5 px-3 py-2 text-[12px] leading-relaxed text-parchment-dim">
               <LockIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold-400" />
               <span>
-                You set these, so a metadata fetch will not change them:{' '}
+                You set these, so a metadata fetch will not replace them:{' '}
                 <span className="text-parchment">
                   {overridden.map((f) => HYDRATED_FIELD_LABELS[f]).join(', ')}
                 </span>
-                . The padlock beside a field hands it back to Musaeum — its value stays.{' '}
+                . The padlock beside a field hands it back to Musaeum — its value stays. A refresh
+                can still clear a field no source supplies any more.{' '}
                 {/* A cover lock has no padlock here: this editor has no cover
                     field, so an instruction to click one would be untrue. Its
                     release is the picker's (AC17) — see the source walk in
@@ -285,8 +286,8 @@ export function BookEditor() {
 
           <p className="text-[11px] leading-relaxed text-parchment-faint">
             Edits are written straight to the book’s metadata.json and the catalog, and a metadata
-            fetch will leave them alone — release a field with the padlock to let Musaeum manage it
-            again. Renaming a book leaves its files under their original names.
+            fetch will not overwrite them — release a field with the padlock to let Musaeum manage
+            it again. Renaming a book leaves its files under their original names.
           </p>
         </div>
 
@@ -341,7 +342,7 @@ function OverrideChip({
     <button
       type="button"
       disabled={busy}
-      title="Musaeum will not change this — click to hand it back"
+      title="A metadata fetch will not overwrite this — click to hand it back"
       aria-label={`Release the override on ${HYDRATED_FIELD_LABELS[field]}`}
       onClick={(e) => {
         // Inside a <label>, a click would otherwise also focus the input it

@@ -183,6 +183,20 @@ def test_every_rendition_being_the_tile_means_no_cover_at_all(monkeypatch):
     assert result["cover_data"] is None
 
 
+# --- an answer must carry a title ------------------------------------------
+
+
+def test_a_titleless_volume_is_not_an_answer(monkeypatch):
+    """The ISBN path forces confidence to 0.98, so it never meets the 0.55
+    floor the title path relies on to reject a match against `""`. An empty
+    `volumeInfo` would otherwise come back as a full record with `title: None`
+    — an online answer in shape only, which hydration reads as a remote source
+    having replied (D4) while it supplied nothing. It must return `None`."""
+    _stub(monkeypatch, {}, {})
+
+    assert google_books.fetch_google_books(isbn_13="9780374715236") is None
+
+
 def test_the_recorded_placeholder_is_the_one_that_was_measured():
     """A source pin, so a later edit to the constant is visible in a diff.
 
