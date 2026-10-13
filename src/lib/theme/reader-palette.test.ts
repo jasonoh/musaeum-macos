@@ -124,6 +124,7 @@ describe('readerPalette', () => {
       link: '#d4a24e',
       linkAlphaHex: '#d4a24e44',
       search: '#d4a24e',
+      annotation: '#d4a24e',
       scheme: 'dark'
     })
     expect(readerPalette(DEFAULT_TOKENS)).toEqual(INK_PALETTE)
@@ -156,6 +157,31 @@ describe('readerPalette', () => {
     expect(readerPalette(LIGHT_TOKENS).search).toBe(readerPalette(LIGHT_TOKENS).link)
     expect(INK_PALETTE.search).toBe(INK_PALETTE.link)
     expect(PAPER_PALETTE.search).toBe(PAPER_PALETTE.link)
+  })
+
+  /**
+   * AC12 — the highlight's own role, present on both authored rows *and* on the
+   * derived one, and a literal the module's guard accepts.
+   *
+   * The guard is asserted as a **shape** rather than as `=== link`: the value
+   * derives from the link color today (D9), and a case that compared the two
+   * fields would pass for a role that had been re-pointed at anything at all —
+   * including at something that is not a color, which is the defect the guard
+   * exists to catch. `HEX` is the module's own pattern, restated in the shape a
+   * consumer sees (`#rrggbb`), because importing it would test the implementation
+   * against itself.
+   */
+  it('carries the annotation role on both authored rows and on the derived one (AC12)', () => {
+    for (const palette of [readerPalette(DEFAULT_TOKENS), INK_PALETTE, PAPER_PALETTE]) {
+      expect(palette.annotation, JSON.stringify(palette)).toMatch(/^#[0-9a-f]{6}$/)
+    }
+    // Derived, not authored: it follows a light theme's link color, so a themed
+    // app cannot fill a highlight in the built-in amber.
+    const light = readerPalette(LIGHT_TOKENS)
+    expect(light.annotation).toBe(light.link)
+    expect(light.annotation).not.toBe(INK_PALETTE.annotation)
+    // Total, like every other field: an unreadable token set is the ink row.
+    expect(readerPalette(undefined).annotation).toBe(INK_PALETTE.annotation)
   })
 
   it('composes the alpha onto the link rather than leaving it to the rule (AC5.8)', () => {
@@ -334,9 +360,13 @@ describe('the reader components read the theme through the palette (AC5.1)', () 
     join(process.cwd(), 'src', 'components', 'reader', 'ReaderSearch.tsx'),
     'utf8'
   )
+  const VIEW = readFileSync(
+    join(process.cwd(), 'src', 'components', 'reader', 'ReaderView.tsx'),
+    'utf8'
+  )
 
-  it('takes the tokens from the theme store in both places that resolve a palette', () => {
-    for (const source of [ENGINE, SEARCH]) {
+  it('takes the tokens from the theme store in every place that resolves a palette', () => {
+    for (const source of [ENGINE, SEARCH, VIEW]) {
       expect(source).toContain('useThemeStore((s) => s.view?.active.tokens')
     }
   })
@@ -368,13 +398,24 @@ describe('the reader components read the theme through the palette (AC5.1)', () 
     expect(SEARCH).toContain('if (ranQuery) void startRef.current()')
   })
 
-  it('never reaches for an authored row directly, in either component', () => {
+  it('never reaches for an authored row directly, in any component', () => {
     // The rows are what a stored `ink`/`paper` *resolves to*, never a color a
     // component may pick up on its own — a second read of one is how a themed app
     // ends up with an unthemed page or an unthemed search outline.
-    for (const source of [ENGINE, SEARCH]) {
+    for (const source of [ENGINE, SEARCH, VIEW]) {
       expect(source).not.toMatch(/\b(INK_PALETTE|PAPER_PALETTE)\b/)
     }
     expect(SEARCH).toContain('.search')
+  })
+
+  it('hands the highlight layer the annotation role, resolved from the live tokens (AC12)', () => {
+    // The draw happens in foliate-view's closed shadow root, where a custom
+    // property is not something this repo bets on — so the color travels as a
+    // resolved literal from this table, through the view, into the engine. The
+    // wiring is what a pure function cannot decide, and it is the half that
+    // makes AC12's role reach a page.
+    expect(VIEW).toContain('useThemeStore((s) => s.view?.active.tokens')
+    expect(VIEW).toMatch(/resolveReaderPalette\([^)]*\)\.annotation/)
+    expect(VIEW).toContain('annotationColor={annotationColor}')
   })
 })

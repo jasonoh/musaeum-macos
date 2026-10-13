@@ -137,7 +137,7 @@ export function DeleteBookDialog() {
           {wholeBook ? (
             <>
               This permanently removes the book, all {multi ? 'its files' : 'of its files'}, covers,
-              and metadata from the library. This can’t be undone.
+              notes, and metadata from the library. This can’t be undone.
             </>
           ) : (
             <>

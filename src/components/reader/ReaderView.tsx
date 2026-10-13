@@ -4,15 +4,18 @@ import type { ReadingState, ReflowProgress } from '@shared/book.types'
 import { primaryFormat } from '@shared/book.types'
 import { TITLEBAR_STRIP_HEIGHT, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 import { isTypingTarget } from '@/hooks/useBookNavigation'
+import { resolveReaderPalette } from '@/lib/theme/reader-palette'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
+import { useThemeStore } from '@/stores/theme.store'
 import { useUIStore } from '@/stores/ui.store'
 import { ReaderEngine } from './ReaderEngine'
+import { ReaderNotes } from './ReaderNotes'
 import { ReaderPrefsPopover } from './ReaderPrefsPopover'
 import { ReaderAsk } from './ReaderAsk'
 import { ReaderSearch } from './ReaderSearch'
 import { ReaderToc } from './ReaderToc'
-import { AskIcon, CloseIcon, ListIcon, SearchIcon } from '@/components/shared/icons'
+import { AskIcon, CloseIcon, ListIcon, NotesIcon, SearchIcon } from '@/components/shared/icons'
 
 /** Position reports are debounced: a page turn is cheap, a NAS write is not. */
 const REPORT_DEBOUNCE_MS = 2_000
@@ -49,6 +52,13 @@ export function ReaderView() {
   const askOpen = useReaderStore((s) => s.askOpen)
   const searchOpen = useReaderStore((s) => s.searchOpen)
   const query = useReaderStore((s) => s.query)
+  const notesOpen = useReaderStore((s) => s.notesOpen)
+  const annotations = useReaderStore((s) => s.annotations)
+  const sectionLabel = useReaderStore((s) => s.sectionLabel)
+  const openNotes = useReaderStore((s) => s.openNotes)
+  const addHighlight = useReaderStore((s) => s.addHighlight)
+  const toggleNotes = useReaderStore((s) => s.toggleNotes)
+  const closeNotes = useReaderStore((s) => s.closeNotes)
   const close = useReaderStore((s) => s.close)
   const setStatus = useReaderStore((s) => s.setStatus)
   const setToc = useReaderStore((s) => s.setToc)
@@ -67,6 +77,17 @@ export function ReaderView() {
 
   const books = useLibraryStore((s) => s.books)
   const book = books.find((b) => b.id === bookId) ?? null
+
+  /**
+   * The color the highlight layer fills with — the `annotation` role on the
+   * reader's derived palette (D9), resolved **here** because this is the one
+   * place both halves are already in hand: the reader store's page theme and the
+   * theme store's tokens. It travels down as a literal, never a `var(--…)`: the
+   * overlayer lives in foliate-view's closed shadow root, where a custom property
+   * is a bet this repo does not take (`docs/invariants/reader.md:67`).
+   */
+  const tokens = useThemeStore((s) => s.view?.active.tokens ?? null)
+  const annotationColor = resolveReaderPalette(prefs.theme, tokens).annotation
 
   // **The loaded list is not the resume source (D17).** Its copy is as old as
   // the last `load()`: nothing broadcasts for a progress write, so a book the
@@ -225,6 +246,16 @@ export function ReaderView() {
         else closeSearch()
         return
       }
+      // The notes panel is the reader's own too, so Escape closes the panel
+      // rather than taking the book with it — the same step the find panel gets.
+      // The panel handles the key itself while focus is inside it (its own
+      // handler stops it there); this is the arm for a reader whose focus is
+      // still in the book.
+      if (notesOpen && e.key === 'Escape') {
+        e.preventDefault()
+        closeNotes()
+        return
+      }
       switch (e.key) {
         case 'Escape':
           e.preventDefault()
@@ -243,7 +274,18 @@ export function ReaderView() {
           break
       }
     },
-    [closeReader, closePrefs, clearSearch, closeSearch, overlaid, prefsOpen, searchOpen, query]
+    [
+      closeReader,
+      closePrefs,
+      clearSearch,
+      closeSearch,
+      closeNotes,
+      overlaid,
+      prefsOpen,
+      searchOpen,
+      notesOpen,
+      query
+    ]
   )
 
   useEffect(() => {
@@ -354,6 +396,17 @@ export function ReaderView() {
         >
           <AskIcon className="h-4 w-4" />
         </button>
+        <button
+          onClick={toggleNotes}
+          title="Highlights and notes"
+          aria-label="Highlights and notes"
+          aria-pressed={notesOpen}
+          className={`app-no-drag rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
+            notesOpen ? 'text-gold-300' : 'text-parchment-faint'
+          }`}
+        >
+          <NotesIcon className="h-4 w-4" />
+        </button>
 
         <div className="mx-3 min-w-0 flex-1 text-center">
           <h1 className="truncate font-display text-[15px] leading-tight text-parchment">
@@ -381,9 +434,10 @@ export function ReaderView() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* One side slot (D4): whichever panel is open, and only one is */}
+        {/* One side slot (D4, D8.2): whichever panel is open, and only one is */}
         {tocOpen && <ReaderToc onNavigate={(href) => void viewRef.current?.goTo(href)} />}
         {searchOpen && <ReaderSearch viewRef={viewRef} />}
+        {notesOpen && <ReaderNotes viewRef={viewRef} />}
         {askOpen && <ReaderAsk onNavigate={(href) => void viewRef.current?.goTo(href)} />}
         <main className="relative min-w-0 flex-1">
           {status === 'error' ? (
@@ -435,6 +489,12 @@ export function ReaderView() {
                   initial={resumeState}
                   prefs={prefs}
                   viewRef={viewRef}
+                  percent={percent}
+                  sectionLabel={sectionLabel}
+                  annotations={annotations}
+                  annotationColor={annotationColor}
+                  onShowAnnotation={openNotes}
+                  onHighlight={addHighlight}
                   onReady={(toc) => {
                     setToc(toc)
                     setStatus('ready')

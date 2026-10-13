@@ -71,3 +71,50 @@ describe("the reader's titlebar against the window's drag regions", () => {
     }
   })
 })
+
+/**
+ * The selection chip (D8.1) is the reader's one **floating** control, which is
+ * what makes it this file's business: its rect is computed at runtime from the
+ * selection, so it can land anywhere — including over the reader's own header
+ * (which declares `app-drag`) and over the library's two strips still mounted
+ * behind the overlay, both of which span the top of the window.
+ *
+ * Wherever it lands, the rule is the one above: a control inside a draggable
+ * region takes no mouse input at all (`docs/invariants/reader.md:45`). A static
+ * check cannot say *where* the chip lands — only the running app can, and that is
+ * AC20's frame — but it can say that the marker is on it.
+ *
+ * **The chip's source is read with its comments stripped, and that is load-bearing
+ * rather than tidy.** The comment that explains the marker sits *inside* the
+ * button's own opening tag, so a walk over the raw text finds `app-no-drag` in the
+ * prose and passes with the attribute deleted — measured: the first version of
+ * this walk survived exactly that mutation. Stripping comments is the same
+ * technique `src/lib/storage-copy-scan.test.ts` uses for the same reason.
+ */
+const CHIP = readFileSync(
+  join(process.cwd(), 'src', 'components', 'reader', 'SelectionChip.tsx'),
+  'utf8'
+)
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/(^|\s)\/\/[^\n]*/gm, '$1')
+
+describe('the selection chip against the window’s drag regions', () => {
+  it('marks the chip as no-drag, so a rect in the top band is still clickable', () => {
+    expect(CHIP).toContain('<button')
+    const [, ...rest] = CHIP.split('<button')
+    const tag = rest[0].slice(0, rest[0].indexOf('>'))
+    // The chip's own class list, not the whole tag: the assertion is about the
+    // attribute a click actually reads, and `toContain` over the tag would pass
+    // for a marker on the wrong element.
+    const classes = /className="([^"]*)"/.exec(tag)?.[1] ?? ''
+    expect(classes, 'the chip’s opening tag must carry a class list').not.toBe('')
+    expect(classes.split(/\s+/)).toContain('app-no-drag')
+  })
+
+  it('positions itself in viewport coordinates, which is what a fixed box reads', () => {
+    // The engine hands it the selection's rect translated into the top document's
+    // (reading R15); `fixed` is the only positioning whose numbers mean that.
+    expect(CHIP).toContain('fixed')
+    expect(CHIP).toContain('rect.left + rect.width / 2')
+  })
+})

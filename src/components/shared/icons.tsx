@@ -223,3 +223,17 @@ export const PlusIcon = ({ className }: IconProps) => (
     <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 )
+
+/**
+ * Highlights and notes: a marked-up page, with the pen that marked it.
+ *
+ * A page with a pen rather than a bookmark or a star — what the panel holds is
+ * text a person marked, and every other glyph in this set that could stand for
+ * "saved" (a star, a tick, a lock) already means something else here.
+ */
+export const NotesIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M4 6.5h16M4 12h9M4 17.5h6" />
+    <path d="M14.2 17.2l4.9-4.9a1.7 1.7 0 0 0-2.4-2.4l-4.9 4.9-.6 3 3-.6z" />
+  </svg>
+)

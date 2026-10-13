@@ -90,6 +90,74 @@ declare module '@vendor/foliate-js/view.js' {
   }
 
   /**
+   * An annotation as the engine takes it.
+   *
+   * `value` is the key: `addAnnotation` removes any annotation under it
+   * (`view.js:389`), resolves it as a CFI, and draws from the `value`. A value
+   * prefixed `foliate-search:` takes the engine's *other* arm and never reaches
+   * the `draw-annotation` event; the reader's own annotations never carry it.
+   */
+  export interface FoliateAnnotation {
+    value: string
+  }
+
+  /**
+   * …and what `draw-annotation` hands back is **the same object**, every member
+   * still on it (`view.js:393`).
+   *
+   * This is the door the consumer reads its own fields back through — the vendor's
+   * highlight layer carries a bookmark's colour exactly this way (`reader.js:165`,
+   * `:178-182`) — which is why it is a distinct type from what is *offered*: a
+   * caller may put anything on the object, and only it knows what it put there.
+   */
+  export type FoliateOfferedAnnotation = FoliateAnnotation & Record<string, unknown>
+
+  /** One of `Overlayer`'s static draw functions, as the consumer receives it. */
+  export type FoliateDrawFn = (rects: unknown, options?: { color?: string }) => unknown
+
+  /** The closure the engine hands the consumer: `draw(fn, { color })`. */
+  export type FoliateDraw = (fn: FoliateDrawFn, options?: { color?: string }) => void
+
+  /**
+   * `draw-annotation`'s detail — emitted only for a **non-search** value
+   * (`view.js:392-393`), which is the arm this feature uses. `annotation` is the
+   * object that was passed to `addAnnotation`, not a copy of it.
+   */
+  export interface FoliateDrawAnnotationDetail {
+    draw: FoliateDraw
+    annotation: FoliateOfferedAnnotation
+    doc?: Document
+    range: Range
+  }
+
+  /**
+   * `create-overlay`'s detail: a section's overlayer has just been made
+   * (`view.js:418`).
+   *
+   * **Declared and deliberately not used.** The event fires *before* the paginator
+   * attaches the new overlayer (`paginator.js:989-995`), so a re-add inside it
+   * resolves against the previous section's overlayer and document — see the note
+   * on `ReaderEngine`'s `relocate` listener, which is the seam this feature draws
+   * from. It stays declared because it is part of the vendor's surface and because
+   * the next reader reaching for it should find the reason here rather than
+   * rediscover it.
+   */
+  export interface FoliateCreateOverlayDetail {
+    index: number
+  }
+
+  /**
+   * `show-annotation`'s detail, as the engine's own click handler emits it
+   * (`view.js:408-412`). `value` is the overlayer's key — the annotation's own
+   * `value`, not its id, because the overlayer never saw the id.
+   */
+  export interface FoliateShowAnnotationDetail {
+    value: string
+    index: number
+    range: Range
+  }
+
+  /**
    * Three shapes, interleaved: one `{ progress }` per section, one
    * `{ label, subitems }` per section that has hits, and the bare string
    * `'done'` last.
@@ -125,7 +193,59 @@ declare module '@vendor/foliate-js/view.js' {
     search(opts: FoliateSearchOptions): AsyncGenerator<FoliateSearchYield, void, void>
     /** Delete the search annotations — every outline the engine drew. */
     clearSearch(): void
+    /**
+     * Draw one annotation, keyed by its `value`.
+     *
+     * It removes any annotation already under that key, resolves the value to a
+     * spine index, and — for a value that is **not** `foliate-search:`-prefixed —
+     * emits `draw-annotation` with a closure the consumer calls. Resolves to the
+     * section it landed in, which is what the engine's own TOC progress uses.
+     *
+     * **It throws when the value does not resolve.** `resolveNavigation` catches
+     * its own failure and returns `undefined` (`view.js:446-459`) and this method
+     * destructures that return on the next line (`view.js:385`) — so an
+     * unresolvable locator is an exception, not a miss, and every caller here
+     * treats it as one.
+     */
+    addAnnotation(annotation: FoliateAnnotation): Promise<{ index: number; label: string }>
+    /** The same call with the flag that removes instead of drawing (`view.js:399-401`). */
+    deleteAnnotation(annotation: FoliateAnnotation): Promise<{ index: number; label: string }>
+    /**
+     * The CFI for a range inside a section: `CFI.joinIndir(sectionCfi,
+     * CFI.fromRange(range))` (`view.js:431-435`). A null range yields the
+     * section's own base CFI.
+     */
+    getCFI(index: number, range: Range | null): string
     /** Throws if `open()` resolved but nothing was ever displayed. */
     close(): void
+  }
+}
+
+/**
+ * `vendor/foliate-js/overlayer.js` — the two draw functions.
+ *
+ * Declared here rather than imported from upstream for the same reason the view
+ * is: the vendored tree is never edited (invariant 11), and this file is where
+ * every divergence lives. `highlight` is a filled rect set with the vendored
+ * opacity/blend custom properties (`overlayer.js:126-141`); `outline` is the
+ * stroked one search draws with (`:142-158`).
+ */
+declare module '@vendor/foliate-js/overlayer.js' {
+  /**
+   * The two draw functions (a filled highlight, a stroked outline).
+   *
+   * The rects they are called with are the paginator's own — an array of
+   * `{ left, top, height, width }` in the section document's coordinates. They
+   * are declared `unknown` here **deliberately**: nothing in `src/` ever reads or
+   * builds one (the engine supplies them, and this app only hands the *function*
+   * over), and the loose parameter is what lets both statics share one type with
+   * the `draw` closure the view hands the consumer.
+   */
+  export class Overlayer {
+    static highlight(rects: unknown, options?: { color?: string }): unknown
+    static outline(
+      rects: unknown,
+      options?: { color?: string; width?: number; radius?: number }
+    ): unknown
   }
 }

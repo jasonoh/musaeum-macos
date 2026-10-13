@@ -1,16 +1,31 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 import type {
+  FoliateDrawAnnotationDetail,
   FoliateLoadDetail,
   FoliateRelocateDetail,
+  FoliateShowAnnotationDetail,
   FoliateTocItem,
   FoliateView
 } from '@vendor/foliate-js/view.js'
 import '@vendor/foliate-js/view.js'
+import { Overlayer } from '@vendor/foliate-js/overlayer.js'
 import type { ReadingState, ReaderFormat } from '@shared/book.types'
+import type { Annotation } from '@shared/annotation.types'
+import {
+  annotationFromSelection,
+  isAnnotationDrawKind,
+  planAnnotations,
+  removedValues,
+  type AnnotationDrawKind,
+  type AnnotationLocator,
+  type AnnotationPlan,
+  type SelectionCapture
+} from '@/lib/annotations'
 import { readerPageCss, resolveReaderPalette } from '@/lib/theme/reader-palette'
 import type { ReaderPrefs, ReaderSection, ReaderTocItem } from '@/stores/reader.store'
 import { useThemeStore } from '@/stores/theme.store'
+import { SelectionChip, type SelectionRect } from './SelectionChip'
 
 interface Props {
   bookId: string
@@ -50,6 +65,37 @@ interface Props {
   onSection(detail: ReaderSection): void
   /** The text selected in that section, or null. A page turn clears it. */
   onSelection(selection: string | null): void
+  /**
+   * The book's highlights, as the service last answered. The engine offers them
+   * to the engine's own annotation arm and never decides what is in the list —
+   * `stale` and the artifact comparison are the service's (spec D6).
+   */
+  annotations: Annotation[]
+  /**
+   * The resolved color the highlight layer draws in — `annotation` on the
+   * reader's derived palette (D9). A **literal**, never `var(--…)`: the overlayer
+   * lives in foliate-view's closed shadow root.
+   */
+  annotationColor: string
+  /**
+   * The page's own fraction, as the relocator reported it — what a highlight made
+   * on this page records as its position (reading R11). Passed rather than
+   * derived from the CFI so the record cannot disagree with the bar on screen.
+   */
+  percent: number
+  /** The section's own TOC label, the engine's own name for where this is (D5). */
+  sectionLabel: string | null
+  /**
+   * A click inside a drawn highlight. The engine's own event carries the
+   * overlayer's **key** — the annotation's `cfi` — because that is all the
+   * overlayer ever saw (`vendor/foliate-js/view.js:408-412`).
+   */
+  onShowAnnotation(cfi: string): void
+  /**
+   * The chip's one gesture: the selection's locator, already normalized,
+   * refused-by-null and capped (AC13). The parent calls the service with it.
+   */
+  onHighlight(locator: AnnotationLocator): Promise<unknown>
   onError(message: string): void
   /**
    * The book's own iframe steals focus as soon as a page renders, so the
@@ -90,6 +136,12 @@ export function ReaderEngine({
   onRelocate,
   onSection,
   onSelection,
+  annotations,
+  annotationColor,
+  percent,
+  sectionLabel,
+  onShowAnnotation,
+  onHighlight,
   onError,
   onKeyDown,
   viewRef
@@ -121,17 +173,97 @@ export function ReaderEngine({
   const tokens = useThemeStore((s) => s.view?.active.tokens ?? null)
 
   // Callbacks are read through refs so a re-render never re-opens the book
-  const cb = useRef({ onReady, onRelocate, onSection, onSelection, onError, onKeyDown })
+  const cb = useRef({
+    onReady,
+    onRelocate,
+    onSection,
+    onSelection,
+    onShowAnnotation,
+    onHighlight,
+    onError,
+    onKeyDown
+  })
   const prefsRef = useRef(prefs)
   // The tokens ride with the prefs for the same reason: the open path reads
   // both at the moment the bytes arrive, and a theme that changed *while* a book
   // was loading must color the page it is about to show, not re-open it.
   const tokensRef = useRef(tokens)
+  /**
+   * The page's own position and name, for the chip's locator (reading R11).
+   *
+   * Through a ref for the same reason the callbacks are: the selection is
+   * captured inside a listener that outlives the render it was attached in, and
+   * a closure over `percent` would stamp whatever the value was when the section
+   * loaded rather than the page the selection is on.
+   */
+  const pageRef = useRef({ percent, sectionLabel })
+  /**
+   * The list and the color the plan is run against, read through a ref by three
+   * callers — the section listener, the effect below, and nothing else — because
+   * a closure would be the stale one for whichever of them did not declare it.
+   */
+  const live = useRef({ annotations, color: annotationColor })
   useEffect(() => {
-    cb.current = { onReady, onRelocate, onSection, onSelection, onError, onKeyDown }
+    cb.current = {
+      onReady,
+      onRelocate,
+      onSection,
+      onSelection,
+      onShowAnnotation,
+      onHighlight,
+      onError,
+      onKeyDown
+    }
     prefsRef.current = prefs
     tokensRef.current = tokens
+    pageRef.current = { percent, sectionLabel }
+    live.current = { annotations, color: annotationColor }
   })
+
+  /**
+   * What the engine was last handed. `rows` is the half read back — it is what
+   * says which values are *on the page*, and therefore which ones a delete has to
+   * take off it (reading R13). `undrawable` is the plan's own report, carried
+   * rather than discarded so that "this one is not on the page" is a value in
+   * hand rather than a console line (reading R12; its reversal is the panel row
+   * that would show it).
+   */
+  const plan = useRef<AnnotationPlan>({ rows: [], undrawable: [] })
+
+  /** The selection chip: the live selection's rect and its locator (D8.1). */
+  const [chip, setChip] = useState<{ rect: SelectionRect; capture: SelectionCapture } | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  /**
+   * Run the plan against the view (AC14, AC15, R12/R13).
+   *
+   * A no-op until `open()` has resolved: with no renderer every offer throws and
+   * the layer would call the whole book undrawable. The first real plan comes
+   * from `create-overlay`, which arrives with the first section.
+   */
+  const replan = useCallback(async () => {
+    const view = viewRef.current
+    if (!view?.renderer) return
+    const previous = plan.current.rows
+    let next: AnnotationPlan
+    try {
+      next = await planAnnotations(live.current.annotations, live.current.color, view)
+    } catch {
+      // The plan catches per annotation; a throw reaching here is the engine
+      // itself, and a layer that cannot draw must not take the book with it
+      // (invariant 12) — so this is a no-op rather than a second error surface
+      // stacked on the reader's own.
+      return
+    }
+    for (const value of removedValues(previous, next.rows)) {
+      try {
+        await view.deleteAnnotation({ value })
+      } catch {
+        /* the section that held it is gone — there is nothing left to remove */
+      }
+    }
+    plan.current = next
+  }, [viewRef])
 
   // Re-open only when the book changes; pref changes restyle in place
   useEffect(() => {
@@ -148,6 +280,58 @@ export function ReaderEngine({
     host.append(view)
     viewRef.current = view
 
+    /**
+     * The highlight layer's two arms and its click.
+     *
+     * `draw-annotation` fires **only** for a value the engine does not recognise
+     * as a search hit (`view.js:392-393`), so search's own outlines are untouched
+     * by anything here — which is what AC16 means by the search path's draw
+     * staying its own. The `annotation` in the detail is the object that was
+     * handed to `addAnnotation`, so the kind and the color ride on it (reading
+     * R14), and the draw function is selected from a table by that kind rather
+     * than hardcoded: a name nothing reads is a comment, and the criterion says
+     * the plan *names* the draw.
+     */
+    view.addEventListener('draw-annotation', (event) => {
+      const { draw, annotation } = (event as CustomEvent<FoliateDrawAnnotationDetail>).detail
+      const kind = annotation.kind
+      if (!isAnnotationDrawKind(kind)) return
+      draw(DRAWS[kind], { color: typeof annotation.color === 'string' ? annotation.color : '' })
+    })
+
+    /**
+     * A click inside a drawn highlight — D8.2's second opener. The engine's own
+     * handler emits the **key** of the overlayer it hit (`view.js:408-412`),
+     * which is the `cfi` this layer offered: the overlayer never knew the id.
+     */
+    view.addEventListener('show-annotation', (event) => {
+      if (disposed) return
+      const { value } = (event as CustomEvent<FoliateShowAnnotationDetail>).detail
+      cb.current.onShowAnnotation(value)
+    })
+
+    /**
+     * **The plan is re-offered from `relocate`, not from `create-overlay`, and the
+     * reason is a vendor ordering fact rather than a preference.**
+     *
+     * `create-overlay` is emitted from `#createOverlayer` *before* the paginator
+     * attaches the new overlayer — the emit is at `view.js:418` and the `attach`
+     * callback that sets `view.overlayer` runs only when that method *returns*
+     * (`paginator.js:989-995`), one line before `this.#view = view`. So a re-add
+     * inside that handler finds `getContents()` still describing the **previous**
+     * section (`paginator.js:1092-1098` returns `this.#view`'s overlayer and
+     * document under the *new* `#index`), and draws the new section's rectangles
+     * into the old section's overlay — or, on the very first section, draws
+     * nothing at all, because `#view` is still undefined. The vendor's own
+     * reference highlight layer uses that seam (`reader.js:172-177`), and it is
+     * reading a tree this repo never runs.
+     *
+     * `relocate` is emitted from `#afterScroll` (`paginator.js:966-969`), which
+     * runs after `this.#view = view` and after `scrollToAnchor` — the first moment
+     * at which the plan can draw on the section that is actually on screen, and
+     * it fires for every section display including a re-display of the same index
+     * (which is what a jump to a highlight inside the current section is).
+     */
     view.addEventListener('relocate', (event) => {
       // Guarded like onReady/onError: a relocate arriving from a torn-down
       // view would stamp the previous book's CFI onto the current bookId
@@ -161,6 +345,7 @@ export function ReaderEngine({
         label: detail.tocItem?.label?.trim() || null,
         sectionOffset: sectionOffset(loaded.current?.doc ?? null, detail.range)
       })
+      void replan()
     })
     view.addEventListener('load', (event) => {
       const { doc, index } = (event as CustomEvent<FoliateLoadDetail>).detail
@@ -169,7 +354,45 @@ export function ReaderEngine({
       // listeners never see a selection inside the book's iframe. Captured
       // wide — a drag can end outside the section, and a shift-arrow makes one
       // with no mouse at all — because the store drops the repeats.
-      const capture = () => cb.current.onSelection(selectionText(doc))
+      //
+      // One read, two destinations. The **text** goes to the store, because it
+      // is the one thing the ask panel sends verbatim. The **locator** — the
+      // CFI, the rect, the text either side of the range (AC13) — stays in this
+      // component: the chip that acts on it is this component's own control, and
+      // a `cfi` has no business in a store the ask panel reads.
+      const capture = () => {
+        const quote = selectionText(doc)
+        cb.current.onSelection(quote)
+        const range = selectionRange(doc)
+        if (!quote || !range) {
+          setChip(null)
+          return
+        }
+        const rect = selectionRect(doc, range)
+        if (!rect) {
+          setChip(null)
+          return
+        }
+        let cfi: string
+        try {
+          cfi = view.getCFI(index, range)
+        } catch {
+          // A range the CFI builder cannot describe is a locator this build
+          // cannot store — no chip, and nothing thrown out of a document event.
+          setChip(null)
+          return
+        }
+        setChip({
+          rect,
+          capture: {
+            quote,
+            cfi,
+            percent: pageRef.current.percent,
+            sectionLabel: pageRef.current.sectionLabel,
+            ...contextAround(doc, range)
+          }
+        })
+      }
       doc.addEventListener('selectionchange', capture)
       doc.addEventListener('mouseup', capture)
       doc.addEventListener('keyup', capture)
@@ -177,8 +400,9 @@ export function ReaderEngine({
       if (disposed) return
       loaded.current = { index, doc }
       cb.current.onSection({ index, text: sectionText(doc) })
-      // A new section starts with nothing selected in it
+      // A new section starts with nothing selected in it — no text, no chip
       cb.current.onSelection(null)
+      setChip(null)
     })
 
     void (async () => {
@@ -255,8 +479,70 @@ export function ReaderEngine({
     renderer?.setStyles?.(readerPageCss(prefs, resolveReaderPalette(prefs.theme, tokens)))
   }, [prefs, tokens, viewRef])
 
-  return <div ref={hostRef} className="h-full w-full" />
+  /**
+   * The layer follows the list and the resolved color, and it is **re-run** rather
+   * than amended (reading R13).
+   *
+   * The color half is the obligation `ReaderSearch` already discharges, for the
+   * same measured reason: the engine keeps the options it was handed, so a
+   * highlight drawn under one theme would keep that theme's color after a switch
+   * — measured once already at 1,780 px of the wrong color on a page that had
+   * gone dark (`docs/invariants/reader.md:69`). Keyed on the resolved color
+   * rather than on the tokens, so a theme change that leaves the `annotation`
+   * role alone redraws nothing.
+   *
+   * Cheap and safe: re-offering a value is idempotent — the engine removes what
+   * it is about to re-add (`view.js:389`) — and the one thing a re-run cannot do,
+   * un-draw a deleted highlight, is `removedValues`' job inside `replan`.
+   */
+  useEffect(() => {
+    void replan()
+  }, [replan, annotations, annotationColor])
+
+  /**
+   * The chip's one gesture (D8.1): the selection becomes a record.
+   *
+   * The refusal is a guard rather than a path — the chip is only shown once the
+   * capture produced a locator — and the chip goes on the way out either way: the
+   * drawn highlight is the feedback, and a failure has already been put on the
+   * toast surface by the store (reading R16).
+   */
+  const onChipActivate = useCallback(() => {
+    if (!chip || saving) return
+    const locator = annotationFromSelection(chip.capture)
+    if (!locator) {
+      setChip(null)
+      return
+    }
+    setSaving(true)
+    void cb.current
+      .onHighlight(locator)
+      .catch(() => {})
+      .finally(() => {
+        setSaving(false)
+        setChip(null)
+      })
+  }, [chip, saving])
+
+  return (
+    <div ref={hostRef} className="h-full w-full">
+      {chip && <SelectionChip rect={chip.rect} busy={saving} onActivate={onChipActivate} />}
+    </div>
+  )
 }
+
+/**
+ * The draw function each kind names (reading R14).
+ *
+ * A table rather than a hardcoded call, because AC16 says the plan *names* the
+ * draw and a name nothing reads is a comment: the row's `kind` is what selects
+ * this, and one entry per `AnnotationDrawKind` is a typecheck — a second kind
+ * cannot be added without saying what draws it.
+ */
+const DRAWS: Record<AnnotationDrawKind, (rects: unknown, options?: { color?: string }) => unknown> =
+  {
+    highlight: Overlayer.highlight
+  }
 
 /** `goToFraction` throws for books with no section-size index. */
 async function goToFraction(view: FoliateView, fraction: number): Promise<void> {
@@ -326,4 +612,79 @@ function selectionText(doc: Document): string | null {
   const selection = doc.getSelection()
   const text = selection && !selection.isCollapsed ? selection.toString().trim() : ''
   return text || null
+}
+
+/**
+ * The live, non-collapsed selection's range in a section, or null.
+ *
+ * Separate from `selectionText` because the two are asked different questions —
+ * one wants the words, the other wants the place — and because `getRangeAt(0)`
+ * is the only part that can throw (an index past the list, on a selection that
+ * changed between the two calls).
+ */
+function selectionRange(doc: Document): Range | null {
+  const selection = doc.getSelection()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
+  try {
+    return selection.getRangeAt(0)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The text either side of a selection (AC13, reading R10).
+ *
+ * `Range.toString()` over the body up to the range's start, and from its end —
+ * the same text model `sectionText` and `sectionOffset` use, so a stored
+ * `prefix` was measured the way the page it came from is. **This reads; the cap
+ * and the whitespace normalization are `src/lib/annotations.ts`'s**, because
+ * they are the file's own shape and one module decides them.
+ *
+ * A range that does not belong to this document gives no context rather than an
+ * exception: the quote is the anchor, and a highlight without its context is
+ * still a record (`ReaderEngine`'s `sectionOffset` makes the same call).
+ */
+function contextAround(doc: Document, range: Range): { prefix: string; suffix: string } {
+  const body = doc.body
+  if (!body) return { prefix: '', suffix: '' }
+  try {
+    const before = doc.createRange()
+    before.selectNodeContents(body)
+    before.setEnd(range.startContainer, range.startOffset)
+    const after = doc.createRange()
+    after.selectNodeContents(body)
+    after.setStart(range.endContainer, range.endOffset)
+    return { prefix: before.toString(), suffix: after.toString() }
+  } catch {
+    return { prefix: '', suffix: '' }
+  }
+}
+
+/**
+ * The selection's rect, in **viewport** coordinates (reading R15).
+ *
+ * The book renders in its own iframe inside the paginator's closed shadow root,
+ * so a range's own `getBoundingClientRect()` is in *that* frame's coordinates.
+ * `frameElement` is the iframe itself — same-origin by construction, since the
+ * paginator sandboxes with `allow-same-origin` (`paginator.js:244`) — and its
+ * rect is already in the top document's viewport, so the sum is the selection's
+ * place on the reader's screen without reaching into the shadow root.
+ *
+ * Null when either half is unavailable. A chip at a guessed position is worse
+ * than no chip: the rectangle is what makes the affordance *the gesture's*, and
+ * the manual pass is what decides whether the guess was ever needed.
+ */
+function selectionRect(doc: Document, range: Range): SelectionRect | null {
+  const rect = range.getBoundingClientRect()
+  if (!rect || (rect.width === 0 && rect.height === 0)) return null
+  const frame = doc.defaultView?.frameElement
+  const frameRect = frame?.getBoundingClientRect()
+  if (!frameRect) return null
+  return {
+    left: rect.left + frameRect.left,
+    top: rect.top + frameRect.top,
+    width: rect.width,
+    height: rect.height
+  }
 }

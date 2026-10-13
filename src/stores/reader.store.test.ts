@@ -9,6 +9,13 @@ import {
   type SearchPatch
 } from './reader.store'
 import type { BookFormat, ReflowResult } from '@shared/book.types'
+import type {
+  Annotation,
+  AnnotationsRead,
+  CreateAnnotationResult,
+  NewAnnotationInput
+} from '@shared/annotation.types'
+import type { AnnotationLocator } from '@/lib/annotations'
 import { countHits } from '@/lib/reader-search'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
@@ -517,6 +524,7 @@ describe('a book is a new conversation', () => {
 describe('openBook — the reflow path', () => {
   let opened: [string, string][]
   let asked: string[]
+  let askedAnnotations: string[]
   let answer: ReflowResult | Error
   const reflow = (id: string) => {
     asked.push(id)
@@ -533,6 +541,7 @@ describe('openBook — the reflow path', () => {
   beforeEach(() => {
     opened = []
     asked = []
+    askedAnnotations = []
     answer = {
       status: 'cached',
       reason: '',
@@ -546,6 +555,12 @@ describe('openBook — the reflow path', () => {
     vi.stubGlobal('window', {
       Musaeum: {
         reader: { reflow: (id: string) => reflow(id) },
+        annotations: {
+          list: (id: string) => {
+            askedAnnotations.push(id)
+            return Promise.resolve({ state: 'ok', annotations: [] })
+          }
+        },
         files: {
           openBookFile: (id: string, format: string) => {
             opened.push([id, format])
@@ -657,5 +672,290 @@ describe('openBook — the reflow path', () => {
     const held = useReaderStore.getState().reflow
     useReaderStore.getState().setReflow({ ...frame })
     expect(useReaderStore.getState().reflow).toBe(held)
+  })
+
+  /**
+   * The ordering spec D6 forces on a reflow book, and the one that would have
+   * arrived disguised as AC24's own state: the artifact's identity **is** the
+   * stamp the pass writes, so a read taken before it exists finds no identity at
+   * all and calls every derived annotation stale — listed and not drawn, for a
+   * reason that is not the reason AC24 measures.
+   */
+  it('does not read a reflow book’s highlights until the artifact is in hand', async () => {
+    open(pdfBook('b9'))
+    // The pass is still running: nothing has been asked of the annotations yet.
+    expect(askedAnnotations).toEqual([])
+    await vi.waitFor(() => expect(useReaderStore.getState().reflow).toBeNull(), {
+      timeout: 5_000,
+      interval: 10
+    })
+    expect(askedAnnotations).toEqual(['b9'])
+  })
+})
+
+/** A stored highlight as the bridge hands it over — the fixture the notes cases share. */
+const ANNOTATION: Annotation = {
+  id: 'a1',
+  type: 'highlight',
+  cfi: 'epubcfi(/6/4!/4/2)',
+  quote: 'the protomolecule is loose',
+  prefix: '',
+  suffix: '',
+  percent: 0.4,
+  sectionLabel: 'Chapter 7',
+  color: 'gold',
+  note: null,
+  createdAt: '2026-10-13T11:00:00.000Z',
+  updatedAt: '2026-10-13T11:00:00.000Z',
+  stale: false
+}
+
+/** The record a create mints — a second row, so "adopted the answer" is not "kept what it had". */
+const CREATED: Annotation = { ...ANNOTATION, id: 'a2', cfi: 'epubcfi(/6/4!/4/4)', percent: 0.6 }
+
+/**
+ * A row this client has **never held** — another Mac's, arriving in a write's
+ * answer. The fixture the create case needs and the one it did not have: with a
+ * list of "what this process had, plus the new row", a local append and the
+ * adopted answer are the *same array*, so the case could not tell them apart
+ * (measured by the campaign: the row survived as an equivalent mutant).
+ */
+const OTHER: Annotation = {
+  ...ANNOTATION,
+  id: 'a3',
+  cfi: 'epubcfi(/6/4!/4/6)',
+  quote: 'a sentence the other Mac highlighted',
+  percent: 0.8
+}
+
+/** What the chip hands the store: exactly the members a caller may say (AC13). */
+const LOCATOR: AnnotationLocator = {
+  cfi: 'epubcfi(/6/4!/4/2)',
+  quote: 'the protomolecule is loose',
+  prefix: '',
+  suffix: '',
+  percent: 0.4,
+  sectionLabel: 'Chapter 7'
+}
+
+/**
+ * The Notes panel's claim on the one side slot (AC17).
+ *
+ * Beside the three-occupant cases above rather than in place of them: rewriting
+ * those into a four-tuple would make the new rule's own case indistinguishable
+ * from the old one's, and the mutation that matters here — one toggle forgetting
+ * to close the fourth — is only visible against a four-tuple that also exists.
+ */
+describe('the reader’s one side slot, fourth occupant (AC17)', () => {
+  const get = () => useReaderStore.getState()
+  const occupants = () => [get().tocOpen, get().searchOpen, get().askOpen, get().notesOpen]
+
+  beforeEach(() => get().close())
+
+  it('opens the notes panel and closes the other three', () => {
+    get().toggleToc()
+    get().toggleNotes()
+    expect(occupants()).toEqual([false, false, false, true])
+  })
+
+  it('closes the notes panel from any of the other three toggles', () => {
+    const openers: [string, () => void, boolean[]][] = [
+      ['toggleToc', () => get().toggleToc(), [true, false, false, false]],
+      ['toggleSearch', () => get().toggleSearch(), [false, true, false, false]],
+      ['toggleAsk', () => get().toggleAsk(), [false, false, true, false]]
+    ]
+    for (const [name, open, expected] of openers) {
+      get().toggleNotes()
+      expect(occupants(), name).toEqual([false, false, false, true])
+      open()
+      expect(occupants(), name).toEqual(expected)
+    }
+  })
+
+  it('closes on its own toggle, and keeps the list — it belongs to the book', () => {
+    useReaderStore.setState({ annotations: [ANNOTATION], annotationsState: 'ok' })
+    get().toggleNotes()
+    get().toggleNotes()
+    expect(get().notesOpen).toBe(false)
+    expect(get().annotations).toEqual([ANNOTATION])
+  })
+
+  it('opens on the row a drawn highlight names, and marks it (R18)', () => {
+    useReaderStore.setState({ annotations: [ANNOTATION], annotationsState: 'ok' })
+    get().toggleSearch()
+    get().openNotes(ANNOTATION.cfi)
+    expect([get().notesOpen, get().searchOpen]).toEqual([true, false])
+    expect(get().activeAnnotationId).toBe(ANNOTATION.id)
+  })
+})
+
+/**
+ * The four writes, against a stubbed bridge (R19, R20).
+ *
+ * `window.Musaeum` is stubbed because there is no preload under vitest — the
+ * pattern the reflow cases above use. What each case decides is the part a reader
+ * of `ReaderNotes.tsx` cannot check by looking: that the list the store holds is
+ * the one the **answer** carried rather than a local patch (slice 1's R1), and
+ * that the read's state is kept distinct from an empty list.
+ */
+describe('the notes panel’s writes (R19, R20)', () => {
+  const get = () => useReaderStore.getState()
+
+  /**
+   * A poll generous enough that a *loaded* machine cannot redden it. These cases
+   * wait on a bridge promise, and the default `vi.waitFor` budget is one second —
+   * which one full-suite run exceeded while a mutation campaign was running
+   * beside it. The wait is not the claim; the settled state is.
+   */
+  const settled = { timeout: 5_000, interval: 10 } as const
+
+  let calls: string[]
+  let answer: {
+    list: AnnotationsRead | Error
+    create: CreateAnnotationResult | Error
+    mut: Annotation[] | Error
+  }
+
+  const reply = <T>(value: T | Error): Promise<T> =>
+    value instanceof Error ? Promise.reject(value) : Promise.resolve(value)
+
+  beforeEach(() => {
+    calls = []
+    answer = {
+      list: { state: 'ok', annotations: [ANNOTATION] },
+      create: { annotations: [CREATED, OTHER], created: CREATED },
+      mut: [CREATED]
+    }
+    vi.stubGlobal('window', {
+      Musaeum: {
+        annotations: {
+          list: (bookId: string, format: string) => {
+            calls.push(`list ${bookId} ${format}`)
+            return reply(answer.list)
+          },
+          create: (input: NewAnnotationInput) => {
+            calls.push(`create ${input.cfi}`)
+            return reply(answer.create)
+          },
+          update: (_bookId: string, id: string, note: string | null) => {
+            calls.push(`update ${id} ${String(note)}`)
+            return reply(answer.mut)
+          },
+          remove: (_bookId: string, id: string) => {
+            calls.push(`remove ${id}`)
+            return reply(answer.mut)
+          }
+        }
+      }
+    })
+    vi.spyOn(useUIStore.getState(), 'notify')
+    get().close()
+    get().openBook(makeBook('b1'))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('lands the read’s list and its state — and the read is the book’s, not the panel’s (R19)', async () => {
+    // Nothing in this file opens the Notes panel: the list is in the store because
+    // the **book** opened. Measured in the running app (2026-10-13): a reopened
+    // book drew no highlight at all, because the panel was the only reader of the
+    // file and nobody had opened it.
+    await vi.waitFor(() => expect(get().annotationsState).toBe('ok'), settled)
+    expect(get().annotations).toEqual([ANNOTATION])
+    expect(get().annotationsLoading).toBe(false)
+    expect(calls).toEqual(['list b1 epub'])
+  })
+
+  it('keeps an unreadable file a different sentence from a book with no notes (R20)', async () => {
+    answer.list = { state: 'unreadable', annotations: [] }
+    await get().loadAnnotations()
+    expect(get().annotationsState).toBe('unreadable')
+    expect(get().annotations).toEqual([])
+
+    answer.list = { state: 'missing', annotations: [] }
+    await get().loadAnnotations()
+    expect(get().annotationsState).toBe('missing')
+  })
+
+  it('adopts the list a create answered with, and activates the minted row (R19)', async () => {
+    calls.length = 0 // the open itself reads the list — see the case above
+    await get().addHighlight(LOCATOR)
+    expect(calls).toEqual(['create epubcfi(/6/4!/4/2)'])
+    // **The answer, not this process's list plus the new row**: the answer carries
+    // a row this client has never held (another Mac's), so a local append — which
+    // is what R1 exists to forbid — would produce a different array and redden.
+    expect(get().annotations).toEqual([CREATED, OTHER])
+    expect(get().annotationsState).toBe('ok')
+    expect(get().activeAnnotationId).toBe(CREATED.id)
+  })
+
+  it('adopts the list a note answered with, and never patches it locally', async () => {
+    calls.length = 0 // the open itself reads the list
+    useReaderStore.setState({ annotations: [ANNOTATION, CREATED], annotationsState: 'ok' })
+    answer.mut = [{ ...ANNOTATION, note: 'the setup for book two' }]
+    await get().saveAnnotationNote(ANNOTATION.id, 'the setup for book two')
+
+    expect(calls).toEqual([`update ${ANNOTATION.id} the setup for book two`])
+    // The answer is the file's whole list — one row, not two — and that is what
+    // the panel shows, because the write re-read the file (slice 1's R1).
+    expect(get().annotations).toEqual([{ ...ANNOTATION, note: 'the setup for book two' }])
+  })
+
+  it('adopts the list a delete answered with, and lets the active row go', async () => {
+    calls.length = 0 // the open itself reads the list
+    useReaderStore.setState({ annotations: [ANNOTATION, CREATED], annotationsState: 'ok' })
+    get().openNotes(CREATED.cfi)
+    expect(get().activeAnnotationId).toBe(CREATED.id)
+
+    answer.mut = [ANNOTATION]
+    await get().deleteHighlight(CREATED.id)
+
+    expect(calls).toEqual([`remove ${CREATED.id}`])
+    expect(get().annotations).toEqual([ANNOTATION])
+    expect(get().activeAnnotationId).toBeNull()
+  })
+
+  it('reports a refused write and leaves the list alone', async () => {
+    // "Leaves it alone" is about the list the read landed, not about an empty one:
+    // the open read this book's highlights before anything was asked of a write.
+    await vi.waitFor(() => expect(get().annotations).toEqual([ANNOTATION]), settled)
+    answer.create = new Error('The notes for this book could not be read')
+    await get().addHighlight(LOCATOR)
+    expect(get().annotations).toEqual([ANNOTATION])
+    expect(useUIStore.getState().notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'error',
+        message: 'The notes for this book could not be read'
+      })
+    )
+  })
+
+  it('drops an answer for a book the reader has left', async () => {
+    const pending = get().loadAnnotations()
+    get().close()
+    await pending
+    expect(get().annotations).toEqual([])
+    expect(get().annotationsState).toBe('missing')
+    expect(get().annotationsLoading).toBe(false)
+  })
+
+  /**
+   * AC18, over the serialized whole rather than the field we suspect — the same
+   * instrument the search case above uses, for the same reason: the absence that
+   * matters is that no part of a highlight reaches storage.
+   */
+  it('persists nothing of an annotation', async () => {
+    const QUOTE = 'sentinel-quote-protomolecule'
+    const CFI = 'sentinel-cfi(/6/4!/4/2)'
+    answer.list = { state: 'ok', annotations: [{ ...ANNOTATION, quote: QUOTE, cfi: CFI }] }
+    await get().loadAnnotations()
+
+    const serialized = JSON.stringify(persistedReaderState(get()))
+    expect(serialized).not.toContain(QUOTE)
+    expect(serialized).not.toContain(CFI)
+    expect(serialized).toContain('prefs')
   })
 })

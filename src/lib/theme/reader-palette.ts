@@ -52,6 +52,21 @@ export interface ReaderPalette {
    */
   search: string
   /**
+   * The color a highlight is **filled** with — the role slice 2 of the
+   * highlights-and-notes spec adds (D9), and the same shape `search` has: a
+   * resolved `#rrggbb` literal, threaded as its own field because the overlayer
+   * lives in foliate-view's closed shadow root, where a custom property is a bet
+   * this repo does not take.
+   *
+   * A role of its own rather than a second read of `search`, for the module's own
+   * reason: a role exists so it can be **derived**, and two purposes sharing one
+   * name is how the next theme change gets a decision nobody can find. It derives
+   * from the same link color today, so the two *are* one value on screen — which
+   * is not a collision, because they are drawn differently: a search hit is an
+   * outline and a highlight is a fill.
+   */
+  annotation: string
+  /**
    * The book document's own `color-scheme`, taken from the tokens rather than
    * from the pref (D2): the pref says which row to use, and only the resolved
    * palette knows whether that row is a light one.
@@ -71,6 +86,7 @@ export const INK_PALETTE: ReaderPalette = {
   link: '#d4a24e',
   linkAlphaHex: '#d4a24e44',
   search: '#d4a24e',
+  annotation: '#d4a24e',
   scheme: 'dark'
 }
 
@@ -87,6 +103,7 @@ export const PAPER_PALETTE: ReaderPalette = {
   link: '#8a5a1a',
   linkAlphaHex: '#8a5a1a44',
   search: '#8a5a1a',
+  annotation: '#8a5a1a',
   scheme: 'light'
 }
 
@@ -131,6 +148,7 @@ export function readerPalette(tokens: ThemeTokens | null | undefined): ReaderPal
     link,
     linkAlphaHex: `${link}44`,
     search: link,
+    annotation: link,
     scheme: tokens?.dark ? 'dark' : 'light'
   }
 }

@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware'
 import type { AiChunkEvent, AiDoneEvent, AiErrorEvent } from '@shared/ai.types'
 import type { Book, ReaderFormat, ReflowProgress, ReflowResult } from '@shared/book.types'
 import { primaryFormat, readerTarget } from '@shared/book.types'
+import type { Annotation, AnnotationsState } from '@shared/annotation.types'
+import type { AnnotationLocator } from '@/lib/annotations'
 import type { AskRung } from '@/lib/ask-context'
 import {
   appendProbeDelta,
@@ -204,6 +206,29 @@ interface ReaderState {
   /** The hit the reader last jumped to — the anchor Enter steps on from. */
   activeCfi: string | null
 
+  /**
+   * The Notes panel — the side slot's **fourth** occupant (spec D8.2), session
+   * state on exactly the terms the search panel's is: the list belongs to the
+   * book, nothing about it reaches storage (AC18), and opening any occupant
+   * closes the other three.
+   *
+   * The list is the renderer's *copy* of what the service last answered, and
+   * every mutation is what refreshes it — because the write re-reads the file,
+   * so a local append could show a list the file does not agree with (slice 1's
+   * annex R1).
+   */
+  notesOpen: boolean
+  annotations: Annotation[]
+  /**
+   * The read's own state. `missing` and `unreadable` are different sentences on
+   * screen and only this can tell them apart (slice 1's R3): a panel that folded
+   * the second into an empty list would claim the person never wrote a note.
+   */
+  annotationsState: AnnotationsState
+  annotationsLoading: boolean
+  /** The row the panel is editing, or null. */
+  activeAnnotationId: string | null
+
   openBook(book: Book): void
   /** Ask the app for the open book's reflow and land what comes back (D6, D7). */
   beginReflow(bookId: string): Promise<void>
@@ -241,6 +266,24 @@ interface ReaderState {
   setSearchState(patch: SearchPatch): void
   /** Drop the results and the query, and keep the panel open — Esc's first step. */
   clearSearch(): void
+
+  /**
+   * Read the open book's highlights. Called when the panel mounts, and by
+   * nothing else — every write answers the list it produced (R19).
+   */
+  loadAnnotations(): Promise<void>
+  /** Add one highlight from the selection chip (D8.1). */
+  addHighlight(locator: AnnotationLocator): Promise<void>
+  /** Change one highlight's note — `null` is the "keep it, drop the note" gesture. */
+  saveAnnotationNote(id: string, note: string | null): Promise<void>
+  /** Delete one highlight. */
+  deleteHighlight(id: string): Promise<void>
+  /** Open the Notes panel, or close it — either way the other three occupants go. */
+  toggleNotes(): void
+  closeNotes(): void
+  /** D8.2's second opener: a click on a drawn highlight, which carries its own `cfi`. */
+  openNotes(cfi: string): void
+  setActiveAnnotation(id: string | null): void
 }
 
 /**
@@ -289,6 +332,23 @@ const SEARCH_CLEARED = {
 /** The cleared run *and* the panel gone (AC1.8). */
 const SEARCH_IDLE = { searchOpen: false, ...SEARCH_CLEARED } satisfies Partial<ReaderState>
 
+/**
+ * The Notes panel at rest: closed, nothing loaded, nothing active.
+ *
+ * A book is a new list rather than a new conversation — the record lives in the
+ * book's own folder on the share (D1), so the next open *reads* it instead of
+ * showing a session's copy, and `missing` is the honest state until that read
+ * answers. Closing the panel alone does not come through here: the list belongs
+ * to the book the way the ask transcript does.
+ */
+const NOTES_IDLE = {
+  notesOpen: false,
+  annotations: [],
+  annotationsState: 'missing',
+  annotationsLoading: false,
+  activeAnnotationId: null
+} satisfies Partial<ReaderState>
+
 /** The verdict and the rung move together: the rung is derived, never set. */
 function verdictState(
   verdict: RecallVerdict | null,
@@ -334,6 +394,22 @@ function handOffToSystem(book: Book | null, reason: unknown, close: () => void):
   })
 }
 
+/**
+ * A failed annotation *write*, as the sentence main composed.
+ *
+ * Reported rather than swallowed: the gesture was the person's own action (a
+ * chip they pressed, a Save they clicked), so a refusal that only appeared in
+ * the console would read as a control that did nothing. Non-fatal is what
+ * invariant 12 says about the *book* — the reader keeps the page either way —
+ * and it is not the same claim as silent.
+ */
+function notifyAnnotationFailure(err: unknown): void {
+  useUIStore.getState().notify({
+    kind: 'error',
+    message: err instanceof Error ? err.message : String(err)
+  })
+}
+
 export const useReaderStore = create<ReaderState>()(
   persist(
     (set, get) => ({
@@ -349,6 +425,7 @@ export const useReaderStore = create<ReaderState>()(
       prefs: DEFAULT_PREFS,
       ...ASK_IDLE,
       ...SEARCH_IDLE,
+      ...NOTES_IDLE,
 
       /**
        * The readability rule, and the two doors it opens (D1, D6, D7).
@@ -396,10 +473,20 @@ export const useReaderStore = create<ReaderState>()(
             // A book is a new conversation: transcript, verdict, pointer and all
             ...ASK_IDLE,
             // …and a new search: results for another book's text are not results
-            ...SEARCH_IDLE
+            ...SEARCH_IDLE,
+            // …and a new list: this one is read off the share when the book opens
+            ...NOTES_IDLE
           }
         })
         if (target.kind === 'reflow') void get().beginReflow(book.id)
+        // The book's highlights are read **as the book opens**, not when the Notes
+        // panel does. A panel-only read leaves the draw layer with nothing to draw
+        // for anyone who has never opened the panel — measured in the running app
+        // (2026-10-13): a reopened book drew no highlight at all, and the record was
+        // sitting correct in the book's own folder the whole time. The panel still
+        // re-reads on its own mount, which is the refresh `annotations.ts`'s one-log
+        // rule is written around.
+        else void get().loadAnnotations()
       },
 
       // Every panel belongs to the session, not to the app: a book opened next
@@ -415,14 +502,17 @@ export const useReaderStore = create<ReaderState>()(
           tocOpen: false,
           prefsOpen: false,
           ...ASK_IDLE,
-          ...SEARCH_IDLE
+          ...SEARCH_IDLE,
+          ...NOTES_IDLE
         }),
       setStatus: (status, error = null) => set({ status, error }),
       setToc: (toc) => set({ toc }),
       setPercent: (percent) => set({ percent }),
-      // One side slot, three claimants: opening any one closes the other two (D4)
-      toggleToc: () => set((s) => ({ tocOpen: !s.tocOpen, askOpen: false, ...SEARCH_IDLE })),
-      toggleAsk: () => set((s) => ({ askOpen: !s.askOpen, tocOpen: false, ...SEARCH_IDLE })),
+      // One side slot, four claimants: opening any one closes the other three (D4, D8.2)
+      toggleToc: () =>
+        set((s) => ({ tocOpen: !s.tocOpen, askOpen: false, notesOpen: false, ...SEARCH_IDLE })),
+      toggleAsk: () =>
+        set((s) => ({ askOpen: !s.askOpen, tocOpen: false, notesOpen: false, ...SEARCH_IDLE })),
       closeAsk: () => set({ askOpen: false }),
       togglePrefs: () => set((s) => ({ prefsOpen: !s.prefsOpen })),
       closePrefs: () => set({ prefsOpen: false }),
@@ -461,7 +551,9 @@ export const useReaderStore = create<ReaderState>()(
        */
       toggleSearch: () =>
         set((s) =>
-          s.searchOpen ? { ...SEARCH_IDLE } : { searchOpen: true, tocOpen: false, askOpen: false }
+          s.searchOpen
+            ? { ...SEARCH_IDLE }
+            : { searchOpen: true, tocOpen: false, askOpen: false, notesOpen: false }
         ),
       closeSearch: () => set({ ...SEARCH_IDLE }),
       setQuery: (query) => set({ query }),
@@ -487,6 +579,127 @@ export const useReaderStore = create<ReaderState>()(
        * would be two places deciding the same thing.
        */
       clearSearch: () => set({ ...SEARCH_CLEARED }),
+
+      /**
+       * The Notes panel is the fourth claimant on the one slot (D8.2), and it is
+       * opened from two places that funnel through here: this toggle, and
+       * `openNotes` for a click on a drawn highlight.
+       *
+       * Closing clears the *active row* and not the list: the list belongs to the
+       * book, the way the ask transcript does (`closeAsk` keeps it too), and the
+       * active row is a session gesture.
+       */
+      toggleNotes: () =>
+        set((s) =>
+          s.notesOpen
+            ? { notesOpen: false, activeAnnotationId: null }
+            : { notesOpen: true, tocOpen: false, askOpen: false, ...SEARCH_IDLE }
+        ),
+      closeNotes: () => set({ notesOpen: false, activeAnnotationId: null }),
+
+      /**
+       * The engine reported a click inside a drawn highlight (`show-annotation`,
+       * `view.js:408-412`), and the value it hands back is the annotation's own
+       * key — the `cfi` — because that is what the overlayer is keyed by. So the
+       * row is found by position rather than by id, which is the one place the
+       * two halves of this feature meet.
+       */
+      openNotes: (cfi) =>
+        set((s) => ({
+          notesOpen: true,
+          tocOpen: false,
+          askOpen: false,
+          ...SEARCH_IDLE,
+          activeAnnotationId: s.annotations.find((a) => a.cfi === cfi)?.id ?? null
+        })),
+      setActiveAnnotation: (id) => set({ activeAnnotationId: id }),
+
+      /**
+       * Read the open book's highlights (R19, R20).
+       *
+       * The service answers with a **state** rather than rejecting (slice 1's
+       * R3), so an unreadable file lands as a sentence the panel renders — never
+       * as an empty list, and never as an error state of the reader (invariant
+       * 12). An answer for a book the reader has left is dropped: it is about a
+       * session that is over.
+       */
+      loadAnnotations: async () => {
+        const { bookId, format } = get()
+        if (!bookId || !format) return
+        set({ annotationsLoading: true })
+        let read: { state: AnnotationsState; annotations: Annotation[] }
+        try {
+          read = await window.Musaeum.annotations.list(bookId, format)
+        } catch {
+          // `list` does not reject; a rejection here is the bridge itself (a
+          // torn-down window), which is the same sentence as an unreadable file.
+          read = { state: 'unreadable', annotations: [] }
+        }
+        if (get().bookId !== bookId) return
+        set({
+          annotations: read.annotations,
+          annotationsState: read.state,
+          annotationsLoading: false
+        })
+      },
+
+      /**
+       * Add one highlight, and adopt the list the answer carries (R19).
+       *
+       * The answer is the file's **whole** list because the write re-reads it
+       * (slice 1's R1): another Mac may have annotated this book since, and a
+       * local append would show a list the file does not agree with. It also
+       * carries the record that was minted, whose id is what makes the new row
+       * the active one.
+       */
+      addHighlight: async (locator) => {
+        const { bookId, format } = get()
+        if (!bookId || !format) return
+        try {
+          const answer = await window.Musaeum.annotations.create({ bookId, format, ...locator })
+          if (get().bookId !== bookId) return
+          set({
+            annotations: answer.annotations,
+            annotationsState: 'ok',
+            activeAnnotationId: answer.created.id
+          })
+        } catch (err) {
+          notifyAnnotationFailure(err)
+        }
+      },
+
+      /** Change one highlight's note. `null` keeps the highlight and drops the note (slice 1's R4). */
+      saveAnnotationNote: async (id, note) => {
+        const { bookId, format } = get()
+        if (!bookId || !format) return
+        try {
+          const annotations = await window.Musaeum.annotations.update(bookId, id, note, format)
+          if (get().bookId !== bookId) return
+          set({ annotations, annotationsState: 'ok' })
+        } catch (err) {
+          notifyAnnotationFailure(err)
+        }
+      },
+
+      /**
+       * Delete one highlight. The row that was active stops being it — a panel
+       * with a Delete on a row it no longer holds is a panel editing nothing.
+       */
+      deleteHighlight: async (id) => {
+        const { bookId, format } = get()
+        if (!bookId || !format) return
+        try {
+          const annotations = await window.Musaeum.annotations.remove(bookId, id, format)
+          if (get().bookId !== bookId) return
+          set((s) => ({
+            annotations,
+            annotationsState: 'ok',
+            activeAnnotationId: s.activeAnnotationId === id ? null : s.activeAnnotationId
+          }))
+        } catch (err) {
+          notifyAnnotationFailure(err)
+        }
+      },
 
       setVerdict: (verdict) => set((s) => verdictState(verdict, s.askOverride)),
       setOverride: (sendPassage) =>
@@ -589,6 +802,13 @@ export const useReaderStore = create<ReaderState>()(
         if (result.status !== 'fallback') {
           // The artifact is there: the engine may mount and fetch it.
           set({ reflow: null })
+          // **And only now** may a reflow book's annotations be read. The identity
+          // comparison needs the stamp this pass has just written, so a read taken
+          // before it finds no artifact identity at all and calls every derived
+          // annotation **stale** (spec D6, annex R6) — which is exactly the
+          // listed-not-drawn state AC24 exists to measure, arriving for the wrong
+          // reason.
+          void get().loadAnnotations()
           return
         }
         // D6: no artifact, the original path, one line of reason (R3).
