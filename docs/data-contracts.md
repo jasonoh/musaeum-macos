@@ -45,6 +45,7 @@
   "formats": ["epub", "mobi", "pdf"],
   "rating": null,
   "read_status": "reading",
+  "read_status_at": "2025-01-16T22:04:11Z",
   "reading_state": {
     "position": "epubcfi(/6/14!/4/2/8/1:0)",
     "percent": 0.42,
@@ -67,6 +68,8 @@
 ```
 
 This is the canonical data contract (iOS companion depends on it). The writer is `importer.writeMetadataJson`. Known gap: cover `source`/`width`/`height` are not persisted yet (see tasks.md).
+
+**`read_status_at` (portable decisions, slice 2, 2026-10-13)** — optional. The ISO time the book's `read_status` was last set, by the detail panel or the reader's automatic advance; absent, `null` or anything unreadable means *no clock* (a reader that does not know the field ignores it). It is the status's **own** clock, separate from `reading_state.updated_at`: on adoption the two are reconciled independently (`library-sync.preserveLocalReadingState`) — the newer position wins the position, the newer status wins the status, and a tie or an unparseable local clock keeps the incoming record. Mirrored in `catalog.json` (`readStatusAt`, like every other catalog entry key) and in the `books.read_status_at` column (migration 008, `NULL` = none); migration 008 seeds the column from `reading_updated_at`, which is the clock a status decision moved before this column existed. `metadata.json` may lag the row for a status won by a reconcile, exactly as `owned_fields` does.
 
 **`owned_fields` (portable decisions, slice 1, 2026-10-11)** — optional. A map of the fields the user has claimed, `HydratedField` name to the ISO time the claim was made; absent, `null` or anything unreadable means *no claims*, and a reader that does not know the field ignores it. A claimed field is one a fetch never overwrites: `importer.hydrate` tells the sidecar not to propose it and filters the reply before the write. The map is the book's own record — it travels with `metadata.json`, is mirrored in `catalog.json` (as `ownedFields`, like every other catalog entry key) and in the `books.owned_fields` column (migration 007, JSON text, `NULL` = none) — so a fetch run from another machine honors it too. The writer emits it only when it holds at least one claim, and every reader validates it (`parseOwnedFields` in `electron/main/services/owned-fields.ts`): a bad value is no claims, a bad *member* is dropped without taking its neighbors. On adoption the two machines' maps are reconciled per field by `reconcileOwnedFields` (same file): where both sides hold a claim the strictly newer time wins and a tie keeps the incoming one; a claim only the other side holds is taken; a claim only this machine holds is ordered against the incoming record's `last_modified` — it stands unless it is older than that, which is how a release on the other machine (a release removes the entry and bumps `last_modified`) beats an older claim here. An unparseable or absent `last_modified` keeps the claim. A release is online-only, because it has to reach `metadata.json`. `metadata.json` may lag the row for a claim seeded by the upgrade or won by a reconcile: `catalog.json` carries it at once, `metadata.json` on that book's next write.
 
@@ -178,7 +181,8 @@ CREATE TABLE books (
   reading_position  TEXT,          -- opaque to us: CFI, engine locator, page
   reading_percent   REAL,          -- 0–1; the portable fallback
   reading_updated_at TEXT,         -- compared on adoption; newer local wins
-  owned_fields      TEXT           -- JSON { field: ISO time } of user claims, NULL = none (migration 007)
+  owned_fields      TEXT,          -- JSON { field: ISO time } of user claims, NULL = none (migration 007)
+  read_status_at    TEXT           -- when read_status was last set; NULL = no clock (migration 008)
 );
 
 CREATE VIRTUAL TABLE books_fts USING fts5(

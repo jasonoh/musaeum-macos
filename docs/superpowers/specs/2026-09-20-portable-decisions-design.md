@@ -1,7 +1,7 @@
 # Design: a decision travels with the book — locks, read status, and what a merge owns (metadata + reading, v1)
 
 **Date:** 2026-09-20
-**Status:** **Slice 1 built 2026-10-11** (see _Built — slice 1_, below); slices 2 and 3 open. Written at Jason's direction for another session to implement. Every fork below is settled except **D3's second clause**, which is marked *open* with a recommendation and one line of his to confirm.
+**Status:** **Slices 1 and 2 built** (2026-10-11 and 2026-10-13; see _Built — slice 1_ and _Built — slice 2_, below); slice 3 open. Written at Jason's direction for another session to implement. Every fork below is settled except **D3's second clause**, which is marked *open* with a recommendation and one line of his to confirm.
 **Scope:** two facts this machine currently keeps to itself — which fields the *user* has claimed, and when the *user* last set a read status — move into the book's own record so the other machine can honor them; and a refresh stops treating "no source supplies this field" as "keep what was there". It does not touch what a lock means for a *value* (that is D1–D6 of `2026-09-20-field-overrides-design.md`, unchanged), and it does not make the merge smarter about *matching* — see *Rejected and deferred*.
 **Depends on:** `docs/superpowers/specs/2026-09-20-field-overrides-design.md` (D1's own reversal condition, and D2/D3/D6 which stay as they are), the reading-state policy (`docs/invariants/reader.md`), the catalog ⇄ cache sync (`docs/invariants/nas-and-catalog.md`), the hydration merge (`docs/invariants/metadata-hydration.md`)
 **Interacts with:** `metadata.json` — the canonical contract, documented and read by the iOS companion (`docs/data-contracts.md`) — `catalog.json`, the schema (migration 006, after `003_reading_state.sql` — built as 007, see _Built — slice 1_), `importer.hydrate`, `library:updateBook`, `metadata:resolveConflict`, `library-sync.preserveLocalReadingState`, `sidecar/pipeline/conflict.py` (see D7)
@@ -160,6 +160,20 @@ The A-side claim was older than the incoming record's `last_modified` (the relea
 **Risk 3 — the mis-lock gate.** After an author-only save, A's `owned_fields` held exactly `author` and no other key (row, `metadata.json` and `catalog.json` agreed; observed during the run, not retained). The mid-edit-fetch cause was fixed in `c498d46` (`editsSince`, measured against the book as the editor opened); the half of the scenario in which a fetch _lands while the editor is open_ could not be re-run here, because the sidecar is absent in this checkout — that half stays carried by the unit tests on `editsSince` (`src/lib/book-form.test.ts`). "B's own re-fetch does not move the field" likewise cannot be run live; it is carried by the importer's lock-through-the-record case (`importer.test.ts`), which exercises the same enforcement site (`importer.hydrate`'s lock list and the reply filter).
 
 **Slice 2 and slice 3 are untouched** and each can land alone, as designed.
+
+---
+
+## Built — slice 2 (2026-10-13)
+
+Branch `feat/portable-decisions-slice2`; plan `docs/superpowers/plans/2026-10-13-portable-decisions-slice2.md`. **AC7–AC10 hold**, each observed rather than expected. Gates: typecheck 0, lint 0, `npm test` **2,132 passed / 97 files** (2,122 at the branch point), pytest 413, prettier clean.
+
+**What it is, in one paragraph.** `read_status` gains a clock of its own. `metadata.json` carries `read_status_at`; `books` carries `read_status_at` (migration **008**); the `Book` type carries `readStatusAt`. Both writers stamp it — the manual decision (`reading-state.noteStatusChange`, via `db.touchReadStatusAt`, renamed from `touchReadingState`) and the reader's automatic advance (`saveProgress`). `library-sync.preserveLocalReadingState` now reconciles the position (`readingState.updatedAt`) and the status (`readStatusAt`) **independently**, so the residual this design was written to end — a status decision keeping an older local position against the catalog's newer one — is closed.
+
+**Two decisions the spec did not settle, taken and recorded in the plan:** (1) the **automatic** advance stamps `read_status_at` too — D5's "`noteStatusChange` is the only writer" cannot be read literally, because an unstamped automatic advance loses to an older catalog status, reintroducing the bug for the commoner path; D5's sentence is read as "the only writer of the *manual decision*". (2) Migration 008 **seeds** `read_status_at` from `reading_updated_at` — the clock a status decision moved before this column — so a pre-upgrade decision stays orderable instead of reverting on the next adoption (the same shape as slice 1's approved seed from `app_config`).
+
+**Departures and facts:** the fields reach every full `Book` literal, so the build touches **11 source/doc files plus tests**, over the spec's "~7" — the same under-count slice 1 recorded (its "~9 imagined, honestly 12+"). Two tests' replay helpers asserted `user_version` 7 and needed the same upkeep as `db-shelves.test.ts` (`db-shelves.test.ts`'s `rewindTo005` and `field-overrides.test.ts`'s `writeV6Database`) — the slice-1 lesson recurring. The plan's Tasks 3 and 4 were merged into one commit: each alone leaves the tree red, since the writer change and the reconcile are mutually dependent. AC10's quit-replay case is untouched and green.
+
+**Slice 3 is untouched** and can land alone, as designed.
 
 ---
 
