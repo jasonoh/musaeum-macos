@@ -41,6 +41,32 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
+describe('a book’s notes are not the catalog’s business (annotations D1, AC9)', () => {
+  it('leaves annotations.json byte-identical through an adoption and a rebuild', async () => {
+    const dir = join(root, 'books', 'a')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(join(dir, 'metadata.json'), JSON.stringify({ id: 'a', title: 'A' }), 'utf8')
+    const text = `${JSON.stringify({ version: 1, book_id: 'a', annotations: [] }, null, 2)}\n`
+    await fs.writeFile(join(dir, 'annotations.json'), text, 'utf8')
+
+    await librarySync.syncOnConnect()
+    await librarySync.flushForTests()
+    expect(await fs.readFile(join(dir, 'annotations.json'), 'utf8')).toBe(text)
+
+    // The rebuild is the walk that reads every book folder, so it is the path that could
+    // plausibly learn about this file — and the one the design says must not.
+    const outcome = await librarySync.rebuildCatalog()
+    expect(outcome.books).toBe(1)
+
+    const catalog = await fs.readFile(join(root, 'catalog.json'), 'utf8')
+    expect(JSON.parse(catalog).books.map((b: { id: string }) => b.id)).toEqual(['a'])
+    // Over the serialized whole, not the field one suspects: the notes are nowhere in it,
+    // which is the whole reason they are not a member of the record the catalog mirrors (D1).
+    expect(catalog).not.toContain('annotations')
+    expect(await fs.readFile(join(dir, 'annotations.json'), 'utf8')).toBe(text)
+  })
+})
+
 describe('syncOnConnect', () => {
   it('adopts an existing catalog into the local cache', async () => {
     await writeCatalog(root, [makeBook('a'), makeBook('b')])

@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { renameToTitle } from './book-files'
+import { computeFileSizeBytes, renameToTitle } from './book-files'
 
 let dir: string
 
@@ -21,16 +21,33 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-it('renames every format file, leaving covers and metadata alone', async () => {
-  await seed('Old Name.epub', 'Old Name.azw3', 'cover_full.jpg', 'metadata.json')
+it('renames every format file, leaving covers, metadata and the book’s own records alone', async () => {
+  // `annotations.json` is in the seed deliberately: this rule is extension-keyed, so a
+  // person's notes must not be renamed when a title settles (annotations design D3, AC2 —
+  // the pin lives in the case that already exercises the rule, not in one of its own).
+  await seed(
+    'Old Name.epub',
+    'Old Name.azw3',
+    'cover_full.jpg',
+    'metadata.json',
+    'annotations.json'
+  )
 
   expect(await renameToTitle(dir, 'Hatemonger')).toBe(2)
   expect(await contents()).toEqual([
     'Hatemonger.azw3',
     'Hatemonger.epub',
+    'annotations.json',
     'cover_full.jpg',
     'metadata.json'
   ])
+})
+
+it('counts only the format files in file_size_bytes, never the notes', async () => {
+  await seed('Hatemonger.epub', 'annotations.json', 'metadata.json')
+
+  const epub = (await fs.stat(join(dir, 'Hatemonger.epub'))).size
+  expect(await computeFileSizeBytes(dir)).toBe(epub)
 })
 
 it('sanitizes the title the same way the importer does', async () => {

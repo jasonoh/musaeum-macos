@@ -103,6 +103,46 @@ A hand-edited or corrupted file — invalid JSON, or a manual shelf missing a re
 
 ---
 
+## annotations.json (per book, stored on NAS)
+
+One file per book, beside its `metadata.json` — `{library_root}/books/{uuid}/annotations.json`, canonical for its own kind of data and never derived (annotations design D1). Written only by `electron/main/services/annotations.ts`; the name, the parser and the atomic write live in `services/annotations-file.ts`, and `test/invariants.test.ts` enforces both halves of that (one module spells the name, and only the service imports it).
+
+```json
+{
+  "version": 1,
+  "book_id": "book-uuid",
+  "annotations": [
+    {
+      "id": "uuid-v4",
+      "type": "highlight",
+      "cfi": "epubcfi(/6/14!/4/2/8,/1:0,/1:41)",
+      "quote": "The protomolecule is loose.",
+      "prefix": "and then",
+      "suffix": "It was not",
+      "percent": 0.42,
+      "section_label": "Chapter 7",
+      "color": "gold",
+      "note": null,
+      "artifact": { "kind": "source", "format": "epub", "stamp": null },
+      "created_at": "2026-10-13T11:02:41.000Z",
+      "updated_at": "2026-10-13T11:02:41.000Z"
+    }
+  ]
+}
+```
+
+- `version` — the file format's own version, independent of the REST `apiVersion`. A file whose `version` this build does not recognize is unreadable and is never rewritten in this build's shape.
+- `book_id` — the folder's own id. Not a rule: the file is found by its folder, so a file naming another book is repaired on the next write rather than refused.
+- `annotations[].id` / `type` / `created_at` / `updated_at` — minted by the writer, never taken from a caller. `type` is `"highlight"` for everything this build writes, and an entry whose `type` this build does not know is preserved verbatim on every write.
+- `annotations[].cfi` — a position in _the artifact the reader had open_, and `quote` / `prefix` / `suffix` / `percent` / `section_label` are what the panel shows and what a later re-anchor needs. The quote and its context are capped (512 and 32 code points) because the whole file is read when a book opens.
+- `annotations[].artifact` — what the `cfi` is a path into: `kind` `"source"` (the book's own file, `stamp` null) or `"derived"` (the reflow, carrying a digest of `derived/reflow.json` **whole** — its converter triple and the source size and mtime the pass recorded, which is the condition the pass itself caches on). A `format` this build cannot open is refused with the whole file. **This member never crosses the preload bridge**: the renderer is told `stale` instead, so no renderer can read or name a `derived/` fact.
+- Staleness is computed per call and never stored. An annotation is `stale` when the artifact the reader would be served now is not the one the record names — and a stale annotation is listed, never drawn, because `addAnnotation` applies the `cfi` as a node path and a path that still resolves can land on a _different_ sentence.
+- A file that exists and cannot be read is never overwritten, by any of the three mutations; a failed read is a state the panel renders rather than an empty list.
+
+Deleting a book removes its folder, and the notes go with it. See `docs/superpowers/specs/2026-10-13-annotations-design.md` for the storage decision, the three rejected alternatives, and the wire's position.
+
+---
+
 ## SQLite Schema
 
 Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the original spec plus: FTS5 sync triggers (insert/update/delete), indices on `isbn_13` / series / author, `device_history.error` column, and a partial index on unresolved conflicts. Schema versioning via `PRAGMA user_version`; new migrations are appended to the `MIGRATIONS` array in `services/db.ts`. `device_history.book_id` lost its `REFERENCES books(id)` in migration 005 — history outlives the book it was sent for, and the constraint made a sent book undeletable (`docs/invariants/files-and-deletion.md`). Migration 006 dropped the never-used `collections` / `book_collections` tables — guarded to fail the migration rather than discard rows if either ever held any — and added `shelves` / `shelf_books` as a cache of `shelves.json`, with no foreign keys, because a member may name a book this machine's catalog does not hold yet and the rows are replaced wholesale on every write and on adoption (`docs/invariants/shelves.md`).

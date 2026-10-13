@@ -108,6 +108,12 @@ const api: MusaeumAPI = {
     saveProgress: (report) => invoke('reader:saveProgress', report),
     reflow: (bookId) => invoke('reader:reflow', bookId)
   },
+  annotations: {
+    list: (bookId, format) => invoke('annotations:list', bookId, format),
+    create: (input) => invoke('annotations:create', input),
+    update: (bookId, id, note, format) => invoke('annotations:update', bookId, id, note, format),
+    remove: (bookId, id, format) => invoke('annotations:remove', bookId, id, format)
+  },
   ai: {
     getStatus: () => invoke('ai:getStatus'),
     ask: (request) => invoke('ai:ask', request),

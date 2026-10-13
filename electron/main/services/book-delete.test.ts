@@ -26,7 +26,7 @@ import { readShelvesFile, shelvesPath } from './shelves-file'
 
 let root: string
 
-/** A book on disk with one file per format, plus a cover and metadata.json. */
+/** A book on disk with one file per format, plus a cover, metadata.json and its notes. */
 async function seed(id: string, formats: string[]): Promise<string> {
   const book = { ...makeBook(id), formats: formats as never }
   insertBook(book)
@@ -35,6 +35,12 @@ async function seed(id: string, formats: string[]): Promise<string> {
   for (const f of formats) await fs.writeFile(join(dir, `Book ${id}.${f}`), f)
   await fs.writeFile(join(dir, 'cover_full.jpg'), 'jpg')
   await fs.writeFile(join(dir, 'metadata.json'), JSON.stringify({ id, formats }))
+  // The book's own records go in the seed from here on, so every case below decides what a
+  // delete does to *them* as well as to the formats (annotations design D3/D4).
+  await fs.writeFile(
+    join(dir, 'annotations.json'),
+    `${JSON.stringify({ version: 1, book_id: id, annotations: [] }, null, 2)}\n`
+  )
   return dir
 }
 
@@ -101,6 +107,7 @@ describe('deleteFormats', () => {
     expect((await fs.readdir(dir)).sort()).toEqual([
       'Book b.epub',
       'Book b.pdf',
+      'annotations.json',
       'cover_full.jpg',
       'metadata.json'
     ])
@@ -126,6 +133,10 @@ describe('deleteFormats', () => {
 
     expect(result).toEqual({ bookDeleted: true })
     await expect(fs.access(dir)).rejects.toThrow()
+    // The notes go with the book, and they go *because* the folder does — this assertion is
+    // entailed by the one above it, and it is here so the record says what D4 decided rather
+    // than leaving it to be inferred from `fs.rm --recursive`.
+    await expect(fs.access(join(dir, 'annotations.json'))).rejects.toThrow()
     expect(getBooks()).toEqual([])
   })
 

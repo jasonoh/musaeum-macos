@@ -1,6 +1,6 @@
 import { execSync } from 'child_process'
 import { readFileSync, readdirSync, statSync } from 'fs'
-import { join } from 'path'
+import { join, relative } from 'path'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -114,5 +114,67 @@ describe('invariant 11 — vendor/foliate-js is never edited', () => {
     expect(
       git('git log --format=%H -- vendor/foliate-js').split('\n').filter(Boolean)
     ).toHaveLength(1)
+  })
+})
+
+/**
+ * Highlights and notes, slice 1, enforced: **a book's own record has one reader.**
+ *
+ * `{book}/annotations.json` is a third canonical file beside `metadata.json` and
+ * `shelves.json`, and the rule that keeps it one is that a single pair of modules owns it:
+ * the name, the parser and the atomic write live in `services/annotations-file.ts`, and
+ * every read and write of it in `services/annotations.ts`. A second reader — a card badge,
+ * a facet count, a future exporter — would be a second place the file's shape is
+ * understood, and the drift would surface as data loss rather than as a build error
+ * (annotations design D1/D3, AC8).
+ *
+ * **The literal is spelled here rather than imported from the constant it guards**, and the
+ * reason is this file's own project: `tsconfig.web.json` lists `src/**` and `test/**` only,
+ * so importing `electron/main/services/annotations-file.ts` is a `TS6307` and `npm run
+ * typecheck` fails (the same boundary `reader-palette.test.ts` records). Both halves of the
+ * walk are kept honest against that: the literal must be spelled by *exactly* the module
+ * that builds the path (so a rename reddens this test rather than emptying it), and the
+ * service must still be importing that module (so deleting the reader reddens it too).
+ *
+ * The import half exists because the literal half alone has a hole the review found: a second
+ * reader that took the exported `annotationsPath()` builder — a card badge, a facet count, an
+ * exporter — never spells the name, and four such modules would have passed. A trailing
+ * comment is stripped before either check, so naming the file in a comment is still free.
+ */
+describe('a book’s annotations file has one reader', () => {
+  it('is spelled by one module, and imported only by the service that owns its rules', () => {
+    const root = process.cwd()
+    const literal = 'annotations.json'
+    const file = 'electron/main/services/annotations-file.ts'
+    const service = 'electron/main/services/annotations.ts'
+
+    /** A source file's lines with comments taken out: a comment that names the rule is
+     *  documentation rather than a read, and this walk is about reads. */
+    const codeLines = (path: string): string[] =>
+      readFileSync(path, 'utf8')
+        .split('\n')
+        .map((text) => text.replace(/\/\/.*$/, ''))
+        .map((text) => text.trim())
+        .filter((text) => text !== '' && !/^(\*|\/\*)/.test(text))
+
+    const walked = ['src', 'electron', 'sidecar'].flatMap((tree) => sources(join(root, tree)))
+
+    // Exactly one module spells the file's name: the one that builds the path from the folder.
+    const naming = walked
+      .filter((path) => codeLines(path).some((text) => text.includes(literal)))
+      .map((path) => relative(root, path))
+    expect(naming).toEqual([file])
+
+    // The path builder is the door a second reader would come through — `annotationsPath()`
+    // needs no literal — so this names who may import it. A badge, a facet count or an
+    // exporter that took the builder instead of the name is what this half catches.
+    const importing = walked
+      .filter((path) =>
+        codeLines(path).some((text) => /from ['"].*annotations-file['"]/.test(text))
+      )
+      .map((path) => relative(root, path))
+    expect(importing.filter((path) => path !== service)).toEqual([])
+    // …and the service is still one of them, so the walk cannot pass by having lost the module.
+    expect(importing).toContain(service)
   })
 })

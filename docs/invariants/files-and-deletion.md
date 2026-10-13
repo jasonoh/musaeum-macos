@@ -17,7 +17,7 @@
 - **Never throws, and always runs after the canonical write.** Nothing reads these names — every lookup is by extension (`findFormatFile`, `deleteFormats`, `file-access`) — so a failed rename costs tidiness and must never cost an edit that metadata.json has already recorded.
 - **It will not rename one file onto another of the same format.** Renaming is cosmetic; losing a file is not, so a same-extension collision is skipped.
 
-Covers and metadata.json have fixed names and are untouched. Renaming does not reach a copy already sitting on a device — that keeps the name it was sent under until it is removed and re-sent.
+Covers and metadata.json have fixed names and are untouched — and so is a book's `annotations.json`, the record of the highlights and notes written in that book: a third fixed-name file in a folder whose rules are entirely extension-keyed, which is why landing it needed no change here (annotations design D1/D3; `docs/invariants/nas-and-catalog.md`'s layout block). Renaming does not reach a copy already sitting on a device — that keeps the name it was sent under until it is removed and re-sent.
 
 ---
 

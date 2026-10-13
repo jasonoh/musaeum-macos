@@ -53,6 +53,7 @@
       cover_full.jpg               # 600px
       cover_thumb.jpg              # 200px
       metadata.json
+      annotations.json             # canonical: this book's highlights and notes
       derived/                     # derived, fallible renderings — NOT a book format
         reflow.epub                #   the PDF reflow (spec C2/D3), written by the sidecar
         reflow.json                #   its stamp: source size + mtime, converter + helper

@@ -13,6 +13,7 @@ import { registerMetadataHandlers } from './ipc/metadata'
 import { registerMigrationHandlers } from './ipc/migration'
 import { registerNASHandlers } from './ipc/nas'
 import { registerReaderHandlers } from './ipc/reader'
+import { registerAnnotationHandlers } from './ipc/annotations'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShelvesHandlers } from './ipc/shelves'
 import { registerThemeHandlers } from './ipc/theme'
@@ -200,6 +201,7 @@ app.whenReady().then(() => {
   registerSettingsHandlers()
   registerShelvesHandlers()
   registerReaderHandlers()
+  registerAnnotationHandlers()
   registerThemeHandlers()
   registerAiHandlers()
 

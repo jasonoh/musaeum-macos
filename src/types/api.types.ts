@@ -8,6 +8,12 @@ import type {
   AskRequest
 } from './ai.types'
 import type {
+  Annotation,
+  AnnotationsRead,
+  CreateAnnotationResult,
+  NewAnnotationInput
+} from './annotation.types'
+import type {
   Book,
   BookFilters,
   BookFormat,
@@ -18,6 +24,7 @@ import type {
   ImportResult,
   LibraryFacets,
   ProgressReport,
+  ReaderFormat,
   ReflowProgress,
   ReflowResult
 } from './book.types'
@@ -349,6 +356,38 @@ export interface MusaeumAPI {
      * confidently is a normal outcome, not an error.
      */
     reflow(bookId: string): Promise<ReflowResult>
+  }
+
+  /**
+   * A book's highlights and notes, in its own file beside `metadata.json`
+   * (`docs/superpowers/specs/2026-10-13-annotations-design.md`, slice 1).
+   *
+   * Every call carries the `format` the reader has open, because a stored `cfi` is a path
+   * into *a* document: the resolution of what is stale (D6) is per call, and the artifact a
+   * `cfi` points into is not something the renderer is told or may name — the bridge shape
+   * carries `stale` where the file carries the artifact, so `derived/` stays out of `src/`.
+   *
+   * `list` never rejects: it answers with a state, because "no notes yet" and "notes that
+   * could not be read" are different sentences on screen and only the state can tell them
+   * apart. The three mutations reject with main's sentence — a gone highlight, a book the
+   * library does not hold, or a file that cannot be read — and each answers with the book's
+   * **whole** list as the file now holds it, because the write re-reads the file and the
+   * other Mac may have annotated the book since (annex R1).
+   */
+  annotations: {
+    list(bookId: string, format: ReaderFormat): Promise<AnnotationsRead>
+    /**
+     * Add one highlight. The id, the timestamps, the `type` and the artifact are main's —
+     * so the answer carries the minted record as well as the list (annex R1's refinement).
+     */
+    create(input: NewAnnotationInput): Promise<CreateAnnotationResult>
+    update(
+      bookId: string,
+      id: string,
+      note: string | null,
+      format: ReaderFormat
+    ): Promise<Annotation[]>
+    remove(bookId: string, id: string, format: ReaderFormat): Promise<Annotation[]>
   }
 
   ai: {
