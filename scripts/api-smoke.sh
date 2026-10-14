@@ -224,6 +224,12 @@ check 'the payload carries apiVersion 1' 1 "$(jq -r '.apiVersion' "$BODY")"
 check 'the payload counts the cache' 'number' "$(jq -r '.books | type' "$BODY")"
 check 'the payload names the library state' 'one-of-two' \
   "$(jq -r 'if (.library == "online" or .library == "offline") then "one-of-two" else .library end' "$BODY")"
+check 'the payload carries the ai member' 'boolean' "$(jq -r '.ai.available | type' "$BODY")"
+check 'the ai member never carries a key' 'no-key' \
+  "$(jq -r 'if (.ai | has("apiKey") or has("hasKey")) then "leaked-key" else "no-key" end' "$BODY")"
+# Kept for the ask section below: a preview is answered 200 with a model set and
+# 503 without one, and the two branches are different checks.
+AI_AVAILABLE="$(jq -r '.ai.available' "$BODY")"
 
 GET_LENGTH="$(header content-length)"
 # The method policy: URLSession probes with HEAD, and 1a's GET-only switch
@@ -721,6 +727,39 @@ else
     check 'its first bytes are a zip' 'PK' "$(head -c 2 "$BODY")"
   fi
 fi
+
+printf '\n--- ask (preview: assembles and discloses, calls no model)\n'
+
+# The library section's FIRST_ID is captured *before* the upload, so it is empty
+# on a profile whose library held no books when this run started — and the
+# brief's guard would then skip every check below in silence. The upload above
+# always creates a book, so fall back to the one this run just imported: a
+# preview reads the book's title and author itself, so either id serves.
+ASK_BOOK_ID="${FIRST_ID:-${UPLOAD_ID:-}}"
+if [ -n "$ASK_BOOK_ID" ]; then
+  ASK_PREVIEW="{\"bookId\":\"$ASK_BOOK_ID\",\"mode\":\"preview\",\"question\":\"What is this about?\"}"
+  code=$(request /api/ai/ask -X POST -H 'Content-Type: application/json' --data "$ASK_PREVIEW")
+  if [ "$AI_AVAILABLE" = "true" ]; then
+    check 'a preview answers 200' 200 "$code"
+    check 'its type is an event stream' 'text/event-stream' \
+      "$(header content-type | sed 's/;.*//')"
+    check 'the stream opens with a disclosure' 'event: disclosure' "$(grep -m1 '^event:' "$BODY")"
+    check 'the stream ends with a done' 'event: done' "$(grep '^event:' "$BODY" | tail -1)"
+    check 'the disclosure line names what is sent' 1 "$(grep -c 'Sends:' "$BODY")"
+  else
+    check 'with no model set, a preview answers 503' 503 "$code"
+    check 'the refusal is the contract body' 'ai unavailable' "$(jq -r '.error' "$BODY")"
+    check 'the refusal says why' 'string' "$(jq -r '.reason | type' "$BODY")"
+    note 'the Mac has no model set — the streaming checks were skipped; set one in Settings to run them'
+  fi
+fi
+
+code=$(request /api/ai/ask -X POST -H 'Content-Type: application/json' --data '{"bookId":"x","mode":"stream"}')
+check 'an unknown mode answers 400' 400 "$code"
+check 'the refusal is the contract body' 'bad request' "$(jq -r '.error' "$BODY")"
+
+code=$(request /api/ai/ask)
+check 'a GET of the ask route answers 404' 404 "$code"
 
 printf '\n--- the shape of a refusal\n'
 
