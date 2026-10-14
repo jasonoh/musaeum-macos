@@ -1407,7 +1407,7 @@ describe('runAsk — probe', () => {
 describe('runAsk — hanging up', () => {
   it('aborts the upstream request and emits nothing after the signal fires', async () => {
     let upstreamClosed = false
-    const stub = await startStub((req, res) => {
+    const stub = await startStub((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.write(sse('one'))
       res.on('close', () => (upstreamClosed = true))
@@ -1622,6 +1622,8 @@ export async function runAsk(input: RunAskInput): Promise<void> {
 Notes for the implementer: `AskDoneReason` from `@shared/ai.types` equals the `AskDoneData['reason']` union, so `askDonePayload(reason)` typechecks once the `canceled` branch above has returned. If `typecheck` objects to `idleTimeoutMs: undefined` under `exactOptionalPropertyTypes`, spread it conditionally — this repo's tsconfigs do not enable that flag, so it should not.
 
 > **Amendment 3, 2026-10-13 — the hang-up witness must be the socket, not the request stream.** The block above (and Task 6's `stub()` helper, and `ai.test.ts`'s cancel case) first watched `req.on('close', …)` for "the upstream connection went away". On this suite's runtime (**Electron-as-Node v24**, measured) an `IncomingMessage` emits `'close'` **the moment its stream is consumed** — with no abort and no socket teardown — so that witness fires on every request and proves nothing. Measured: deleting `ai.cancel(requestId)` from the abort handler left the whole file **40 passed (40)**, i.e. the "closing the connection aborts the upstream request" criterion (AC9, and Review Focus item 1) had no decider at all; an instrumented probe showed the upstream socket still open **2.5 s** after the abort without the cancel, and closed at **28 ms** with it. The corrected form watches the **response**: `res.on('close', …)`, which fires only when the connection is actually torn down. Verified discriminating — the same mutation now reddens exactly the one hang-up case (1 failed | 39 passed) and the unmutated suite is green. **All three sites were corrected**: this one, Task 6's `stub()`, and `ai.test.ts`'s cancel case. When a case's whole purpose is that a connection died, the witness has to be something only a death can trigger.
+
+> **Amendment 3a — two rider facts the fix round measured.** (i) Watching the response means the *request* parameter is no longer read, so the handler must be written `(_req, res)`: `tsconfig.node.json` sets `noUnusedParameters` and includes `electron/**/*.ts`, and the un-renamed form is a `TS6133`. The snippet above carries the rename; Task 6's stub helper still reads `req` for its body, so it needs no change. (ii) The witness swap is *pinned* at the `ask.test.ts` site (deleting `ai.cancel(requestId)` reddens exactly that case) but **not** at the `ai.test.ts` site: reverting that one to `_req.on('close')` leaves `60 passed (60)`, because the case's cancellation is decided by the terminal event it waits for before the witness assertion is reached. Not blocking — the production behaviour is still decided — but the witness there earns its keep only if something asserts it can be false first, e.g. `expect(closed).toBe(false)` immediately before the cancel. Recorded rather than assumed either way.
 
 - [ ] **Step 4: Run to verify they pass**
 
