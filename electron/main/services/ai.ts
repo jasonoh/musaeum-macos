@@ -11,7 +11,8 @@ import { getConfig } from './db'
 import { broadcast } from './events'
 
 /**
- * The AI client: one OpenAI-compatible endpoint, streamed to the renderer.
+ * The AI client: one OpenAI-compatible endpoint, streamed to whoever asked for
+ * it — the renderer's panel, or the REST relay's own sink (`AskSink` below).
  *
  * Three rules this file exists to keep:
  *

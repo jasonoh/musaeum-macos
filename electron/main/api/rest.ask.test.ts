@@ -313,11 +313,13 @@ describe('POST /api/ai/ask — the stream', () => {
     // `rung: 'passage'` with `offset: null`, so the head phrase alone satisfies
     // it there.
     expect(sent).toContain(DEEP_PHRASE)
-    // ...and the head did not. Two independent measurements, neither ordering
-    // the other: this line proves the section did not go out from its start,
-    // the one above that the offset's neighbourhood did. Each can fail with the
-    // other passing; dropping `section.offset` fails both at once, because the
-    // window such a route sends begins at the head.
+    // ...and the head did not. Two measurements, neither ordering the other:
+    // this line proves the section did not go out from its start, the one above
+    // that the offset's neighbourhood did. The first of the two can fail with
+    // this one passing; this one cannot fail while the first passes, because the
+    // head phrase sits ~9,200 characters before the window's start and no window
+    // of `PASSAGE_CHAR_CAP` carries both — so the mutation that could move this
+    // line, dropping `section.offset`, reddens the first as well.
     expect(sent).not.toContain(HEAD_PHRASE)
     // The disclosure says which of the two went out (the windowed rule in the
     // prompt is the model's half of the same fact).
