@@ -1410,7 +1410,7 @@ describe('runAsk — hanging up', () => {
     const stub = await startStub((req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.write(sse('one'))
-      req.on('close', () => (upstreamClosed = true))
+      res.on('close', () => (upstreamClosed = true))
     })
     configure(stub)
     const controller = new AbortController()
@@ -1621,6 +1621,8 @@ export async function runAsk(input: RunAskInput): Promise<void> {
 
 Notes for the implementer: `AskDoneReason` from `@shared/ai.types` equals the `AskDoneData['reason']` union, so `askDonePayload(reason)` typechecks once the `canceled` branch above has returned. If `typecheck` objects to `idleTimeoutMs: undefined` under `exactOptionalPropertyTypes`, spread it conditionally — this repo's tsconfigs do not enable that flag, so it should not.
 
+> **Amendment 3, 2026-10-13 — the hang-up witness must be the socket, not the request stream.** The block above (and Task 6's `stub()` helper, and `ai.test.ts`'s cancel case) first watched `req.on('close', …)` for "the upstream connection went away". On this suite's runtime (**Electron-as-Node v24**, measured) an `IncomingMessage` emits `'close'` **the moment its stream is consumed** — with no abort and no socket teardown — so that witness fires on every request and proves nothing. Measured: deleting `ai.cancel(requestId)` from the abort handler left the whole file **40 passed (40)**, i.e. the "closing the connection aborts the upstream request" criterion (AC9, and Review Focus item 1) had no decider at all; an instrumented probe showed the upstream socket still open **2.5 s** after the abort without the cancel, and closed at **28 ms** with it. The corrected form watches the **response**: `res.on('close', …)`, which fires only when the connection is actually torn down. Verified discriminating — the same mutation now reddens exactly the one hang-up case (1 failed | 39 passed) and the unmutated suite is green. **All three sites were corrected**: this one, Task 6's `stub()`, and `ai.test.ts`'s cancel case. When a case's whole purpose is that a connection died, the witness has to be something only a death can trigger.
+
 - [ ] **Step 4: Run to verify they pass**
 
 Run: `npm test -- electron/main/services/api/ask.test.ts 2>&1 | tail -14`
@@ -1728,7 +1730,7 @@ async function stub(handler: (req: IncomingMessage, res: ServerResponse) => void
     req.on('data', (c: Buffer) => (raw += c.toString('utf8')))
     req.on('end', () => {
       requests.push(raw)
-      req.on('close', () => closed.push(true))
+      res.on('close', () => closed.push(true))
       handler(req, res)
     })
   })
