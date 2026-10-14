@@ -10,9 +10,29 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-13-phone-ask-design.md` (D2 for slice 1, D3–D5 and D7 for slice 2). Read `docs/superpowers/specs/2026-09-19-reader-ai-panel-design.md` for why the assembler and scorer behave as they do — this plan moves and calls them, it does not change them. **Read before touching:** `docs/rest-api.md` (the contract, three artifacts in one slice), `docs/invariants/reader.md` and `docs/invariants/settings-and-editing.md`.
 
+## Landed — 2026-10-14
+
+**All seven tasks are built, gated and merged.** The commit for each, so a later reader can find the code without re-deriving it from the plan:
+
+- **Task 1** — `a155293` — the move to `shared/ask/` behind `@ask/*`: 12 files, 4 renames (`R100`, `R100`, `R099`, `R099`) plus 8 one-line import edits, no body changed but two docblock path lines.
+- **doc residue** — `b3a19fa` — `docs/architecture.md` names `@ask` among the vitest aliases.
+- **Task 2** — `585147a` + `0acb5d0` — `AskSink` on `AskOptions`; the fix round added the two witnesses that decide `done`/`error` delivery.
+- **Task 3** — `3fd299e` — `services/api/ask.ts`, the request parser and its caps, with `ask.test.ts`.
+- **Task 4** — `4fc0fbb` + `af28a1c` — the wire shapes, `HealthAi`, `health.ai`, the five shapers, `ASK_ROUTE`/`isAskRoute`, and `docs/rest-api.md`.
+- **Task 5** — `5112987` + `63cafb2` — `frame`, `healthAi`, `runAsk`, and the fix round that gave AC9 a decider.
+- **Task 6** — `8c196d0` + `dfc9f94` — the route in `rest.ts` (**the commit that clears this plan's deliberate red**), then the fix round that pinned the refusal order.
+- **Task 7** — `0f34aad` — the smoke checks, the `tasks.md` entry, and the two-branch live pass.
+- **contract repairs** — `697e9c4` — the whole-branch review's fixes: the route's 10 s body clock, the `ask-disclosure` field table, `done`'s unreachable `canceled`.
+
+**Final state:** `npm test` **100 files / 2230 passed / 0 failed / 0 skipped**; `npm run typecheck` exit 0; `npm run lint` exit 0; `git diff --quiet index.html` clean; `apiVersion` still 1; `vendor/` untouched.
+
+**One staging note for anyone reading the chain:** Tasks 4 and 6 share one working tree by design, so `4fc0fbb` and `5112987` are **deliberately red** — one typecheck error at `rest.ts:955` and seven `rest.test.ts` health cases — and both commit bodies say so and name `8c196d0` as the restorer. Do not read those two as broken commits.
+
+**Where the plan needed correcting** is recorded as inline amendments in the task it belongs to (search this file for `Amendment`): the `deliver(sink, send)` snippet that cannot compile under `noUnusedParameters`; the mutation rule that a mutant must keep its `return`; the hang-up witness that had to watch the socket rather than the request stream, plus its two riders; and the whole-tree gate's ordering. Everything else the build learned is in `tasks.md`'s entry and in the session's own ledger under `.superpowers/sdd/2026-10-13-phone-ask-mac/`.
+
 ## Global Constraints
 
-- **Baseline measured 2026-10-13 at `6425d9d`:** `npm test` → 98 files, **2143 passed, 2 skipped**. Re-measure before relying on it (this repo's handoff numbers are claims, not facts). Slice 1 must end with the same counts.
+- **Baseline measured at `aa50bbb`** (the commit this plan was written against): `npm test` → 98 files, **2145 passed, 0 skipped**. The `6425d9d` figure this plan first carried — 98 / **2143 passed, 2 skipped** — is the same 2145 total; the 2 are `it.runIf(hasVenv)` cases in `services/settings.test.ts`, gated on `sidecar/.venv/bin/python` and therefore environment-dependent. Re-measure before relying on either: this repo's handoff numbers are claims, not facts. Slice 1 must end with the same counts.
 - `docs/rest-api.md`, the goldens in `electron/main/services/api/shape.test.ts` and `scripts/api-smoke.sh` move **together** in slice 2. `apiVersion` stays **1**.
 - `index.html` is **byte-identical** (`git diff --quiet index.html`). No CSP change.
 - The ask route's JSON body cap is **1,048,576 bytes**; the section text cap is **200,000 characters**; the heartbeat is **15 s**; at most **2** relay asks in flight (a third answers `503 busy` + `Retry-After: 1`). The reading report's 4,096-byte cap is unchanged.
