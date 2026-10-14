@@ -508,6 +508,114 @@ describe('ask', () => {
   })
 })
 
+describe('ask with a sink', () => {
+  function recorder() {
+    const seen: string[] = []
+    return {
+      seen,
+      sink: {
+        chunk: (delta: string) => seen.push(`chunk:${delta}`),
+        done: (reason: string) => seen.push(`done:${reason}`),
+        error: (message: string) => seen.push(`error:${message}`)
+      }
+    }
+  }
+
+  it('delivers the stream to the sink and broadcasts nothing to the window', async () => {
+    const stub = await startStub((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write(chunk('Hello'))
+      res.write(chunk(' world'))
+      res.end('data: [DONE]\n\n')
+    })
+    configure(stub)
+    const { seen, sink } = recorder()
+
+    ask({ requestId: 'relay-1', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] }, { sink })
+    await vi.waitFor(() => expect(seen).toContain('done:stop'))
+
+    expect(seen).toEqual(['chunk:Hello', 'chunk: world', 'done:stop'])
+    expect(captured).toEqual([])
+  })
+
+  it('delivers a failure to the sink, not to the window', async () => {
+    setConfig(AI_CONFIG_KEYS.baseUrl, 'http://127.0.0.1:1/v1')
+    setConfig(AI_CONFIG_KEYS.model, 'test-model')
+    const { seen, sink } = recorder()
+
+    ask({ requestId: 'relay-2', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] }, { sink })
+    await vi.waitFor(() => expect(seen.some((line) => line.startsWith('error:'))).toBe(true))
+
+    expect(seen).toHaveLength(1)
+    expect(captured).toEqual([])
+  })
+
+  it('cancels a sink request as done:canceled, and releases the slot', async () => {
+    const stub = await startStub((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write(chunk('one'))
+    })
+    configure(stub)
+    const { seen, sink } = recorder()
+
+    ask({ requestId: 'relay-3', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] }, { sink })
+    await vi.waitFor(() => expect(seen).toContain('chunk:one'))
+
+    expect(cancel('relay-3')).toBe(true)
+    await vi.waitFor(() => expect(seen).toContain('done:canceled'))
+    await vi.waitFor(() => expect(cancel('relay-3')).toBe(false))
+    expect(captured).toEqual([])
+  })
+
+  it('a sink that throws does not break the stream or leak the request', async () => {
+    const stub = await startStub((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write(chunk('a'))
+      res.write(chunk('b'))
+      res.end('data: [DONE]\n\n')
+    })
+    configure(stub)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const seen: string[] = []
+
+    ask(
+      { requestId: 'relay-4', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] },
+      {
+        sink: {
+          chunk: () => {
+            throw new Error('the socket is gone')
+          },
+          done: (reason) => seen.push(`done:${reason}`),
+          error: (message) => seen.push(`error:${message}`)
+        }
+      }
+    )
+    await vi.waitFor(() => expect(seen).toEqual(['done:stop']))
+    await vi.waitFor(() => expect(cancel('relay-4')).toBe(false))
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('a request without a sink still broadcasts, with a sink request beside it', async () => {
+    const stub = await startStub((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write(chunk('x'))
+      res.end('data: [DONE]\n\n')
+    })
+    configure(stub)
+    const { seen, sink } = recorder()
+
+    askOnce('desktop-1')
+    ask({ requestId: 'relay-5', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] }, { sink })
+    await waitForTerminal('desktop-1')
+    await vi.waitFor(() => expect(seen).toContain('done:stop'))
+
+    // The desktop request's events are in the window's stream; the relay's are not
+    expect(eventsFor('desktop-1', EVENT_CHANNELS.aiChunk)).toHaveLength(1)
+    expect(captured.some((c) => sameRequest(c.payload, 'relay-5'))).toBe(false)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // The probe — Settings' Test button
 // ---------------------------------------------------------------------------

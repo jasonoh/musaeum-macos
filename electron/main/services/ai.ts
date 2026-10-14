@@ -437,10 +437,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // The stream
 // ---------------------------------------------------------------------------
 
+/**
+ * Where a request's events go when they are not the desktop window's. The REST
+ * relay (`services/api/ask.ts`) passes one so a phone's question streams back to
+ * the phone and is never broadcast to a Mac reader that happens to have the ask
+ * panel open. A request with no sink is the desktop panel's and behaves exactly
+ * as it always has.
+ */
+export interface AskSink {
+  chunk(delta: string): void
+  done(reason: AskDoneReason): void
+  error(message: string): void
+}
+
 interface Pending {
   controller: AbortController
-  /** True once a terminal event has been broadcast for this id. */
+  /** True once a terminal event has been delivered for this id. */
   settled: boolean
+  sink?: AskSink
 }
 
 const pending = new Map<string, Pending>()
@@ -448,6 +462,8 @@ const pending = new Map<string, Pending>()
 export interface AskOptions {
   /** Overridden in tests; the default is `IDLE_TIMEOUT_MS`. */
   idleTimeoutMs?: number
+  /** Deliver events here instead of broadcasting them to the renderer. */
+  sink?: AskSink
 }
 
 /**
@@ -471,7 +487,7 @@ export function ask(request: AskRequest, options: AskOptions = {}): { requestId:
     throw new Error(`This request is too large to send (${chars} characters).`)
   }
 
-  const entry: Pending = { controller: new AbortController(), settled: false }
+  const entry: Pending = { controller: new AbortController(), settled: false, sink: options.sink }
   pending.set(requestId, entry)
   void run(request, entry, options.idleTimeoutMs ?? IDLE_TIMEOUT_MS).finally(() =>
     pending.delete(requestId)
@@ -544,7 +560,7 @@ async function run(request: AskRequest, entry: Pending, idleTimeoutMs: number): 
     for (const event of events) {
       const outcome = readChunk(event.data)
       if (outcome.kind === 'delta') {
-        broadcast('aiChunk', { requestId, delta: outcome.text })
+        emitChunk(requestId, entry, outcome.text)
       } else if (outcome.kind === 'done') {
         reason = outcome.reason
         return true
@@ -586,13 +602,38 @@ async function run(request: AskRequest, entry: Pending, idleTimeoutMs: number): 
   return done(requestId, entry, reason ?? 'stop')
 }
 
+/** A sink is someone else's code: its failure must not end the stream or leak the request. */
+function deliver(send: () => void): void {
+  try {
+    send()
+  } catch (err) {
+    console.warn(`[ai] a sink threw: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+function emitChunk(requestId: string, entry: Pending, delta: string): void {
+  if (entry.sink) {
+    const sink = entry.sink
+    return deliver(() => sink.chunk(delta))
+  }
+  broadcast('aiChunk', { requestId, delta })
+}
+
 function done(requestId: string, entry: Pending, reason: AskDoneReason): void {
   entry.settled = true
+  if (entry.sink) {
+    const sink = entry.sink
+    return deliver(() => sink.done(reason))
+  }
   broadcast('aiDone', { requestId, reason })
 }
 
 function fail(requestId: string, entry: Pending, message: string): void {
   entry.settled = true
+  if (entry.sink) {
+    const sink = entry.sink
+    return deliver(() => sink.error(message))
+  }
   broadcast('aiError', { requestId, message })
 }
 
