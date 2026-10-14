@@ -475,7 +475,12 @@ describe('the wire', () => {
       apiVersion: 1,
       version: APP_VERSION,
       books: 2,
-      library: 'offline'
+      library: 'offline',
+      // The `ai` member's presence is this file's business; its *value* is the
+      // machine's own AI config, which no case here may depend on — the two
+      // cases that decide the member are in `rest.ask.test.ts`, against a stub
+      // endpoint. `objectContaining` keeps the rest exact.
+      ai: expect.objectContaining({ available: expect.any(Boolean) })
     })
 
     // **1b's count, and the reason it is a count.** The route asks `countBooks`

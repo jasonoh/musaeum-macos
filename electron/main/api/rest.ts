@@ -4,11 +4,14 @@ import { createReadStream, promises as fs } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { networkInterfaces } from 'node:os'
 import { pipeline } from 'node:stream/promises'
+import * as ai from '../services/ai'
+import { ASK_BODY_MAX_BYTES, frame, healthAi, parseAskRequest, runAsk } from '../services/api/ask'
 import { checkBearer, logRejectedAttempt } from '../services/api/auth'
 import { resolveBindAddress, type InterfaceMap } from '../services/api/bind'
 import { parseLibraryQuery, parseShelfParam } from '../services/api/query'
 import { applyReadingReport, parseReadingReport } from '../services/api/reading'
 import {
+  isAskRoute,
   isBooksCollection,
   matchBookPath,
   matchShelfMembershipPath,
@@ -16,6 +19,7 @@ import {
   type ShelfBookPath
 } from '../services/api/routes'
 import {
+  aiUnavailablePayload,
   bookPayload,
   cannotReflowPayload,
   errorPayload,
@@ -98,8 +102,10 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  * `GET /api/shelves`, `GET /api/books/{id}`, `GET /api/books/{id}/cover`,
  * `GET /api/books/{id}/file`, `PUT /api/books/{id}/reading` — slice 1c's, which
  * reads a JSON body — `POST /api/books`, which takes a book's bytes as its body
- * (the phone-upload design, D1), and the bookshelves slice's membership pair,
- * `PUT`/`DELETE /api/shelves/{id}/books/{bookId}`, which send no body at all.
+ * (the phone-upload design, D1), the bookshelves slice's membership pair,
+ * `PUT`/`DELETE /api/shelves/{id}/books/{bookId}`, which send no body at all,
+ * and the phone-ask slice's `POST /api/ai/ask`, which sends no JSON back: it
+ * streams (`docs/superpowers/specs/2026-10-13-phone-ask-design.md`, D3).
  *
  * **Never fatal (invariant 12, D11).** A bind failure is logged, recorded and
  * the app starts normally; a thrown handler answers 500; a failed read is 404, a
@@ -303,6 +309,14 @@ function createByteGate(max: number = MAX_BYTE_TRANSFERS): ByteGate {
 interface RouteDeps {
   transfer: ByteTransfer
   gate: ByteGate
+  /**
+   * The relay's own budget, separate from the byte routes' `gate`: an ask holds
+   * no disk slot, and a phone asking a question must not refuse the Mac its own
+   * covers. One gate per server, like the byte gate above.
+   */
+  askGate: ByteGate
+  /** How often a silent ask stream gets a heartbeat comment; `ASK_HEARTBEAT_MS` by default. */
+  askHeartbeatMs: number
   /** How long a request body has to arrive before it is refused. */
   bodyTimeoutMs: number
   /**
@@ -572,10 +586,14 @@ const BODY_TIMEOUT_MS = 10_000
  * `Content-Type` is deliberately **not** enforced: nothing in this surface
  * reads one, the byte routes have no equivalent check, and a client that sent
  * JSON without the header would get a refusal it could not act on.
+ *
+ * **The cap is a parameter because the reading report's 4 KB would refuse every
+ * ask; the default is still the report's.**
  */
 function readJsonBody(
   req: IncomingMessage,
-  timeoutMs: number
+  timeoutMs: number,
+  maxBytes: number = MAX_BODY_BYTES
 ): Promise<{ ok: true; body: unknown } | { ok: false }> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = []
@@ -598,7 +616,7 @@ function readJsonBody(
     const onData = (chunk: Buffer): void => {
       if (tooLarge) return
       size += chunk.length
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         tooLarge = true
         chunks.length = 0
         return
@@ -670,6 +688,101 @@ async function handleReadingReport(
       shelves: shelfIdsFor(outcome.book.id)
     })
   )
+}
+
+// ---------------------------------------------------------------------------
+// The fifth write, and the only streaming one: the relay (phone-ask D3)
+// ---------------------------------------------------------------------------
+
+/**
+ * At most this many relay asks in flight; a third is `503 busy`. Independent of
+ * the byte budget and of the desktop panel's own question.
+ */
+const MAX_RELAY_ASKS = 2
+
+/**
+ * How often a silent stream gets a comment line, so a cold local model does not
+ * trip the client's idle timer.
+ */
+const ASK_HEARTBEAT_MS = 15_000
+
+/**
+ * `POST /api/ai/ask` — the relay (phone-ask D3). Thin by construction: the body
+ * is read and validated, the book and the model are looked up, and everything
+ * else — what travels, what the verdict is, what the model is asked — is
+ * `services/api/ask.ts`'s `runAsk`. This function owns only what needs the socket:
+ * the SSE headers, the heartbeat, the slot and the hang-up.
+ *
+ * **The order is the contract's:** the body is refused (400) before the book is
+ * looked up (404), and the model's absence (503) is answered before a slot is
+ * taken, so a request this surface cannot serve never counts against the two
+ * it can.
+ *
+ * **The hang-up is the *response's* `close`, never the request's.** On this
+ * runtime an `IncomingMessage` emits `'close'` as soon as its stream is
+ * consumed — which is every request that carries a body — so a listener there
+ * fires while the client is still reading and would abort the upstream call
+ * before the first token. `res.on('close')` is the socket actually going away,
+ * at a hang-up and (harmlessly, `runAsk` having resolved) at a normal end.
+ */
+async function handleAsk(
+  req: IncomingMessage,
+  res: ServerResponse,
+  deps: RouteDeps
+): Promise<void> {
+  const raw = await readJsonBody(req, deps.bodyTimeoutMs, ASK_BODY_MAX_BYTES)
+  const parsed = raw.ok ? parseAskRequest(raw.body) : ({ ok: false } as const)
+  if (!parsed.ok) {
+    sendJson(res, 400, errorPayload('badRequest'))
+    return
+  }
+
+  const book = getBook(parsed.request.bookId)
+  if (!book) {
+    sendJson(res, 404, errorPayload('notFound'))
+    return
+  }
+
+  const status = ai.getStatus()
+  if (!status.configured) {
+    sendJson(res, 503, aiUnavailablePayload(status.reason ?? 'The Mac has no model set.'))
+    return
+  }
+
+  if (!deps.askGate.acquire()) {
+    sendJson(res, 503, errorPayload('busy'), { 'retry-after': String(BUSY_RETRY_AFTER_SECONDS) })
+    return
+  }
+
+  const hangup = new AbortController()
+  res.on('close', () => hangup.abort())
+  let beat: ReturnType<typeof setInterval> | undefined
+  try {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store',
+      connection: 'keep-alive'
+    })
+    res.flushHeaders()
+
+    const write = (chunk: string): void => {
+      if (hangup.signal.aborted || res.writableEnded) return
+      res.write(chunk)
+    }
+    beat = setInterval(() => write(': ping\n\n'), deps.askHeartbeatMs)
+
+    await runAsk({
+      request: parsed.request,
+      book: { title: book.title, author: book.author ?? null },
+      status,
+      signal: hangup.signal,
+      emit: (event, data) => write(frame(event, data))
+    })
+    if (!res.writableEnded) res.end()
+  } finally {
+    if (beat) clearInterval(beat)
+    deps.askGate.release()
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -948,11 +1061,19 @@ async function handleRequest(
       // The three values this payload needs, read where they live: the app's
       // own version (as `services/menu.ts` reads it), the cache's count through
       // the *paginated* total rather than a second `COUNT(*)`, and whether the
-      // share is mounted. Shaping them is `shape.ts`'s.
+      // share is mounted. Shaping them is `shape.ts`'s. The fourth is the
+      // relay's own status — whether the Mac has a model to ask, and to what —
+      // read through `ai.getStatus()` and shaped by `healthAi`, which never
+      // touches the key.
       sendJson(
         res,
         200,
-        healthPayload({ version: app.getVersion(), books: countBooks(), online: nas.isOnline() })
+        healthPayload({
+          version: app.getVersion(),
+          books: countBooks(),
+          online: nas.isOnline(),
+          ai: healthAi(ai.getStatus())
+        })
       )
       return
     }
@@ -1029,6 +1150,14 @@ async function handleRequest(
     // behind a method the route does not answer.
     if (req.method === 'POST' && isBooksCollection(url.pathname)) {
       await handleUpload(req, res, url, deps)
+      return
+    }
+
+    // **The relay** (phone-ask D3): POST-only, matched on its pathname. A `GET`
+    // or `HEAD` of it falls through to the uniform 404 like any known path behind
+    // a method it does not answer.
+    if (req.method === 'POST' && isAskRoute(url.pathname)) {
+      await handleAsk(req, res, deps)
       return
     }
 
@@ -1160,6 +1289,13 @@ export interface ServerOptions {
    * scratch directory its own) without a 1 GiB file or a thirty-second wait.
    */
   upload?: UploadOptions
+
+  /**
+   * The ask stream's heartbeat interval; default `ASK_HEARTBEAT_MS`. A seam so a
+   * case decides it in milliseconds — the third of the same kind, and for the
+   * same reason the two above exist.
+   */
+  askHeartbeatMs?: number
 }
 
 /**
@@ -1181,6 +1317,8 @@ export function createRestApiServer(
   const deps: RouteDeps = {
     transfer: options.transfer ?? streamRange,
     gate: createByteGate(),
+    askGate: createByteGate(MAX_RELAY_ASKS),
+    askHeartbeatMs: options.askHeartbeatMs ?? ASK_HEARTBEAT_MS,
     bodyTimeoutMs: options.bodyTimeoutMs ?? BODY_TIMEOUT_MS,
     // The upload's own bounds: the module's defaults unless a case replaced them
     upload: options.upload ?? {}

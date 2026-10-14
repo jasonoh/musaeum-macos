@@ -397,6 +397,8 @@ describe('ask', () => {
     askOnce('req-cancel')
     await vi.waitFor(() => expect(eventsFor('req-cancel', EVENT_CHANNELS.aiChunk)).toHaveLength(1))
 
+    // The socket must still be open here, or a stream that had already ended by itself satisfies this case — which is what swapping `res.on('close')` for the request's own (it fires the moment the body is consumed) makes of it, invisibly.
+    expect(closed).toBe(false)
     expect(cancel('req-cancel')).toBe(true)
     const terminal = await waitForTerminal('req-cancel')
     expect(terminal.channel).toBe(EVENT_CHANNELS.aiDone)
@@ -531,7 +533,10 @@ describe('ask with a sink', () => {
     configure(stub)
     const { seen, sink } = recorder()
 
-    ask({ requestId: 'relay-1', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] }, { sink })
+    ask(
+      { requestId: 'relay-1', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] },
+      { sink }
+    )
     await vi.waitFor(() => expect(seen).toContain('done:stop'))
 
     expect(seen).toEqual(['chunk:Hello', 'chunk: world', 'done:stop'])
@@ -543,7 +548,10 @@ describe('ask with a sink', () => {
     setConfig(AI_CONFIG_KEYS.model, 'test-model')
     const { seen, sink } = recorder()
 
-    ask({ requestId: 'relay-2', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] }, { sink })
+    ask(
+      { requestId: 'relay-2', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] },
+      { sink }
+    )
     await vi.waitFor(() => expect(seen.some((line) => line.startsWith('error:'))).toBe(true))
 
     expect(seen).toHaveLength(1)
@@ -558,7 +566,10 @@ describe('ask with a sink', () => {
     configure(stub)
     const { seen, sink } = recorder()
 
-    ask({ requestId: 'relay-3', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] }, { sink })
+    ask(
+      { requestId: 'relay-3', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] },
+      { sink }
+    )
     await vi.waitFor(() => expect(seen).toContain('chunk:one'))
 
     expect(cancel('relay-3')).toBe(true)
@@ -675,7 +686,10 @@ describe('ask with a sink', () => {
     const { seen, sink } = recorder()
 
     askOnce('desktop-1')
-    ask({ requestId: 'relay-5', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] }, { sink })
+    ask(
+      { requestId: 'relay-5', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] },
+      { sink }
+    )
     await waitForTerminal('desktop-1')
     await vi.waitFor(() => expect(seen).toContain('done:stop'))
 
