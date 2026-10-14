@@ -46,7 +46,7 @@ Failure modes the spec implies that no happy-path task exercises; each is pinned
 | `electron/main/services/api/shape.ts` (+ `shape.test.ts`) | `aiUnavailable` word, `ai` health member, the five event payloads | 2 |
 | `electron/main/services/api/routes.ts` | `ASK_ROUTE` + `isAskRoute` | 2 |
 | `electron/main/api/rest.ts` (+ `rest.ask.test.ts`, `rest.test.ts`) | the route glue: body cap, SSE writer, gate, disconnect, heartbeat | 2 |
-| `docs/rest-api.md`, `scripts/api-smoke.sh` | the contract's prose half and its executable half | 2 |
+| `docs/rest-api.md`, `scripts/api-smoke.sh`, `tasks.md` | the contract's prose half, its executable half, and the backlog entry | 2 |
 
 Slice 1 touches about a dozen files, but four are renames and the rest are one-line import or config edits — this is the move the spec's AC1 describes, and it is the reason slice 1 is its own slice. **If the rename diff shows anything but renames and import lines, stop.**
 
@@ -2158,11 +2158,11 @@ git commit -m "feat(api): POST /api/ai/ask — a streaming relay over the Mac's 
 
 **Files:**
 - Modify: `scripts/api-smoke.sh`
-- Modify: `tasks.md`
+- Modify: `tasks.md` (the existing entry)
 
 **Interfaces:**
 - Consumes: the finished route and `health.ai`.
-- Produces: the contract's executable half for the new route, and a tasks entry saying where the iOS half lives.
+- Produces: the contract's executable half for the new route, and the backlog entry brought up to date.
 
 - [ ] **Step 1: Add the health check**
 
@@ -2217,13 +2217,9 @@ scripts/api-smoke.sh --profile "$MUSAEUM_USER_DATA"
 ```
 Expected: `passed N, failed 0`. Run it twice — once with no `ai_model` set (the 503 branch) and once with `ai_model` set and `ai_base_url` pointing at a stub SSE server (the 200 branch). If a branch cannot be exercised on this machine, say which, in the report. Do not claim a branch passed that did not run.
 
-- [ ] **Step 4: Record the work in `tasks.md`**
+- [ ] **Step 4: Update the `tasks.md` entry**
 
-Under *Open tails on landed work*, add one item (single line, no hard wrapping):
-
-```
-- [ ] **The phone's Ask panel — slices 3 and 4, in `musaeum-ios`.** The Mac half is landed: `POST /api/ai/ask`, `health.ai`, the contract text and the goldens. The client (`AskBackend`, the SSE reader, models derived from the `ask-*` goldens) and the reader sheet are the iOS repo's, planned in `docs/superpowers/plans/2026-10-13-phone-ask-ios.md`. Spec: `docs/superpowers/specs/2026-10-13-phone-ask-design.md`.
-```
+The entry *Ask about the page you're on, on the phone — the relay route* already exists under *Specified, not scheduled* (added when the plans were written). Edit it in place, single line, no hard wrapping: replace *"Planned, not started; nothing is built."* with what is now true — slices 1 and 2 built and gated, the date and the commit, the new test count from Task 6 Step 5, and which smoke branches (503 and 200) actually ran. Leave slices 3–4 marked as the iOS repo's.
 
 - [ ] **Step 5: Commit**
 
