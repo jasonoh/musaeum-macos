@@ -67,6 +67,12 @@ export const API_ERRORS = {
   rangeNotSatisfiable: 'range not satisfiable',
   /** 422 — the reflow pass refused this book; the body also carries `reason`. */
   cannotReflow: 'cannot reflow',
+  /**
+   * 503 — the Mac has no model to relay to (`POST /api/ai/ask`); the body also
+   * carries `reason`, the way 422 does. Not `offline` and not `busy`: neither
+   * retry decision applies, because only the owner at the Mac can fix it.
+   */
+  aiUnavailable: 'ai unavailable',
   /** 500 — a handler threw; the server keeps serving (invariant 12). */
   internal: 'internal'
 } as const
@@ -95,12 +101,28 @@ export const READ_STATUSES: Record<ReadStatus, true> = {
 // Health — the connect check (D12)
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether the Mac can relay an ask, and to what. Never the key, and no `hasKey`:
+ * the phone has no use for it. `available: false` carries a `reason` so the
+ * phone can say what to fix instead of showing a bare disabled button.
+ */
+export interface HealthAi {
+  available: boolean
+  reason: string | null
+  /** The endpoint is loopback, so nothing sent to it leaves the Mac. */
+  isLocal: boolean
+  /** `host[:port]` of the endpoint, or `''` when none resolved. */
+  host: string
+  model: string | null
+}
+
 export interface HealthPayload {
   apiVersion: number
   version: string
   /** Every book in the cache — the paginated total, not a whole-library load. */
   books: number
   library: 'online' | 'offline'
+  ai: HealthAi
 }
 
 /**
@@ -119,12 +141,20 @@ export function healthPayload(input: {
   version: string
   books: number
   online: boolean
+  ai: HealthAi
 }): HealthPayload {
   return {
     apiVersion: API_VERSION,
     version: input.version,
     books: input.books,
-    library: input.online ? 'online' : 'offline'
+    library: input.online ? 'online' : 'offline',
+    ai: {
+      available: input.ai.available,
+      reason: input.ai.reason,
+      isLocal: input.ai.isLocal,
+      host: input.ai.host,
+      model: input.ai.model
+    }
   }
 }
 
@@ -483,4 +513,82 @@ export interface CannotReflowPayload {
 /** 422's body — the one refusal with a second member (the pipeline's sentence). */
 export function cannotReflowPayload(reason: string): CannotReflowPayload {
   return { ...errorPayload('cannotReflow'), reason }
+}
+
+// ---------------------------------------------------------------------------
+// The ask route (phone-ask D3) — the 503 body and the five stream events
+// ---------------------------------------------------------------------------
+
+export interface AiUnavailablePayload {
+  error: string
+  reason: string
+}
+
+/** 503's body — the second refusal with a `reason`, shaped like `cannotReflowPayload`. */
+export function aiUnavailablePayload(reason: string): AiUnavailablePayload {
+  return { ...errorPayload('aiUnavailable'), reason }
+}
+
+export interface AskDisclosureData {
+  /** `describeEgress()`'s string, verbatim: the phone shows it, it does not compose it. */
+  text: string
+  members: string[]
+  rung: 'pointer' | 'passage'
+  windowed: boolean
+  truncated: string[]
+  endpoint: { host: string; isLocal: boolean }
+  model: string | null
+}
+
+export function askDisclosurePayload(input: {
+  text: string
+  members: string[]
+  rung: 'pointer' | 'passage'
+  windowed: boolean
+  truncated: string[]
+  host: string
+  isLocal: boolean
+  model: string | null
+}): AskDisclosureData {
+  return {
+    text: input.text,
+    members: input.members,
+    rung: input.rung,
+    windowed: input.windowed,
+    truncated: input.truncated,
+    endpoint: { host: input.host, isLocal: input.isLocal },
+    model: input.model
+  }
+}
+
+export interface AskVerdictData {
+  value: 'strong' | 'weak' | 'unknown'
+}
+
+export function askVerdictPayload(value: AskVerdictData['value']): AskVerdictData {
+  return { value }
+}
+
+export interface AskDeltaData {
+  text: string
+}
+
+export function askDeltaPayload(text: string): AskDeltaData {
+  return { text }
+}
+
+export interface AskDoneData {
+  reason: 'stop' | 'length' | 'canceled' | 'timeout'
+}
+
+export function askDonePayload(reason: AskDoneData['reason']): AskDoneData {
+  return { reason }
+}
+
+export interface AskErrorData {
+  message: string
+}
+
+export function askErrorPayload(message: string): AskErrorData {
+  return { message }
 }

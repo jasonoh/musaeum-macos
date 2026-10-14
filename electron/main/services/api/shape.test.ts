@@ -5,11 +5,18 @@ import { describe, expect, it } from 'vitest'
 import type { Book } from '@shared/book.types'
 import { makeBook } from '../../../../test/helpers/book'
 import { BOOK_CONTENT_TYPES } from '../book-bytes'
+import { parseAskRequest } from './ask'
 import {
   API_ERRORS,
   API_VERSION,
   DEFAULT_PAGE_LIMIT,
   MAX_PAGE_LIMIT,
+  aiUnavailablePayload,
+  askDeltaPayload,
+  askDisclosurePayload,
+  askDonePayload,
+  askErrorPayload,
+  askVerdictPayload,
   bookPayload,
   cannotReflowPayload,
   errorPayload,
@@ -20,7 +27,8 @@ import {
   membershipPayload,
   readingPayload,
   reflowPendingPayload,
-  shelvesPayload
+  shelvesPayload,
+  type HealthAi
 } from './shape'
 
 /**
@@ -115,9 +123,22 @@ const APP_VERSION = JSON.parse(readFileSync(join(process.cwd(), 'package.json'),
 const SHELF_ID = 'b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901'
 const SHELVES = [SHELF_ID]
 
+/**
+ * The Mac's AI state, as `healthPayload` takes it (phone-ask D3): a local model
+ * the phone may reach, so the golden says what a client sees when Ask is on. The
+ * document's `payload=health` block states the same five values.
+ */
+const AI: HealthAi = {
+  available: true,
+  reason: null,
+  isLocal: true,
+  host: 'localhost:11434',
+  model: 'llama3.2'
+}
+
 /** The payloads the document must describe. Built by the shaper, never by hand. */
 const PAYLOADS: Record<string, unknown> = {
-  health: healthPayload({ version: APP_VERSION, books: 7100, online: true }),
+  health: healthPayload({ version: APP_VERSION, books: 7100, online: true, ai: AI }),
   book: bookPayload(GOLDEN, SHELVES),
   library: libraryPayload({
     books: [GOLDEN],
@@ -149,6 +170,25 @@ const PAYLOADS: Record<string, unknown> = {
   // a client is written against; `null` is the ordinary case and the case below
   // decides it.
   import: importPayload({ book: GOLDEN, duplicate: DUPLICATE, shelves: SHELVES }),
+  // The ask route's five stream events (phone-ask D3). Built by the shapers the
+  // socket frames into `event:`/`data:` lines, so the *event* both sides agree
+  // on is the payload in the document, field for field.
+  'ask-disclosure': askDisclosurePayload({
+    text: 'Sends: title, author, section “Chapter 4”, position (42%), your question → http://localhost:11434/v1 · llama3.2',
+    members: ['title', 'author', 'section', 'position', 'question'],
+    rung: 'pointer',
+    windowed: false,
+    truncated: [],
+    host: 'localhost:11434',
+    isLocal: true,
+    model: 'llama3.2'
+  }),
+  'ask-verdict': askVerdictPayload('weak'),
+  'ask-delta': askDeltaPayload('That passage is'),
+  'ask-done': askDonePayload('stop'),
+  'ask-error': askErrorPayload(
+    'Nothing is listening at http://localhost:11434/v1 — is your local model server running?'
+  ),
   error: errorPayload('notFound')
 }
 
@@ -253,17 +293,22 @@ describe('the contract document and the goldens (AC19)', () => {
 describe('the health payload', () => {
   it('carries the contract version the client checks (D12)', () => {
     expect(API_VERSION).toBe(1)
-    expect(healthPayload({ version: 'x', books: 0, online: false }).apiVersion).toBe(API_VERSION)
+    expect(healthPayload({ version: 'x', books: 0, online: false, ai: AI }).apiVersion).toBe(
+      API_VERSION
+    )
   })
 
   it('maps the share to exactly two words, and counts what it is given', () => {
-    expect(healthPayload({ version: '1.2.3', books: 7100, online: true })).toEqual({
+    expect(healthPayload({ version: '1.2.3', books: 7100, online: true, ai: AI })).toEqual({
       apiVersion: 1,
       version: '1.2.3',
       books: 7100,
-      library: 'online'
+      library: 'online',
+      ai: AI
     })
-    expect(healthPayload({ version: '1.2.3', books: 3, online: false }).library).toBe('offline')
+    expect(healthPayload({ version: '1.2.3', books: 3, online: false, ai: AI }).library).toBe(
+      'offline'
+    )
   })
 })
 
@@ -461,5 +506,63 @@ describe('reflow on the wire (D1, D8)', () => {
       error: 'cannot reflow',
       reason: 'no page carries a text layer'
     })
+  })
+})
+
+/**
+ * The ask route's half of the contract (phone-ask D3, D7). What a payload case
+ * above cannot decide is the *prose*: that the document names the route, the new
+ * refusal word and the heartbeat where a client looks, and that its request
+ * example is one the parser actually accepts — an example that had drifted from
+ * `parseAskRequest` would be a client written against a request this route
+ * refuses.
+ */
+describe('the ask route on the wire (phone-ask D3, D7)', () => {
+  it('names the route, the new refusal and the heartbeat where a client looks', () => {
+    expect(DOC).toContain('POST /api/ai/ask')
+    expect(DOC).toContain(`\`${API_ERRORS.aiUnavailable}\``)
+    expect(DOC).toContain(': ping')
+    expect(DOC).toContain('text/event-stream')
+  })
+
+  it("the document's request example is a request the parser accepts", () => {
+    const block = DOC.match(/```json request=ask\n([\s\S]*?)\n```/)
+    expect(block).not.toBeNull()
+    expect(parseAskRequest(JSON.parse(block![1]!)).ok).toBe(true)
+  })
+
+  it('carries the ai member on health with the same field list whether or not it is available', () => {
+    const off = healthPayload({
+      version: 'x',
+      books: 0,
+      online: false,
+      ai: {
+        available: false,
+        reason: 'No model set — add one in Settings.',
+        isLocal: true,
+        host: 'localhost:11434',
+        model: null
+      }
+    })
+    expect(keyPaths(off).sort()).toEqual(keyPaths(PAYLOADS.health).sort())
+  })
+
+  it('builds the 503 body with a reason, the way 422 does', () => {
+    expect(aiUnavailablePayload('No model set')).toEqual({
+      error: 'ai unavailable',
+      reason: 'No model set'
+    })
+  })
+
+  it('discloses nothing beyond the named members', () => {
+    // The disclosure is the one payload whose *members* are a promise to the
+    // person reading the phone: every field is a thing that leaves the Mac, and
+    // an extra key here would be a field the sentence above does not account for.
+    expect(Object.keys(PAYLOADS['ask-disclosure'] as object).sort()).toEqual(
+      ['endpoint', 'members', 'model', 'rung', 'text', 'truncated', 'windowed'].sort()
+    )
+    expect(
+      Object.keys((PAYLOADS['ask-disclosure'] as { endpoint: object }).endpoint).sort()
+    ).toEqual(['host', 'isLocal'])
   })
 })

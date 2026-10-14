@@ -50,6 +50,17 @@ export function isBooksCollection(pathname: string): boolean {
 }
 
 /**
+ * `POST /api/ai/ask` — the relay (phone-ask D3). Matched on the pathname only,
+ * like the upload; the method decides, and a `GET` or `HEAD` of this path is a
+ * known path behind a method it does not answer — the uniform 404 (D11).
+ */
+export const ASK_ROUTE = '/api/ai/ask'
+
+export function isAskRoute(pathname: string): boolean {
+  return pathname === ASK_ROUTE
+}
+
+/**
  * The resource a book path names. `''` is the book itself; `reading` is slice
  * 1c's write and is the only one a `PUT` may reach.
  */

@@ -32,6 +32,8 @@ The two byte routes are **GET-only**: `/api/books/{id}/cover` and `/api/books/{i
 
 `PUT` and `DELETE` on `/api/shelves/{id}/books/{bookId}` are the **third and fourth writes**, and the API's **first `DELETE`**: they take **no body**, and the path answers 404 to a `GET`, a `HEAD` and every other method. Each is **idempotent** — a book already on the shelf keeps the place it has, and removing one that was never on it is a success — because the shelf file's own rules are (D3 of the bookshelves design). The answer is **`{ "book": … }`** — the book as it stands after the write, in the detail shape — so a toggle and its confirmation are one round trip.
 
+`POST /api/ai/ask` is **POST-only**, takes a JSON body and streams its answer; it answers 404 to every other method.
+
 Every other method, and every path that is not one of the routes below, answers **404 with `{"error":"not found"}`** — uniformly, and without telling a client whether a _known_ path was behind the wrong method.
 
 ## Routes
@@ -61,16 +63,24 @@ The client's connect check. Answer it before anything else: `library` says wheth
   "apiVersion": 1,
   "version": "0.5.0",
   "books": 7100,
-  "library": "online"
+  "library": "online",
+  "ai": {
+    "available": true,
+    "reason": null,
+    "isLocal": true,
+    "host": "localhost:11434",
+    "model": "llama3.2"
+  }
 }
 ```
 
-| Field        | Meaning                                                                                                                                                        |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apiVersion` | The contract version this server speaks. A client refuses a payload it does not know.                                                                          |
-| `version`    | The Mac app's own version, as `app.getVersion()` reads it.                                                                                                     |
-| `books`      | Every book in the cache, counted through the same query the library route reports as `total`.                                                                  |
-| `library`    | `online` or `offline` — whether the library share is mounted. `offline` does not mean the JSON routes are unusable: /api/library still answers from the cache. |
+| Field        | Meaning                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apiVersion` | The contract version this server speaks. A client refuses a payload it does not know.                                                                                                                                                                                                                                                                                                     |
+| `version`    | The Mac app's own version, as `app.getVersion()` reads it.                                                                                                                                                                                                                                                                                                                                |
+| `books`      | Every book in the cache, counted through the same query the library route reports as `total`.                                                                                                                                                                                                                                                                                             |
+| `library`    | `online` or `offline` — whether the library share is mounted. `offline` does not mean the JSON routes are unusable: /api/library still answers from the cache.                                                                                                                                                                                                                            |
+| `ai`         | Whether the Mac can relay `POST /api/ai/ask`. `available` is false (with a `reason` in the Mac's own words) when no model is set; `host` is the endpoint's `host[:port]` and `isLocal` says whether it is loopback, so a client can say _remote — `<host>` receives this_ before the first send. Never the key. Additive: a client that predates the member sees no Ask and nothing else. |
 
 ### `GET /api/library`
 
@@ -537,6 +547,90 @@ The body is **the book's own bytes** — not JSON, and not `multipart/form-data`
 
 **An upload is the app's own import path, not a second one.** `importer.addFiles` is the single entry point the folder watcher and the file picker already share, called with the thrown-away scratch file and an explicit duplicate policy — so there is no second copy path, no second duplicate rule and no second metadata shape to keep in step. The consequence for a client is the one above: a book that arrives this way is a book the Mac imported, indistinguishable afterwards from one dropped on the window.
 
+### `POST /api/ai/ask`
+
+Ask the Mac's configured model about the book being read. **Streaming** — the answer is `text/event-stream`, not JSON. The Mac assembles the prompt, runs the recall check and calls the model; the phone sends the reader's position and, when the ladder calls for it, the section's text (`docs/superpowers/specs/2026-10-13-phone-ask-design.md`). Nothing is stored between requests: the phone keeps the verdict, the rung and the transcript.
+
+```json request=ask
+{
+  "bookId": "6f1a1f2e-3c4d-4e5f-8a9b-0c1d2e3f4a5b",
+  "mode": "ask",
+  "rung": "pointer",
+  "section": {
+    "label": "Chapter 4",
+    "text": "It was the best of times, it was the worst of times…",
+    "offset": 8302,
+    "truncated": false
+  },
+  "fraction": 0.42,
+  "selection": "it was the age of wisdom",
+  "question": "What does the repetition do here?"
+}
+```
+
+| Member              | Meaning                                                                                                                                                                                                                                                                                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bookId`            | The book. The Mac reads its title and author itself; nothing else about the book is read or sent.                                                                                                                                                                                                                                                   |
+| `mode`              | `preview` assembles exactly what an `ask` (with a `question`) or a `probe` (without one) would send and answers the `disclosure` event and `done` — **no call to the model**. `probe` asks the model to place the book and quote the section's opening, scores the claim against `section.text`, and answers a `verdict`. `ask` streams the answer. |
+| `rung`              | `pointer` (title, author, section label, position, and the selection) or `passage` (that, plus the section's text around `offset`). Ignored for `probe`, which is pointer-only by construction. Default `pointer`.                                                                                                                                  |
+| `section.label`     | The book's own table-of-contents label for the section — never a chapter number.                                                                                                                                                                                                                                                                    |
+| `section.text`      | The section **from its start**, never a window: the probe scores the model's claimed opening against the section's first 120 content tokens. At most **200,000 characters**; a longer one is a 400. Needed for `probe` and for `ask` at the `passage` rung.                                                                                         |
+| `section.offset`    | Where the reader is within `text`; `null` when unknown or when it lies past a cut `text`.                                                                                                                                                                                                                                                           |
+| `section.truncated` | `text` was cut at the cap.                                                                                                                                                                                                                                                                                                                          |
+| `fraction`          | The reader's position in the book, 0–1.                                                                                                                                                                                                                                                                                                             |
+| `selection`         | The reader's highlight, verbatim — the referent of a question. At most 50,000 characters; the Mac cuts it further at its own cap and says so in `disclosure`.                                                                                                                                                                                       |
+| `question`          | Required for `ask` (non-blank, at most 10,000 characters).                                                                                                                                                                                                                                                                                          |
+
+**"Characters" in this table means UTF-16 code units** — the length JavaScript reports for a string, which is what the Mac measures every cap and every offset in. A client that counts grapheme clusters or Unicode scalars will disagree with the Mac on any text containing an emoji or a character outside the Basic Multilingual Plane (Swift: `string.utf16.count`). Cut text at a scalar boundary, never between the halves of a surrogate pair.
+
+Members the Mac does not know are ignored, and so are events the phone does not know. That is how this route grows without a version bump.
+
+**The stream.** Each event is an `event:` line and a one-line JSON `data:` line, in this order, then a blank line. The body of a request is at most **1,048,576 bytes**; a larger one is a 400.
+
+| Event        | Sent               | Meaning                                                                                                                   |
+| ------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `disclosure` | first, always      | What leaves the Mac for the model, and where. `text` is the Mac's own disclosure line — show it verbatim.                 |
+| `verdict`    | `probe` only       | `strong`, `weak` or `unknown`. The model's raw reply is **never** sent.                                                   |
+| `delta`      | `ask` only         | The next piece of the answer, in order.                                                                                   |
+| `done`       | last, exactly once | `stop`, `length` (the model cut itself off), `canceled` or `timeout` (no token for 120 s).                                |
+| `error`      | instead of `done`  | The stream began and then failed; `message` is a sentence ("Nothing is listening at …", "the endpoint rejected the key"). |
+
+```json payload=ask-disclosure
+{
+  "text": "Sends: title, author, section “Chapter 4”, position (42%), your question → http://localhost:11434/v1 · llama3.2",
+  "members": ["title", "author", "section", "position", "question"],
+  "rung": "pointer",
+  "windowed": false,
+  "truncated": [],
+  "endpoint": { "host": "localhost:11434", "isLocal": true },
+  "model": "llama3.2"
+}
+```
+
+```json payload=ask-verdict
+{ "value": "weak" }
+```
+
+```json payload=ask-delta
+{ "text": "That passage is" }
+```
+
+```json payload=ask-done
+{ "reason": "stop" }
+```
+
+```json payload=ask-error
+{
+  "message": "Nothing is listening at http://localhost:11434/v1 — is your local model server running?"
+}
+```
+
+**Heartbeat.** While the Mac waits on a silent model it writes a comment line, `: ping`, every 15 seconds, so a local model's cold first token does not trip the client's idle timer. A client ignores comment lines.
+
+**Cancellation is a disconnect.** Closing the connection aborts the upstream request; nothing more is sent. A new question cancels the previous one the same way.
+
+**Refusals come before the stream.** `400 bad request` (a body this route cannot make sense of, including one past its cap, a section text past its cap and an `ask` with no question), `401`, `404` for an unknown book, **`503 ai unavailable`** (the Mac has no model; the body carries a `reason`), and `503 busy` + `Retry-After: 1` when two asks are already in flight. After the first byte a failure is an `error` event, because no status is left to change. The route is **POST-only**: a `GET` or `HEAD` of its path answers the uniform 404.
+
 ## Resumable downloads
 
 `GET /api/books/{id}/file` accepts **one** range, and the reason is a measurement rather than a preference: on 2026-09-22 the largest EPUB on this library's share measured **554,110,279 bytes (528 MiB)** and reads whole in **25.64 s** (~20.6 MiB/s, almost no CPU). Without ranges a dropped transfer restarts from zero — and the books that most need resuming are the ones worst to restart.
@@ -598,6 +692,7 @@ Every refusal is JSON with one member:
 | 422    | `cannot reflow`         | The PDF could not be laid out as an EPUB (`format=reflow`). The only refusal with a second member, `reason` — one sentence saying why. Only a pipeline refusal is remembered for 60 s; a pass that could not run is a 500, not this. |
 | 500    | `internal`              | A handler failed — including a shelf write against a `shelves.json` that cannot be read, which is refused rather than overwritten, with the reason in the Mac's log. The server keeps serving.                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 503    | `busy`                  | Too many byte transfers in flight. Carries `Retry-After: 1`.                                                                                                                                                                                                                                                                                                                                                                                               |
+| 503    | `ai unavailable`        | `POST /api/ai/ask` only: the Mac has no model configured. The only refusal besides 422 with a second member, `reason` — the Mac's own sentence. Carries no `Retry-After`: only the owner at the Mac can fix it.                                                                                                                                                                                                                                                                                                                |
 | 503    | `library offline`       | The library share is not mounted, so there are no bytes to serve. Carries `Retry-After: 5`.                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Not in this version
