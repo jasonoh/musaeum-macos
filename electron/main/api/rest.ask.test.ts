@@ -208,6 +208,15 @@ describe('POST /api/ai/ask — refusals before the stream', () => {
     expect(await res.json()).toEqual({ error: 'not found' })
   })
 
+  it('answers 404 for an unknown book even with no model set: the book is looked up first', async () => {
+    // No `stub()` here, so no model is configured and the 503 the next case
+    // settles is the answer a reordered handler would give. The body is a valid
+    // ask otherwise, so only the order decides this.
+    const res = await post({ ...ASK, bookId: 'nope' })
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'not found' })
+  })
+
   it('answers 503 ai unavailable, with a reason, in every mode when no model is set', async () => {
     for (const mode of ['preview', 'probe', 'ask']) {
       const res = await post({ ...ASK, mode })
@@ -222,6 +231,17 @@ describe('POST /api/ai/ask — refusals before the stream', () => {
   it.each(['GET', 'HEAD', 'PUT', 'DELETE'])('answers the uniform 404 to %s', async (method) => {
     const res = await fetch(`${base}/api/ai/ask`, { method, headers: auth })
     expect(res.status).toBe(404)
+  })
+
+  it('answers 400 for a bad body that names an unknown book: the body is parsed first', async () => {
+    // The bad body here carries a `bookId`, and it names no row — so the parse
+    // has to run before the lookup for this to be a 400 at all. The three cases
+    // above either carry no `bookId` or name `b1`, the book this suite inserted,
+    // so they still answer 400 with the lookup moved up.
+    await stub(answering('x'))
+    const res = await post({ bookId: 'nope', mode: 'stream' })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad request' })
   })
 
   it('owns exactly its own pathname: a path that merely starts with it is 404 too', async () => {
@@ -293,9 +313,11 @@ describe('POST /api/ai/ask — the stream', () => {
     // `rung: 'passage'` with `offset: null`, so the head phrase alone satisfies
     // it there.
     expect(sent).toContain(DEEP_PHRASE)
-    // ...and the head did not, which is the difference between a window and a
-    // prefix: a route that dropped `section.offset` sends the section from its
-    // start and fails this line while passing the one above.
+    // ...and the head did not. Two independent measurements, neither ordering
+    // the other: this line proves the section did not go out from its start,
+    // the one above that the offset's neighbourhood did. Each can fail with the
+    // other passing; dropping `section.offset` fails both at once, because the
+    // window such a route sends begins at the head.
     expect(sent).not.toContain(HEAD_PHRASE)
     // The disclosure says which of the two went out (the windowed rule in the
     // prompt is the model's half of the same fact).

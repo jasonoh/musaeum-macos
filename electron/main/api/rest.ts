@@ -20,6 +20,7 @@ import {
 } from '../services/api/routes'
 import {
   aiUnavailablePayload,
+  askErrorPayload,
   bookPayload,
   cannotReflowPayload,
   errorPayload,
@@ -771,13 +772,25 @@ async function handleAsk(
     }
     beat = setInterval(() => write(': ping\n\n'), deps.askHeartbeatMs)
 
-    await runAsk({
-      request: parsed.request,
-      book: { title: book.title, author: book.author ?? null },
-      status,
-      signal: hangup.signal,
-      emit: (event, data) => write(frame(event, data))
-    })
+    try {
+      await runAsk({
+        request: parsed.request,
+        book: { title: book.title, author: book.author ?? null },
+        status,
+        signal: hangup.signal,
+        emit: (event, data) => write(frame(event, data))
+      })
+    } catch (err) {
+      // **A total surface, with no reachable input today.** `runAsk` reports its
+      // own failures as `error` events and resolves; the only throw on its path
+      // is the assembler's blank-question refusal, which `parseAskRequest` has
+      // already answered with a 400 above. The arm is here for the contract's
+      // other half — after the 200 headers a failure is an `error` frame, never
+      // a 500 — which a rejection would otherwise break by reaching
+      // `handleRequest`'s catch on a response that has already started. No input
+      // can reach it; do not delete it as dead.
+      write(frame('error', askErrorPayload(err instanceof Error ? err.message : String(err))))
+    }
     if (!res.writableEnded) res.end()
   } finally {
     if (beat) clearInterval(beat)
