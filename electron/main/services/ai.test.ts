@@ -596,6 +596,75 @@ describe('ask with a sink', () => {
     warn.mockRestore()
   })
 
+  it('a sink that throws from done does not break the stream or leak the request', async () => {
+    const stub = await startStub((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write(chunk('a'))
+      res.write(chunk('b'))
+      res.end('data: [DONE]\n\n')
+    })
+    configure(stub)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const seen: string[] = []
+
+    ask(
+      { requestId: 'relay-6', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] },
+      {
+        sink: {
+          chunk: (delta) => seen.push(`chunk:${delta}`),
+          // The stream's last call is the reason, and it is made after `run`'s
+          // try — so this is the throw that has no catch of its own to land in.
+          done: (reason) => {
+            seen.push(`done:${reason}`)
+            throw new Error('the relay dropped the stream')
+          },
+          error: (message) => seen.push(`error:${message}`)
+        }
+      }
+    )
+    // Both deltas and the reason reached the sink, so the throw was the
+    // terminal call and not an earlier one
+    await vi.waitFor(() => expect(seen).toEqual(['chunk:a', 'chunk:b', 'done:stop']))
+    await vi.waitFor(() => expect(cancel('relay-6')).toBe(false))
+
+    expect(captured).toEqual([])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('the relay dropped the stream'))
+    warn.mockRestore()
+  })
+
+  it('a sink that throws from error does not break the failure or leak the request', async () => {
+    const stub = await startStub((_req, res) => {
+      res.writeHead(500, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: 'the model is unavailable' } }))
+    })
+    configure(stub)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const seen: string[] = []
+
+    ask(
+      { requestId: 'relay-7', mode: 'ask', messages: [{ role: 'user', content: 'hi' }] },
+      {
+        sink: {
+          chunk: () => undefined,
+          done: () => undefined,
+          // The failure is handed over after `run`'s try, so a throw here has
+          // no catch of its own either.
+          error: (message) => {
+            seen.push(message)
+            throw new Error('the relay dropped the failure')
+          }
+        }
+      }
+    )
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+    await vi.waitFor(() => expect(cancel('relay-7')).toBe(false))
+
+    expect(seen[0]).toMatch(/HTTP 500/)
+    expect(captured).toEqual([])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('the relay dropped the failure'))
+    warn.mockRestore()
+  })
+
   it('a request without a sink still broadcasts, with a sink request beside it', async () => {
     const stub = await startStub((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' })
