@@ -53,6 +53,7 @@ Base URL: `http://<tailnet-address>:<port>`. Every response is JSON except the t
 | `GET /api/books/{id}/file?format=epub`       | the book's bytes                                                            | 200, 206, 400, 401, 404, 416, 500, 503 |
 | `PUT /api/books/{id}/reading`                | the book, after writing the reported fraction                               | 200, 400, 401, 404, 500                |
 | `POST /api/books?format=epub&filename=…`     | the book it imported, and the collision it found                            | 201, 400, 401, 404, 413, 500, 503      |
+| `POST /api/ai/ask`                           | asked about the book being read, answered as an event stream                | 200, 400, 401, 404, 500, 503           |
 
 ### `GET /api/health`
 
@@ -81,6 +82,8 @@ The client's connect check. Answer it before anything else: `library` says wheth
 | `books`      | Every book in the cache, counted through the same query the library route reports as `total`.                                                                                                                                                                                                                                                                                             |
 | `library`    | `online` or `offline` — whether the library share is mounted. `offline` does not mean the JSON routes are unusable: /api/library still answers from the cache.                                                                                                                                                                                                                            |
 | `ai`         | Whether the Mac can relay `POST /api/ai/ask`. `available` is false (with a `reason` in the Mac's own words) when no model is set; `host` is the endpoint's `host[:port]` and `isLocal` says whether it is loopback, so a client can say _remote — `<host>` receives this_ before the first send. Never the key. Additive: a client that predates the member sees no Ask and nothing else. |
+
+**`ai`'s three optional members, stated because the payload block above only shows the working case.** `model` names the model that would be asked, or `null` when none is set. `reason` is a sentence in the Mac's own words saying what to fix when `available` is false, and `null` whenever it is true. `host` is `''` when no endpoint resolved. A client must treat all three as optional — `available: false` is an ordinary state with an explanation, not an error, and a Swift client that types `model` as a non-optional `String` fails to decode the whole payload on the no-model case.
 
 ### `GET /api/library`
 
