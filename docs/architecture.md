@@ -186,8 +186,8 @@ Musaeum/
 │   ├── hooks/                    # useLibrary, useDevice, useNASStatus, useDragDrop,
 │   │                             # useMenuCommands, useTheme
 │   ├── lib/                      # renderer-side pure logic: selection, metadata-feedback,
-│   │                             # metadata-refresh, notify, reader-search, ask-context,
-│   │                             # recall, shelf-membership (the add/remove/Undo pair),
+│   │                             # metadata-refresh, notify, reader-search,
+│   │                             # shelf-membership (the add/remove/Undo pair),
 │   │                             # shelf-feedback (one failure sentence per session),
 │   │                             # theme/ (css var apply path + the reader's
 │   │                             # derived page palette and its injected stylesheet)
@@ -197,6 +197,12 @@ Musaeum/
 │                                 # (the traffic lights' geometry and the strip
 │                                 # height every titlebar row is built from) —
 │                                 # imported by main and preload via @shared
+│
+├── shared/                       # cross-boundary pure modules, imported by
+│   └── ask/                      # both the renderer and main via @ask:
+│                                 # ask-context.ts (the prompt assembler and the
+│                                 # disclosure line) and recall.ts (the probe's
+│                                 # parser and scorer)
 │
 └── sidecar/                      # Python sidecar (venv at sidecar/.venv)
     ├── requirements.txt
@@ -221,7 +227,7 @@ Musaeum/
                                   # the reflow suite (test_reflow_*)
 ```
 
-Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*` (all three layers), `@vendor/*` → `vendor/*` (renderer only — the reader engine). Configured in `electron.vite.config.ts` and both tsconfigs.
+Path aliases: `@/*` → `src/*` (renderer), `@shared/*` → `src/types/*` (all three layers), `@ask/*` → `shared/ask/*` (the ask panel's pure prompt and recall modules — imported by the renderer and by the main process's REST relay), `@vendor/*` → `vendor/*` (renderer only — the reader engine). Configured in `electron.vite.config.ts`, both tsconfigs and `vitest.config.ts`.
 
 ---
 

@@ -19,8 +19,9 @@
     "outDir": "out/types-web",
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["./src/types/*"]
+      "@shared/*": ["./src/types/*"],
+      "@ask/*": ["./shared/ask/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "shared/**/*.ts", "test/**/*.ts"]
 }

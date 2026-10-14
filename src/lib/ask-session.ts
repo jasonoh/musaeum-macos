@@ -21,8 +21,8 @@
  */
 
 import type { AskDoneReason } from '@shared/ai.types'
-import type { AskRung } from './ask-context'
-import { parseProbe, scoreRecall, type RecallVerdict } from './recall'
+import type { AskRung } from '@ask/ask-context'
+import { parseProbe, scoreRecall, type RecallVerdict } from '@ask/recall'
 
 // ---------------------------------------------------------------------------
 // The transcript

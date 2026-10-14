@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { AiStatus } from '@shared/ai.types'
-import { buildAskMessages, describeEgress } from '@/lib/ask-context'
+import { buildAskMessages, describeEgress } from '@ask/ask-context'
 import { askStatusOf, citationFor, nextRequestId, verdictNotice } from '@/lib/ask-session'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
@@ -10,7 +10,7 @@ import { CloseIcon, InfoIcon, SendIcon, WarningIcon } from '@/components/shared/
 /**
  * The ask panel — the third occupant of the reader's side slot (D4).
  *
- * It is deliberately thin. What travels is decided by `src/lib/ask-context.ts`,
+ * It is deliberately thin. What travels is decided by `shared/ask/ask-context.ts`,
  * what a verdict does is decided by `src/lib/ask-session.ts`, and how it travels
  * is decided in the main process (`services/ai.ts`). This file lays out the
  * transcript, holds the one piece of state that is genuinely local — what the

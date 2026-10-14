@@ -12,7 +12,7 @@ import {
  * The prompt assembler, decided without a renderer.
  *
  * There is no DOM here (`vitest.config.ts`: `environment: 'node'`), which is
- * why the prompt and the disclosure line are pure functions in `src/lib` and
+ * why the prompt and the disclosure line are pure functions in `shared/ask` and
  * the panel that consumes them is verified in the running app instead. The
  * assertions that matter are absences: what the pointer rung does *not* carry,
  * and what the disclosure line does *not* claim.

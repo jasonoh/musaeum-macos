@@ -5,7 +5,7 @@ import type { Book, ReaderFormat, ReflowProgress, ReflowResult } from '@shared/b
 import { primaryFormat, readerTarget } from '@shared/book.types'
 import type { Annotation, AnnotationsState } from '@shared/annotation.types'
 import type { AnnotationLocator } from '@/lib/annotations'
-import type { AskRung } from '@/lib/ask-context'
+import type { AskRung } from '@ask/ask-context'
 import {
   appendProbeDelta,
   effectiveRung,
@@ -15,7 +15,7 @@ import {
   type AskProbe,
   type AskSession
 } from '@/lib/ask-session'
-import type { RecallVerdict } from '@/lib/recall'
+import type { RecallVerdict } from '@ask/recall'
 // The reader's page theme is the palette module's type, so the store, the
 // resolver and the two rows cannot drift into three spellings of one union.
 import type { ReaderPageTheme } from '@/lib/theme/reader-palette'

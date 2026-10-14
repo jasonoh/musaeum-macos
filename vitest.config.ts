@@ -13,12 +13,18 @@ export default defineConfig({
       // with the build about what a path means, not just about `electron`.
       '@': resolve(__dirname, 'src'),
       '@shared': resolve(__dirname, 'src/types'),
+      '@ask': resolve(__dirname, 'shared/ask'),
       electron: resolve(__dirname, 'test/mocks/electron.ts')
     }
   },
   test: {
     environment: 'node',
     pool: 'forks',
-    include: ['src/**/*.test.ts', 'electron/**/*.test.ts', 'test/**/*.test.ts']
+    include: [
+      'src/**/*.test.ts',
+      'electron/**/*.test.ts',
+      'shared/**/*.test.ts',
+      'test/**/*.test.ts'
+    ]
   }
 })

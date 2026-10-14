@@ -3,12 +3,13 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
 const sharedTypes = resolve(__dirname, 'src/types')
+const sharedAsk = resolve(__dirname, 'shared/ask')
 
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     resolve: {
-      alias: { '@shared': sharedTypes }
+      alias: { '@shared': sharedTypes, '@ask': sharedAsk }
     },
     build: {
       lib: { entry: 'electron/main/index.ts' }
@@ -30,6 +31,7 @@ export default defineConfig({
       alias: {
         '@': resolve(__dirname, 'src'),
         '@shared': sharedTypes,
+        '@ask': sharedAsk,
         '@vendor': resolve(__dirname, 'vendor')
       }
     },

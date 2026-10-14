@@ -15,7 +15,7 @@ import type { AskMode, ChatMessage } from '@shared/ai.types'
  * 1. **D5 — the pointer is an index, the referent is verbatim.** At the default
  *    rung the payload is title, author, section label, position and the
  *    highlight; the section's own text travels only at the passage rung, whose
- *    trigger is the verdict from `src/lib/recall.ts`. "L0 contains none of the
+ *    trigger is the verdict from `shared/ask/recall.ts`. "L0 contains none of the
  *    section text" is not a style note, it is the whole thesis of the design,
  *    and the test next door asserts it as a literal absence.
  * 2. **The disclosure line cannot drift from the payload.** `describeEgress()`

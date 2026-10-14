@@ -17,12 +17,14 @@
     "emitDeclarationOnly": true,
     "outDir": "out/types-node",
     "paths": {
-      "@shared/*": ["./src/types/*"]
+      "@shared/*": ["./src/types/*"],
+      "@ask/*": ["./shared/ask/*"]
     }
   },
   "include": [
     "electron/**/*.ts",
     "src/types/**/*.ts",
+    "shared/**/*.ts",
     "electron.vite.config.ts",
     "test/**/*.ts"
   ]
