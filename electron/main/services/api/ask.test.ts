@@ -408,10 +408,10 @@ describe('runAsk — probe', () => {
 describe('runAsk — hanging up', () => {
   it('aborts the upstream request and emits nothing after the signal fires', async () => {
     let upstreamClosed = false
-    const stub = await startStub((req, res) => {
+    const stub = await startStub((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.write(sse('one'))
-      req.on('close', () => (upstreamClosed = true))
+      res.on('close', () => (upstreamClosed = true))
     })
     configure(stub)
     const controller = new AbortController()

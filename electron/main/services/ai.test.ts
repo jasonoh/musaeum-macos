@@ -387,10 +387,10 @@ describe('ask', () => {
 
   it('cancels mid-stream as an outcome, not an error', async () => {
     let closed = false
-    const stub = await startStub((req, res) => {
+    const stub = await startStub((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.write(chunk('one'))
-      req.on('close', () => (closed = true))
+      res.on('close', () => (closed = true))
     })
     configure(stub)
 

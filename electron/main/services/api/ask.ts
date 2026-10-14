@@ -253,6 +253,9 @@ export async function runAsk(input: RunAskInput): Promise<void> {
         else input.emit('delta', askDeltaPayload(delta))
       },
       done: (reason) => {
+        // `canceled` is the arm that fires in practice — every exercised abort reaches
+        // here through `ai.cancel`; `hungUp` only covers a terminal that arrives after
+        // the reader is already gone.
         if (hungUp || reason === 'canceled') return finish()
         // A partial reply that parses is still scored — `RECALL: no` followed by
         // a dropped connection is the model saying it cannot place the book.
