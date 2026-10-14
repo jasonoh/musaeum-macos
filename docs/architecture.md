@@ -71,7 +71,7 @@ Musaeum/
 ├── package.json / tsconfig*.json / electron.vite.config.ts
 ├── electron-builder.yml          # DMG packaging (see invariants/packaging-and-python.md)
 ├── tailwind.config.js / postcss.config.js / eslint.config.mjs
-├── vitest.config.ts              # main-process test config (@shared/electron aliases)
+├── vitest.config.ts              # main-process test config (@shared, @ask, electron aliases)
 ├── test/                         # shared vitest fixtures only: helpers/, the
 │                                 # electron mock and fixtures/theme/ (the two
 │                                 # .itermcolors provider fixtures); tests are
