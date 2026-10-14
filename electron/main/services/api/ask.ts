@@ -1,4 +1,16 @@
-import type { AskRung } from '@ask/ask-context'
+import { randomUUID } from 'node:crypto'
+import type { AiStatus } from '@shared/ai.types'
+import { buildAskMessages, describeEgress, type AskRung } from '@ask/ask-context'
+import { parseProbe, scoreRecall } from '@ask/recall'
+import * as ai from '../ai'
+import {
+  askDeltaPayload,
+  askDisclosurePayload,
+  askDonePayload,
+  askErrorPayload,
+  askVerdictPayload,
+  type HealthAi
+} from './shape'
 
 /**
  * The phone's ask, as the Mac receives it (`docs/rest-api.md` § `POST /api/ai/ask`,
@@ -116,4 +128,157 @@ export function parseAskRequest(
       question
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// The stream
+// ---------------------------------------------------------------------------
+
+export type AskEventName = 'disclosure' | 'verdict' | 'delta' | 'done' | 'error'
+
+/** How `runAsk` reports. The socket module turns each call into a frame on the wire. */
+export type AskEmit = (event: AskEventName, data: object) => void
+
+/** One server-sent event. `JSON.stringify` never emits a raw newline, so `data:` is one line. */
+export function frame(event: AskEventName, data: object): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+}
+
+/** `host[:port]` of an endpoint URL, or `''` when there is none or it does not parse. */
+function hostOf(endpoint: string | null): string {
+  if (!endpoint) return ''
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return ''
+  }
+}
+
+/** The `ai` member of the health payload. Reads the status; never the key. */
+export function healthAi(status: AiStatus): HealthAi {
+  return {
+    available: status.configured,
+    reason: status.reason,
+    isLocal: status.isLocal,
+    host: hostOf(status.endpoint.value),
+    model: status.model.value
+  }
+}
+
+export interface RunAskInput {
+  request: AskWireRequest
+  book: { title: string; author: string | null }
+  status: AiStatus
+  emit: AskEmit
+  /** Fires when the phone hangs up. Aborts the upstream request and silences `emit`. */
+  signal?: AbortSignal
+  /** Overridden in tests; the default is `services/ai.ts`'s own idle deadline. */
+  idleTimeoutMs?: number
+}
+
+/**
+ * One ask, start to terminal event. The three modes are one assembler called
+ * three ways (D4): `preview` stops at the disclosure, `probe` collects the
+ * model's reply and returns only its score, `ask` streams.
+ *
+ * **Resolves when a terminal event has been emitted, or when the phone hung up.**
+ * After an abort nothing more is emitted — the reader is gone — and the
+ * upstream request is canceled through `services/ai.ts`, which releases its slot.
+ *
+ * **A `preview` with a question previews an ask; without one, a probe.** The
+ * assembler refuses a blank ask by design, so the choice is made here, once.
+ */
+export async function runAsk(input: RunAskInput): Promise<void> {
+  const { request, book, status, signal } = input
+  if (signal?.aborted) return
+
+  const probing =
+    request.mode === 'probe' || (request.mode === 'preview' && !request.question?.trim())
+  const assembled = buildAskMessages({
+    mode: probing ? 'probe' : 'ask',
+    title: book.title,
+    author: book.author,
+    sectionLabel: request.section.label,
+    fraction: request.fraction,
+    question: request.question,
+    sectionText: request.section.text,
+    sectionOffset: request.section.offset,
+    selection: request.selection,
+    rung: request.rung
+  })
+
+  input.emit(
+    'disclosure',
+    askDisclosurePayload({
+      text: describeEgress({
+        endpoint: status.endpoint.value,
+        model: status.model.value,
+        payload: assembled.payload
+      }),
+      members: assembled.payload.members,
+      rung: assembled.rung,
+      windowed: assembled.payload.windowed,
+      truncated: assembled.payload.truncated,
+      host: hostOf(status.endpoint.value),
+      isLocal: status.isLocal,
+      model: status.model.value
+    })
+  )
+
+  if (request.mode === 'preview') {
+    input.emit('done', askDonePayload('stop'))
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    const requestId = `relay-${randomUUID()}`
+    let reply = ''
+    let hungUp = false
+
+    const onAbort = (): void => {
+      hungUp = true
+      ai.cancel(requestId)
+      resolve()
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    const finish = (): void => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }
+
+    const sink: ai.AskSink = {
+      chunk: (delta) => {
+        if (hungUp) return
+        if (probing) reply += delta
+        else input.emit('delta', askDeltaPayload(delta))
+      },
+      done: (reason) => {
+        if (hungUp || reason === 'canceled') return finish()
+        // A partial reply that parses is still scored — `RECALL: no` followed by
+        // a dropped connection is the model saying it cannot place the book.
+        if (probing) {
+          input.emit(
+            'verdict',
+            askVerdictPayload(scoreRecall(parseProbe(reply), request.section.text))
+          )
+        }
+        input.emit('done', askDonePayload(reason))
+        finish()
+      },
+      error: (message) => {
+        if (!hungUp) input.emit('error', askErrorPayload(message))
+        finish()
+      }
+    }
+
+    try {
+      ai.ask(
+        { requestId, mode: assembled.mode, messages: assembled.messages },
+        { sink, idleTimeoutMs: input.idleTimeoutMs }
+      )
+    } catch (err) {
+      input.emit('error', askErrorPayload(err instanceof Error ? err.message : String(err)))
+      finish()
+    }
+  })
 }
