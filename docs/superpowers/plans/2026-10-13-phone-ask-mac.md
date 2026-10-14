@@ -362,7 +362,7 @@ In `consume`, replace `broadcast('aiChunk', { requestId, delta: outcome.text })`
 
 ```ts
 /** A sink is someone else's code: its failure must not end the stream or leak the request. */
-function deliver(sink: AskSink, send: () => void): void {
+function deliver(send: () => void): void {
   try {
     send()
   } catch (err) {
@@ -373,7 +373,7 @@ function deliver(sink: AskSink, send: () => void): void {
 function emitChunk(requestId: string, entry: Pending, delta: string): void {
   if (entry.sink) {
     const sink = entry.sink
-    return deliver(sink, () => sink.chunk(delta))
+    return deliver(() => sink.chunk(delta))
   }
   broadcast('aiChunk', { requestId, delta })
 }
@@ -382,7 +382,7 @@ function done(requestId: string, entry: Pending, reason: AskDoneReason): void {
   entry.settled = true
   if (entry.sink) {
     const sink = entry.sink
-    return deliver(sink, () => sink.done(reason))
+    return deliver(() => sink.done(reason))
   }
   broadcast('aiDone', { requestId, reason })
 }
@@ -391,13 +391,15 @@ function fail(requestId: string, entry: Pending, message: string): void {
   entry.settled = true
   if (entry.sink) {
     const sink = entry.sink
-    return deliver(sink, () => sink.error(message))
+    return deliver(() => sink.error(message))
   }
   broadcast('aiError', { requestId, message })
 }
 ```
 
 `consume` takes `entry` from the enclosing `run` scope already (it is declared inside `run`), so no signature change is needed.
+
+> **Amendment, 2026-10-13 (recorded after the build).** This block first read `deliver(sink: AskSink, send: () => void)` and called it as `deliver(sink, () => …)`. That does not compile: the parameter is never read in the body, so `tsconfig.node.json`'s `noUnusedParameters` refuses it with `electron/main/services/ai.ts(606,18) TS6133`. The block above is the corrected form. Dropping the parameter loses no guard — the closure `() => sink.chunk(delta)` still cannot typecheck unless `sink` is an `AskSink`, and the narrowing comes from `const sink = entry.sink` inside each `if`. The rejected alternatives (`void sink`, or `_sink` leaning on the underscore exemption) keep a dead parameter.
 
 - [ ] **Step 4: Run to verify they pass, and the whole file**
 
