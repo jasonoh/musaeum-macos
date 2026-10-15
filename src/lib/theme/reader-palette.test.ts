@@ -125,6 +125,7 @@ describe('readerPalette', () => {
       linkAlphaHex: '#d4a24e44',
       search: '#d4a24e',
       annotation: '#d4a24e',
+      speech: '#d4a24e',
       scheme: 'dark'
     })
     expect(readerPalette(DEFAULT_TOKENS)).toEqual(INK_PALETTE)
@@ -182,6 +183,80 @@ describe('readerPalette', () => {
     expect(light.annotation).not.toBe(INK_PALETTE.annotation)
     // Total, like every other field: an unreadable token set is the ink row.
     expect(readerPalette(undefined).annotation).toBe(INK_PALETTE.annotation)
+  })
+
+  /**
+   * AC19 — the speech highlight's own role, on both authored rows and the derived
+   * one, a literal the module's guard accepts, and derived from the link color.
+   */
+  it('carries the speech role on both authored rows and on the derived one (AC19)', () => {
+    for (const palette of [readerPalette(DEFAULT_TOKENS), INK_PALETTE, PAPER_PALETTE]) {
+      expect(palette.speech, JSON.stringify(palette)).toMatch(/^#[0-9a-f]{6}$/)
+    }
+    for (const tokens of [DEFAULT_TOKENS, LIGHT_TOKENS]) {
+      const palette = readerPalette(tokens)
+      expect(palette.speech).toBe(palette.link)
+    }
+    expect(readerPalette(LIGHT_TOKENS).speech).not.toBe(INK_PALETTE.speech)
+    // Total, like every other field: an unreadable token set is the ink row.
+    expect(readerPalette(undefined).speech).toBe(INK_PALETTE.speech)
+    expect(resolveReaderPalette('auto', null).speech).toBe(INK_PALETTE.speech)
+  })
+
+  /**
+   * AC19's contrast decider. The speech highlight is drawn as a fill with partial
+   * alpha, so what is decided is the role's color against the page it sits on, by
+   * the 3:1 floor the theme engine holds `gold-400` to against `ink-900`
+   * (`derive.ts`: "accent on panel"). The renderer cannot import the engine (see
+   * the header), so the rows it can reach are decided here — both authored rows,
+   * the default theme and a light theme — and every built-in theme is decided by
+   * the engine's own sweep, which refuses an accent below this floor.
+   */
+  describe('speech contrast against the page', () => {
+    const FLOOR = 3.0
+    const channel = (v: number): number => {
+      const c = v / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    }
+    const luminance = (hex: string): number => {
+      const n = parseInt(hex.slice(1), 16)
+      return (
+        0.2126 * channel((n >> 16) & 255) +
+        0.7152 * channel((n >> 8) & 255) +
+        0.0722 * channel(n & 255)
+      )
+    }
+    const ratio = (a: string, b: string): number => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+      return (hi! + 0.05) / (lo! + 0.05)
+    }
+
+    /** A built-in theme's derived page, from its `ink-900` / `gold-400` pair. */
+    const derived = (ink900: string, gold400: string): ReturnType<typeof readerPalette> =>
+      readerPalette({
+        ...DEFAULT_TOKENS,
+        ink: { ...DEFAULT_TOKENS.ink, '900': ink900 },
+        gold: { ...DEFAULT_TOKENS.gold, '400': gold400 }
+      })
+
+    // The two tightest of the thirteen built-ins, measured by running the engine
+    // over each (3.03 and 3.09; the rest are 3.9 to 8.8). The (ink-900, gold-400)
+    // pairs are the engine's output, restated as literals.
+    const rows: [string, ReturnType<typeof readerPalette>][] = [
+      ['ink', INK_PALETTE],
+      ['paper', PAPER_PALETTE],
+      ['default theme', readerPalette(DEFAULT_TOKENS)],
+      ['solarized-dark', derived('#0a333e', '#c95225')],
+      ['catppuccin-latte', derived('#eaecf1', '#d6643b')]
+    ]
+
+    it.each(rows)('%s clears the floor', (_name, palette) => {
+      expect(ratio(palette.speech, palette.bg)).toBeGreaterThanOrEqual(FLOOR)
+    })
+
+    it('can fail: a speech color near the page does not clear the floor', () => {
+      expect(ratio(INK_PALETTE.bg, INK_PALETTE.bg)).toBeLessThan(FLOOR)
+    })
   })
 
   it('composes the alpha onto the link rather than leaving it to the rule (AC5.8)', () => {

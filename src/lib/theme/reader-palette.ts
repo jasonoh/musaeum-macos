@@ -67,6 +67,22 @@ export interface ReaderPalette {
    */
   annotation: string
   /**
+   * The color the sentence being **spoken** is filled with — the voice reader's
+   * role (D5), the same shape `search` and `annotation` have: a resolved
+   * `#rrggbb` literal, threaded as its own field because the overlayer lives in
+   * foliate-view's closed shadow root, where a custom property is a bet this repo
+   * does not take.
+   *
+   * A role of its own rather than a third read of `link`, for the reason
+   * `annotation` documents: a role exists so it can be **derived**, and three
+   * purposes sharing one name is how a later theme change gets a decision nobody
+   * can find. It derives from the same link color today (one accent), so on screen
+   * the three agree. The highlight is drawn as a fill with partial alpha (the
+   * speech draw in `DRAWS.speech`), so its contrast is decided on this color
+   * against `bg` by the same floor.
+   */
+  speech: string
+  /**
    * The book document's own `color-scheme`, taken from the tokens rather than
    * from the pref (D2): the pref says which row to use, and only the resolved
    * palette knows whether that row is a light one.
@@ -87,6 +103,7 @@ export const INK_PALETTE: ReaderPalette = {
   linkAlphaHex: '#d4a24e44',
   search: '#d4a24e',
   annotation: '#d4a24e',
+  speech: '#d4a24e',
   scheme: 'dark'
 }
 
@@ -104,6 +121,7 @@ export const PAPER_PALETTE: ReaderPalette = {
   linkAlphaHex: '#8a5a1a44',
   search: '#8a5a1a',
   annotation: '#8a5a1a',
+  speech: '#8a5a1a',
   scheme: 'light'
 }
 
@@ -149,6 +167,7 @@ export function readerPalette(tokens: ThemeTokens | null | undefined): ReaderPal
     linkAlphaHex: `${link}44`,
     search: link,
     annotation: link,
+    speech: link,
     scheme: tokens?.dark ? 'dark' : 'light'
   }
 }
