@@ -43,6 +43,12 @@ declare module '@vendor/foliate-js/view.js' {
   export interface FoliateBook {
     toc?: FoliateTocItem[]
     dir?: string
+    /**
+     * The spine. `linear: 'no'` marks a section the paginator's section steps
+     * skip (`paginator.js:1056-1059`, `#adjacentIndex`), so "is there a next section" is a
+     * question about the linear ones after the current index.
+     */
+    sections?: { linear?: string }[]
   }
 
   /**
@@ -117,10 +123,15 @@ declare module '@vendor/foliate-js/view.js' {
     next(paused?: boolean): string | undefined
     /**
      * The block holding `range`'s start, cut to begin at the first segment that
-     * starts at or after it (`tts.js:259-270`); `undefined` when no block ends
-     * after it.
+     * starts at or after it (`tts.js:259-270`).
+     *
+     * **It throws when no block ends at or after `range`** — past the section's
+     * last text block, and always in a section with no text at all (an
+     * image-only cover, where `getBlocks` yields nothing). `from()` destructures
+     * `#list.find(...)` with no `?? []` (`tts.js:261`), so the miss is a
+     * `TypeError`, not an `undefined` return. Every caller has to catch it.
      */
-    from(range: Range): string | undefined
+    from(range: Range): string
     /** Highlight the named segment of the **current** block; silent if the name is not in it. */
     setMark(mark: string): void
   }

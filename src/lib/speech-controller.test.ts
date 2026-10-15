@@ -66,14 +66,23 @@ interface FakeBlock {
 interface FakeSection {
   doc: FakeDoc
   blocks: FakeBlock[]
+  linear?: 'no'
+}
+
+/** The page the fake paginator shows for a position: fixed 30-position windows. */
+const PAGE = 30
+function pageAt(doc: FakeDoc, pos: number): FakeRange {
+  const start = Math.floor(pos / PAGE) * PAGE
+  return new FakeRange(doc, start, start + PAGE - 1)
 }
 
 /** Blocks of sentences; `[]` is a block with nothing to say (an image, whitespace). */
-function section(name: string, blocks: string[][]): FakeSection {
+function section(name: string, blocks: string[][], linear?: 'no'): FakeSection {
   const doc = { name }
   let pos = 0
   return {
     doc,
+    linear,
     blocks: blocks.map((texts) => {
       const from = pos
       const sentences = texts.map((text) => {
@@ -117,7 +126,9 @@ class FakeTTS {
   }
   from(range: FakeRange): string | undefined {
     const i = this.sec.blocks.findIndex((b) => range.start <= b.range.end)
-    if (i < 0) return undefined
+    // the vendor destructures `#list.find(...)` with no `?? []` (`tts.js:261`): past the
+    // section's last text block — or in a section with none, like an image-only cover — it throws
+    if (i < 0) throw new TypeError('undefined is not iterable')
     const k = this.sec.blocks[i]!.sentences.findIndex((s) => range.start <= s.range.start)
     return this.land(i, k < 0 ? 0 : k)
   }
@@ -143,20 +154,40 @@ class FakeView {
   readonly deleted: Ann[] = []
   addThrows = false
   hang = false
+  /** How many `nextSection()` calls return without moving, as the paginator does while locked. */
+  locked = 0
+  /** Fed every relocate synchronously, as the engine emits it — the test's stand-in for Task 7. */
+  relocated: (range: FakeRange) => void = () => {}
   private readonly loadListeners = new Set<(e: Event) => void>()
+  readonly book: { sections: { linear?: string }[] }
   readonly renderer = {
     getContents: () => [{ index: this.index, doc: this.sections[this.index]!.doc }],
-    scrollToAnchor: vi.fn(async (_range: FakeRange, _select?: boolean) => {}),
+    scrollToAnchor: vi.fn(async (range: FakeRange, _select?: boolean) => {
+      this.relocate(pageAt(range.doc, range.start))
+    }),
     nextSection: vi.fn(async (): Promise<void> => {
       if (this.hang) return new Promise<void>(() => {})
-      if (this.index + 1 >= this.sections.length) return
-      // the paginator's order: `load` first, the contents after
+      if (this.locked > 0) {
+        this.locked -= 1
+        return
+      }
+      let next = this.index + 1
+      while (next < this.sections.length && this.sections[next]!.linear === 'no') next += 1
+      if (next >= this.sections.length) return
+      // the paginator's order: `load` first, the contents after, then `relocate` before it resolves
       for (const l of this.loadListeners) l(new Event('load'))
       await Promise.resolve()
-      this.index += 1
+      this.index = next
+      this.relocate(pageAt(this.sections[next]!.doc, 0))
     })
   }
-  constructor(readonly sections: FakeSection[]) {}
+  constructor(readonly sections: FakeSection[]) {
+    this.book = { sections: sections.map((s) => (s.linear ? { linear: s.linear } : {})) }
+  }
+  relocate(page: FakeRange): void {
+    this.lastLocation = { range: page }
+    this.relocated(page.cloneRange())
+  }
   async initTTS(_granularity: string, highlight: (range: FakeRange) => void): Promise<void> {
     this.initCalls += 1
     const sec = this.sections[this.renderer.getContents()[0]!.index]!
@@ -188,12 +219,14 @@ class FakeView {
 
 const flush = (): Promise<void> => new Promise((r) => setImmediate(r))
 
-function make(sections: FakeSection[], opts: { color?: () => string } = {}) {
+function make(sections: FakeSection[], opts: { color?: () => string; saved?: Set<string> } = {}) {
   const view = new FakeView(sections)
   const onError = vi.fn()
+  const saved = opts.saved ?? new Set<string>()
   const controller = new SpeechController({
     view: view as unknown as SpeechView,
     speechColor: opts.color ?? (() => '#d4a24e'),
+    isSaved: (cfi) => saved.has(cfi),
     onError
   })
   return { view, controller, onError }
@@ -269,9 +302,9 @@ describe('SpeechController', () => {
       `0@${a[0]!.range.start}`,
       `0@${a[1]!.range.start}`
     ])
+    // the first sentence brought its page up; the second was already on it, so no scroll
     expect(view.renderer.scrollToAnchor.mock.calls.map((c) => c[0].start)).toEqual([
-      a[0]!.range.start,
-      a[1]!.range.start
+      a[0]!.range.start
     ])
     expect((await third.value)?.text).toBe('B one.')
   })
@@ -316,7 +349,8 @@ describe('SpeechController', () => {
     const u0 = (await controller.take())!
     controller.started(u0)
     expect(await controller.take()).toBeNull()
-    expect(view.renderer.nextSection).toHaveBeenCalledTimes(1)
+    // decided from the book's structure: there is no later section to ask for
+    expect(view.renderer.nextSection).not.toHaveBeenCalled()
     expect(onError).not.toHaveBeenCalled()
   })
 
@@ -499,8 +533,9 @@ describe('SpeechController', () => {
     controller.abort()
     expect(await pending).toBeNull()
     expect(onError).not.toHaveBeenCalled()
-    controller.dispose()
+    // superseded: the section wait may still end, but it says nothing
     vi.advanceTimersByTime(10_000)
+    await flush()
     expect(onError).not.toHaveBeenCalled()
   })
 
@@ -525,5 +560,153 @@ describe('SpeechController', () => {
     view.lastLocation = { range: new FakeRange(s.doc, s.blocks[1]!.range.start, 99) }
     await controller.begin()
     expect((await controller.take())?.text).toBe('B one.')
+  })
+
+  // ------------------------------------------------------------ review fixes
+
+  it('begin on an image-only cover reaches the first sentence of the next section', async () => {
+    const cover = section('cover', [])
+    const s1 = section('s1', [['First words.']])
+    const { view, controller } = make([cover, s1])
+    // a freshly opened book: the page on screen is the cover, where `from()` throws
+    view.lastLocation = { range: pageAt(cover.doc, 0) }
+    expect(await controller.begin()).toBe(true)
+    expect((await controller.take())?.text).toBe('First words.')
+    expect(view.tts?.doc).toBe(s1.doc)
+  })
+
+  it('a relocate onto a page past the last text block does not reject', async () => {
+    const s0 = section('s0', [['A one.'], ['A two.']])
+    const s1 = section('s1', [['N one.']])
+    const { controller } = make([s0, s1])
+    await controller.begin()
+    const u0 = (await controller.take())!
+    controller.started(u0)
+    // a trailing image page after the section's text
+    const first = await controller.onRelocate(pageAt(s0.doc, 90) as unknown as Range)
+    expect(first?.text).toBe('N one.')
+  })
+
+  it('does not scroll for a sentence already on the page', async () => {
+    const s = section('s0', [['A.', 'B.', 'C.', 'D.']])
+    const { view, controller } = make([s])
+    view.lastLocation = { range: pageAt(s.doc, 0) }
+    await controller.begin()
+    const units = [(await controller.take())!, (await controller.take())!]
+    units.push((await controller.take())!, (await controller.take())!)
+    for (const u of units.slice(0, 3)) controller.started(u)
+    expect(view.renderer.scrollToAnchor).not.toHaveBeenCalled()
+    // "D." starts at 30: the next page
+    controller.started(units[3]!)
+    expect(view.renderer.scrollToAnchor).toHaveBeenCalledTimes(1)
+    expect(view.renderer.scrollToAnchor.mock.calls[0]![0].start).toBe(30)
+  })
+
+  it('leaves a saved highlight on the same sentence alone: never drawn over, never deleted', async () => {
+    const s = section('s0', [['A.', 'B.', 'C.']])
+    const savedCfi = `0@${s.blocks[0]!.sentences[1]!.range.start}`
+    const { view, controller } = make([s], { saved: new Set([savedCfi]) })
+    await controller.begin()
+    const units = [
+      (await controller.take())!,
+      (await controller.take())!,
+      (await controller.take())!
+    ]
+    for (const u of units) {
+      controller.started(u)
+      await flush()
+    }
+    expect(view.added.map((a) => a.value)).not.toContain(savedCfi)
+    expect(view.deleted.map((a) => a.value)).not.toContain(savedCfi)
+    // the fill for "A." went when "B." started, though "B." drew none of its own
+    expect(view.deleted.map((a) => a.value)).toContain(
+      `0@${s.blocks[0]!.sentences[0]!.range.start}`
+    )
+    controller.dispose()
+    await flush()
+    expect(view.deleted.map((a) => a.value)).not.toContain(savedCfi)
+  })
+
+  it('a paginator that is busy (locked) does not end the book while sections remain', async () => {
+    const { view, controller, onError } = make([
+      section('s0', [['A one.']]),
+      section('s1', [['N one.']])
+    ])
+    await controller.begin()
+    const u0 = (await controller.take())!
+    controller.started(u0)
+    view.locked = 2 // the user's own page turn holds the lock for two tries
+    expect((await controller.take())?.text).toBe('N one.')
+    expect(view.renderer.nextSection).toHaveBeenCalledTimes(3)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('skips non-linear sections when deciding the end of the book', async () => {
+    const { view, controller } = make([
+      section('s0', [['A one.']]),
+      section('notes', [['X.']], 'no')
+    ])
+    await controller.begin()
+    const u0 = (await controller.take())!
+    controller.started(u0)
+    expect(await controller.take()).toBeNull()
+    expect(view.renderer.nextSection).not.toHaveBeenCalled()
+  })
+
+  it('a paginator that never moves while sections remain gives up after 10 s, with one line', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { view, controller, onError } = make([
+      section('s0', [['A one.']]),
+      section('s1', [['N.']])
+    ])
+    await controller.begin()
+    const u0 = (await controller.take())!
+    controller.started(u0)
+    view.locked = Number.POSITIVE_INFINITY
+    const pending = track(controller.take())
+    for (let t = 0; t < 10_000; t += 100) {
+      await flush()
+      vi.advanceTimersByTime(100)
+    }
+    await flush()
+    expect(await pending.value).toBeNull()
+    expect(onError).toHaveBeenCalledWith('Could not continue to the next chapter.')
+  })
+
+  it('begin supersedes a take waiting at the block gate: it continues from the new place', async () => {
+    const s = section('s0', [['A one.', 'A two.'], ['B one.'], ['C one.', 'C two.']])
+    const { controller } = make([s])
+    await controller.begin()
+    await controller.take()
+    await controller.take()
+    const pending = track(controller.take())
+    await flush()
+    expect(pending.settled).toBe(false)
+    const c = s.blocks[2]!.sentences
+    await controller.begin(
+      new FakeRange(s.doc, c[0]!.range.start, c[0]!.range.end) as unknown as Range
+    )
+    expect((await pending.value)?.text).toBe('C one.')
+  })
+
+  it('ignores the relocates of its own section change, during it and after it', async () => {
+    const s0 = section('s0', [['A one.']])
+    const s1 = section('s1', [['N one.', 'N two.']])
+    const { view, controller } = make([s0, s1])
+    const answers: Promise<SpeechUnit | null>[] = []
+    view.relocated = (page) => answers.push(controller.onRelocate(page as unknown as Range))
+    await controller.begin()
+    const u0 = (await controller.take())!
+    controller.started(u0)
+    answers.length = 0
+    const n0 = (await controller.take())!
+    // the `moving` guard: the relocate nextSection emits while it is in flight
+    expect(answers).toHaveLength(1)
+    expect(await answers[0]).toBeNull()
+    // after it: "A one." is still sounding in the old document, the page is the new one
+    expect(await controller.onRelocate(pageAt(s1.doc, 0) as unknown as Range)).toBeNull()
+    // no restart happened: the cursor goes on from where it was
+    expect((await controller.take())?.text).toBe('N two.')
+    expect(n0.text).toBe('N one.')
   })
 })

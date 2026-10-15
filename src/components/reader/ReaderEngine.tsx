@@ -339,6 +339,10 @@ export function ReaderEngine({
     view.addEventListener('show-annotation', (event) => {
       if (disposed) return
       const { value } = (event as CustomEvent<FoliateShowAnnotationDetail>).detail
+      // The overlayer emits this for *any* non-search value it holds — the voice
+      // reader's spoken-sentence fill included. Only a value the plan drew is a
+      // saved highlight with a note to open.
+      if (!plan.current.rows.some((row) => row.cfi === value)) return
       cb.current.onShowAnnotation(value)
     })
 

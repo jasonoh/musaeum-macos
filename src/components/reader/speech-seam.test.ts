@@ -41,7 +41,22 @@ const DRAW_LISTENER = ENGINE.slice(
   ENGINE.indexOf("addEventListener('show-annotation'")
 )
 
+/** The `show-annotation` listener's body. */
+const SHOW_LISTENER = ENGINE.slice(
+  ENGINE.indexOf("addEventListener('show-annotation'"),
+  ENGINE.indexOf("addEventListener('relocate'")
+)
+
 describe('the voice reader seam in ReaderEngine', () => {
+  it('opens Notes only for a click on a highlight the plan drew, never on the spoken sentence', () => {
+    // the overlayer emits show-annotation for any non-search value it holds (view.js:408-413),
+    // the speech fill included; only the plan's rows are saved highlights
+    expect(SHOW_LISTENER).toMatch(/plan\.current\.rows\.some\(\(row\) => row\.cfi === value\)/)
+    expect(SHOW_LISTENER.indexOf('rows.some')).toBeLessThan(
+      SHOW_LISTENER.indexOf('cb.current.onShowAnnotation')
+    )
+  })
+
   it('draws speech as a fill from the same DRAWS table the highlights use', () => {
     expect(SPEECH_DRAW_KIND).toBe('speech')
     expect(DRAWS_BODY).toMatch(/speech:\s*Overlayer\.highlight/)
