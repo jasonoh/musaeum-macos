@@ -40,12 +40,20 @@ export interface AudioContextLike {
  * - `rewind()` is only ever asked for a unit of the block the source is on now. If it throws
  *   anyway, the player reports the message through `onError`; it does not crash.
  * - The player does not take the next block until the last unit of this one has `started()`.
+ * - Every unit the player announced through `started()` is reported once through `ended()` when it
+ *   stops sounding: its audio finished (the buffer's `ended`; a silent unit ends as it starts), or
+ *   it was cut (`skip`, `restartAt`, `stop`). A unit replayed by `skip(-1)` is not ended by the
+ *   cut: it ends when the replay does. A source may hold a `take()` on `ended()` (the controller
+ *   holds the next *section* on it, so the page does not turn under a sentence still sounding) —
+ *   `abort()` still settles such a take, and `stop()` calls `abort()`.
  */
 export interface PlayerSource {
   /** Next unit, or null at the end of the book. May wait (a section is loading), but must settle. */
   take(): Promise<SpeechUnit | null>
   /** Called when a unit starts sounding: the source may now release the next block. */
   started(unit: SpeechUnit): void
+  /** Called when a started unit stops sounding — finished or cut. Once per `started()`. */
+  ended?(unit: SpeechUnit): void
   /** Move the cursor so the next take() returns `unit` again. Only ever asked for a unit of the current block. */
   rewind(unit: SpeechUnit): void
   /** Settle a pending take() now (with null): called by `restartAt` and `stop` when one is in flight. */
@@ -114,6 +122,8 @@ interface Item {
   audio: Promise<TtsAudio>
   scheduled: boolean
   announced: boolean
+  /** `ended()` has been reported for it. */
+  finished: boolean
   /** Null for silence, which occupies no time on the clock. */
   node: AudioSourceLike | null
   start: number
@@ -199,6 +209,7 @@ export class SpeechPlayer {
     this.clearTicker()
     if (this.taking) this.deps.source.abort?.()
     for (const item of this.items) this.silence(item)
+    for (const item of this.items) this.finish(item)
     this.items = []
     this.wake()
     await this.ctx.close()
@@ -224,7 +235,8 @@ export class SpeechPlayer {
       // the next block's units already taken are in the source's current block: give them back
       const next = this.items.find((i) => !i.announced)?.unit
       if (next && !this.rewindTo(next)) return
-      this.discard(true)
+      // still the block's last unit sounding: it ends when the replay does
+      this.discard(true, sounding)
       this.items = [{ ...sounding, scheduled: false, node: null }] // announced already
       void this.schedule()
     }
@@ -335,6 +347,7 @@ export class SpeechPlayer {
       audio,
       scheduled: false,
       announced: false,
+      finished: false,
       node: null,
       start: 0,
       tailBefore: null,
@@ -370,11 +383,15 @@ export class SpeechPlayer {
     return true
   }
 
-  /** Stop and drop every unstarted item (and, if `cut`, the sounding one too). */
-  private discard(cut: boolean): void {
+  /**
+   * Stop and drop every unstarted item (and, if `cut`, the sounding one too). A cut started item
+   * is reported `ended`, except `spare` — the one `skip(-1)` replays.
+   */
+  private discard(cut: boolean, spare?: Item): void {
     const keep = cut ? [] : this.items.filter((i) => i.announced)
     const firstDropped = this.items.find((i) => !keep.includes(i))
     for (const item of this.items) if (!keep.includes(item)) this.silence(item)
+    for (const item of this.items) if (!keep.includes(item) && item !== spare) this.finish(item)
     if (cut) {
       this.tailEnd = null
       this.prevBlockEnd = false
@@ -385,6 +402,13 @@ export class SpeechPlayer {
     this.items = keep
     this.ended = false
     this.wake()
+  }
+
+  /** Report a started item's end to the source, once. */
+  private finish(item: Item): void {
+    if (!item.announced || item.finished) return
+    item.finished = true
+    this.deps.source.ended?.(item.unit)
   }
 
   private silence(item: Item): void {
@@ -454,28 +478,38 @@ export class SpeechPlayer {
 
   private onNodeEnded(item: Item): void {
     if (this.stopped) return
-    this.tick() // a throttled interval may not have announced it yet
+    // a throttled interval may not have announced it yet: announce it (and what precedes it) first,
+    // and end it before anything after it starts
+    this.tick(item)
     this.items = this.items.filter((i) => i !== item)
+    this.finish(item)
+    this.tick()
     this.checkEnd()
     this.idleAfterFailure()
   }
 
-  /** Announce every scheduled item the clock has reached, in order; then refill. */
-  private tick(): void {
+  /** Announce every scheduled item the clock has reached (up to `through`), in order; then refill. */
+  private tick(through?: Item): void {
     if (this.stopped) return
     const now = this.ctx.currentTime
     let announced = false
     for (const item of this.items) {
-      if (item.announced) continue
+      if (item.announced) {
+        if (item === through) break
+        continue
+      }
       if (!item.scheduled || item.start > now + 1e-9) break
       item.announced = true
       announced = true
       this.current = item
       this.deps.source.started(item.unit)
       this.deps.onUnitStart(item.unit)
+      if (item === through) break
     }
     if (!announced) return
-    this.items = this.items.filter((i) => i.node !== null || !i.announced) // silence is done once started
+    // silence is done once started: it ends as it starts
+    for (const item of this.items) if (item.node === null && item.announced) this.finish(item)
+    this.items = this.items.filter((i) => i.node !== null || !i.announced)
     this.checkEnd()
     void this.fill()
   }

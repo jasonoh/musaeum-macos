@@ -105,6 +105,9 @@ class ArraySource implements PlayerSource {
   readonly started = vi.fn((u: SpeechUnit): void => {
     this.log.push(`started:${u.mark}`)
   })
+  readonly ended = vi.fn((u: SpeechUnit): void => {
+    this.log.push(`ended:${u.mark}`)
+  })
   readonly rewind = vi.fn((u: SpeechUnit): void => {
     const k = this.units.findIndex((x) => x.mark === u.mark)
     if (k < 0) throw new Error(`rewind to unknown unit ${u.mark}`)
@@ -130,6 +133,7 @@ class BlockSource implements PlayerSource {
     return this.held.promise
   })
   readonly started = vi.fn((_u: SpeechUnit): void => {})
+  readonly ended = vi.fn((_u: SpeechUnit): void => {})
   readonly rewind = vi.fn((u: SpeechUnit): void => {
     const k = (this.blocks[this.b] ?? []).findIndex((x) => x.mark === u.mark)
     if (k < 0) throw new Error(`rewind across a block to ${u.mark}`)
@@ -755,6 +759,71 @@ describe('SpeechPlayer', () => {
     await flush()
     expect(r.ctx.sources.at(-1)?.mark).toBe('1')
     expect(r.starts.at(-1)?.mark).toBe('1')
+  })
+
+  // ------------------------------------------------------------ ended (AC15, a section boundary)
+
+  it('tells the source a unit has finished sounding: ended() once, when its buffer ends, after started()', async () => {
+    const r = rig([u(0), u(1, true)], latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(990)
+    expect(r.source.ended).not.toHaveBeenCalled()
+    await r.advance(30) // 0 ends at 1.0 s
+    expect(r.source.ended.mock.calls.map(([x]) => x.mark)).toEqual(['0'])
+    await r.advance(2000)
+    expect(r.source.ended.mock.calls.map(([x]) => x.mark)).toEqual(['0', '1'])
+    const log = r.source.log
+    expect(log.indexOf('ended:0')).toBeGreaterThan(log.indexOf('started:0'))
+    expect(log.indexOf('ended:1')).toBeGreaterThan(log.indexOf('started:1'))
+  })
+
+  it('a silent unit ends as it starts', async () => {
+    const synth = vi.fn(async (r: TtsRequest): Promise<TtsAudio> =>
+      tagOf(r) === 1 ? SILENCE : pcm(1, tagOf(r))
+    )
+    const r = rig([u(0), u(1, true)], synth)
+    r.player.start()
+    await flush()
+    await r.advance(1100)
+    expect(r.source.ended.mock.calls.map(([x]) => x.mark)).toEqual(['0', '1'])
+  })
+
+  it('a sounding unit that is cut is ended too: skip(1), restartAt and stop', async () => {
+    const r = rig([u(0), u(1), u(2), u(3), u(4), u(5, true)], latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(500) // 0 sounds
+    r.player.skip(1)
+    await flush()
+    expect(r.source.ended.mock.calls.map(([x]) => x.mark)).toEqual(['0'])
+    await r.advance(200) // 1 sounds
+    r.player.restartAt(u(4))
+    await flush()
+    expect(r.source.ended.mock.calls.map(([x]) => x.mark)).toEqual(['0', '1'])
+    await r.advance(200) // 4 sounds
+    await r.player.stop()
+    expect(r.source.ended.mock.calls.map(([x]) => x.mark)).toEqual(['0', '1', '4'])
+  })
+
+  it('skip(-1) replaying a block\'s last unit ends it once, when the replay ends', async () => {
+    const source = new BlockSource([
+      [u(0), u(1, true)],
+      [u(2), u(3, true)]
+    ])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(1500) // 1 sounds from 1.35 s; the next block's take is held open
+    r.player.skip(-1)
+    await flush()
+    const endsOfOne = (): number => source.ended.mock.calls.filter(([x]) => x.mark === '1').length
+    // the replay is still the block's last unit sounding: the source must go on waiting for it
+    expect(endsOfOne()).toBe(0)
+    await r.advance(990) // the replay ends at 2.5 s
+    expect(endsOfOne()).toBe(0)
+    await r.advance(30)
+    expect(endsOfOne()).toBe(1)
   })
 
   it('stop() stops every started source, closes the context, and ignores late synthesis', async () => {

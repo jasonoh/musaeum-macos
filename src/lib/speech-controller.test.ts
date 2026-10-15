@@ -331,6 +331,7 @@ describe('SpeechController', () => {
     expect(view.initCalls).toBe(1)
     const u0 = (await controller.take())!
     controller.started(u0)
+    controller.ended(u0)
     const n0 = (await controller.take())!
     expect(n0.text).toBe('N one.')
     expect(view.renderer.nextSection).toHaveBeenCalledTimes(1)
@@ -523,6 +524,7 @@ describe('SpeechController', () => {
     await controller.begin()
     const u0 = (await controller.take())!
     controller.started(u0)
+    controller.ended(u0)
     view.hang = true
     const pending = track(controller.take())
     await flush()
@@ -542,6 +544,7 @@ describe('SpeechController', () => {
     await controller.begin()
     const u0 = (await controller.take())!
     controller.started(u0)
+    controller.ended(u0)
     view.hang = true
     const pending = controller.take()
     await flush()
@@ -650,6 +653,7 @@ describe('SpeechController', () => {
     await controller.begin()
     const u0 = (await controller.take())!
     controller.started(u0)
+    controller.ended(u0)
     view.locked = 2 // the user's own page turn holds the lock for two tries
     expect((await controller.take())?.text).toBe('N one.')
     expect(view.renderer.nextSection).toHaveBeenCalledTimes(3)
@@ -677,6 +681,7 @@ describe('SpeechController', () => {
     await controller.begin()
     const u0 = (await controller.take())!
     controller.started(u0)
+    controller.ended(u0)
     view.locked = Number.POSITIVE_INFINITY
     const pending = track(controller.take())
     for (let t = 0; t < 10_000; t += 100) {
@@ -697,6 +702,7 @@ describe('SpeechController', () => {
     await controller.begin()
     const u0 = (await controller.take())!
     controller.started(u0)
+    controller.ended(u0)
     view.locked = Number.POSITIVE_INFINITY // the reader's own page turn holds the lock
     const pending = track(controller.take())
     await flush()
@@ -731,6 +737,169 @@ describe('SpeechController', () => {
     expect((await pending.value)?.text).toBe('C one.')
   })
 
+  // ------------------------------------------------------------ AC15: a section boundary
+
+  it("(AC15) the page does not move to the next section until the old section's last sentence has ended", async () => {
+    const s0 = section('s0', [['A one.'], ['B one.', 'B two.']])
+    const s1 = section('s1', [['N one.']])
+    const { view, controller } = make([s0, s1])
+    await controller.begin()
+    const a = (await controller.take())!
+    controller.started(a)
+    // block to block inside a section: no wait for the end of the sound
+    const b0 = (await controller.take())!
+    const b1 = (await controller.take())!
+    expect(b0.text).toBe('B one.')
+    controller.started(b0)
+    controller.started(b1)
+    const next = track(controller.take())
+    await flush()
+    // "B two." is sounding: the page stays where its highlight is
+    expect(next.settled).toBe(false)
+    expect(view.renderer.nextSection).not.toHaveBeenCalled()
+    expect(view.index).toBe(0)
+    // a unit other than the section's last one ending changes nothing
+    controller.ended(b0)
+    await flush()
+    expect(view.renderer.nextSection).not.toHaveBeenCalled()
+    controller.ended(b1)
+    expect((await next.value)?.text).toBe('N one.')
+    expect(view.renderer.nextSection).toHaveBeenCalledTimes(1)
+    expect(view.index).toBe(1)
+  })
+
+  it('(AC15) the end of the book does not wait for the last sound', async () => {
+    const { controller } = make([section('s0', [['A one.']])])
+    await controller.begin()
+    const u0 = (await controller.take())!
+    controller.started(u0)
+    expect(await controller.take()).toBeNull()
+  })
+
+  it('(AC15) a take waiting on the last sound settles on abort and on dispose, and never steps the section', async () => {
+    const sections = [section('s0', [['A one.']]), section('s1', [['N one.']])]
+    const one = make(sections)
+    await one.controller.begin()
+    const u0 = (await one.controller.take())!
+    one.controller.started(u0)
+    const p = track(one.controller.take())
+    await flush()
+    one.controller.abort()
+    expect(await p.value).toBeNull()
+    one.controller.ended(u0)
+    await flush()
+    expect(one.view.renderer.nextSection).not.toHaveBeenCalled()
+
+    const two = make([section('s0', [['A one.']]), section('s1', [['N one.']])])
+    await two.controller.begin()
+    const v0 = (await two.controller.take())!
+    two.controller.started(v0)
+    const q = track(two.controller.take())
+    await flush()
+    two.controller.dispose()
+    expect(await q.value).toBeNull()
+    expect(two.view.renderer.nextSection).not.toHaveBeenCalled()
+  })
+
+  it('(AC15) an end reported before a rewind is stale: the replayed last unit is waited for again', async () => {
+    const { view, controller } = make([section('s0', [['A one.', 'A two.']]), section('s1', [['N.']])])
+    await controller.begin()
+    const a0 = (await controller.take())!
+    const a1 = (await controller.take())!
+    controller.started(a0)
+    controller.started(a1)
+    // skip(-1) on the last unit: the player rewinds, then cuts the sounding unit (its end)
+    controller.rewind(a0)
+    controller.ended(a1)
+    expect(await controller.take()).toBe(a0)
+    expect(await controller.take()).toBe(a1)
+    controller.started(a0)
+    controller.started(a1)
+    const next = track(controller.take())
+    await flush()
+    expect(next.settled).toBe(false)
+    expect(view.renderer.nextSection).not.toHaveBeenCalled()
+    controller.ended(a1)
+    expect((await next.value)?.text).toBe('N.')
+  })
+
+  it("(AC15) the reader's own page turn is not held up by the wait for the last sound", async () => {
+    const s0 = section('s0', [['A one.'], ['B one.']])
+    const s1 = section('s1', [['N one.']])
+    const { view, controller } = make([s0, s1])
+    await controller.begin()
+    const a = (await controller.take())!
+    controller.started(a)
+    const b = (await controller.take())!
+    controller.started(b)
+    const pending = track(controller.take())
+    await flush()
+    // the reader turns back to "A one."'s page while "B one." is still sounding
+    const page = new FakeRange(s0.doc, 0, 9)
+    const first = await controller.onRelocate(page as unknown as Range)
+    expect(first?.text).toBe('A one.')
+    expect(view.renderer.nextSection).not.toHaveBeenCalled()
+    controller.abort()
+    await pending.value
+  })
+
+  // ------------------------------------------------------------ AC17: a page that continues a block
+
+  /**
+   * A figure caption that began on the page before: block 1 ("FIG. 2." + its long sentence)
+   * starts at 20, and the page turned to starts at 30 — inside the caption's last sentence.
+   * Foliate's `from()` finds no mark starting on the page and hands back the whole block,
+   * "FIG. 2." first (`tts.js:263-269`); the fake does the same.
+   */
+  function captionBook() {
+    // positions: A 0-9 / A' 10-19 | FIG 20-29, caption 30-39... the page starts at 35
+    const s = section('s0', [['A one.', 'A two.'], ['FIG. 2.', 'Selection and history interact.'], ['Next para.']])
+    return s
+  }
+
+  it('(AC17) a page turn into the tail of a block restarts at the first sentence that starts on the new page', async () => {
+    const s = captionBook()
+    const { view, controller } = make([s])
+    await controller.begin()
+    const a0 = (await controller.take())!
+    controller.started(a0)
+    const cap = s.blocks[1]!.sentences[1]!.range
+    // the new page starts inside the caption's last sentence
+    const page = new FakeRange(s.doc, cap.start + 5, 69)
+    view.relocate(page)
+    const first = await controller.onRelocate(page as unknown as Range)
+    expect(first?.text).toBe('Next para.')
+    expect(await controller.take()).toBe(first)
+    // its highlight is on the new page: no scroll at all, and never back
+    view.renderer.scrollToAnchor.mockClear()
+    controller.started(first!)
+    expect(view.renderer.scrollToAnchor).not.toHaveBeenCalled()
+  })
+
+  it('(AC17) a page that starts inside a block keeps the sentences of that block that start on it', async () => {
+    const s = section('s0', [['A one.'], ['FIG. 2.', 'Caption one.', 'Caption two.']])
+    const { view, controller } = make([s])
+    await controller.begin()
+    const a0 = (await controller.take())!
+    controller.started(a0)
+    const fig = s.blocks[1]!.sentences
+    const page = new FakeRange(s.doc, fig[0]!.range.start + 3, 59)
+    view.relocate(page)
+    const first = await controller.onRelocate(page as unknown as Range)
+    expect(first?.text).toBe('Caption one.')
+    expect(await controller.take()).toBe(first)
+    expect((await controller.take())?.text).toBe('Caption two.')
+  })
+
+  it('(AC17) Play on such a page starts on it too, not at the block start on the page before', async () => {
+    const s = captionBook()
+    const { view, controller } = make([s])
+    const cap = s.blocks[1]!.sentences[1]!.range
+    view.lastLocation = { range: new FakeRange(s.doc, cap.start + 5, 69) }
+    await controller.begin()
+    expect((await controller.take())?.text).toBe('Next para.')
+  })
+
   it('ignores the relocates of its own section change, during it and after it', async () => {
     const s0 = section('s0', [['A one.']])
     const s1 = section('s1', [['N one.', 'N two.']])
@@ -740,6 +909,7 @@ describe('SpeechController', () => {
     await controller.begin()
     const u0 = (await controller.take())!
     controller.started(u0)
+    controller.ended(u0)
     answers.length = 0
     const n0 = (await controller.take())!
     // the `moving` guard: the relocate nextSection emits while it is in flight

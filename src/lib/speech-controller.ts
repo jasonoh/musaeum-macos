@@ -13,6 +13,18 @@
  * for a unit of a block the cursor has already left (a restart superseded it) draws nothing,
  * for the same reason.
  *
+ * **The section waits for the sound** (AC15): a block-to-block step happens at `started()` of the
+ * block's last unit, but a step to the next *section* turns the page, so it waits for that unit's
+ * `ended()` — otherwise the section's last sentence is spoken with its highlight off screen. The
+ * load fits in the 700 ms block pause the player leaves after it.
+ *
+ * **A restart begins on the page** (AC17): `from(page)` returns the block holding the page's
+ * start cut at the first sentence starting on the page — or, when no sentence of that block does
+ * (the page opens inside the block's last sentence, typically a figure caption carried over),
+ * the *whole* block from its first sentence (`tts.js:263-269`), on the page before. Speaking that
+ * would scroll the reader back. So the sentences starting before the page are dropped, and an
+ * emptied block gives way to the next one.
+ *
  * Format-blind by rule (reader invariant D10): a reflowed PDF is an EPUB here.
  */
 import type { FoliateTTS } from '@vendor/foliate-js/view.js'
@@ -83,6 +95,15 @@ function docOf(range: Range): Node {
   return node.ownerDocument ?? node
 }
 
+/** Whether `inner` starts before `page` does. */
+function startsBefore(page: Range, inner: Range): boolean {
+  try {
+    return docOf(page) === docOf(inner) && page.compareBoundaryPoints(START_TO_START, inner) > 0
+  } catch {
+    return false
+  }
+}
+
 /** Whether `inner` starts on the page `page` covers (both ends inclusive). */
 function startsInside(page: Range, inner: Range): boolean {
   try {
@@ -143,6 +164,10 @@ export class SpeechController implements PlayerSource {
   private idx = 0
   /** The current block's last unit has started: the cursor may move on. */
   private lastStarted = false
+  /** ...and has stopped sounding: the page may move on to the next section. */
+  private lastEnded = false
+  /** `next()` found no block after the current one: the next step is a section's. */
+  private sectionSpent = false
   /** Where speech is: the last highlighted range, or a restart's page start. */
   private sounding: Range | null = null
   private mark: SpeechAnnotation | null = null
@@ -179,17 +204,22 @@ export class SpeechController implements PlayerSource {
       // page turn while the first sentence is still being synthesized is not a move, and
       // speech starts on a page the reader has left.
       let start: Range | null = null
+      let units: SpeechUnit[]
       if (anchor && docOf(anchor) === tts.doc) {
         ssml = blockFrom(tts, anchor)
         pastEnd = ssml === null
         if (!pastEnd) start = collapsedStart(anchor)
+        units = flattenSsml(ssml)
+        // a page, not a chosen place: speech starts on it (Read from here is left as `from()` cut it)
+        if (!from) units = this.onPage(units, anchor)
       } else {
         ssml = tts.start()
+        units = flattenSsml(ssml)
       }
-      this.setBlock(flattenSsml(ssml))
+      this.setBlock(units)
       this.sounding = start
       this.wake()
-      return this.blockUnits.length > 0 || (await this.nextBlock(pastEnd))
+      return this.blockUnits.length > 0 || (await this.nextBlock(pastEnd)) === true
     })
   }
 
@@ -216,6 +246,17 @@ export class SpeechController implements PlayerSource {
     })
   }
 
+  /**
+   * The unit stopped sounding. Only the current block's last unit, after its `started()`, counts:
+   * an end reported for a unit since rewound (skip back cuts it after the rewind) is stale.
+   */
+  ended(unit: SpeechUnit): void {
+    if (this.disposed || !this.lastStarted) return
+    if (this.blockUnits.indexOf(unit) !== this.blockUnits.length - 1) return
+    this.lastEnded = true
+    this.wake()
+  }
+
   started(unit: SpeechUnit): void {
     if (this.disposed) return
     const at = this.blockUnits.indexOf(unit)
@@ -238,6 +279,7 @@ export class SpeechController implements PlayerSource {
     this.idx = at
     // the block's last unit will sound again, and the cursor must wait for it again
     this.lastStarted = false
+    this.lastEnded = false
   }
 
   abort(): void {
@@ -261,10 +303,10 @@ export class SpeechController implements PlayerSource {
         if (!(await this.bind()) || !this.tts || this.tts.doc !== pageDoc) return null
       }
       const ssml = blockFrom(this.tts, page)
-      this.setBlock(flattenSsml(ssml))
+      this.setBlock(this.onPage(flattenSsml(ssml), page))
       this.sounding = collapsedStart(page)
       this.wake()
-      if (this.blockUnits.length === 0 && !(await this.nextBlock(ssml === null))) return null
+      if (this.blockUnits.length === 0 && (await this.nextBlock(ssml === null)) !== true) return null
       return this.blockUnits[0] ?? null
     })
   }
@@ -312,8 +354,15 @@ export class SpeechController implements PlayerSource {
         // a restart or a rewind landed while this waited its turn: look again
         if (this.idx < this.blockUnits.length || (this.blockUnits.length > 0 && !this.lastStarted))
           return true
-        return this.nextBlock()
+        return this.nextBlock(this.sectionSpent)
       })
+      // The next step is a section's and the last sentence is still sounding. Waited for here,
+      // outside the queue, so a page turn meanwhile is not held up behind it; `ended()`, a
+      // restart, `abort()` and `dispose()` all wake it.
+      if (ok === 'wait') {
+        if (!this.lastEnded && !ticket.settled && !this.disposed) await this.sleep()
+        continue
+      }
       if (!ok) return null
     }
   }
@@ -322,13 +371,25 @@ export class SpeechController implements PlayerSource {
    * Move to the next block that has something to say, crossing sections. False at the end.
    * `sectionDone`: this section has nothing more (a `from()` past its last block), so step
    * the section first rather than asking `next()` — whose cursor may sit on an earlier block.
+   * `'wait'`: the step is a section's, and the sounding block's last unit has not ended yet.
    */
-  private async nextBlock(sectionDone = false): Promise<boolean> {
+  private async nextBlock(sectionDone = false): Promise<boolean | 'wait'> {
     for (;;) {
       if (this.disposed || !this.tts) return false
       let ssml = sectionDone ? undefined : this.tts.next()
       sectionDone = false
       if (ssml === undefined) {
+        // past `next()`'s end its cursor and range map stay put, so the sounding block still draws
+        const here = this.view.renderer?.getContents()[0]
+        if (
+          this.blockUnits.length > 0 &&
+          !this.lastEnded &&
+          here &&
+          this.hasLaterSection(here.index)
+        ) {
+          this.sectionSpent = true
+          return 'wait'
+        }
         if (!(await this.advanceSection()) || !this.tts) return false
         ssml = this.tts.start()
       }
@@ -432,6 +493,38 @@ export class SpeechController implements PlayerSource {
     this.blockUnits = units
     this.idx = 0
     this.lastStarted = false
+    this.lastEnded = false
+    this.sectionSpent = false
+  }
+
+  /**
+   * The units of the block `from(page)` just landed on, from the first that starts on the page.
+   * Each unit's range is read through `setMark` with the highlight swapped for a probe: the
+   * engine keeps the ranges private, and `setMark` is its one way to hand one out.
+   */
+  private onPage(units: SpeechUnit[], page: Range): SpeechUnit[] {
+    const tts = this.tts
+    if (!tts || units.length === 0) return units
+    const own = tts.highlight
+    const probe: { range: Range | null } = { range: null }
+    tts.highlight = (range) => {
+      probe.range = range
+    }
+    try {
+      const at = units.findIndex((unit) => {
+        probe.range = null
+        try {
+          tts.setMark(unit.mark)
+        } catch {
+          return true
+        }
+        // a unit whose range cannot be read is kept: better a sentence early than none
+        return !probe.range || !startsBefore(page, probe.range)
+      })
+      return at < 0 ? [] : units.slice(at)
+    } finally {
+      tts.highlight = own
+    }
   }
 
   private serial<T>(fn: () => Promise<T>): Promise<T> {

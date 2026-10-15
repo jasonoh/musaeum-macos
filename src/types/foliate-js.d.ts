@@ -123,7 +123,10 @@ declare module '@vendor/foliate-js/view.js' {
     next(paused?: boolean): string | undefined
     /**
      * The block holding `range`'s start, cut to begin at the first segment that
-     * starts at or after it (`tts.js:259-270`).
+     * starts at or after it (`tts.js:259-270`). **When no segment of that block
+     * starts at or after `range`** — `range` opens inside the block's last
+     * segment, as a page does that continues a figure caption — the block comes
+     * back *whole*, from its first segment, which starts before `range`.
      *
      * **It throws when no block ends at or after `range`** — past the section's
      * last text block, and always in a section with no text at all (an
