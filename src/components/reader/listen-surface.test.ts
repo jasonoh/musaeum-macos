@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
+import { TTS_VOICES } from '../../types/tts.types'
 
 /**
  * The voice reader's visible surface (slice 2, Task 7b): source walks, as the repo does where
@@ -102,7 +103,12 @@ describe('ListenBar', () => {
     expect(BAR).toMatch(
       /const noFocus = \(e: \{ preventDefault\(\): void \}\) => e\.preventDefault\(\)/
     )
-    expect(BAR).toContain('onMouseDown={noFocus}')
+    const buttons = BAR.split('<button').slice(1)
+    expect(buttons.length).toBeGreaterThanOrEqual(8)
+    for (const part of buttons) {
+      const tag = part.slice(0, part.indexOf('>\n'))
+      expect(tag, 'every bar button declines focus').toContain('onMouseDown={noFocus}')
+    }
     expect(BAR).toMatch(/\.blur\(\)/)
   })
 })
@@ -125,5 +131,33 @@ describe('the chip’s second button', () => {
     expect(open).toContain('className={buttonClass}')
     expect(open).toContain('onMouseDown={(event) => event.preventDefault()}')
     expect(second).toContain('onReadFromHere')
+  })
+})
+
+describe('review round 1', () => {
+  it('the header Listen button declines focus, so Space cannot re-press it', () => {
+    const header = VIEW.slice(VIEW.indexOf('<header'), VIEW.indexOf('</header>'))
+    const tag = header
+      .split('<button')
+      .slice(1)
+      .find((t) => t.includes('ListenIcon'))!
+    expect(tag.slice(0, tag.indexOf('>\n'))).toContain('onMouseDown={noFocus}')
+  })
+
+  it('Escape closes the bar after the panel rungs and before the book', () => {
+    const notes = VIEW.indexOf('if (notesOpen && e.key')
+    const bar = VIEW.indexOf("if (listenOpen && e.key === 'Escape')")
+    const book = VIEW.indexOf('closeReader()', VIEW.indexOf("case 'Escape'"))
+    expect(notes).toBeGreaterThan(0)
+    expect(bar).toBeGreaterThan(notes)
+    expect(book).toBeGreaterThan(bar)
+    expect(VIEW.slice(bar, bar + 200)).toContain('closeListen()')
+  })
+
+  it('every voice has a label', () => {
+    for (const v of TTS_VOICES) {
+      expect(BAR, `${v} needs a label`).toMatch(new RegExp(`${v}: '[^']+'`))
+    }
+    expect(BAR).toContain('VOICE_LABELS[v]')
   })
 })

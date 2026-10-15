@@ -24,6 +24,15 @@ import {
  */
 const SPEED_STEP = 0.1
 
+/** What the voice select shows; the value stays the id. A voice added to TTS_VOICES needs a line here. */
+export const VOICE_LABELS: Record<(typeof TTS_VOICES)[number], string> = {
+  af_heart: 'Heart · US, F',
+  af_bella: 'Bella · US, F',
+  bf_emma: 'Emma · UK, F',
+  bm_george: 'George · UK, M',
+  am_michael: 'Michael · US, M'
+}
+
 const noFocus = (e: { preventDefault(): void }) => e.preventDefault()
 
 const iconButton =
@@ -189,7 +198,7 @@ export function ListenBar({ speech }: { speech: SpeechApi }) {
       >
         {TTS_VOICES.map((v) => (
           <option key={v} value={v}>
-            {v}
+            {VOICE_LABELS[v]}
           </option>
         ))}
       </select>

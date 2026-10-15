@@ -47,6 +47,9 @@ const REPORT_DEBOUNCE_MS = 2_000
  */
 const TRAFFIC_LIGHT_INSET = TRAFFIC_LIGHT_RIGHT_EDGE + 12
 
+/** A header button that opens a layer must not keep focus, or a later Space re-presses it. */
+const noFocus = (e: { preventDefault(): void }) => e.preventDefault()
+
 export function ReaderView() {
   const bookId = useReaderStore((s) => s.bookId)
   const format = useReaderStore((s) => s.format)
@@ -85,6 +88,7 @@ export function ReaderView() {
   const closePrefs = useReaderStore((s) => s.closePrefs)
   const listenOpen = useReaderStore((s) => s.listenOpen)
   const toggleListen = useReaderStore((s) => s.toggleListen)
+  const closeListen = useReaderStore((s) => s.closeListen)
 
   const books = useLibraryStore((s) => s.books)
   const book = books.find((b) => b.id === bookId) ?? null
@@ -273,6 +277,14 @@ export function ReaderView() {
         closeNotes()
         return
       }
+      // The listen bar is the last rung before the book: a listener who presses Escape to quiet
+      // the voice must not lose their page. Closing the bar stops speech (the hook tears down
+      // whenever `listenOpen` is false).
+      if (listenOpen && e.key === 'Escape') {
+        e.preventDefault()
+        closeListen()
+        return
+      }
       switch (e.key) {
         case 'Escape':
           e.preventDefault()
@@ -304,6 +316,8 @@ export function ReaderView() {
       closeSearch,
       closeNotes,
       toggleListen,
+      closeListen,
+      listenOpen,
       overlaid,
       prefsOpen,
       searchOpen,
@@ -432,6 +446,7 @@ export function ReaderView() {
           <NotesIcon className="h-4 w-4" />
         </button>
         <button
+          onMouseDown={noFocus}
           onClick={toggleListen}
           title="Listen to this book (L)"
           aria-label="Listen to this book"

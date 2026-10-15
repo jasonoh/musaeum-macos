@@ -28,7 +28,8 @@ interface Props {
   onActivate(): void
   /**
    * Start the voice reader at the selection; the engine passes it only when the
-   * reader wired one, and the second button exists only then.
+   * reader wired one, and the second button exists only then. It takes no argument: the
+   * engine's handler closes over the selection's range and passes it on.
    */
   onReadFromHere?(): void
 }
