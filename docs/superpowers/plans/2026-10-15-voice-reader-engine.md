@@ -2889,7 +2889,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Reproducibility (Task 2 step 5).** Both builds were byte-identical, the data under `share/` and the dylib alike, so spec AC1's "two builds, identical data checksum" stands as written.
 
-**Respelling clips (Task 6 step 6).** The clips `hegel-respelled-af_heart.wav` and `hegel-respelled-bm_george.wav` are in `~/Downloads/musaeum-tts-bakeoff/out/`. Verdict: not yet heard; the owner's verdict on `HAY-gul` / `ko-ZHEV` is outstanding.
+**Respelling clips (Task 6 step 6).** The clips `hegel-respelled-af_heart.wav` and `hegel-respelled-bm_george.wav` are in `~/Downloads/musaeum-tts-bakeoff/out/`. Verdict (owner, 2026-10-15): both clips sound fine, so the respelling rule stands as built.
 
 **Test counts.** Baseline (main before Task 1): pytest 421 passed; `npm test` 2230 passed in 100 files. Final: pytest 563 passed with `MUSAEUM_TTS_MODELS=$HOME/Downloads/musaeum-tts-bakeoff/models` (the real-model tests run) and 539 passed, 24 skipped without it; `npm test` 2247 passed in 102 files; typecheck and lint clean.
 
