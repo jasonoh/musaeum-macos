@@ -1,6 +1,7 @@
 """Model acquisition: pinned, verified, resumable-by-restart, cancelable, and quiet about failure."""
 
 import hashlib
+import socketserver
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -18,6 +19,14 @@ def sha(b):
 
 
 FILES = (ModelFile("a.bin", len(A), sha(A)), ModelFile("b.bin", len(B), sha(B)))
+
+
+class QuietServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind calls socket.getfqdn(), which can stall ~35s on a slow resolver.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.server_address[1]
 
 
 @pytest.fixture
@@ -41,10 +50,11 @@ def server():
         def log_message(self, *args):  # keep pytest output clean
             pass
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    httpd = QuietServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=lambda: httpd.serve_forever(poll_interval=0.05), daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_address[1]}", served, hits
     httpd.shutdown()
+    httpd.server_close()
 
 
 def run(tmp_path, base, **kw):

@@ -102,6 +102,7 @@ def _event(job_id: str) -> threading.Event:
 
 
 def cancel_download(job_id: str) -> dict:
+    # Job ids must be unique per download: a cancel arriving after the job finished leaves an entry that would cancel a reused id.
     """Safe before the job starts: the event is created by whichever side arrives first."""
     _event(job_id).set()
     return {"cancelled": True}
