@@ -150,15 +150,27 @@ describe('sanitizePrefs', () => {
   })
 
   it('persists voice and speed but not whether the listen bar is open', () => {
+    useReaderStore.getState().toggleListen()
+    expect(useReaderStore.getState().listenOpen).toBe(true)
     const persisted = persistedReaderState(useReaderStore.getState())
-    expect(JSON.stringify(persisted)).toContain('"voice"')
-    expect(JSON.stringify(persisted)).toContain('"speed"')
+    expect(persisted.prefs?.voice).toBe(DEFAULT_PREFS.voice)
+    expect(persisted.prefs?.speed).toBe(DEFAULT_PREFS.speed)
     expect(persisted).not.toHaveProperty('listenOpen')
+    useReaderStore.getState().closeListen()
   })
 
   it('a prefs object stored before this slice still loads, with the new defaults', () => {
     const old = { typeface: 'sans', fontSize: 20, lineHeight: 1.5, margin: 40, theme: 'auto' }
     expect(sanitizePrefs(old)).toMatchObject({ voice: 'af_heart', speed: 1.0, typeface: 'sans' })
+  })
+
+  it('opening a different book closes the listen bar', () => {
+    const get = () => useReaderStore.getState()
+    get().openBook(makeBook('b1'))
+    get().toggleListen()
+    expect(get().listenOpen).toBe(true)
+    get().openBook(makeBook('b2'))
+    expect(get().listenOpen).toBe(false)
   })
 
   it('closing a book closes the listen bar', () => {
