@@ -129,7 +129,10 @@ interface Item {
  *   it and plays the one before it in the same block, or replays it if it is the first of its
  *   block. If it was the last of its block and the source has moved on to the next one, it is
  *   replayed from the audio already in hand: rewinding across a block is impossible (Facts 1),
- *   and `started()` is not called a second time for it.
+ *   and `started()` is not called a second time for it. Any of the next block's units already
+ *   taken are given back (rewound) first, so they follow the replay.
+ * - `restartAt(null)` with a take in flight: a source with `abort()` has it settled and ignored;
+ *   a source without one is continued from, and that take's unit is kept.
  * - While paused (suspended), a skip still schedules the target at the frozen clock time and
  *   moves the highlight to it; the audio is heard on resume.
  * - `start()` after the end, and `restartAt(null)`, ask the source again: it either has more to
@@ -218,6 +221,9 @@ export class SpeechPlayer {
       this.discard(true)
     } else {
       if (!sounding.node) return // silence: nothing to replay
+      // the next block's units already taken are in the source's current block: give them back
+      const next = this.items.find((i) => !i.announced)?.unit
+      if (next && !this.rewindTo(next)) return
       this.discard(true)
       this.items = [{ ...sounding, scheduled: false, node: null }] // announced already
       void this.schedule()
@@ -227,9 +233,11 @@ export class SpeechPlayer {
 
   restartAt(unit: SpeechUnit | null): void {
     if (this.stopped) return
-    if (this.taking) {
+    // a source that can abort supersedes its pending take, whose value is then ignored; one that
+    // cannot is continued from, so what that take brings is kept (a `unit` overrides it by rewinding)
+    if (this.taking && this.deps.source.abort) {
       this.dropTake = true
-      this.deps.source.abort?.()
+      this.deps.source.abort()
     }
     this.failed = null
     this.blockTaken = []

@@ -589,6 +589,54 @@ describe('SpeechPlayer', () => {
     expect(r.onError).not.toHaveBeenCalled()
   })
 
+  it("skip(-1) on a block's last sentence after the next block is prefetched replays it, then speaks the next block whole (re-review)", async () => {
+    const source = new BlockSource([
+      [u(0), u(1, true)],
+      [u(2), u(3), u(4, true)]
+    ])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(1400) // 1 started at 1.35 s; the next block's take is held
+    source.release() // it loads at once: 2 and 3 are prefetched
+    await r.advance(100)
+    expect(r.ctx.sources.map((s) => s.mark)).toEqual(['0', '1', '2', '3'])
+
+    r.player.skip(-1)
+    await flush()
+    expect(r.onError).not.toHaveBeenCalled()
+    expect(source.rewind).toHaveBeenLastCalledWith(u(2))
+    await r.advance(6000)
+
+    const spoken = r.ctx.started().filter((s) => !s.stopped)
+    expect(spoken.map((s) => s.mark)).toEqual(['0', '1', '2', '3', '4'])
+    expect(spoken[1]?.when).toBeCloseTo(1.5, 9) // the replay
+    expect(spoken[2]?.when).toBeCloseTo(1.5 + 1 + 0.7, 9)
+    expect(r.starts.map((s) => s.mark)).toEqual(['0', '1', '2', '3', '4'])
+    expect(r.onEnd).not.toHaveBeenCalled()
+  })
+
+  it('restartAt(null) with a take in flight and no abort() keeps what that take brings (re-review)', async () => {
+    const held = deferred<SpeechUnit | null>()
+    const take = vi
+      .fn<() => Promise<SpeechUnit | null>>()
+      .mockResolvedValueOnce(u(0, true))
+      .mockReturnValueOnce(held.promise)
+      .mockResolvedValue(null)
+    const source: PlayerSource = { take, started: vi.fn(), rewind: vi.fn() }
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(10) // 0 started; the next take is held
+    expect(take).toHaveBeenCalledTimes(2)
+
+    r.player.restartAt(null)
+    held.resolve(u(5, true))
+    await flush()
+    expect(r.ctx.sources.at(-1)?.mark).toBe('5')
+    expect(r.starts.at(-1)?.mark).toBe('5')
+  })
+
   it('a rewind the source refuses goes to onError, and the sounding sentence is not cut (review I1)', async () => {
     const r = rig([u(0), u(1), u(2), u(3, true)], latencySynth(0))
     r.player.start()
