@@ -58,6 +58,16 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+/**
+ * Restart an existing player: retry, and the way back after a re-download. Its context may
+ * have been left suspended (a pause before the failure), and a suspended clock places
+ * every sentence at a frozen time and announces none — speech would sit in `loading`.
+ */
+function resumeAndStart(s: Session): void {
+  void s.player.resume().catch(() => {})
+  s.player.start()
+}
+
 function offline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false
 }
@@ -80,6 +90,11 @@ function offline(): boolean {
  *   changing, and unmount.
  * - **`generation`** counts teardowns: a continuation that awaited `status()` or `begin()`
  *   while the book closed finds it changed and does nothing.
+ * - **The download's phase is this hook's, not the store's** (a ruling, Task 7a review).
+ *   Known gap, accepted: close the reader mid-download and reopen it, and the bar shows
+ *   "Download the voice" again until it is pressed — the press rejoins the same job (main
+ *   shares one download), so nothing is fetched twice and nothing is lost, but the progress
+ *   in between is not shown. Moving the phase into the store is the reversal.
  */
 export function useSpeech({ viewRef, bookId }: UseSpeechArgs): SpeechApi {
   const [state, setState] = useState<SpeechState>(INITIAL_SPEECH_STATE)
@@ -111,9 +126,9 @@ export function useSpeech({ viewRef, bookId }: UseSpeechArgs): SpeechApi {
   }, [])
 
   const resume = useCallback(() => {
-    const s = session.current
-    if (!s) return
-    void s.player.resume().catch(() => {})
+    if (stateRef.current.phase.kind !== 'paused') return
+    // no session yet (paused while the model check ran): the pending play goes on unpaused
+    void session.current?.player.resume().catch(() => {})
     send({ type: 'resumed' })
   }, [send])
 
@@ -121,7 +136,7 @@ export function useSpeech({ viewRef, bookId }: UseSpeechArgs): SpeechApi {
     async (from?: Range) => {
       const kind = stateRef.current.phase.kind
       if (kind === 'downloading') return
-      if (!from && session.current) {
+      if (!from) {
         if (kind === 'paused') return resume()
         if (kind === 'playing' || kind === 'loading') return
       }
@@ -192,23 +207,33 @@ export function useSpeech({ viewRef, bookId }: UseSpeechArgs): SpeechApi {
       }
       session.current = next
 
+      let begun: boolean
       try {
-        await next.controller.begin(from)
+        begun = await next.controller.begin(from)
       } catch (e) {
         if (gen === generation.current) send({ type: 'failed', message: message(e) })
         return
       }
       if (gen !== generation.current) return
-      // A book with nothing to say from here: the first take answers null and `onEnd` fires.
+      if (!begun) {
+        teardown()
+        send({ type: 'nothing-to-read' })
+        return
+      }
+      // a pause pressed while the model check or begin() ran: start suspended, so the first
+      // sentence waits for Play rather than sounding against the press
+      if (stateRef.current.phase.kind === 'paused') void next.player.pause().catch(() => {})
       next.player.start()
     },
     [viewRef, send, teardown, resume]
   )
 
   const pause = useCallback(() => {
-    const s = session.current
-    if (!s) return
-    void s.player.pause().catch(() => {})
+    const kind = stateRef.current.phase.kind
+    // only a sounding (or about to sound) play is suspended: a context suspended in any
+    // other phase would be inherited, frozen, by the next restart
+    if (kind !== 'playing' && kind !== 'loading') return
+    void session.current?.player.pause().catch(() => {})
     send({ type: 'paused' })
   }, [send])
 
@@ -232,7 +257,7 @@ export function useSpeech({ viewRef, bookId }: UseSpeechArgs): SpeechApi {
     if (s) {
       // the model was damaged mid-book: back to the sentence that failed
       send({ type: 'play-requested' })
-      s.player.start()
+      resumeAndStart(s)
     } else {
       void play()
     }
@@ -258,7 +283,7 @@ export function useSpeech({ viewRef, bookId }: UseSpeechArgs): SpeechApi {
       return
     }
     const s = session.current
-    if (s) s.player.start()
+    if (s) resumeAndStart(s)
     else void play()
   }, [send, runDownload, play])
 
@@ -278,6 +303,9 @@ export function useSpeech({ viewRef, bookId }: UseSpeechArgs): SpeechApi {
       s.controller.onRelocate(range).then(
         (unit) => {
           if (!unit || gen !== generation.current) return
+          // a restart after the end or a failure must not inherit a suspended clock; a
+          // reader who paused stays paused, the new place waiting for Play
+          if (stateRef.current.phase.kind !== 'paused') void s.player.resume().catch(() => {})
           s.player.restartAt(unit)
           send({ type: 'restarted' })
         },

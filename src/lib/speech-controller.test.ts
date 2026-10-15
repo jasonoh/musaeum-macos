@@ -403,6 +403,21 @@ describe('SpeechController', () => {
     expect(await controller.onRelocate(new FakeRange(s.doc, 10, 19) as unknown as Range)).toBeNull()
   })
 
+  it('(g) a page turn before the first sentence sounds is a move away from where begin() started', async () => {
+    const s = section('s0', [['A one.', 'A two.'], ['B one.', 'B two.'], ['C one.']])
+    const { view, controller } = make([s])
+    view.lastLocation = { range: pageAt(s.doc, 0) }
+    await controller.begin()
+    await controller.take() // taken, synthesizing, not yet started
+    // the same page again (the engine re-reporting it) is not a move
+    expect(await controller.onRelocate(pageAt(s.doc, 0) as unknown as Range)).toBeNull()
+    // the reader turned the page while the first sentence was still being synthesized
+    const c = s.blocks[2]!.sentences[0]!
+    const page = new FakeRange(s.doc, c.range.start, c.range.end)
+    const first = await controller.onRelocate(page as unknown as Range)
+    expect(first?.text).toBe('C one.')
+  })
+
   it("(g) a relocate away restarts at that page's first sentence, and takes continue from there (AC17)", async () => {
     const s = section('s0', [['A one.', 'A two.'], ['B one.', 'B two.', 'B three.'], ['C one.']])
     const { view, controller } = make([s])

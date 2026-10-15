@@ -28,19 +28,24 @@ export interface SpeechState {
   /** False for `RETRY_DELAY_MS` after an error: Retry is disabled (Review Focus 8). */
   retryArmed: boolean
   retryOf: SpeechRetry | null
+  /** A sentence of this play has sounded: a resume goes back to `playing`, not `loading`. */
+  sounded: boolean
 }
 
 /** The two pinned files of D4: 92,361,271 + 28,214,398 bytes. */
 export const TTS_MODEL_BYTES = 120_575_669
 export const RETRY_DELAY_MS = 2_000
 export const DAMAGED_NOTICE = 'The voice file is damaged; download it again.'
+/** `begin()` found no sentence from the place it was asked to start (or could not bind). */
+export const NOTHING_TO_READ_NOTICE = 'Nothing to read on this page.'
 
 export const INITIAL_SPEECH_STATE: SpeechState = {
   phase: { kind: 'idle' },
   notice: null,
   totalBytes: TTS_MODEL_BYTES,
   retryArmed: true,
-  retryOf: null
+  retryOf: null,
+  sounded: false
 }
 
 export type SpeechEvent =
@@ -61,6 +66,8 @@ export type SpeechEvent =
   | { type: 'ended' }
   /** The player's or the controller's `onError`, or a play that could not begin. */
   | { type: 'failed'; message: string }
+  /** `begin()` answered false: nothing from here to the end, or no section to bind. */
+  | { type: 'nothing-to-read' }
   | { type: 'retry-armed' }
   | { type: 'retry' }
   /** The bar closed, the book changed or the reader closed: speech is torn down. */
@@ -119,7 +126,14 @@ export function speechReducer(state: SpeechState, event: SpeechEvent): SpeechSta
   switch (event.type) {
     case 'play-requested':
       if (kind === 'downloading') return state
-      return { ...state, phase: { kind: 'loading' }, notice: null, retryOf: null }
+      return {
+        ...state,
+        phase: { kind: 'loading' },
+        // a play from needs-model that finds the model still missing keeps the damaged line
+        notice: kind === 'needs-model' ? state.notice : null,
+        retryOf: null,
+        sounded: false
+      }
 
     case 'model-missing': {
       const next = { ...state, totalBytes: event.totalBytes }
@@ -152,12 +166,17 @@ export function speechReducer(state: SpeechState, event: SpeechEvent): SpeechSta
     case 'download-rejected':
       return downloadFailed(state, event.message, event.offline)
 
-    case 'unit-started':
-      if (kind === 'loading' || kind === 'idle') return { ...state, phase: { kind: 'playing' } }
-      return state
+    case 'unit-started': {
+      if (kind !== 'loading' && kind !== 'idle' && kind !== 'playing' && kind !== 'paused')
+        return state
+      const phase: SpeechPhase =
+        kind === 'paused' || kind === 'playing' ? state.phase : { kind: 'playing' }
+      if (phase === state.phase && state.sounded && state.notice === null) return state
+      return { ...state, phase, notice: null, sounded: true }
+    }
 
     case 'restarted':
-      if (kind === 'idle') return { ...state, phase: { kind: 'loading' } }
+      if (kind === 'idle') return { ...state, phase: { kind: 'loading' }, sounded: false }
       return state
 
     case 'paused':
@@ -165,7 +184,8 @@ export function speechReducer(state: SpeechState, event: SpeechEvent): SpeechSta
       return state
 
     case 'resumed':
-      if (kind === 'paused') return { ...state, phase: { kind: 'playing' } }
+      if (kind === 'paused')
+        return { ...state, phase: state.sounded ? { kind: 'playing' } : { kind: 'loading' } }
       return state
 
     case 'ended':
@@ -173,9 +193,14 @@ export function speechReducer(state: SpeechState, event: SpeechEvent): SpeechSta
       return state
 
     case 'failed':
+      // a download in flight is the bar's whole story; a stale session's failure is not news
+      if (kind === 'downloading') return state
       if (isDamaged(event.message)) return needsModel(state, DAMAGED_NOTICE)
       if (isMissing(event.message)) return needsModel(state, null)
       return errorState(state, event.message, 'play')
+
+    case 'nothing-to-read':
+      return { ...state, phase: { kind: 'idle' }, notice: NOTHING_TO_READ_NOTICE, retryOf: null }
 
     case 'retry-armed':
       return state.retryArmed ? state : { ...state, retryArmed: true }
@@ -189,13 +214,14 @@ export function speechReducer(state: SpeechState, event: SpeechEvent): SpeechSta
           retryOf: null
         }
       }
-      return { ...state, phase: { kind: 'loading' }, retryOf: null }
+      return { ...state, phase: { kind: 'loading' }, retryOf: null, sounded: false }
     }
 
     case 'closed':
       // the download is the app's, not the bar's: it goes on, and the bar shows it on reopening
       if (kind === 'downloading') return state
-      if (kind === 'idle' && state.notice === null && state.retryOf === null) return state
+      if (kind === 'idle' && state.notice === null && state.retryOf === null && !state.sounded)
+        return state
       return { ...INITIAL_SPEECH_STATE, totalBytes: state.totalBytes }
   }
 }

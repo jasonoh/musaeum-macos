@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DAMAGED_NOTICE,
   INITIAL_SPEECH_STATE,
+  NOTHING_TO_READ_NOTICE,
   TTS_MODEL_BYTES,
   isOfflineFailure,
   speechReducer,
@@ -251,5 +252,59 @@ describe('speechReducer — the transport', () => {
     expect(speechReducer(INITIAL_SPEECH_STATE, { type: 'closed' })).toBe(INITIAL_SPEECH_STATE)
     const dl = run([NEEDS_MODEL, { type: 'download-started' }])
     expect(speechReducer(dl, { type: 'closed' })).toBe(dl)
+  })
+})
+
+describe('speechReducer — review fixes (Task 7a)', () => {
+  it('M3: a stray failure during a download does not leave the download', () => {
+    const dl = run([NEEDS_MODEL, { type: 'download-started' }])
+    expect(speechReducer(dl, { type: 'failed', message: 'boom' })).toBe(dl)
+  })
+
+  it('M4: play from needs-model keeps the damaged line when the model is still missing', () => {
+    const s = run([
+      { type: 'play-requested' },
+      { type: 'failed', message: 'The voice files are damaged — download them again' },
+      { type: 'play-requested' },
+      NEEDS_MODEL
+    ])
+    expect(s.phase).toEqual({ kind: 'needs-model', totalBytes: 120 })
+    expect(s.notice).toBe(DAMAGED_NOTICE)
+    // and goes once a sentence sounds
+    expect(
+      speechReducer(speechReducer(s, { type: 'play-requested' }), { type: 'unit-started' }).notice
+    ).toBeNull()
+  })
+
+  it('M2: nothing to read from here → idle with one line, cleared by the next play', () => {
+    const s = run([{ type: 'play-requested' }, { type: 'nothing-to-read' }])
+    expect(s.phase).toEqual({ kind: 'idle' })
+    expect(s.notice).toBe(NOTHING_TO_READ_NOTICE)
+    expect(speechReducer(s, { type: 'play-requested' }).notice).toBeNull()
+  })
+
+  it('M1: a pause before the first sentence resumes to loading, not playing', () => {
+    const early = run([{ type: 'play-requested' }, { type: 'paused' }, { type: 'resumed' }])
+    expect(early.phase).toEqual({ kind: 'loading' })
+    const late = run([
+      { type: 'play-requested' },
+      { type: 'unit-started' },
+      { type: 'paused' },
+      { type: 'resumed' }
+    ])
+    expect(late.phase).toEqual({ kind: 'playing' })
+    // a fresh play forgets that the last one had sounded
+    const again = run(
+      [{ type: 'ended' }, { type: 'play-requested' }, { type: 'paused' }, { type: 'resumed' }],
+      late
+    )
+    expect(again.phase).toEqual({ kind: 'loading' })
+  })
+
+  it('I1: pause means nothing in a failed, ended or model state (so nothing is suspended there)', () => {
+    const failed = run([{ type: 'play-requested' }, { type: 'failed', message: 'boom' }])
+    expect(speechReducer(failed, { type: 'paused' })).toBe(failed)
+    const ended = run([{ type: 'play-requested' }, { type: 'unit-started' }, { type: 'ended' }])
+    expect(speechReducer(ended, { type: 'paused' })).toBe(ended)
   })
 })

@@ -175,14 +175,19 @@ export class SpeechController implements PlayerSource {
       const anchor = from ?? this.view.lastLocation?.range ?? null
       let ssml: string | null | undefined
       let pastEnd = false
+      // Where speech is until its first sentence sounds: the place it began. Without it a
+      // page turn while the first sentence is still being synthesized is not a move, and
+      // speech starts on a page the reader has left.
+      let start: Range | null = null
       if (anchor && docOf(anchor) === tts.doc) {
         ssml = blockFrom(tts, anchor)
         pastEnd = ssml === null
+        if (!pastEnd) start = collapsedStart(anchor)
       } else {
         ssml = tts.start()
       }
       this.setBlock(flattenSsml(ssml))
-      this.sounding = null
+      this.sounding = start
       this.wake()
       return this.blockUnits.length > 0 || (await this.nextBlock(pastEnd))
     })

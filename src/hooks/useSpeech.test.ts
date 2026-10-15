@@ -124,3 +124,52 @@ describe('the model download', () => {
     expect(SOURCE).toMatch(/setTimeout\([\s\S]{0,80}'retry-armed'[\s\S]{0,40}RETRY_DELAY_MS\)/)
   })
 })
+
+describe('review fixes (Task 7a)', () => {
+  it('I1: every restart of an existing player resumes its context before start()', () => {
+    const helper = SOURCE.slice(SOURCE.indexOf('function resumeAndStart('))
+    expect(helper.indexOf('.resume()')).toBeGreaterThan(0)
+    expect(helper.indexOf('.resume()')).toBeLessThan(helper.indexOf('.start()'))
+    // the retry and the post-download paths go through it, never a bare start()
+    expect(callback('retry')).toMatch(/resumeAndStart\(s\)/)
+    expect(callback('runDownload')).toMatch(/resumeAndStart\(s\)/)
+    expect(callback('retry')).not.toMatch(/player\.start\(\)/)
+    expect(callback('runDownload')).not.toMatch(/player\.start\(\)/)
+  })
+
+  it('I1: a relocate restart resumes the context unless the reader paused', () => {
+    const relocate = callback('onRelocate')
+    expect(relocate).toMatch(
+      /!== 'paused'[\s\S]{0,80}player\.resume\(\)[\s\S]{0,120}player\.restartAt\(unit\)/
+    )
+  })
+
+  it('M7: a relocate is only forwarded while speech is playing, paused, loading or idle', () => {
+    expect(callback('onRelocate')).toMatch(
+      /kind !== 'playing' && kind !== 'paused' && kind !== 'loading' && kind !== 'idle'\) return/
+    )
+  })
+
+  it('I1/M7: pause suspends only while playing or loading, and is sent as an event', () => {
+    const pause = callback('pause')
+    expect(pause).toMatch(/kind !== 'playing' && kind !== 'loading'\) return/)
+    expect(pause).toMatch(/player\.pause\(\)/)
+    expect(pause).toMatch(/send\(\{ type: 'paused' \}\)/)
+    const resume = callback('resume')
+    expect(resume).toMatch(/player\.resume\(\)/)
+    expect(resume).toMatch(/send\(\{ type: 'resumed' \}\)/)
+  })
+
+  it('M1: a pause pressed before the session exists is honored when it starts', () => {
+    const play = callback('play')
+    expect(play).toMatch(
+      /stateRef\.current\.phase\.kind === 'paused'\)[\s\S]{0,60}player\.pause\(\)[\s\S]{0,200}player\.start\(\)/
+    )
+  })
+
+  it("M2: begin()'s false is not started; it says so in one line", () => {
+    const play = callback('play')
+    expect(play).toMatch(/begun = await next\.controller\.begin\(from\)/)
+    expect(play).toMatch(/if \(!begun\) \{[\s\S]{0,80}send\(\{ type: 'nothing-to-read' \}\)/)
+  })
+})
