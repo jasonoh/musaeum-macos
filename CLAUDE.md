@@ -28,6 +28,7 @@ This file loads at the start of every session and is the **index**, not the manu
 | `docs/invariants/settings-and-editing.md` | `app_config`, persisted UI state, the metadata editor |
 | `docs/invariants/packaging-and-python.md` | `electron-builder.yml`, the Python bootstrap, the bundle |
 | `docs/invariants/menu-and-branding.md` | the native menu, the app name, the dock icon |
+| `docs/invariants/voice-reader.md` | the speech engine, `scripts/build-espeak.sh`, the speech model's download, anything that speaks a book |
 | `tasks.md` | the live backlog — what is open, what blocks it, where its design lives |
 | `docs/roadmap-history.md` | the shipped record `tasks.md` used to carry inline — do not read it unless you need the _why_ behind something already landed |
 | `CHANGELOG.md` · `requirements.md` | user-facing history · the original product spec |
@@ -63,6 +64,8 @@ npm install                                  # postinstall rebuilds better-sqlit
 python3.12 -m venv sidecar/.venv && sidecar/.venv/bin/pip install -r sidecar/requirements.txt
 ./scripts/build-layout-helper.sh             # the reflow's Vision helper (Xcode toolchain);
                                              # without it 3 pytest cases skip
+./scripts/build-espeak.sh                    # the voice reader's pronunciation data (cmake, git, network);
+                                             # without it the TTS pytest cases skip
 npm run dev                                  # launch with hot reload
 npm run typecheck && npm run lint            # keep clean; both pass on main
 npm test                                     # vitest main-process suite —

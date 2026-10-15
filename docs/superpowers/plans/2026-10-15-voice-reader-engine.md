@@ -2879,3 +2879,38 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 **Type consistency.** `Entry(word, sounds_like)`, `Lexicon(...).phonemes(text) -> (str, list[Entry])`, `lexicon_version(list[Entry]) -> str`, `SpeechEngine.synthesize(model_dir=, text=, voice=, speed=, lexicon=)`, `synthesize_rpc(params)`, `models.verify/model_status/download_models/cancel_download`, `main.POOL/TTS_POOL/lane_for/dispatch`, and on the TypeScript side `TtsRequest/TtsAudio/TtsModelStatus/TtsDownloadProgress/TtsDownloadResult`, `tts.status/synthesize/downloadModel/cancelDownload`, channel names `tts:status|synthesize|downloadModel|cancelDownload` and the event `ttsModelProgress` / `tts_model_progress` agree across Tasks 6–11.
 
 **Review Focus coverage.** (1) numbers → Task 5; (2) nothing to say → Task 8 (fake and real); (3) long sentence → Task 8 step 6; (4) hostile entries → Task 6; (5) release under a running call → Task 8; (6) killed or corrupt download → Task 7.
+
+
+## Annex — what the build found
+
+**Slice 1a gate.** It passed on 2026-10-15 on a packaged `dist/mac-arm64/Musaeum.app` with an isolated profile: `Hegel` phonemized as `hˈɛdʒəl`, and `find_espeak()` resolved inside the bundle at `/Users/jasonoh/Projects/musaeum-macos/dist/mac-arm64/Musaeum.app/Contents/Resources/helpers/bin/espeak/lib/libespeak-ng.dylib`. The bundle is 1,376,935 bytes. This plan's own header and summary text that say 2.3 MB are wrong; the measured figure is 1.4 MB.
+
+**Synthesis timings (Task 8).** On the final run the cold first sentence took 0.42 s and a warm one 0.11 s (an earlier run measured cold 1.20 s). A 1,211-character run-on sentence produced 62.7 s of audio.
+
+**Reproducibility (Task 2 step 5).** Both builds were byte-identical, the data under `share/` and the dylib alike, so spec AC1's "two builds, identical data checksum" stands as written.
+
+**Respelling clips (Task 6 step 6).** The clips `hegel-respelled-af_heart.wav` and `hegel-respelled-bm_george.wav` are in `~/Downloads/musaeum-tts-bakeoff/out/`. Verdict: not yet heard; the owner's verdict on `HAY-gul` / `ko-ZHEV` is outstanding.
+
+**Test counts.** Baseline (main before Task 1): pytest 421 passed; `npm test` 2230 passed in 100 files. Final: pytest 563 passed with `MUSAEUM_TTS_MODELS=$HOME/Downloads/musaeum-tts-bakeoff/models` (the real-model tests run) and 539 passed, 24 skipped without it; `npm test` 2247 passed in 102 files; typecheck and lint clean.
+
+**Deviations from the plan, each with its reason.**
+
+- (a) The bundle is 1.4 MB, not 2.3 MB: the plan's figure was an estimate and the build measured it.
+- (b) Task 6's respelling cache is keyed per phonemizer instance instead of by `id()`, because `id()` aliased freed objects and made a test flaky; separator-only respellings are skipped and a prefix-order test was added.
+- (c) Task 6 step 6's clips were written with stdlib `wave` plus numpy because `soundfile` is not installed; no dependency was added.
+- (d) Task 7's test server fixture is a subclass that skips `socket.getfqdn`, taking the file from 35 s to 0.6 s.
+- (e) Task 5's normalizer was extended beyond the plan (every `*`, bracketed citation numbers, emoji and pictographs) after the Task 8 real-model test contradicted Review Focus 2; the owner chose to extend `normalize.py`.
+- (f) Task 8 added silence for punctuation-only text, re-arms the idle timer in a `finally`, uses a plain `Lock` instead of an `RLock`, and hardened the release test.
+- (g) Task 9: the pools are drained at stdin EOF (commit 93215b5); the Step 7 re-run passes literally.
+- (h) Task 10 follow-up: `helpers/.espeak-build/` was added to the eslint ignores, because the in-repo build scratch made `npm run lint` red.
+- (i) `/verify`: the implementers of Tasks 3, 5, 6, 7 and 8 ran the full pytest suite instead, because those modules were not wired into the app; the controller ran `/verify` after Task 3 (the app boots on an isolated profile); Tasks 9, 10 and 11 ran the recipe by hand before committing. Task 11 proved real synthesis end to end through the app over CDP: status false to true, `Hello world.` with `af_heart` at 24,000 Hz in 1,045 ms, `***` as silence, an unknown voice rejected.
+- (j) Task 11: the exposed global is `window.Musaeum` (capital M), and a refusal reaches the renderer as a rejection, because the preload `invoke` unwraps the envelope.
+
+**Deferred minor findings.**
+
+- `normalize`: the `$` pattern lacks word boundaries (`x$5`, `$5million`); version strings and IPs get "point"; `$0.99` reads "0 dollars and 99 cents".
+- Models: cancel is only checked between download chunks, so a stalled connection delays it up to the 30 s read timeout.
+- `services/tts.ts`: a download that rejects app-side (the 30-minute timeout) leaves the Python job running and uncancelable; an app-side failure rejects while a sidecar-reported one resolves `{ status: 'failed' }`; `downloadModel` is not async, so `assertAvailable` throws synchronously; a missing `sample_rate` silently becomes 24000.
+- Engine: the RPC does not validate param types (a NaN speed or wrong types raise rather than return `{ error }`); `load_kokoro`'s fallback message mentions `scripts/build-espeak.sh`; the test `test_a_silent_call_after_a_load_still_leaves_a_timer_armed` is misnamed (it only shows silence leaves the earlier timer alone).
+- `ipc/tts.ts` has no test, which matches its sibling files.
+- `prettier --check` fails on the three new TypeScript files; the repo does not enforce prettier and existing tracked files fail it too.

@@ -31,6 +31,7 @@ Two consequences a later change has to respect, both stated because the extensio
 
 - **A walk that sweeps "all files" in a book folder must skip `derived/` by name.** Today nothing walks recursively; a future sweep that does is the one place this namespace can be broken.
 - **A derived artifact is disposable.** Deleting `derived/` loses a cache and never a book: the pass re-runs on the next open, and a reader that finds a missing or unreadable artifact falls back to the original with one line of reason (D6/D9).
+- **`{book}/derived/audio/` is reserved** for the voice reader's rendering slice (`docs/superpowers/specs/2026-10-15-voice-reader-design.md`, D9) — nothing writes it yet, and like everything under `derived/` it is disposable and never enters `formats` or `file_size_bytes`.
 
 ---
 

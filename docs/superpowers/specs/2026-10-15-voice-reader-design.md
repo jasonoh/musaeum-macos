@@ -29,6 +29,7 @@ The reader is complete for EPUB, MOBI, AZW3 and — through the reflow — PDF. 
 | Hand-written phonemes spliced in at the word boundary for those two words were judged **"excellent" and natural-sounding** by Jason, on four voices | listening, 2026-10-15 | The lexicon mechanism is proven end to end (D8) |
 | **The pip-packaged espeak-ng cannot find its own data.** `espeakng-loader` 0.1.51, 0.2.1 and 0.2.4 all call `exit()` on a `phontab` path of the _build machine_ (`/Users/runner/work/...`); passing the real path through `phonemizer`, `ESPEAK_DATA_PATH`, or a direct `espeak_Initialize` call does not help. Patching the binary's baked string to a relative path made it work | measured 2026-10-15 | We cannot ship the pip wheel's library. D2 builds and bundles espeak-ng ourselves, and makes proving it the first gate |
 | `misaki[en]` (Kokoro's own phonemizer) avoids espeak but **pulls in PyTorch** and prints `❓` for any name outside its dictionary (`Okafor's`) | measured 2026-10-15 | Rejected: wrong size, wrong failure mode for a book full of names |
+| Both pinned models have `has_timings = False` | verified 2026-10-15 | Highlighting is per sentence (D3) |
 | espeak-ng is **GPL-3** | upstream | Bundling it is fine for a personal app and is a licensing fact to be written down; see D2 |
 | The sidecar runs a shared `ThreadPoolExecutor(max_workers=4)` for hydration, conversion, covers and the reflow | `sidecar/main.py:150` | Speech gets its own lane, or a bulk refresh makes it stutter (D3) |
 | A packaged build installs sidecar requirements into `userData/sidecar-venv` on first launch and re-runs when the file's hash changes; pins are exact | `docs/invariants/packaging-and-python.md:24-28` | `kokoro-onnx` and `onnxruntime` are exact pins; the marker's hash changes once |
@@ -54,7 +55,7 @@ A **Listen** button in the reader header opens a transport bar. Pressing play ta
 
 ## D2 — espeak-ng is built by us and bundled; proving it is the first gate
 
-**Decision.** `scripts/build-espeak.sh` builds a `libespeak-ng.dylib` and its `espeak-ng-data` from a pinned upstream release, with the data path set so the library finds it, and writes them to `helpers/bin/espeak/` (gitignored, like the layout helper). `electron-builder.yml`'s `extraResources` carries the directory. `sidecar/tts/phonemize.py` resolves it the way `vision.find_helper()` resolves the Swift helper — one relative path that a dev tree and a bundle agree on — with an environment override for experiments. The pip `espeakng-loader` is not a dependency.
+**Decision.** `scripts/build-espeak.sh` builds a `libespeak-ng.dylib` and its `espeak-ng-data` from the pinned upstream 1.52.0 release (CMake, English dictionary only — 1.4 MB against 19.8 MB) and writes them to `helpers/bin/espeak/` (gitignored, like the layout helper). Nothing is baked in: the library takes its data directory at run time (`espeak_Initialize`'s `path`), so the bundle is relocatable — the pip wheel's trouble was a build machine's path compiled into its binary. CMake's configure fetches a pinned `sonic` from GitHub, so the *build* (not the app) needs the network and git. The existing `helpers/bin` entry in `electron-builder.yml`'s `extraResources` already carries it; no new entry is needed. `sidecar/tts/phonemize.py` resolves it the way `vision.find_helper()` resolves the Swift helper — one relative path that a dev tree and a bundle agree on — with an environment override for experiments. The pip `espeakng-loader` is not a dependency.
 
 **The gate.** Slice 1a proves, on a **packaged** build on an isolated profile, that the bundled library phonemizes `Hegel`, before any other slice's code is written. If it cannot be made to work, that is an escalation under `CLAUDE.md`, not a reason to fall back to a PyTorch phonemizer or to a pronunciation-blind voice: the feature stops and is handed back.
 
@@ -62,13 +63,21 @@ A **Listen** button in the reader header opens a transport bar. Pressing play ta
 
 ## D3 — `tts_synthesize`: one method, its own lane, loaded on use
 
-**The method.** `tts_synthesize({ text, voice, speed, lexicon })` → `{ sampleRate: 24000, pcm, durationMs, lexiconVersion }`, where `pcm` is base64 of mono signed 16-bit samples. `lexicon` is the list of `{ word, soundsLike }` the caller read from the library file (D8); the sidecar reads no library file, so the method stays pure. A sentence is a few hundred kilobytes; this is within what the JSON-RPC pipe already carries for a reflow progress frame many times over.
+**The method.** `tts_synthesize({ model_dir, text, voice, speed, lexicon })` → `{ sample_rate: 24000, pcm, duration_ms, lexicon_version }`, snake_case like every other sidecar result (`services/tts.ts` maps it to the camelCase `TtsAudio`), where `pcm` is base64 of mono signed 16-bit samples. `lexicon` is the list of `{ word, sounds_like }` the caller read from the library file (D8); the sidecar reads no library file, so the method stays pure. A sentence is a few hundred kilobytes; this is within what the JSON-RPC pipe already carries for a reflow progress frame many times over.
 
 **The lane.** `tts_synthesize` runs on its **own single-thread executor**, not the shared four. A bulk refresh that saturates the pool would otherwise queue a sentence behind a Google Books call and the voice would stall. CPU contention remains (the model's own threads), and is measured in the live pass rather than assumed away.
 
 **Lifecycle.** The model loads on the first call and is released after **five idle minutes**. Idle cost is zero; playing costs ≈ 316 MB resident (measured). Load is 0.3–0.4 s, so the first sentence of a session is the slowest and is covered by the prefetch.
 
 **Failure is quiet and total.** A missing model, a failed load or a phonemizer error returns `{ error }` in the envelope and never throws across the boundary (invariant 12 by analogy). The bar shows one line and offers a retry; nothing else in the reader changes.
+
+**Chunking and timings.** `kokoro-onnx` 0.6.1 batches input longer than the model's 510-phoneme limit itself, so the engine has no chunker; neither pinned model reports phoneme durations (`has_timings` is False, verified), so highlighting stays per sentence.
+
+## D3b — Text is normalised for the failures we measured
+
+espeak-ng reads a decimal point as a sentence end, so `3.5 million` is spoken "three. five million" and `$2.1 billion` "two dollars. one billion" (measured 2026-10-15 on the bundled library). `sidecar/tts/normalize.py` rewrites decimals between digits to " point " and dollar amounts to words. The build then found three more, measured on the real bundled espeak and the real model the same day: `***` is voiced "asterisk asterisk asterisk", `[12]` "twelve" and `😀` "grinning face", so `normalize_text` also removes every `*`, bracketed citation numbers (`[12]`, `[1,2]`, `[3-5]`; `[sic]` is untouched) and emoji and pictographs (the U+2600–27BF dingbats range included, plus the variation selector and ZWJ). Text whose phonemes contain no alphabetic character (`...`, `—`, `?`, `“”`, `( )`) is silence too, because the model otherwise renders a 260–550 ms non-word noise. Everything else passes through unchanged.
+
+**Known over-strip, recorded:** the dingbat range also strips ✝ ♀ ♂ ☉ ☿ ☞ ♪ ♥, misses ⭐ ⌚ ‼️ ℹ️, and `2*3` becomes `23`. **Known gaps, recorded rather than half-handled:** dates (`3/4/2021` is spoken "three slash four slash …") and clock times (`5:30 p.m.` is spoken "five:thirty pee.em."). **Reversal:** a reader hears one of these often enough to mind, and it gets its own measured rule.
 
 ## D4 — The model is downloaded on first use, pinned, and never in the DMG
 
@@ -116,6 +125,8 @@ A **Listen** button in the reader header opens a transport bar. Pressing play ta
 
 **Why a respelling, not phonemes.** Nobody should have to write IPA. The file stores what a person typed ("HAY-gul"); the sidecar derives phonemes when it speaks, with the bundled espeak, and caches them by word. The file is human-readable, portable, and does not freeze a phonemizer version into a library.
 
+**Respelling convention.** A respelling's part in CAPITALS carries the stress (`HAY-gul`); with none, the first part does.
+
 **Scope.** Per library, not per book. **Reversal:** two books that need different readings of one spelling; then an optional per-book overlay.
 
 **Matching.** Whole words, case-sensitive, with the possessive handled (`Okafor's` uses `Okafor`'s entry and the correct plural-like suffix). The possessive and the apostrophe variants (`'` and `’`) are where this goes wrong first, and have their own cases.
@@ -155,7 +166,7 @@ No SQLite migration, no `metadata.json` or `catalog.json` change, no new `musaeu
 1. `scripts/build-espeak.sh` builds a library and data directory from a pinned upstream tag into `helpers/bin/espeak/`, reproducibly (two builds, identical data checksum).
 2. A pytest case loads the bundled library through `sidecar/tts/phonemize.py` and phonemizes `Hegel`, `Kojève` and `Okafor's` to non-empty IPA; it fails when the data directory is moved aside (the failure is the baked-path bug this slice exists to prevent).
 3. **A packaged build on an isolated profile phonemizes `Hegel`.** This criterion is the slice's decider; the unit case above is not a substitute, which is the lesson of the layout helper.
-4. `electron-builder.yml` carries the directory; the packaged `Contents/Resources/helpers/bin/espeak/` exists; the DMG grows by less than 5 MB.
+4. A source-scan case pins the existing `helpers/bin` `extraResources` entry; the packaged `Contents/Resources/helpers/bin/espeak/` exists; the bundle is under 5 MB (1.4 MB measured).
 
 ### Slice 1b — the engine and the RPC
 
@@ -166,6 +177,10 @@ No SQLite migration, no `metadata.json` or `catalog.json` change, no new `musaeu
 9. The model download verifies both hashes, rejects a corrupted file and re-downloads it, reports progress, and cancels cleanly. It writes only under `userData/tts-models/`.
 10. No model, offline → one sentence, no throw. A failed load → `{ error }`, and the next call retries.
 11. `requirements.txt` gains exactly two exact pins; the marker's hash changes; typecheck, lint, vitest and pytest are clean and no previously passing case is skipped.
+27. `3.5 million` and `$2.1 billion` are spoken as a person would say them.
+28. Text with nothing to say (`†`, `[12]`, `😀`, `***`, `...`) is silence, not an error.
+29. A 1,200-character single sentence is audio, not a crash.
+30. A lexicon entry that is empty, duplicated or full of regex metacharacters is ignored or applied, never raised, and `Hegelian` is never read as `Hegel`+`ian`.
 
 ### Slice 2 — live playback
 
@@ -195,7 +210,8 @@ No SQLite migration, no `metadata.json` or `catalog.json` change, no new `musaeu
 | Slice | What | Why this cut |
 | --- | --- | --- |
 | **1a** | The espeak build, the bundle, the packaged-app proof | The single thing that can stop the feature, and the thing the layout helper taught us can be wrong with no defect to find. Nothing else is written until it passes |
-| **1b** | `sidecar/tts/` (engine, phonemize, model), `tts_synthesize`, the lane, the download, `services/tts.ts` + IPC + types, `requirements.txt` | The engine is decidable by pytest and vitest alone, with no renderer |
+| **1b** | `sidecar/tts/` (engine, normalize, lexicon, models, phonemize), `tts_synthesize` and its lane, the download, `requirements.txt` | The engine is decidable by pytest alone, with no renderer |
+| **1c** | `services/tts.ts` + IPC + preload + types + the progress event | The main-process bridge, decidable by vitest alone; 1b alone was 14 source files and `CLAUDE.md` puts the line at ~10 |
 | **2** | The speech arm, the queue, the player, the bar, the header button, the chip's **Read from here**, the prefs, the palette role | Needs a running app for AC15–21; the last slice that can be gated without the lexicon |
 | **3** | `lexicon.json`, `services/lexicon.ts`, the popover | Independent of slice 2's player except for Preview, which is why it is third |
 
