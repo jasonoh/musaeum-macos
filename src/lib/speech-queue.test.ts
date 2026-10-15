@@ -60,10 +60,12 @@ describe('flattenSsml', () => {
   })
 
   it('decodes the entities the engine serializes', () => {
-    expect(
-      flattenSsml(BLOCK_AMPERSAND).some((u) => u.text.includes('Bioinspiration & Biomimetics'))
-    ).toBe(true)
-    expect(flattenSsml(BLOCK_LESS_THAN)[1]?.text).toContain('p < 0.01')
+    expect(flattenSsml(BLOCK_AMPERSAND)[2]?.text).toEqual(
+      'Madeleine helped launch a new scientific journal, Bioinspiration & Biomimetics, in 2006.'
+    )
+    expect(flattenSsml(BLOCK_LESS_THAN)[1]?.text).toEqual(
+      'In statistics-ese these least-squares linear regressions are all “highly significant,” with p < 0.01 in each case.'
+    )
     expect(
       flattenSsml(wrap('<mark name="0"/>&amp; &lt; &gt; &quot; &apos; &#x2019; &#8217;'))[0]?.text
     ).toBe('& < > " \' ’ ’')
@@ -110,5 +112,30 @@ describe('flattenSsml', () => {
     expect(flattenSsml('<?xml version="1.0"?>' + wrap('<mark name="0"/>hi'))).toEqual([
       { mark: '0', text: 'hi', blockEnd: true }
     ])
+  })
+
+  it('reads CDATA as raw text, mid-sentence and with > and literal entities', () => {
+    expect(flattenSsml(wrap('<mark name="0"/><![CDATA[plain]]>'))[0]?.text).toBe('plain')
+    expect(flattenSsml(wrap('<mark name="0"/>x <![CDATA[a > b &amp; c]]> y'))[0]?.text).toBe(
+      'x a > b &amp; c y'
+    )
+  })
+
+  it('does not let a > inside an attribute value leak into the speech', () => {
+    expect(
+      flattenSsml(
+        wrap('<mark name="0"/>a <phoneme ph="a>b">w</phoneme> <sub alias=\'x > y\'>z</sub>')
+      )[0]?.text
+    ).toBe('a w z')
+  })
+
+  it('leaves out-of-range and null numeric entities literal without throwing', () => {
+    expect(flattenSsml(wrap('<mark name="0"/>a &#x110000; b &#0; c'))[0]?.text).toBe(
+      'a &#x110000; b &#0; c'
+    )
+  })
+
+  it('skips comments', () => {
+    expect(flattenSsml(wrap('<mark name="0"/>a<!-- c -->b'))[0]?.text).toBe('ab')
   })
 })

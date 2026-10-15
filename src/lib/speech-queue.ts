@@ -6,13 +6,18 @@ export interface SpeechUnit {
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
 
+// CDATA first (its body may hold `>`), then a tag whose quoted attribute values may hold `>`, then text
+const TOKEN = /<!\[CDATA\[[\s\S]*?\]\]>|<(?:[^>"']|"[^"]*"|'[^']*')*>|[^<]+/g
+
 function decode(s: string): string {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
     if (e[0] === '#') {
       const code =
         e.charAt(1).toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)
       try {
-        return Number.isFinite(code) ? String.fromCodePoint(code) : m
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : m
       } catch {
         return m
       }
@@ -26,7 +31,12 @@ export function flattenSsml(ssml: string | null | undefined): SpeechUnit[] {
   if (!ssml) return []
   const raw: { mark: string; text: string }[] = []
   let current: { mark: string; text: string } | null = null
-  for (const token of ssml.match(/<[^>]+>|[^<]+/g) ?? []) {
+  for (const token of ssml.match(TOKEN) ?? []) {
+    if (token.startsWith('<![CDATA[')) {
+      // raw text: entities inside CDATA are literal
+      if (current) current.text += token.slice(9, -3)
+      continue
+    }
     if (token[0] !== '<') {
       if (current) current.text += decode(token)
       continue
