@@ -114,6 +114,12 @@ const api: MusaeumAPI = {
     update: (bookId, id, note, format) => invoke('annotations:update', bookId, id, note, format),
     remove: (bookId, id, format) => invoke('annotations:remove', bookId, id, format)
   },
+  tts: {
+    status: () => invoke('tts:status'),
+    synthesize: (request) => invoke('tts:synthesize', request),
+    downloadModel: () => invoke('tts:downloadModel'),
+    cancelDownload: () => invoke('tts:cancelDownload')
+  },
   ai: {
     getStatus: () => invoke('ai:getStatus'),
     ask: (request) => invoke('ai:ask', request),
@@ -146,7 +152,8 @@ const api: MusaeumAPI = {
     aiChunk: (cb) => listen(EVENT_CHANNELS.aiChunk, cb),
     aiDone: (cb) => listen(EVENT_CHANNELS.aiDone, cb),
     aiError: (cb) => listen(EVENT_CHANNELS.aiError, cb),
-    reflowProgress: (cb) => listen(EVENT_CHANNELS.reflowProgress, cb)
+    reflowProgress: (cb) => listen(EVENT_CHANNELS.reflowProgress, cb),
+    ttsModelProgress: (cb) => listen(EVENT_CHANNELS.ttsModelProgress, cb)
   }
 }
 

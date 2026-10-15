@@ -51,6 +51,13 @@ import type {
 } from './settings.types'
 import type { ShelfAddResult, ShelfMembership, ShelfScope, ShelfSummary } from './shelf.types'
 import type { ThemeImportResult, ThemeView } from './theme.types'
+import type {
+  TtsAudio,
+  TtsDownloadProgress,
+  TtsDownloadResult,
+  TtsModelStatus,
+  TtsRequest
+} from './tts.types'
 
 /**
  * All IPC results cross the bridge as IPCResult — handlers never throw
@@ -392,6 +399,20 @@ export interface MusaeumAPI {
     remove(bookId: string, id: string, format: ReaderFormat): Promise<Annotation[]>
   }
 
+  /** The voice reader's engine (docs/superpowers/specs/2026-10-15-voice-reader-design.md). */
+  tts: {
+    /** Whether the model files are on disk; cheap (existence and size). */
+    status(): Promise<TtsModelStatus>
+    /**
+     * One sentence → mono 16-bit PCM at 24 kHz. An empty `samples` is silence (text with
+     * nothing to say). **Rejects with a sentence** when there is no model yet or the
+     * pronunciation data is missing — a normal outcome the bar shows in one line.
+     */
+    synthesize(request: TtsRequest): Promise<TtsAudio>
+    /** Resolves with the outcome; progress arrives as `on.ttsModelProgress`. */
+    downloadModel(): Promise<TtsDownloadResult>
+    cancelDownload(): Promise<void>
+  }
   ai: {
     /**
      * Whether the ask panel can work at all, and what it would send where.
@@ -474,6 +495,8 @@ export interface MusaeumAPI {
     aiError(cb: (event: AiErrorEvent) => void): Unsubscribe
     /** One reflow pass's frame, for whichever book it names (D7). */
     reflowProgress(cb: (progress: ReflowProgress) => void): Unsubscribe
+    /** The speech model's download progress (voice reader D4). */
+    ttsModelProgress(cb: (progress: TtsDownloadProgress) => void): Unsubscribe
   }
 }
 

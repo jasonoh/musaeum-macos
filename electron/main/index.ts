@@ -14,6 +14,7 @@ import { registerMigrationHandlers } from './ipc/migration'
 import { registerNASHandlers } from './ipc/nas'
 import { registerReaderHandlers } from './ipc/reader'
 import { registerAnnotationHandlers } from './ipc/annotations'
+import { registerTtsHandlers } from './ipc/tts'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShelvesHandlers } from './ipc/shelves'
 import { registerThemeHandlers } from './ipc/theme'
@@ -217,6 +218,7 @@ app.whenReady().then(() => {
   registerAnnotationHandlers()
   registerThemeHandlers()
   registerAiHandlers()
+  registerTtsHandlers()
 
   const win = createWindow()
   adoptWindow(win)
