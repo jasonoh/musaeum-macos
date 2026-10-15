@@ -504,5 +504,7 @@ export const EVENT_CHANNELS = {
   aiDone: 'event:ai-done',
   aiError: 'event:ai-error',
   /** Shelves or their membership changed — a write here, over REST, or an adoption (bookshelves D6). */
-  shelvesChanged: 'event:shelves-changed'
+  shelvesChanged: 'event:shelves-changed',
+  /** The speech model's download progress (voice reader D4). */
+  ttsModelProgress: 'event:tts-model-progress'
 } as const
