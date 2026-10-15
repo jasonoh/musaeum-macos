@@ -24,3 +24,5 @@ release/
 
 # The PDF reflow layout helper, built by scripts/build-layout-helper.sh
 helpers/bin/
+# The espeak-ng source and build tree, from scripts/build-espeak.sh
+helpers/.espeak-build/
