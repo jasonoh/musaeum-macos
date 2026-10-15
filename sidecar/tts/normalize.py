@@ -19,6 +19,17 @@ _CURRENCY = re.compile(
 )
 _DECIMAL = re.compile(r"(?<=\d)\.(?=\d)")
 
+# Text with nothing to say must be silent, not spoken (measured 2026-10-15: `***` is read
+# "asterisk asterisk asterisk", `[12]` "twelve", an emoji by its name).
+_ASTERISK = r"\*"
+_CITATION = r"\[\s*\d+(?:\s*[,\-\u2013]\s*\d+)*\s*\]"
+# Pictographs (U+1F000-1FAFF, which includes skin-tone modifiers; misc symbols and
+# dingbats U+2600-27BF) with any variation selector / zero-width joiner attached.
+_EMOJI = r"[\U0001F000-\U0001FAFF\u2600-\u27BF][\uFE0F\u200D]*"
+_TOKEN = "|".join((_ASTERISK, _CITATION, _EMOJI))
+# A run of tokens (so `* * *` is one match) with the whitespace on either side captured.
+_REMOVABLE = re.compile(r"(\s*)(?:" + _TOKEN + r")(?:\s*(?:" + _TOKEN + r"))*(\s*)")
+
 
 def _dollars(whole: str) -> str:
     return f"{whole} dollar" if whole == "1" else f"{whole} dollars"
@@ -41,5 +52,20 @@ def _currency(match: re.Match[str]) -> str:
     return f"{whole} point {fraction} dollars"
 
 
+def _drop(match: re.Match[str]) -> str:
+    """Remove a run of nothing-to-say tokens and heal only the whitespace around it."""
+    left, right = match.group(1), match.group(2)
+    if "\n" in left or "\n" in right:
+        return left + right
+    if match.start() == 0 or match.end() == len(match.string):
+        return ""
+    if left and right:
+        return " "
+    if left and match.string[match.end()] in ".,;:!?)":
+        return ""
+    return left + right
+
+
 def normalize_text(text: str) -> str:
+    text = _REMOVABLE.sub(_drop, text)
     return _DECIMAL.sub(" point ", _CURRENCY.sub(_currency, text))

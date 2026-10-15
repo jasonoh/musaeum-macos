@@ -42,3 +42,41 @@ def test_numbers_and_amounts_become_words(raw, expected):
 )
 def test_everything_else_passes_through(untouched):
     assert normalize_text(untouched) == untouched
+
+
+@pytest.mark.parametrize("raw", ["***", "* * *", "*", "[12]", "[1,2]", "[1, 2]", "[3-5]", "[3–5]", "\U0001F600", "❤️", "\U0001F468‍\U0001F469‍\U0001F467", "\U0001F44D\U0001F3FD"])
+def test_nothing_to_say_becomes_empty(raw):
+    assert normalize_text(raw) == ""
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("Text.[12] More", "Text. More"),
+        ("Text [12] more", "Text more"),
+        ("Text [1, 2], more", "Text, more"),
+        ("claim[3–5] holds", "claim holds"),
+        ("It ended.\n\n* * *\n\nThen it began.", "It ended.\n\n\n\nThen it began."),
+        ("a word* here", "a word here"),
+        ("Well done \U0001F600 friend", "Well done friend"),
+        ("Hi\U0001F44B️ there", "Hi there"),
+    ],
+)
+def test_removals_heal_the_whitespace_they_leave(raw, expected):
+    assert normalize_text(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "untouched",
+    [
+        "As he said [sic] here",
+        "Per [Hegel] and [Hegel, 1807]",
+        "[12 monkeys]",
+        "1,200 patients were enrolled",
+        "She paid 5 x 3 for it",
+        "Kojève read Hegel — “quoted” – café naïve †",
+        "Done   with  odd   spacing",
+    ],
+)
+def test_removals_leave_other_text_byte_identical(untouched):
+    assert normalize_text(untouched) == untouched
