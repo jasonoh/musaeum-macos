@@ -97,7 +97,8 @@ class ArraySource implements PlayerSource {
   readonly log: string[] = []
   constructor(readonly units: SpeechUnit[]) {}
   readonly take = vi.fn(async (): Promise<SpeechUnit | null> => {
-    const u = this.units[this.i++] ?? null
+    const u = this.units[this.i] ?? null
+    if (u) this.i++
     this.log.push(`take:${u ? u.mark : 'null'}`)
     return u
   })
@@ -110,6 +111,42 @@ class ArraySource implements PlayerSource {
     this.log.push(`rewind:${u.mark}`)
     this.i = k
   })
+}
+
+/**
+ * A source that behaves like the controller: it knows only its current block, refuses (throws) a
+ * rewind into any other, and holds the next block's first `take()` open until `release()` — the
+ * way a section load does. `abort()` settles a held take with null.
+ */
+class BlockSource implements PlayerSource {
+  b = 0
+  i = 0
+  held: Deferred<SpeechUnit | null> | null = null
+  constructor(public blocks: SpeechUnit[][]) {}
+  readonly take = vi.fn((): Promise<SpeechUnit | null> => {
+    const block = this.blocks[this.b] ?? []
+    if (this.i < block.length) return Promise.resolve(block[this.i++] ?? null)
+    this.held = deferred<SpeechUnit | null>()
+    return this.held.promise
+  })
+  readonly started = vi.fn((_u: SpeechUnit): void => {})
+  readonly rewind = vi.fn((u: SpeechUnit): void => {
+    const k = (this.blocks[this.b] ?? []).findIndex((x) => x.mark === u.mark)
+    if (k < 0) throw new Error(`rewind across a block to ${u.mark}`)
+    this.i = k
+  })
+  readonly abort = vi.fn((): void => {
+    this.held?.resolve(null)
+    this.held = null
+  })
+  /** The next block has loaded: the held take gets its first unit. */
+  release(): void {
+    this.b++
+    this.i = 0
+    const first = this.blocks[this.b]?.[this.i++] ?? null
+    this.held?.resolve(first)
+    this.held = null
+  }
 }
 
 interface Deferred<T> {
@@ -176,9 +213,9 @@ async function flush(): Promise<void> {
   for (let i = 0; i < 30; i++) await Promise.resolve()
 }
 
-interface Rig {
+interface Rig<S extends PlayerSource = ArraySource> {
   ctx: FakeContext
-  source: ArraySource
+  source: S
   player: SpeechPlayer
   spec: PlayerSpec
   starts: { mark: string; t: number }[]
@@ -193,8 +230,15 @@ function rig(
   synthesize: (r: TtsRequest) => Promise<TtsAudio>,
   prefetch?: number
 ): Rig {
+  return rigWith(new ArraySource(units), synthesize, prefetch)
+}
+
+function rigWith<S extends PlayerSource>(
+  source: S,
+  synthesize: (r: TtsRequest) => Promise<TtsAudio>,
+  prefetch?: number
+): Rig<S> {
   const ctx = new FakeContext()
-  const source = new ArraySource(units)
   const spec: PlayerSpec = { voice: 'af_heart', speed: 1 }
   const starts: { mark: string; t: number }[] = []
   const onEnd = vi.fn()
@@ -512,6 +556,159 @@ describe('SpeechPlayer', () => {
     expect(r.starts.map((s) => s.mark)).toEqual(['0', '4'])
   })
 
+  it('skip(-1) on the last sentence of a block, while the next block loads, replays it without rewinding across the block (review I1)', async () => {
+    const synth = latencySynth(0)
+    const source = new BlockSource([
+      [u(0), u(1, true)],
+      [u(2), u(3, true)]
+    ])
+    const r = rigWith(source, synth)
+    r.player.start()
+    await flush()
+    await r.advance(1500) // 1 sounds from 1.35 s; the next block's take is held open
+    expect(source.held).not.toBeNull()
+    const one = r.ctx.sources.find((s) => s.mark === '1')
+    const synthBefore = synth.mock.calls.length
+
+    r.player.skip(-1)
+    await flush()
+    expect(r.onError).not.toHaveBeenCalled()
+    expect(source.rewind).not.toHaveBeenCalled()
+    expect(one?.stopped).toBe(true)
+    const replay = r.ctx.sources.at(-1)
+    expect(replay?.mark).toBe('1')
+    expect(replay?.when).toBeCloseTo(1.5, 9)
+    expect(synth.mock.calls.length).toBe(synthBefore) // its audio is reused
+    expect(source.started.mock.calls.filter(([x]) => x.mark === '1')).toHaveLength(1)
+
+    // the next block arrives and follows the replay, after a block's pause
+    source.release()
+    await r.advance(10)
+    const two = r.ctx.sources.find((s) => s.mark === '2')
+    expect(two?.when).toBeCloseTo(1.5 + 1 + 0.7, 9)
+    expect(r.onError).not.toHaveBeenCalled()
+  })
+
+  it('a rewind the source refuses goes to onError, and the sounding sentence is not cut (review I1)', async () => {
+    const r = rig([u(0), u(1), u(2), u(3, true)], latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(500) // 0 sounds; 1 and 2 queued
+    r.source.rewind.mockImplementation(() => {
+      throw new Error('The reader lost its place.')
+    })
+    const zero = r.ctx.sources.find((s) => s.mark === '0')
+
+    expect(() => r.player.skip(1)).not.toThrow()
+    await flush()
+    expect(r.onError).toHaveBeenCalledTimes(1)
+    expect(r.onError).toHaveBeenCalledWith('The reader lost its place.')
+    expect(zero?.stopped).toBe(false)
+  })
+
+  it('restartAt during a held take aborts it, ignores its null, and plays the new page (review I2)', async () => {
+    const source = new BlockSource([
+      [u(0), u(1, true)],
+      [u(2), u(3, true)]
+    ])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(1500) // the next block's take is held open
+    expect(source.held).not.toBeNull()
+
+    // the controller has moved to the new page's block before the player is told
+    source.blocks = [[u(7), u(8, true)]]
+    source.b = 0
+    source.i = 0
+    r.player.restartAt(u(7))
+    await flush()
+    expect(source.abort).toHaveBeenCalledTimes(1)
+    expect(source.rewind).toHaveBeenCalledWith(u(7))
+    expect(r.onEnd).not.toHaveBeenCalled()
+    expect(r.onError).not.toHaveBeenCalled()
+    const seven = r.ctx.sources.find((s) => s.mark === '7')
+    expect(r.ctx.sources.filter((s) => !s.stopped && !s.ended).map((s) => s.mark)).toEqual([
+      '7',
+      '8'
+    ])
+    expect(seven?.when).toBeCloseTo(1.5, 9)
+  })
+
+  it('stop() aborts a held take', async () => {
+    const source = new BlockSource([[u(0, true)], [u(1, true)]])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(10)
+    expect(source.held).not.toBeNull()
+    await r.player.stop()
+    expect(source.abort).toHaveBeenCalledTimes(1)
+  })
+
+  it('start() after a take() rejection schedules the audio already queued (review minor 3)', async () => {
+    const synth = manualSynth()
+    const held = deferred<SpeechUnit | null>()
+    const source: PlayerSource = {
+      take: vi
+        .fn<() => Promise<SpeechUnit | null>>()
+        .mockResolvedValueOnce(u(0))
+        .mockRejectedValueOnce(new Error('Could not continue to the next chapter.'))
+        .mockReturnValue(held.promise),
+      started: vi.fn(),
+      rewind: vi.fn()
+    }
+    const r = rigWith(source, synth.fn)
+    r.player.start()
+    await flush()
+    expect(r.onError).toHaveBeenCalledWith('Could not continue to the next chapter.')
+    synth.calls[0]?.d.resolve(pcm(1, 0))
+    await flush()
+    expect(r.ctx.sources).toHaveLength(0)
+
+    r.player.start()
+    await flush()
+    expect(r.ctx.sources.map((s) => s.mark)).toEqual(['0'])
+  })
+
+  it('clears the highlight timer on end and on a failure with nothing left to play (review minor 4)', async () => {
+    const r = rig([u(0, true)], latencySynth(0))
+    r.player.start()
+    await flush()
+    expect(vi.getTimerCount()).toBe(1)
+    await r.advance(1100)
+    expect(r.onEnd).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+
+    const failing = rig([u(0, true)], () => Promise.reject(new Error('down')))
+    failing.player.start()
+    await flush()
+    expect(failing.onError).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('start() or restartAt(null) after the end asks the source again rather than doing nothing (review minor 4)', async () => {
+    const r = rig([u(0, true)], latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(1100)
+    expect(r.onEnd).toHaveBeenCalledTimes(1)
+    const takes = r.source.take.mock.calls.length
+
+    // still at the end: the source says so again, and so does the player
+    r.player.start()
+    await flush()
+    expect(r.source.take.mock.calls.length).toBe(takes + 1)
+    expect(r.onEnd).toHaveBeenCalledTimes(2)
+
+    // the reader moved back (the source has more to say): restartAt(null) plays it
+    r.source.units.push(u(1, true))
+    r.player.restartAt(null)
+    await flush()
+    expect(r.ctx.sources.at(-1)?.mark).toBe('1')
+    expect(r.starts.at(-1)?.mark).toBe('1')
+  })
+
   it('stop() stops every started source, closes the context, and ignores late synthesis', async () => {
     const synth = manualSynth()
     const r = rig([u(0), u(1), u(2), u(3, true)], synth.fn)
@@ -566,6 +763,20 @@ describe('SentenceCache', () => {
     await synth(req('S 50'))
     expect(inner).toHaveBeenCalledTimes(51)
     await synth(req('S 0'))
+    expect(inner).toHaveBeenCalledTimes(52)
+  })
+
+  it('is least-recently-used: a hit protects the oldest entry from the next eviction', async () => {
+    const inner = vi.fn(async (r: TtsRequest) => pcm(0.01, tagOf(r)))
+    const synth = new SentenceCache().wrap(inner)
+    for (let i = 0; i < 50; i++) await synth(req(`S ${i}`))
+    await synth(req('S 0')) // re-touch the oldest
+    expect(inner).toHaveBeenCalledTimes(50)
+    await synth(req('S 50')) // the 51st entry evicts S 1, not S 0
+    expect(inner).toHaveBeenCalledTimes(51)
+    await synth(req('S 0'))
+    expect(inner).toHaveBeenCalledTimes(51)
+    await synth(req('S 1'))
     expect(inner).toHaveBeenCalledTimes(52)
   })
 

@@ -31,13 +31,25 @@ export interface AudioContextLike {
   close(): Promise<void>
 }
 
+/**
+ * Where the sentences come from (the `SpeechController`, Task 6). The contract:
+ * - The player keeps at most one `take()` outstanding, and every `take()` MUST settle — with null
+ *   when it is superseded (after `abort()`), never left hanging.
+ * - `rewind()` is never called while a `take()` is pending. The player waits for the pending take
+ *   to settle, ignores its value, and only then rewinds.
+ * - `rewind()` is only ever asked for a unit of the block the source is on now. If it throws
+ *   anyway, the player reports the message through `onError`; it does not crash.
+ * - The player does not take the next block until the last unit of this one has `started()`.
+ */
 export interface PlayerSource {
-  /** Next unit, or null at the end of the book. May wait (a section is loading). */
+  /** Next unit, or null at the end of the book. May wait (a section is loading), but must settle. */
   take(): Promise<SpeechUnit | null>
   /** Called when a unit starts sounding: the source may now release the next block. */
   started(unit: SpeechUnit): void
   /** Move the cursor so the next take() returns `unit` again. Only ever asked for a unit of the current block. */
   rewind(unit: SpeechUnit): void
+  /** Settle a pending take() now (with null): called by `restartAt` and `stop` when one is in flight. */
+  abort?(): void
 }
 export interface PlayerSpec {
   voice: TtsVoice
@@ -110,6 +122,21 @@ interface Item {
   blockEndBefore: boolean
 }
 
+/**
+ * Decisions the controls rely on:
+ * - "The sounding sentence" is the last one to have started, even in the pause after it ended.
+ * - `skip(1)` cuts it and plays the next at once (the remaining pause is dropped); `skip(-1)` cuts
+ *   it and plays the one before it in the same block, or replays it if it is the first of its
+ *   block. If it was the last of its block and the source has moved on to the next one, it is
+ *   replayed from the audio already in hand: rewinding across a block is impossible (Facts 1),
+ *   and `started()` is not called a second time for it.
+ * - While paused (suspended), a skip still schedules the target at the frozen clock time and
+ *   moves the highlight to it; the audio is heard on resume.
+ * - `start()` after the end, and `restartAt(null)`, ask the source again: it either has more to
+ *   say (the reader moved) or answers null and `onEnd` fires again.
+ * - The 100 ms highlight timer runs only while there is something to play: it is cleared at the
+ *   end, at `stop()`, and after a failure once the sentences scheduled before it have finished.
+ */
 export class SpeechPlayer {
   private readonly ctx: AudioContextLike
   private readonly prefetch: number
@@ -121,14 +148,17 @@ export class SpeechPlayer {
   private newBlockNext = false
   private tailEnd: number | null = null
   private prevBlockEnd = false
-  private current: SpeechUnit | null = null
+  /** The sounding item: the last to have started, kept after it ends so `skip(-1)` can replay it. */
+  private current: Item | null = null
   private running = false
   private stopped = false
   private sourceDone = false
   private ended = false
   private failed: { unit: SpeechUnit | null } | null = null
   private taking = false
-  /** A rewind deferred until the in-flight take settles; that take's result is then dropped. */
+  /** The in-flight take's result is to be ignored (a restart or a rewind superseded it). */
+  private dropTake = false
+  /** A rewind deferred until the in-flight take settles. */
   private pendingRewind: SpeechUnit | null = null
   private scheduling = false
   private wake: () => void = () => {}
@@ -145,12 +175,10 @@ export class SpeechPlayer {
     if (this.failed) {
       const unit = this.failed.unit
       this.failed = null
-      if (unit) this.rewindTo(unit)
+      if (unit && !this.rewindTo(unit)) return
     } else if (this.running) return
-    this.running = true
-    this.ended = false
-    this.ensureTicker()
-    void this.fill()
+    this.sourceDone = false
+    this.run()
   }
 
   pause(): Promise<void> {
@@ -166,6 +194,7 @@ export class SpeechPlayer {
     this.stopped = true
     this.running = false
     this.clearTicker()
+    if (this.taking) this.deps.source.abort?.()
     for (const item of this.items) this.silence(item)
     this.items = []
     this.wake()
@@ -173,39 +202,58 @@ export class SpeechPlayer {
   }
 
   skip(delta: -1 | 1): void {
-    if (this.stopped || !this.running) return
+    if (this.stopped || !this.running || this.failed) return
     this.tick()
     const sounding = this.current
     if (!sounding) return
-    const at = this.blockTaken.indexOf(sounding)
-    let target: SpeechUnit | null
-    if (delta === 1) target = this.items.find((i) => !i.announced)?.unit ?? null
-    else if (at > 0) target = this.blockTaken[at - 1] ?? null
-    else if (at === 0) target = sounding
-    else return // the source has moved past the sounding block; it cannot go back across it (Facts 1)
-    this.discard(true)
-    if (target) this.rewindTo(target)
+    // the source has left the sounding unit's block (Facts 1): no rewind can reach it
+    const left = this.newBlockNext && this.blockTaken.at(-1) === sounding.unit
+    const at = left ? -1 : this.blockTaken.indexOf(sounding.unit)
+    if (delta === 1) {
+      const next = this.items.find((i) => !i.announced)?.unit
+      if (next && !this.rewindTo(next)) return
+      this.discard(true)
+    } else if (at >= 0) {
+      if (!this.rewindTo(this.blockTaken[at - 1] ?? sounding.unit)) return
+      this.discard(true)
+    } else {
+      if (!sounding.node) return // silence: nothing to replay
+      this.discard(true)
+      this.items = [{ ...sounding, scheduled: false, node: null }] // announced already
+      void this.schedule()
+    }
     void this.fill()
   }
 
   restartAt(unit: SpeechUnit | null): void {
     if (this.stopped) return
-    this.running = true
+    if (this.taking) {
+      this.dropTake = true
+      this.deps.source.abort?.()
+    }
     this.failed = null
-    this.ensureTicker()
-    this.discard(true)
     this.blockTaken = []
     this.newBlockNext = false
-    if (unit) this.rewindTo(unit)
-    void this.fill()
+    if (unit && !this.rewindTo(unit)) return
+    this.discard(true)
+    this.sourceDone = false
+    this.run()
   }
 
   specChanged(): void {
-    if (this.stopped || !this.running) return
+    if (this.stopped || !this.running || this.failed) return
     this.tick()
     const first = this.items.find((i) => !i.announced)
+    if (first && !this.rewindTo(first.unit)) return
     this.discard(false)
-    if (first) this.rewindTo(first.unit)
+    void this.fill()
+  }
+
+  private run(): void {
+    this.running = true
+    this.ended = false
+    this.ensureTicker()
+    void this.schedule()
     void this.fill()
   }
 
@@ -233,14 +281,17 @@ export class SpeechPlayer {
           unit = await this.deps.source.take()
         } catch (e) {
           if (this.stopped) return
+          this.dropTake = false
+          this.pendingRewind = null
           this.fail(null, e)
           return
         }
         if (this.stopped) return
-        if (this.pendingRewind) {
+        if (this.dropTake) {
+          this.dropTake = false
           const target = this.pendingRewind
           this.pendingRewind = null
-          this.applyRewind(target)
+          if (target && !this.applyRewind(target)) return
           continue
         }
         if (this.failed) return
@@ -251,6 +302,9 @@ export class SpeechPlayer {
         }
         this.accept(unit)
       }
+    } catch (e) {
+      // a source or synthesizer that throws synchronously must not become an unhandled rejection
+      if (!this.stopped) this.fail(null, e)
     } finally {
       this.taking = false
     }
@@ -261,7 +315,12 @@ export class SpeechPlayer {
     this.blockTaken.push(unit)
     this.newBlockNext = unit.blockEnd
     const { voice, speed } = this.deps.spec()
-    const audio = this.deps.synthesize({ text: unit.text, voice, speed })
+    let audio: Promise<TtsAudio>
+    try {
+      audio = this.deps.synthesize({ text: unit.text, voice, speed })
+    } catch (e) {
+      audio = Promise.reject(e)
+    }
     audio.catch(() => {}) // a rejection is reported when it reaches the head, once
     this.items.push({
       unit,
@@ -276,19 +335,31 @@ export class SpeechPlayer {
     void this.schedule()
   }
 
-  /** Rewind now, or — if a take is in flight — once it settles, dropping what it brings. */
-  private rewindTo(unit: SpeechUnit): void {
+  /**
+   * Rewind now, or — if a take is in flight — once it settles, ignoring what it brings. False when
+   * the source refused: that is reported through `onError` and nothing has been cut.
+   */
+  private rewindTo(unit: SpeechUnit): boolean {
     this.sourceDone = false
     if (this.taking) {
       this.pendingRewind = unit
-    } else this.applyRewind(unit)
+      this.dropTake = true
+      return true
+    }
+    return this.applyRewind(unit)
   }
 
-  private applyRewind(unit: SpeechUnit): void {
+  private applyRewind(unit: SpeechUnit): boolean {
+    try {
+      this.deps.source.rewind(unit)
+    } catch (e) {
+      this.fail(null, e)
+      return false
+    }
     const at = this.blockTaken.indexOf(unit)
     if (at >= 0) this.blockTaken = this.blockTaken.slice(0, at)
     this.newBlockNext = false
-    this.deps.source.rewind(unit)
+    return true
   }
 
   /** Stop and drop every unstarted item (and, if `cut`, the sounding one too). */
@@ -378,6 +449,7 @@ export class SpeechPlayer {
     this.tick() // a throttled interval may not have announced it yet
     this.items = this.items.filter((i) => i !== item)
     this.checkEnd()
+    this.idleAfterFailure()
   }
 
   /** Announce every scheduled item the clock has reached, in order; then refill. */
@@ -390,7 +462,7 @@ export class SpeechPlayer {
       if (!item.scheduled || item.start > now + 1e-9) break
       item.announced = true
       announced = true
-      this.current = item.unit
+      this.current = item
       this.deps.source.started(item.unit)
       this.deps.onUnitStart(item.unit)
     }
@@ -417,7 +489,13 @@ export class SpeechPlayer {
     }
     this.failed = { unit }
     this.wake()
+    this.idleAfterFailure()
     this.deps.onError(e instanceof Error ? e.message : String(e))
+  }
+
+  /** After a failure, the highlight timer stops once the sentences scheduled before it are done. */
+  private idleAfterFailure(): void {
+    if (this.failed && this.items.length === 0) this.clearTicker()
   }
 
   private ensureTicker(): void {
