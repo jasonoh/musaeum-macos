@@ -26,6 +26,12 @@ interface Props {
   /** A create is in flight. */
   busy: boolean
   onActivate(): void
+  /**
+   * Start the voice reader at the selection; the engine passes it only when the
+   * reader wired one. Not rendered yet — the button is the listen bar's slice
+   * (voice reader UI, Task 7).
+   */
+  onReadFromHere?(): void
 }
 
 /** Roughly the chip's own box and the gap it keeps — used only to decide above-or-below. */

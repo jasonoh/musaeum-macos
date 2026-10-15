@@ -22,6 +22,7 @@ import {
   type AnnotationPlan,
   type SelectionCapture
 } from '@/lib/annotations'
+import { SPEECH_DRAW_KIND } from '@/lib/speech-controller'
 import { readerPageCss, resolveReaderPalette } from '@/lib/theme/reader-palette'
 import type { ReaderPrefs, ReaderSection, ReaderTocItem } from '@/stores/reader.store'
 import { useThemeStore } from '@/stores/theme.store'
@@ -54,6 +55,13 @@ interface Props {
      * and null whenever the engine cannot say (see `sectionOffset`).
      */
     sectionOffset: number | null
+    /**
+     * The page on screen, as the engine's own live `Range` — the voice reader's
+     * containment check (AC17) reads it to tell a hand turn from its own scroll.
+     * Read it in the handler and never hold it, and never let it reach the
+     * position report: it is a session fact, like `sectionOffset`.
+     */
+    range: Range | null
   }): void
   /**
    * The section that has just been rendered, with its own text. Fired from the
@@ -96,6 +104,12 @@ interface Props {
    * refused-by-null and capped (AC13). The parent calls the service with it.
    */
   onHighlight(locator: AnnotationLocator): Promise<unknown>
+  /**
+   * The chip's second gesture: start the voice reader at the selection. Handed
+   * a clone of the selection's own range, in the section document the voice
+   * reader's cursor is built over. Absent, the chip offers only Highlight.
+   */
+  onReadFromHere?(range: Range): void
   onError(message: string): void
   /**
    * The book's own iframe steals focus as soon as a page renders, so the
@@ -142,6 +156,7 @@ export function ReaderEngine({
   sectionLabel,
   onShowAnnotation,
   onHighlight,
+  onReadFromHere,
   onError,
   onKeyDown,
   viewRef
@@ -180,6 +195,7 @@ export function ReaderEngine({
     onSelection,
     onShowAnnotation,
     onHighlight,
+    onReadFromHere,
     onError,
     onKeyDown
   })
@@ -211,6 +227,7 @@ export function ReaderEngine({
       onSelection,
       onShowAnnotation,
       onHighlight,
+      onReadFromHere,
       onError,
       onKeyDown
     }
@@ -231,7 +248,12 @@ export function ReaderEngine({
   const plan = useRef<AnnotationPlan>({ rows: [], undrawable: [] })
 
   /** The selection chip: the live selection's rect and its locator (D8.1). */
-  const [chip, setChip] = useState<{ rect: SelectionRect; capture: SelectionCapture } | null>(null)
+  const [chip, setChip] = useState<{
+    rect: SelectionRect
+    capture: SelectionCapture
+    /** A clone, so a later change to the live selection cannot move it. */
+    range: Range
+  } | null>(null)
   const [saving, setSaving] = useState(false)
 
   /**
@@ -291,12 +313,22 @@ export function ReaderEngine({
      * R14), and the draw function is selected from a table by that kind rather
      * than hardcoded: a name nothing reads is a comment, and the criterion says
      * the plan *names* the draw.
+     *
+     * The voice reader's sentence comes through this same arm under its own
+     * kind (`SPEECH_DRAW_KIND`, `src/lib/speech-controller.ts`) — one overlayer,
+     * never a second. It is offered by the speech controller alone and is never
+     * in `annotations`, so the plan neither re-adds nor removes it and nothing
+     * about it is ever saved.
      */
     view.addEventListener('draw-annotation', (event) => {
       const { draw, annotation } = (event as CustomEvent<FoliateDrawAnnotationDetail>).detail
       const kind = annotation.kind
-      if (!isAnnotationDrawKind(kind)) return
-      draw(DRAWS[kind], { color: typeof annotation.color === 'string' ? annotation.color : '' })
+      const drawKind: EngineDrawKind | null =
+        kind === SPEECH_DRAW_KIND ? SPEECH_DRAW_KIND : isAnnotationDrawKind(kind) ? kind : null
+      if (!drawKind) return
+      draw(DRAWS[drawKind], {
+        color: typeof annotation.color === 'string' ? annotation.color : ''
+      })
     })
 
     /**
@@ -343,7 +375,8 @@ export function ReaderEngine({
         // The book's own name for the section — never a chapter number, which
         // drifts across editions (D5)
         label: detail.tocItem?.label?.trim() || null,
-        sectionOffset: sectionOffset(loaded.current?.doc ?? null, detail.range)
+        sectionOffset: sectionOffset(loaded.current?.doc ?? null, detail.range),
+        range: detail.range ?? null
       })
       void replan()
     })
@@ -384,6 +417,7 @@ export function ReaderEngine({
         }
         setChip({
           rect,
+          range: range.cloneRange(),
           capture: {
             quote,
             cfi,
@@ -524,25 +558,49 @@ export function ReaderEngine({
       })
   }, [chip, saving])
 
+  /**
+   * The chip's voice gesture: hand the selection's range to the voice reader and
+   * put the chip away — the spoken sentence's highlight is the feedback.
+   */
+  const onChipReadFromHere = useCallback(() => {
+    if (!chip) return
+    cb.current.onReadFromHere?.(chip.range)
+    setChip(null)
+  }, [chip])
+
   return (
     <div ref={hostRef} className="h-full w-full">
-      {chip && <SelectionChip rect={chip.rect} busy={saving} onActivate={onChipActivate} />}
+      {chip && (
+        <SelectionChip
+          rect={chip.rect}
+          busy={saving}
+          onActivate={onChipActivate}
+          onReadFromHere={onReadFromHere ? onChipReadFromHere : undefined}
+        />
+      )}
     </div>
   )
 }
+
+/** Every kind the `draw-annotation` arm draws: the plan's, and the voice reader's sentence. */
+type EngineDrawKind = AnnotationDrawKind | typeof SPEECH_DRAW_KIND
 
 /**
  * The draw function each kind names (reading R14).
  *
  * A table rather than a hardcoded call, because AC16 says the plan *names* the
  * draw and a name nothing reads is a comment: the row's `kind` is what selects
- * this, and one entry per `AnnotationDrawKind` is a typecheck — a second kind
- * cannot be added without saying what draws it.
+ * this, and one entry per kind is a typecheck — a second kind cannot be added
+ * without saying what draws it.
+ *
+ * `speech` is a fill like a highlight, in the palette's `speech` literal that
+ * rides on the annotation. It is deliberately not in `ANNOTATION_DRAW_KINDS`:
+ * that list is the persisted plan's, and a spoken sentence is never a record.
  */
-const DRAWS: Record<AnnotationDrawKind, (rects: unknown, options?: { color?: string }) => unknown> =
-  {
-    highlight: Overlayer.highlight
-  }
+const DRAWS: Record<EngineDrawKind, (rects: unknown, options?: { color?: string }) => unknown> = {
+  highlight: Overlayer.highlight,
+  speech: Overlayer.highlight
+}
 
 /** `goToFraction` throws for books with no section-size index. */
 async function goToFraction(view: FoliateView, fraction: number): Promise<void> {

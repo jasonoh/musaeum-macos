@@ -54,6 +54,75 @@ declare module '@vendor/foliate-js/view.js' {
     setStyles?(css: string): void
     next(): Promise<void>
     prev(): Promise<void>
+    /**
+     * The section on screen: one entry (`paginator.js:1092-1098`), or none before
+     * anything has been displayed. `index` is the spine index `getCFI` wants.
+     * **During a section change `load` fires before this moves**: the paginator
+     * emits `load` from inside `view.load()` and assigns `#view` only after it
+     * (`paginator.js:971-998`), so a reader of this inside a `load` listener
+     * still sees the previous section.
+     */
+    getContents(): FoliateContents[]
+    /**
+     * Scroll so `anchor` is on screen. `select` true makes the paginator *select*
+     * the range afterwards (`relocate` reason `'selection'`, `paginator.js:577-578`);
+     * false collapses the selection to the anchor's start (`'navigation'`).
+     * Paginator only — `foliate-fxl` has none, hence optional.
+     */
+    scrollToAnchor?(anchor: Range | Element | number, select?: boolean): Promise<void>
+    /**
+     * Go to the adjacent linear section. **Resolves to `undefined` either way**:
+     * at the last section `goTo` finds no index and returns without moving
+     * (`paginator.js:1022-1026`, `:1081-1083`), and it also returns without
+     * moving while a page turn holds the paginator's lock. A caller learns
+     * whether it moved from `getContents()`, not from the result. Paginator only.
+     */
+    nextSection?(): Promise<void>
+    prevSection?(): Promise<void>
+  }
+
+  /** One rendered section, as `renderer.getContents()` reports it. */
+  export interface FoliateContents {
+    index: number
+    doc: Document
+    overlayer?: unknown
+  }
+
+  /**
+   * `vendor/foliate-js/tts.js`'s `TTS`: a cursor over the section's blocks, each
+   * handed out as SSML with a `<mark name>` before every segment.
+   *
+   * **The range map is rebuilt on every cursor move.** `#ranges` is reassigned
+   * whenever `start`/`resume`/`prev`/`next`/`from` lands on a block
+   * (`tts.js:213-216`), and `setMark` looks its name up in that map
+   * (`tts.js:271-277`) — the names restart at `"0"` in every block. So a
+   * `setMark` for a sentence of block N after the cursor has moved to N+1 either
+   * highlights nothing or highlights block N+1's sentence of the same number.
+   * The voice reader's controller (`src/lib/speech-controller.ts`) is the one
+   * place that owns that ordering.
+   */
+  export interface FoliateTTS {
+    /** The section document this cursor was built over. */
+    readonly doc: Document
+    /**
+     * Called by `setMark` (and by `prev`/`next` when paused) with a clone of
+     * the segment's range. A plain field (`tts.js:212`), so it can be replaced.
+     */
+    highlight: (range: Range) => void
+    /** The first block's SSML, or — if the first block is empty — `next()`'s. */
+    start(): string | undefined
+    resume(): string | undefined
+    prev(paused?: boolean): string | undefined
+    /** The next block's SSML; `undefined` past the section's last block. */
+    next(paused?: boolean): string | undefined
+    /**
+     * The block holding `range`'s start, cut to begin at the first segment that
+     * starts at or after it (`tts.js:259-270`); `undefined` when no block ends
+     * after it.
+     */
+    from(range: Range): string | undefined
+    /** Highlight the named segment of the **current** block; silent if the name is not in it. */
+    setMark(mark: string): void
   }
 
   /** Opaque resolved navigation target; only its truthiness is meaningful. */
@@ -216,6 +285,24 @@ declare module '@vendor/foliate-js/view.js' {
      * section's own base CFI.
      */
     getCFI(index: number, range: Range | null): string
+    /**
+     * The last `relocate` detail (`view.js:329-338`), or null before the first
+     * and after `close()`. Its `range` is the page on screen.
+     */
+    lastLocation?: FoliateRelocateDetail | null
+    /**
+     * The section's TTS cursor, made by `initTTS` and nulled by `close()`.
+     * Undefined until the first `initTTS`.
+     */
+    tts?: FoliateTTS | null
+    /**
+     * Build `tts` over the section on screen (`view.js:584-590`). **A no-op when
+     * `tts` already sits on that document** — the `highlight` passed then is
+     * ignored, so a caller that needs its own has to assign `tts.highlight`. It
+     * does not follow a section change: call it again after one. Without a
+     * `highlight`, the default is `renderer.scrollToAnchor(range, true)`.
+     */
+    initTTS(granularity?: 'word' | 'sentence', highlight?: (range: Range) => void): Promise<void>
     /** Throws if `open()` resolved but nothing was ever displayed. */
     close(): void
   }
