@@ -54,7 +54,15 @@ describe('sanitizePrefs', () => {
   })
 
   it('keeps a valid value for every field', () => {
-    const prefs = { typeface: 'sans', theme: 'paper', fontSize: 22, lineHeight: 1.8, margin: 96 }
+    const prefs = {
+      typeface: 'sans',
+      theme: 'paper',
+      fontSize: 22,
+      lineHeight: 1.8,
+      margin: 96,
+      voice: 'bm_george',
+      speed: 1.2
+    }
     expect(sanitizePrefs(prefs)).toEqual(prefs)
   })
 
@@ -126,6 +134,43 @@ describe('sanitizePrefs', () => {
       typeface: 'sans',
       fontSize: 24
     })
+  })
+
+  it('falls back to af_heart for an unknown voice and keeps a known one', () => {
+    expect(sanitizePrefs({ voice: 'nope' }).voice).toBe('af_heart')
+    expect(sanitizePrefs({ voice: 'bm_george' }).voice).toBe('bm_george')
+  })
+
+  it('clamps speed to 0.8–1.5 in tenths and defaults NaN to 1.0', () => {
+    expect(sanitizePrefs({ speed: 9 }).speed).toBe(1.5)
+    expect(sanitizePrefs({ speed: 0.1 }).speed).toBe(0.8)
+    expect(sanitizePrefs({ speed: 1.26 }).speed).toBe(1.3)
+    expect(sanitizePrefs({ speed: 'fast' }).speed).toBe(1.0)
+    expect(sanitizePrefs({ speed: NaN }).speed).toBe(1.0)
+  })
+
+  it('persists voice and speed but not whether the listen bar is open', () => {
+    const persisted = persistedReaderState(useReaderStore.getState())
+    expect(JSON.stringify(persisted)).toContain('"voice"')
+    expect(JSON.stringify(persisted)).toContain('"speed"')
+    expect(persisted).not.toHaveProperty('listenOpen')
+  })
+
+  it('a prefs object stored before this slice still loads, with the new defaults', () => {
+    const old = { typeface: 'sans', fontSize: 20, lineHeight: 1.5, margin: 40, theme: 'auto' }
+    expect(sanitizePrefs(old)).toMatchObject({ voice: 'af_heart', speed: 1.0, typeface: 'sans' })
+  })
+
+  it('closing a book closes the listen bar', () => {
+    const get = () => useReaderStore.getState()
+    get().openBook(makeBook('b1'))
+    get().toggleListen()
+    expect(get().listenOpen).toBe(true)
+    get().close()
+    expect(get().listenOpen).toBe(false)
+    get().toggleListen()
+    get().closeListen()
+    expect(get().listenOpen).toBe(false)
   })
 })
 

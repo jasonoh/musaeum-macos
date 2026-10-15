@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { AiChunkEvent, AiDoneEvent, AiErrorEvent } from '@shared/ai.types'
 import type { Book, ReaderFormat, ReflowProgress, ReflowResult } from '@shared/book.types'
 import { primaryFormat, readerTarget } from '@shared/book.types'
+import { TTS_DEFAULT_VOICE, TTS_VOICES, clampTtsSpeed, type TtsVoice } from '@shared/tts.types'
 import type { Annotation, AnnotationsState } from '@shared/annotation.types'
 import type { AnnotationLocator } from '@/lib/annotations'
 import type { AskRung } from '@ask/ask-context'
@@ -51,6 +52,9 @@ export interface ReaderPrefs {
   lineHeight: number
   margin: number // px
   theme: ReaderPageTheme
+  /** The voice reader's voice and speed; persisted with the typography. */
+  voice: TtsVoice
+  speed: number
 }
 
 export const DEFAULT_PREFS: ReaderPrefs = {
@@ -61,7 +65,9 @@ export const DEFAULT_PREFS: ReaderPrefs = {
   // The app theme, by default: the reader's chrome *is* app chrome, so a page
   // that disagreed with the frame around it would be the same defect the reader's
   // z-index history warns about.
-  theme: 'auto'
+  theme: 'auto',
+  voice: TTS_DEFAULT_VOICE,
+  speed: 1.0
 }
 
 /**
@@ -127,7 +133,9 @@ export function sanitizePrefs(value: unknown): ReaderPrefs {
     theme: oneOf(THEME_OPTIONS, p.theme, DEFAULT_PREFS.theme),
     fontSize: inRange(p.fontSize, PREF_RANGES.fontSize, DEFAULT_PREFS.fontSize),
     lineHeight: inRange(p.lineHeight, PREF_RANGES.lineHeight, DEFAULT_PREFS.lineHeight),
-    margin: inRange(p.margin, PREF_RANGES.margin, DEFAULT_PREFS.margin)
+    margin: inRange(p.margin, PREF_RANGES.margin, DEFAULT_PREFS.margin),
+    voice: TTS_VOICES.find((v) => v === p.voice) ?? DEFAULT_PREFS.voice,
+    speed: typeof p.speed === 'number' ? clampTtsSpeed(p.speed) : DEFAULT_PREFS.speed
   }
 }
 
@@ -152,6 +160,8 @@ interface ReaderState {
   /** Typography panel — session state like `tocOpen`, never persisted. */
   prefsOpen: boolean
   prefs: ReaderPrefs
+  /** The listen bar — session state like `prefsOpen`, never persisted, closed with the book. */
+  listenOpen: boolean
 
   /**
    * The ask panel. It shares the reader's one side slot rather than getting one
@@ -261,6 +271,8 @@ interface ReaderState {
   /** Open the search panel, or close it — either way the other two occupants go. */
   toggleSearch(): void
   closeSearch(): void
+  toggleListen(): void
+  closeListen(): void
   setQuery(query: string): void
   /** The only writer of a live run's state. See `startSearch`. */
   setSearchState(patch: SearchPatch): void
@@ -422,6 +434,7 @@ export const useReaderStore = create<ReaderState>()(
       reflow: null,
       tocOpen: false,
       prefsOpen: false,
+      listenOpen: false,
       prefs: DEFAULT_PREFS,
       ...ASK_IDLE,
       ...SEARCH_IDLE,
@@ -471,6 +484,7 @@ export const useReaderStore = create<ReaderState>()(
                 ? { bookId: book.id, phase: 'start', completed: 0, total: 0 }
                 : null,
             // A book is a new conversation: transcript, verdict, pointer and all
+            listenOpen: false,
             ...ASK_IDLE,
             // …and a new search: results for another book's text are not results
             ...SEARCH_IDLE,
@@ -501,6 +515,7 @@ export const useReaderStore = create<ReaderState>()(
           reflow: null,
           tocOpen: false,
           prefsOpen: false,
+          listenOpen: false,
           ...ASK_IDLE,
           ...SEARCH_IDLE,
           ...NOTES_IDLE
@@ -556,6 +571,8 @@ export const useReaderStore = create<ReaderState>()(
             : { searchOpen: true, tocOpen: false, askOpen: false, notesOpen: false }
         ),
       closeSearch: () => set({ ...SEARCH_IDLE }),
+      toggleListen: () => set((s) => ({ listenOpen: !s.listenOpen })),
+      closeListen: () => set({ listenOpen: false }),
       setQuery: (query) => set({ query }),
 
       /**
