@@ -187,6 +187,11 @@ def main() -> None:
             print(f"unparseable request: {line[:200]}", file=sys.stderr)
             continue
         dispatch(request)
+    # stdin closed: let in-flight work finish while the interpreter is still whole. A worker
+    # still importing (joblib/loky registers an atexit hook) once shutdown has begun fails
+    # with "can't register atexit after shutdown".
+    POOL.shutdown(wait=True)
+    TTS_POOL.shutdown(wait=True)
 
 
 if __name__ == "__main__":
