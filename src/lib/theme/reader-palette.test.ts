@@ -239,6 +239,12 @@ describe('readerPalette', () => {
         gold: { ...DEFAULT_TOKENS.gold, '400': gold400 }
       })
 
+    // The other half of this proof is the standing sweep in
+    // `electron/main/services/theme/derive.test.ts` ("speech highlight contrast on
+    // every built-in theme"): since `speech === link === gold.400` and
+    // `bg === ink.900` (pinned above), it decides every built-in. The rows here are
+    // the ones this project can reach. `LIGHT_TOKENS` (2.975) is deliberately
+    // absent: it is an ad hoc fixture, not a built-in theme.
     // The two tightest of the thirteen built-ins, measured by running the engine
     // over each (3.03 and 3.09; the rest are 3.9 to 8.8). The (ink-900, gold-400)
     // pairs are the engine's output, restated as literals.
@@ -254,8 +260,8 @@ describe('readerPalette', () => {
       expect(ratio(palette.speech, palette.bg)).toBeGreaterThanOrEqual(FLOOR)
     })
 
-    it('can fail: a speech color near the page does not clear the floor', () => {
-      expect(ratio(INK_PALETTE.bg, INK_PALETTE.bg)).toBeLessThan(FLOOR)
+    it('can fail: a low-contrast speech color does not clear the floor', () => {
+      expect(ratio('#3a3226', INK_PALETTE.bg)).toBeLessThan(FLOOR)
     })
   })
 

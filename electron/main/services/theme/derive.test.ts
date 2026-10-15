@@ -1453,3 +1453,26 @@ describe('D1 (7a) — the :root status values are the canonical default IR’s d
     }
   })
 })
+
+/**
+ * The reader's speech highlight, decided for every built-in theme (voice reader
+ * AC19). The coupling lives in `src/lib/theme/reader-palette.ts`: `speech ===
+ * link === gold.400` and the page `bg === ink.900`, so the contrast the highlight
+ * has against the page is `gold-400` against `ink-900`. That file's test pins the
+ * three equalities; this sweep is the other half, and it cannot import the palette
+ * module (TS6307 project boundary). Standing, so a new or edited built-in cannot
+ * go stale the way pasted literals would.
+ */
+describe('speech highlight contrast on every built-in theme (AC19)', () => {
+  const stems = readdirSync(BUILTIN).filter((f) => f.endsWith('.yaml'))
+
+  it('finds the built-ins', () => {
+    expect(stems.length).toBeGreaterThan(0)
+  })
+
+  it.each(stems)('%s: gold-400 clears 3:1 on ink-900', (file) => {
+    const { tokens } = deriveFixture(join(BUILTIN, file))
+    const ratio = contrast(hexToRgb(tokens.gold['400']), hexToRgb(tokens.ink['900']))
+    expect(ratio, file).toBeGreaterThanOrEqual(3.0)
+  })
+})
