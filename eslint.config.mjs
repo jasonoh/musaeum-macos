@@ -15,6 +15,8 @@ export default tseslint.config(
   // hidden from git by `.git/info/exclude` — which ESLint's flat config does not
   // read — and by 2026-10-13 six stale copies had made `npm run lint` report
   // 1,567 parsing errors, every one of them in a file this repo does not own.
+  // `helpers/.espeak-build/` is where `scripts/build-espeak.sh` unpacks the espeak-ng
+  // source — gitignored, vendored, and 133 errors the moment the script has run.
   {
     ignores: [
       'out/',
@@ -24,7 +26,8 @@ export default tseslint.config(
       'vendor/**',
       '.claude/',
       '.obsidian/',
-      '.delta/'
+      '.delta/',
+      'helpers/.espeak-build/'
     ]
   },
   js.configs.recommended,
