@@ -47,7 +47,7 @@ mkdir -p "$out/lib" "$out/share/espeak-ng-data"
 cp "$work/install/lib/libespeak-ng.1.52.0.dylib" "$out/lib/libespeak-ng.dylib"
 
 # English only. The sentences we speak are English, and `ru_dict` alone is 8.5 of
-# the full data's 19.8 MB; pruned, the whole bundle is ~2.3 MB.
+# the full data's 19.8 MB; pruned, the whole bundle is ~1.4 MB.
 data="$work/install/share/espeak-ng-data"
 for entry in "$data"/*; do
   name="$(basename "$entry")"

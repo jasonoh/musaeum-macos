@@ -170,4 +170,17 @@ describe('the download', () => {
     await downloadModel()
     expect(call).toHaveBeenCalledTimes(2)
   })
+
+  it('cancels the sidecar job when its call rejects, and a later download starts a fresh job', async () => {
+    call.mockRejectedValueOnce(new Error('timed out'))
+    await expect(downloadModel()).rejects.toThrow('timed out')
+    await Promise.resolve()
+    const first = call.mock.calls[0]?.[1] as { job_id: string }
+    expect(call).toHaveBeenCalledWith('tts_cancel_download', { job_id: first.job_id })
+    call.mockResolvedValue({ status: 'ready' } as never)
+    await downloadModel()
+    const starts = call.mock.calls.filter((c) => c[0] === 'tts_download_model')
+    expect(starts).toHaveLength(2)
+    expect((starts[1]?.[1] as { job_id: string }).job_id).not.toBe(first.job_id)
+  })
 })

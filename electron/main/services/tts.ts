@@ -133,6 +133,14 @@ export function downloadModel(): Promise<TtsDownloadResult> {
   const jobId = randomUUID()
   const promise = sidecar
     .call<TtsDownloadResult>('tts_download_model', { model_dir: modelDir(), job_id: jobId }, 30 * 60_000)
+    .catch((err: unknown) => {
+      // The call gave up (app-side timeout, sidecar restart) but the Python job may still be
+      // running: stop it, so the next download cannot race it on the same `.part`.
+      void Promise.resolve()
+        .then(() => sidecar.call('tts_cancel_download', { job_id: jobId }))
+        .catch(() => undefined)
+      throw err
+    })
     .finally(() => {
       if (running?.jobId === jobId) running = null
     })
