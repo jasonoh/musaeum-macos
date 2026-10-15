@@ -99,16 +99,20 @@ const CHIP = readFileSync(
   .replace(/(^|\s)\/\/[^\n]*/gm, '$1')
 
 describe('the selection chip against the window’s drag regions', () => {
-  it('marks the chip as no-drag, so a rect in the top band is still clickable', () => {
-    expect(CHIP).toContain('<button')
+  it('marks every chip button as no-drag, so a rect in the top band is still clickable', () => {
     const [, ...rest] = CHIP.split('<button')
-    const tag = rest[0]!.slice(0, rest[0]!.indexOf('>'))
-    // The chip's own class list, not the whole tag: the assertion is about the
-    // attribute a click actually reads, and `toContain` over the tag would pass
-    // for a marker on the wrong element.
-    const classes = /className="([^"]*)"/.exec(tag)?.[1] ?? ''
-    expect(classes, 'the chip’s opening tag must carry a class list').not.toBe('')
-    expect(classes.split(/\s+/)).toContain('app-no-drag')
+    // Highlight and Read from here: a walk that found one would pass with the second unmarked.
+    expect(rest.length).toBeGreaterThanOrEqual(2)
+    // The class list both buttons share, read as the attribute a click actually reads.
+    const shared = /const buttonClass =\s*'([^']*)'/.exec(CHIP)?.[1] ?? ''
+    expect(shared, 'the chip’s shared class list').not.toBe('')
+    expect(shared.split(/\s+/)).toContain('app-no-drag')
+    for (const part of rest) {
+      const tag = part.slice(0, part.indexOf('>\n'))
+      expect(tag, 'each chip button takes the shared class list').toContain(
+        'className={buttonClass}'
+      )
+    }
   })
 
   it('positions itself in viewport coordinates, which is what a fixed box reads', () => {

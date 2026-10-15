@@ -239,3 +239,39 @@ export const NotesIcon = ({ className }: IconProps) => (
     <path d="M14.2 17.2l4.9-4.9a1.7 1.7 0 0 0-2.4-2.4l-4.9 4.9-.6 3 3-.6z" />
   </svg>
 )
+
+/** Listen: a speaker with one sound wave — the voice reader's header toggle. */
+export const ListenIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" />
+    <path d="M15.5 9.2a4 4 0 0 1 0 5.6M18 6.8a7.5 7.5 0 0 1 0 10.4" />
+  </svg>
+)
+
+/** Transport: play, pause, and a sentence back or forward — the listen bar's glyphs. */
+export const PlayIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M8 5.5v13l10.5-6.5z" fill="currentColor" />
+  </svg>
+)
+
+export const PauseIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <rect x="6.5" y="5.5" width="3.8" height="13" rx="0.8" fill="currentColor" />
+    <rect x="13.7" y="5.5" width="3.8" height="13" rx="0.8" fill="currentColor" />
+  </svg>
+)
+
+export const SkipBackIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M6 5.5v13" />
+    <path d="M18 5.5v13L9 12z" fill="currentColor" />
+  </svg>
+)
+
+export const SkipForwardIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <path d="M18 5.5v13" />
+    <path d="M6 5.5v13l9-6.5z" fill="currentColor" />
+  </svg>
+)

@@ -28,8 +28,7 @@ interface Props {
   onActivate(): void
   /**
    * Start the voice reader at the selection; the engine passes it only when the
-   * reader wired one. Not rendered yet — the button is the listen bar's slice
-   * (voice reader UI, Task 7).
+   * reader wired one, and the second button exists only then.
    */
   onReadFromHere?(): void
 }
@@ -38,34 +37,51 @@ interface Props {
 const CHIP_HEIGHT = 26
 const CHIP_GAP = 8
 
-export function SelectionChip({ rect, busy, onActivate }: Props) {
+export function SelectionChip({ rect, busy, onActivate, onReadFromHere }: Props) {
   // Above the selection when there is room, below it when there is not: the chip
   // must never be the thing that covers the words it is about.
   const above = rect.top - CHIP_GAP - CHIP_HEIGHT >= 0
 
+  const position = {
+    left: rect.left + rect.width / 2,
+    top: above ? rect.top - CHIP_GAP - CHIP_HEIGHT : rect.top + rect.height + CHIP_GAP
+  }
+  const buttonClass =
+    'app-no-drag rounded-md border border-gold-500/50 bg-ink-900 px-2.5 py-1 text-[11px] font-medium text-gold-300 shadow-cover-lift transition-colors hover:bg-ink-800 disabled:opacity-50'
+
   return (
-    <button
-      type="button"
-      // **`app-no-drag` because the chip floats, so its rect can land inside the
-      // reader's draggable top band** — where a control without the marker takes
-      // no mouse input at all: no hover, no click, while the keyboard and every
-      // synthetic `element.click()` report it perfectly healthy
-      // (`docs/invariants/reader.md:45`; held by
-      // `src/components/reader/drag-regions.test.ts`).
-      className="app-no-drag fixed z-10 -translate-x-1/2 rounded-md border border-gold-500/50 bg-ink-900 px-2.5 py-1 text-[11px] font-medium text-gold-300 shadow-cover-lift transition-colors hover:bg-ink-800 disabled:opacity-50"
-      style={{
-        left: rect.left + rect.width / 2,
-        top: above ? rect.top - CHIP_GAP - CHIP_HEIGHT : rect.top + rect.height + CHIP_GAP
-      }}
-      disabled={busy}
-      // The gesture is the mouse's, so the button must not take the selection
-      // with it: a `mousedown` that is allowed to land collapses the range
-      // before the click ever arrives, and the chip would be pressing nothing.
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onActivate}
-      title="Highlight this text"
-    >
-      {busy ? 'Saving…' : 'Highlight'}
-    </button>
+    <div className="fixed z-10 flex -translate-x-1/2 gap-1" style={position}>
+      <button
+        type="button"
+        // **`app-no-drag` because the chip floats, so its rect can land inside the
+        // reader's draggable top band** — where a control without the marker takes
+        // no mouse input at all: no hover, no click, while the keyboard and every
+        // synthetic `element.click()` report it perfectly healthy
+        // (`docs/invariants/reader.md:45`; held by
+        // `src/components/reader/drag-regions.test.ts`).
+        className={buttonClass}
+        disabled={busy}
+        // The gesture is the mouse's, so the button must not take the selection
+        // with it: a `mousedown` that is allowed to land collapses the range
+        // before the click ever arrives, and the chip would be pressing nothing.
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onActivate}
+        title="Highlight this text"
+      >
+        {busy ? 'Saving…' : 'Highlight'}
+      </button>
+      {onReadFromHere && (
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={busy}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onReadFromHere}
+          title="Read aloud from here"
+        >
+          Read from here
+        </button>
+      )}
+    </div>
   )
 }

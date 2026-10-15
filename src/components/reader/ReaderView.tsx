@@ -4,18 +4,27 @@ import type { ReadingState, ReflowProgress } from '@shared/book.types'
 import { primaryFormat } from '@shared/book.types'
 import { TITLEBAR_STRIP_HEIGHT, TRAFFIC_LIGHT_RIGHT_EDGE } from '@shared/window-chrome'
 import { isTypingTarget } from '@/hooks/useBookNavigation'
+import { useSpeech } from '@/hooks/useSpeech'
 import { resolveReaderPalette } from '@/lib/theme/reader-palette'
 import { useLibraryStore } from '@/stores/library.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { useThemeStore } from '@/stores/theme.store'
 import { useUIStore } from '@/stores/ui.store'
+import { ListenBar } from './ListenBar'
 import { ReaderEngine } from './ReaderEngine'
 import { ReaderNotes } from './ReaderNotes'
 import { ReaderPrefsPopover } from './ReaderPrefsPopover'
 import { ReaderAsk } from './ReaderAsk'
 import { ReaderSearch } from './ReaderSearch'
 import { ReaderToc } from './ReaderToc'
-import { AskIcon, CloseIcon, ListIcon, NotesIcon, SearchIcon } from '@/components/shared/icons'
+import {
+  AskIcon,
+  CloseIcon,
+  ListIcon,
+  ListenIcon,
+  NotesIcon,
+  SearchIcon
+} from '@/components/shared/icons'
 
 /** Position reports are debounced: a page turn is cheap, a NAS write is not. */
 const REPORT_DEBOUNCE_MS = 2_000
@@ -74,6 +83,8 @@ export function ReaderView() {
   const clearSearch = useReaderStore((s) => s.clearSearch)
   const togglePrefs = useReaderStore((s) => s.togglePrefs)
   const closePrefs = useReaderStore((s) => s.closePrefs)
+  const listenOpen = useReaderStore((s) => s.listenOpen)
+  const toggleListen = useReaderStore((s) => s.toggleListen)
 
   const books = useLibraryStore((s) => s.books)
   const book = books.find((b) => b.id === bookId) ?? null
@@ -159,6 +170,10 @@ export function ReaderView() {
     removingFromDevice !== null
 
   const viewRef = useRef<FoliateView | null>(null)
+  // Mounted here so it lives and dies with the reader: the hook tears speech down when the book
+  // changes, when the bar closes and on unmount (`docs/invariants/reader.md`, voice reader).
+  const speech = useSpeech({ viewRef, bookId })
+  const { onRelocate: speechRelocate } = speech
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latest = useRef<{ position: string | null; percent: number } | null>(null)
 
@@ -186,6 +201,7 @@ export function ReaderView() {
       percent: number
       label: string | null
       sectionOffset: number | null
+      range: Range | null
     }) => {
       // Only the two fields the report carries: `latest` is spread straight
       // into `saveProgress`, so anything else here would ride along — the
@@ -194,10 +210,11 @@ export function ReaderView() {
       setPercent(detail.percent)
       setSectionLabel(detail.label)
       setSectionOffset(detail.sectionOffset)
+      speechRelocate(detail.range)
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => flush(false), REPORT_DEBOUNCE_MS)
     },
-    [flush, setPercent, setSectionLabel, setSectionOffset]
+    [flush, setPercent, setSectionLabel, setSectionOffset, speechRelocate]
   )
 
   const closeReader = useCallback(() => {
@@ -272,6 +289,12 @@ export function ReaderView() {
           e.preventDefault()
           void viewRef.current?.prev()
           break
+        case 'l':
+        case 'L':
+          // Unmodified and not typing: both guards are at the top of this handler.
+          e.preventDefault()
+          toggleListen()
+          break
       }
     },
     [
@@ -280,6 +303,7 @@ export function ReaderView() {
       clearSearch,
       closeSearch,
       closeNotes,
+      toggleListen,
       overlaid,
       prefsOpen,
       searchOpen,
@@ -407,6 +431,17 @@ export function ReaderView() {
         >
           <NotesIcon className="h-4 w-4" />
         </button>
+        <button
+          onClick={toggleListen}
+          title="Listen to this book (L)"
+          aria-label="Listen to this book"
+          aria-pressed={listenOpen}
+          className={`app-no-drag rounded p-1.5 hover:bg-ink-800 hover:text-parchment ${
+            listenOpen ? 'text-gold-300' : 'text-parchment-faint'
+          }`}
+        >
+          <ListenIcon className="h-4 w-4" />
+        </button>
 
         <div className="mx-3 min-w-0 flex-1 text-center">
           <h1 className="truncate font-display text-[15px] leading-tight text-parchment">
@@ -504,12 +539,19 @@ export function ReaderView() {
                   onSelection={setSelection}
                   onError={(message) => setStatus('error', message)}
                   onKeyDown={onKeyDown}
+                  onReadFromHere={(range) => {
+                    // Open the bar first: the hook tears speech down whenever it is closed.
+                    if (!useReaderStore.getState().listenOpen) toggleListen()
+                    void speech.play(range)
+                  }}
                 />
               )}
             </>
           )}
         </main>
       </div>
+
+      {listenOpen && <ListenBar speech={speech} />}
 
       <div className="h-0.5 shrink-0 bg-ink-800">
         <div
