@@ -226,3 +226,12 @@ describe('a book’s annotations file has one reader', () => {
     expect(importing).toContain(service)
   })
 })
+
+describe('the bundled helpers (voice reader, spec D2)', () => {
+  it('ships helpers/bin whole, so the espeak bundle travels with the layout helper', () => {
+    const yml = readFileSync(join(process.cwd(), 'electron-builder.yml'), 'utf8')
+    // One entry carries every helper. A narrower `from:` (the layout binary alone)
+    // would leave the packaged app with no pronunciation data and no code defect to find.
+    expect(yml).toMatch(/- from: helpers\/bin\n\s+to: helpers\/bin\n/)
+  })
+})

@@ -527,6 +527,14 @@ git commit -m "test(tts): pin the helper entry that ships the pronunciation bund
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
+#### Slice 1a — gate result
+
+Run 2026-10-15 on a packaged `dist/mac-arm64/Musaeum.app` (isolated profile, first-launch bootstrap completed). PASSED.
+
+- `Hegel` phonemized as: `hˈɛdʒəl`
+- `find_espeak()` printed (inside the bundle): `EspeakPaths(lib='/Users/jasonoh/Projects/musaeum-macos/dist/mac-arm64/Musaeum.app/Contents/Resources/helpers/bin/espeak/lib/libespeak-ng.dylib', share='/Users/jasonoh/Projects/musaeum-macos/dist/mac-arm64/Musaeum.app/Contents/Resources/helpers/bin/espeak/share')`
+- Bundle size: 1,376,935 bytes. This is about 1.4 MB, not the "~2.3 MB" the Task 4 Step 5 comment text assumed; the `electron-builder.yml` comment says "~1.4 MB".
+
 ---
 
 # Slice 1b — the engine, in the sidecar

@@ -62,6 +62,9 @@ extraResources:
   # `no_layout` and nothing in the code is wrong. Built by
   # `scripts/build-layout-helper.sh` (Xcode toolchain); gitignored, so a build
   # from a fresh clone fails here until it is run. 149 KB against AC9's ≤ 1 MB.
+  # The espeak-ng pronunciation bundle (voice reader, spec D2) rides this same entry:
+  # `scripts/build-espeak.sh` writes `helpers/bin/espeak/`, which `sidecar/tts/phonemize.py`
+  # resolves by the same `parents[2]/helpers/bin` rule. ~1.4 MB.
   - from: helpers/bin
     to: helpers/bin
 
