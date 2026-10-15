@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import weakref
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -39,17 +40,25 @@ def possessive_suffix(phonemes: str) -> str:
     return "z"
 
 
-# Keyed by the phonemizer's identity too, so a test's fake never poisons the real one.
-_respelled: dict[tuple[int, str, str], str] = {}
+# Cached per phonemizer *instance*, weakly: an `id()` key can alias a freed object's, and
+# serve a dead Fake's phonemes to the real phonemizer. An object that cannot be weakly
+# referenced is simply not cached.
+_respelled: "weakref.WeakKeyDictionary[Any, dict[tuple[str, str], str]]" = weakref.WeakKeyDictionary()
+
+
+def _parts(sounds_like: str) -> list[str]:
+    return [p for p in re.split(r"[-\s]+", sounds_like.strip()) if p]
 
 
 def respelling_to_phonemes(phonemizer: Any, sounds_like: str, lang: str = "en-us") -> str:
     """"HAY-gul" → phonemes. The part in CAPITALS keeps its stress; with none, the first does."""
-    key = (id(phonemizer), lang, sounds_like)
-    cached = _respelled.get(key)
-    if cached is not None:
-        return cached
-    parts = [p for p in re.split(r"[-\s]+", sounds_like.strip()) if p]
+    try:
+        cache = _respelled.setdefault(phonemizer, {})
+    except TypeError:
+        cache = None
+    if cache is not None and (lang, sounds_like) in cache:
+        return cache[(lang, sounds_like)]
+    parts = _parts(sounds_like)
     if not parts:
         raise ValueError("a respelling cannot be empty")
     stressed = next((i for i, p in enumerate(parts) if p.isupper()), 0)
@@ -60,7 +69,8 @@ def respelling_to_phonemes(phonemizer: Any, sounds_like: str, lang: str = "en-us
             ph = "".join(c for c in ph if c not in _STRESS_MARKS)
         out.append(ph)
     result = "".join(out)
-    _respelled[key] = result
+    if cache is not None:
+        cache[(lang, sounds_like)] = result
     return result
 
 
@@ -81,7 +91,7 @@ class Lexicon:
         self._by_word: dict[str, Entry] = {}
         for entry in entries:
             word = entry.word.strip()
-            if word and entry.sounds_like.strip():
+            if word and _parts(entry.sounds_like):
                 self._by_word[word] = Entry(word, entry.sounds_like)  # a later duplicate wins
         self._pattern: Optional[re.Pattern[str]] = None
         if self._by_word:

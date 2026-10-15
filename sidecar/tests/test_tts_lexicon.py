@@ -117,3 +117,36 @@ def test_an_empty_respelling_is_rejected_clearly():
 
     with pytest.raises(ValueError, match="empty"):
         respelling_to_phonemes(get_phonemizer(), "  -  ")
+
+
+def test_a_separator_only_respelling_is_ignored_not_raised():
+    ph, applied = run([Entry("Hegel", "---"), Entry("Kant", " - ")], "Hegel and Kant")
+    assert ph == "HEGEL AND KANT"
+    assert applied == []
+
+
+def test_the_respelling_cache_never_serves_a_freed_phonemizers_value():
+    import gc
+
+    from tts import lexicon
+
+    class Other:
+        def phonemes(self, text, lang="en-us"):
+            return text.lower()
+
+    gc.collect()
+    before = len(lexicon._respelled)
+    fake = Fake()
+    assert respelling_to_phonemes(fake, "hay-gul") == "HAYGUL"
+    del fake
+    gc.collect()
+    assert len(lexicon._respelled) == before  # nothing outlives the phonemizer it belongs to
+    other = Other()
+    assert respelling_to_phonemes(other, "hay-gul") == "haygul"
+    assert respelling_to_phonemes(Fake(), "hay-gul") == "HAYGUL"
+
+
+def test_the_longer_entry_wins_over_its_prefix():
+    ph, applied = run([Entry("Hegel", "hay-gul"), Entry("Hegel Kant", "kahnt")], "Hegel Kant wrote")
+    assert ph == "KAHNT WROTE"
+    assert [e.word for e in applied] == ["Hegel Kant"]
