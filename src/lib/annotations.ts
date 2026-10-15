@@ -210,7 +210,7 @@ export async function planAnnotations(
   const offered = new Set<string>()
 
   for (const annotation of [...annotations].sort(byDocumentOrder)) {
-    if (annotation.stale) continue
+    if (!isOffered(annotation)) continue
     if (offered.has(annotation.cfi)) continue
     offered.add(annotation.cfi)
     try {
@@ -227,6 +227,22 @@ export async function planAnnotations(
   }
 
   return { rows, undrawable }
+}
+
+/** The plan's one filter: a stale record is never handed to the engine (spec D6). */
+function isOffered(annotation: Annotation): boolean {
+  return !annotation.stale
+}
+
+/**
+ * Whether `cfi` is a saved highlight's key on the overlayer — the voice reader's
+ * `isSaved` (its fill must not take a saved highlight's key, `speech-controller.ts`).
+ * The same filter the plan offers by, so the two cannot disagree about a stale
+ * record. One the engine refused is counted as saved too: leaving one sentence
+ * without a speech fill is the cheap side of that doubt.
+ */
+export function isSavedValue(annotations: readonly Annotation[], cfi: string): boolean {
+  return annotations.some((a) => isOffered(a) && a.cfi === cfi)
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   isAnnotationDrawKind,
   planAnnotations,
   removedValues,
+  isSavedValue,
   type AnnotationDrawRow,
   type DrawableAnnotation
 } from './annotations'
@@ -243,6 +244,25 @@ describe('planAnnotations (AC14, AC16, R12/R13)', () => {
     // A re-run that draws nothing new removes nothing: the engine's own re-add
     // is idempotent (`overlayer.remove(value)` on the way in, `view.js:389`).
     expect(removedValues([], [kept])).toEqual([])
+  })
+})
+
+describe('isSavedValue (the voice reader leaves a saved highlight alone)', () => {
+  it('answers for exactly the values the plan would offer: not stale, by cfi', async () => {
+    const live = ann({ id: 'live', cfi: 'live-cfi' })
+    const stale = ann({ id: 'stale', cfi: 'stale-cfi', stale: true })
+    const list = [live, stale]
+    expect(isSavedValue(list, 'live-cfi')).toBe(true)
+    // the plan never offers a stale record, so its key is free on the overlayer
+    expect(isSavedValue(list, 'stale-cfi')).toBe(false)
+    expect(isSavedValue(list, 'other')).toBe(false)
+    const offered: string[] = []
+    await planAnnotations(list, '#fff', {
+      addAnnotation: async (a: DrawableAnnotation) => {
+        offered.push(a.value)
+      }
+    })
+    expect(offered.filter((v) => isSavedValue(list, v))).toEqual(offered)
   })
 })
 

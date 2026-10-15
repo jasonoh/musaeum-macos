@@ -389,6 +389,10 @@ export class SpeechController implements PlayerSource {
         ])
         if (pause === 'cancelled' || this.disposed) return false
         if (pause === 'timeout') return this.moveFailed()
+        // Superseded while it waited (a restart at the reader's own page): the step in flight
+        // was left to finish, but a fresh one now would carry the reader a section past the
+        // page they just turned to.
+        if (this.moveSuperseded) return false
       }
     } finally {
       clearTimeout(expiryTimer)

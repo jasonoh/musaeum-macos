@@ -673,6 +673,33 @@ describe('SpeechController', () => {
     expect(onError).toHaveBeenCalledWith('Could not continue to the next chapter.')
   })
 
+  it('a superseded section step stops retrying: a page turn mid-crossing is not followed by another step', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { view, controller, onError } = make([
+      section('s0', [['A one.']]),
+      section('s1', [['N.']])
+    ])
+    await controller.begin()
+    const u0 = (await controller.take())!
+    controller.started(u0)
+    view.locked = Number.POSITIVE_INFINITY // the reader's own page turn holds the lock
+    const pending = track(controller.take())
+    await flush()
+    expect(view.renderer.nextSection).toHaveBeenCalledTimes(1)
+    // the player restarts at the reader's page: the take is superseded
+    controller.abort()
+    expect(await pending.value).toBeNull()
+    // the lock releases: a retry now would step the reader one section past their page
+    view.locked = 0
+    for (let t = 0; t < 1_000; t += 50) {
+      vi.advanceTimersByTime(50)
+      await flush()
+    }
+    expect(view.renderer.nextSection).toHaveBeenCalledTimes(1)
+    expect(view.index).toBe(0)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
   it('begin supersedes a take waiting at the block gate: it continues from the new place', async () => {
     const s = section('s0', [['A one.', 'A two.'], ['B one.'], ['C one.', 'C two.']])
     const { controller } = make([s])
