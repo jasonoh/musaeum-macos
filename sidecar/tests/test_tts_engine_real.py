@@ -64,7 +64,7 @@ def test_a_very_long_single_sentence_is_audio_not_a_crash(eng):
     assert seconds(out) > 20
 
 
-@pytest.mark.parametrize("text", ["†", "***", "[12]", "• •", "😀"])
+@pytest.mark.parametrize("text", ["†", "***", "[12]", "• •", "😀", "...", "—", "?", "“”", "( )"])
 def test_text_with_nothing_to_say_is_silence(eng, text):
     out = eng.synthesize(model_dir=MODEL_DIR, text=text, voice="af_heart", speed=1.0, lexicon=[])
     assert out["pcm"] == "" and out["duration_ms"] == 0
@@ -80,3 +80,9 @@ def test_the_first_sentence_after_loading_is_fast_enough(eng):
     warm = time.time() - t
     print(f"cold {cold:.2f}s warm {warm:.2f}s")  # recorded in the plan annex (spec AC21's engine half)
     assert cold < 2.0 and warm < 1.0
+
+
+@pytest.mark.parametrize("text", ["Hi.", "A", "a.", "I", "O"])
+def test_a_single_real_word_is_still_spoken(eng, text):
+    out = eng.synthesize(model_dir=MODEL_DIR, text=text, voice="af_heart", speed=1.0, lexicon=[])
+    assert out["duration_ms"] > 0 and out["pcm"] != ""

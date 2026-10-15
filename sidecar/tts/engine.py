@@ -73,7 +73,7 @@ class SpeechEngine:
         self._clock = clock
         # Held for a whole synthesis, so the idle timer — which only ever *tries* the lock —
         # cannot drop the model under a call in flight (review focus 5).
-        self._lock = threading.RLock()
+        self._lock = threading.Lock()
         self._model: Any = None
         self._model_dir: Optional[str] = None
         self._timer: Any = None
@@ -123,16 +123,22 @@ class SpeechEngine:
             phonemizer = self._get_phonemizer()
             phonemes, applied = Lexicon(lexicon, phonemizer, lang).phonemes(normalize_text(text))
             version = lexicon_version(applied)
-            if not phonemes.strip():
+            # Punctuation survives phonemizing (Kokoro's vocabulary has it) and the model voices it as
+            # a breath or a click; a line with no letter in it has nothing to say.
+            if not any(c.isalpha() for c in phonemes):
                 return _silence(version)
-            model = self._model_for(model_dir)
             try:
-                samples, rate = model.create(phonemes, voice=voice, speed=speed, lang=lang, is_phonemes=True)
-            except ValueError as exc:
-                if any(marker in str(exc) for marker in _NOTHING):
-                    return _silence(version)
-                raise
-            self._touch()
+                model = self._model_for(model_dir)
+                try:
+                    samples, rate = model.create(phonemes, voice=voice, speed=speed, lang=lang, is_phonemes=True)
+                except ValueError as exc:
+                    if any(marker in str(exc) for marker in _NOTHING):
+                        return _silence(version)
+                    raise
+            finally:
+                # Whatever happened, a resident model always has a timer behind it.
+                if self._model is not None:
+                    self._touch()
             pcm = (samples * 32767.0).clip(-32768, 32767).astype("<i2").tobytes()
             return {
                 "sample_rate": int(rate),

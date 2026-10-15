@@ -2,6 +2,7 @@
 
 import base64
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -145,6 +146,7 @@ def test_the_model_loads_once_and_a_timer_is_armed_each_call(parts):
     assert loads == ["/m"]
     assert FakeTimer.instances[0].cancelled and FakeTimer.instances[-1].started
     assert FakeTimer.instances[-1].interval == 300 and FakeTimer.instances[-1].daemon is True
+    assert FakeTimer.instances[-1].fn == eng.release_if_idle  # the timer really calls the release
 
 
 def test_the_model_is_released_after_the_idle_period_and_loads_again(parts):
@@ -243,3 +245,65 @@ def test_the_rpc_reads_snake_case_lexicon_entries_and_skips_malformed_ones(monke
     )
     assert seen["lexicon"] == [Entry("Hegel", "hay-gul")]
     assert seen["voice"] == "af_heart" and seen["speed"] == 1.0
+
+
+@pytest.mark.parametrize("text", ["...", "\u2014", "?", "\u201c\u201d", "( )"])
+def test_punctuation_only_text_is_silence_and_the_model_is_not_asked(parts, text):
+    eng, model, *_ = parts
+    eng._get_phonemizer = lambda: type("P", (), {"phonemes": lambda s, t, l="en-us": t})()
+    out = say(eng, text=text)
+    assert out["pcm"] == "" and out["duration_ms"] == 0
+    assert model.calls == []
+
+
+@pytest.mark.parametrize("text", ["Hi.", "A", "a.", "I", "O"])
+def test_short_real_words_are_not_mistaken_for_silence(parts, text):
+    eng, model, *_ = parts
+    assert say(eng, text=text)["duration_ms"] == 100
+    assert len(model.calls) == 1
+
+
+def test_a_silent_call_after_a_load_still_leaves_a_timer_armed(parts):
+    eng, model, *_ = parts
+    say(eng)  # loads
+    before = len(FakeTimer.instances)
+    eng._get_phonemizer = lambda: type("P", (), {"phonemes": lambda s, t, l="en-us": ""})()
+    say(eng, text="\u2020")
+    assert len(FakeTimer.instances) == before  # silence never touches the model, the earlier timer stands
+    assert FakeTimer.instances[-1].started and not FakeTimer.instances[-1].cancelled
+
+
+def test_a_model_that_says_nothing_on_first_use_is_still_released(parts):
+    eng, model, *_ = parts
+
+    def nothing(*a, **k):
+        raise ValueError("Nothing to synthesize")
+
+    model.create = nothing
+    say(eng)
+    assert eng._model is not None
+    assert FakeTimer.instances[-1].started and not FakeTimer.instances[-1].cancelled
+
+
+def test_a_raising_create_still_arms_the_timer(parts):
+    eng, model, *_ = parts
+
+    def boom(*a, **k):
+        raise ValueError("Speed should be between 0.5 and 2.0")
+
+    model.create = boom
+    with pytest.raises(ValueError):
+        say(eng)
+    assert eng._model is not None
+    assert FakeTimer.instances[-1].started and not FakeTimer.instances[-1].cancelled
+
+
+def test_a_real_timer_releases_the_model_after_the_idle_period():
+    model = FakeModel()
+    eng = SpeechEngine(loader=lambda d: model, phonemizer=FakePhonemizer, idle_seconds=0.05)
+    say(eng)
+    assert eng._model is not None
+    deadline = time.monotonic() + 5
+    while eng._model is not None and time.monotonic() < deadline:
+        time.sleep(0.01)  # bounded poll; the timer thread does the release
+    assert eng._model is None
