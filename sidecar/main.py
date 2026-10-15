@@ -24,6 +24,8 @@ from pipeline.hydration import cover_candidates, hydrate_metadata, search_candid
 from pipeline.migrate import migrate_library
 from pipeline.topup import topup_pdfs
 from reflow.produce import reflow_pdf
+from tts.engine import synthesize_rpc
+from tts.models import cancel_download, download_models, model_status
 
 _stdout_lock = threading.Lock()
 
@@ -123,7 +125,35 @@ METHODS = {
         force=bool(p.get("force")),
         notify=notify,
     ),
+    # The voice reader (spec D3/D4). `tts_synthesize` runs on its own single-thread lane
+    # (see `lane_for`) so a bulk refresh that fills the shared pool cannot stall the
+    # voice; the other three are quick or long-and-independent and use the shared pool.
+    # A refusal — no model, no pronunciation data — answers `{ "error": ... }` rather than
+    # raising, because it is a normal outcome the reader shows in one line.
+    "tts_synthesize": lambda p: synthesize_rpc(p),
+    "tts_model_status": lambda p: model_status(p["model_dir"]),
+    "tts_download_model": lambda p: download_models(
+        p["model_dir"], job_id=p["job_id"], notify=notify
+    ),
+    "tts_cancel_download": lambda p: cancel_download(p["job_id"]),
 }
+
+# Two pools. The shared one is the four threads hydration, conversion, covers and the
+# reflow have always used; speech gets one of its own, because a sentence queued behind
+# a Google Books call is a voice that stutters. CPU contention remains and is measured
+# live (spec AC21), not assumed away here.
+POOL = ThreadPoolExecutor(max_workers=4)
+TTS_POOL = ThreadPoolExecutor(max_workers=1)
+TTS_LANE = frozenset({"tts_synthesize"})
+
+
+def lane_for(request: object) -> ThreadPoolExecutor:
+    method = request.get("method") if isinstance(request, dict) else None
+    return TTS_POOL if method in TTS_LANE else POOL
+
+
+def dispatch(request: object) -> None:
+    lane_for(request).submit(handle_request, request)
 
 
 def handle_request(request: object) -> None:
@@ -147,7 +177,6 @@ def handle_request(request: object) -> None:
 
 
 def main() -> None:
-    pool = ThreadPoolExecutor(max_workers=4)
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -157,7 +186,7 @@ def main() -> None:
         except json.JSONDecodeError:
             print(f"unparseable request: {line[:200]}", file=sys.stderr)
             continue
-        pool.submit(handle_request, request)
+        dispatch(request)
 
 
 if __name__ == "__main__":
