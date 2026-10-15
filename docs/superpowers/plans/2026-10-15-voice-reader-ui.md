@@ -501,7 +501,7 @@ Built 2026-10-15 on `feat/voice-reader-ui` (commits `c9c1c1e` to `0ca3f5d`, 18 o
 
 **Test counts.** Baseline (end of the engine): `npm test` 2248 passed in 102 files. Along the way: Task 6, 2349 in 106 files; Task 7a, 2410 in 108; Task 7b, 2425 in 109; Task 9, 2437 passed in 109 files. Task 1 added three pytest cases (543 passed and 24 skipped without the models, 566 passed with them, at that task). Typecheck and lint clean at every task.
 
-FINAL COUNTS: TBD by controller
+FINAL COUNTS: npm test 2438 passed in 109 files (baseline 2248 in 102 files); pytest 543 passed + 24 skipped without models, 567 passed with MUSAEUM_TTS_MODELS (baseline 539+24 / 563; +4 lane tests); typecheck, lint and prettier (on the new files) clean.
 
 **Deviations from the plan, each with its reason.**
 
@@ -559,7 +559,11 @@ Task 9 also ruled out the "two `addAnnotation` calls per sentence" Task 8 report
 
 - **AC21 cold fails on its worst run** (median 1.80 s passes; worst 3.19 s, on a long first sentence, against 2 s). Options: pre-warm the model, or split a long first sentence. The owner's call.
 - **The first sentence of a new section is synthesized inside the 700 ms pause**, with 440 to 540 ms spare on short headings. A long first sentence with a cold cache (idle p90 1.4 s) can overrun and lengthen the pause. A warm-up from `book.sections[i+1].createDocument()` would remove it; not built.
-- **Read from here inside a block's last sentence starts at the block's first sentence** (`from()`'s whole-block fallback). The right answer is the sentence containing the selection.
+- **Read from here does not start at the sentence containing the selection.** `from()` picks the first mark starting at or after the selection start (`vendor/foliate-js/tts.js:262-268`) and `begin(from)` passes it through unfiltered (`speech-controller.ts`, pinned by `speech-controller.test.ts`), so a selection beginning mid-sentence starts at the NEXT sentence and the selected words are not spoken; inside a block's last sentence the whole-block fallback applies. Read from the code, not measured live. Proper fix, the owner's call: reuse the `onPage` `setMark` probe on the unsliced block and take the last unit starting at or before the selection.
+- **Previous is not one sentence back.** `skip()` never crosses a block; from a block's last or first sentence it replays the sounding sentence, and pressing it again keeps replaying; in one-sentence-paragraph fiction it is effectively replay. Next is fine. AC14 is partly met.
+- **Previous during the 700 ms pause after a section's last sentence** may replay that sentence after the page has moved, without a highlight (suspected from reading the code, not reproduced).
+- **`begin()` on an image-only start leaves `sounding` null**, so a page turn made while it crosses from the cover to the first text is ignored (not measured live).
+- **Read from here pressed while a download is running does nothing**, but the chip is dismissed.
 - **The reader reopens a book one page early even without speech.** Pre-existing, observed in the live pass; the bar shrinking the column makes it one page more with speech.
 - **A single unit can be 87.6 s** (Darwin section 14, inside the 4,000-character cap); previous, next and the highlight are coarse there.
 - **`paginator.js:1113` TypeError** (`#view` is null in the `setStyles` rAF) fired twice on reader close and reopen. It is in `vendor/`, which is never edited, and is unrelated to speech.
