@@ -65,7 +65,7 @@ A **Listen** button in the reader header opens a transport bar. Pressing play ta
 
 **The method.** `tts_synthesize({ model_dir, text, voice, speed, lexicon })` → `{ sample_rate: 24000, pcm, duration_ms, lexicon_version }`, snake_case like every other sidecar result (`services/tts.ts` maps it to the camelCase `TtsAudio`), where `pcm` is base64 of mono signed 16-bit samples. `lexicon` is the list of `{ word, sounds_like }` the caller read from the library file (D8); the sidecar reads no library file, so the method stays pure. A sentence is a few hundred kilobytes; this is within what the JSON-RPC pipe already carries for a reflow progress frame many times over.
 
-**The lane.** `tts_synthesize` runs on its **own single-thread executor**, not the shared four. A bulk refresh that saturates the pool would otherwise queue a sentence behind a Google Books call and the voice would stall. CPU contention remains (the model's own threads), and is measured in the live pass rather than assumed away.
+**The lane.** `tts_synthesize` runs on its **own single-thread executor**, not the shared four. A bulk refresh that saturates the pool would otherwise queue a sentence behind a Google Books call and the voice would stall. CPU contention remains (the model's own threads), and is measured in the live pass rather than assumed away. `tts_model_status` and `tts_cancel_download` run on a two-thread control lane so they are never queued behind a saturated shared pool; `tts_download_model` stays on the shared pool.
 
 **Lifecycle.** The model loads on the first call and is released after **five idle minutes**. Idle cost is zero; playing costs ≈ 316 MB resident (measured). Load is 0.3–0.4 s, so the first sentence of a session is the slowest and is covered by the prefetch.
 
@@ -172,7 +172,7 @@ No SQLite migration, no `metadata.json` or `catalog.json` change, no new `musaeu
 
 5. `tts_synthesize` returns 24 kHz mono 16-bit PCM whose duration is within 5 % of `durationMs`, for each of the five voices; a repeat call with the same input is byte-identical (the property a later cache stamp needs).
 6. The lexicon is applied: with `{ Hegel, "hay-gul" }` the phoneme string differs from without, and a word not in the lexicon is unchanged. A possessive uses its base word's entry.
-7. The method runs on its own lane: with the shared pool saturated by four blocked jobs, a `tts_synthesize` call still completes.
+7. The method runs on its own lane: with the shared pool saturated by four blocked jobs, a `tts_synthesize` call still completes, and `tts_model_status` / `tts_cancel_download` likewise.
 8. The model loads on the first call and is released after the idle period (a test seam for the clock, as the reflow's progress tests have); a call after release loads again.
 9. The model download verifies both hashes, rejects a corrupted file and re-downloads it, reports progress, and cancels cleanly. It writes only under `userData/tts-models/`.
 10. No model, offline → one sentence, no throw. A failed load → `{ error }`, and the next call retries.

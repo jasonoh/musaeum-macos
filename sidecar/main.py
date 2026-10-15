@@ -127,7 +127,9 @@ METHODS = {
     ),
     # The voice reader (spec D3/D4). `tts_synthesize` runs on its own single-thread lane
     # (see `lane_for`) so a bulk refresh that fills the shared pool cannot stall the
-    # voice; the other three are quick or long-and-independent and use the shared pool.
+    # voice. `tts_model_status` and `tts_cancel_download` are quick and run on a small
+    # control lane so they never queue behind a saturated shared pool; the download itself
+    # is long and stays on the shared pool.
     # A refusal — no model, no pronunciation data — answers `{ "error": ... }` rather than
     # raising, because it is a normal outcome the reader shows in one line.
     "tts_synthesize": lambda p: synthesize_rpc(p),
@@ -138,18 +140,26 @@ METHODS = {
     "tts_cancel_download": lambda p: cancel_download(p["job_id"]),
 }
 
-# Two pools. The shared one is the four threads hydration, conversion, covers and the
+# Three pools. The shared one is the four threads hydration, conversion, covers and the
 # reflow have always used; speech gets one of its own, because a sentence queued behind
-# a Google Books call is a voice that stutters. CPU contention remains and is measured
-# live (spec AC21), not assumed away here.
+# a Google Books call is a voice that stutters. A model status or a download cancel is
+# quick and must never queue behind a Google Books call or a reflow, so those two get a
+# small control lane; the download itself is long and stays on the shared pool. CPU
+# contention remains and is measured live (spec AC21), not assumed away here.
 POOL = ThreadPoolExecutor(max_workers=4)
 TTS_POOL = ThreadPoolExecutor(max_workers=1)
+CONTROL_POOL = ThreadPoolExecutor(max_workers=2)
 TTS_LANE = frozenset({"tts_synthesize"})
+CONTROL_LANE = frozenset({"tts_model_status", "tts_cancel_download"})
 
 
 def lane_for(request: object) -> ThreadPoolExecutor:
     method = request.get("method") if isinstance(request, dict) else None
-    return TTS_POOL if method in TTS_LANE else POOL
+    if method in TTS_LANE:
+        return TTS_POOL
+    if method in CONTROL_LANE:
+        return CONTROL_POOL
+    return POOL
 
 
 def dispatch(request: object) -> None:
@@ -192,6 +202,7 @@ def main() -> None:
     # with "can't register atexit after shutdown".
     POOL.shutdown(wait=True)
     TTS_POOL.shutdown(wait=True)
+    CONTROL_POOL.shutdown(wait=True)
 
 
 if __name__ == "__main__":
