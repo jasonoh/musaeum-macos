@@ -70,7 +70,7 @@ The loop we own lives in `src/lib/reader-search.ts`, testable without a browser;
 
 **Keyboard.** ⌘F is a menu command (`'reader-find'`, Edit ▸ Find in Book) routed through `useMenuCommands` to `toggleSearch()`, and it is a **no-op with no book open**. It toggles rather than opens, so the key that opened the panel closes it. Escape steps back out one layer at a time — results, then the panel, then the book — and `ReaderView`'s window handler intercepts **Escape only** while the panel is open: the panel already owns the keys while focus is inside it (its own `stopPropagation`), and swallowing everything else there killed page turns for as long as the panel stood, which was measured rather than reasoned.
 
-**The listen bar is the last rung of the Escape ladder, before the book.** Results, then the side panels, then the listen bar (`closeListen()`, which stops speech because the hook tears down whenever `listenOpen` is false), then the book — a listener who presses Escape to quiet the voice must not lose their page. `L` toggles the bar, and the header Listen button declines focus on mousedown like the bar's own buttons, so a later Space turns the page instead of re-pressing it.
+**The listen bar is the last rung of the Escape ladder, before the book.** Escape closes search results, then the search, notes and prefs panels (the ToC and Ask have no window Escape rung, so Escape with the ToC open closes the bar and then the book), then the listen bar (`closeListen()`, which stops speech), then the book, so a listener quieting the voice does not lose their page. The header Listen button, the `L` key, the bar and everything speech does to the page (highlight, scrolling, restarts on a page turn) are described in `docs/invariants/voice-reader.md`.
 
 ---
 

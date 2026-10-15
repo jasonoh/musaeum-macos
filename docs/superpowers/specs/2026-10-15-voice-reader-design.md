@@ -1,7 +1,7 @@
 # Design: The voice reader — listen to a book in the app, in a good free voice
 
 **Date:** 2026-10-15
-**Status:** Design approved section by section with Jason on 2026-10-15; the written spec was approved by him the same day, and the engine half (slices 1a–1c) is planned in `docs/superpowers/plans/2026-10-15-voice-reader-engine.md`. **Five amendments found while planning — the espeak data path (D2), the bundle size (AC4), snake_case RPC names (D3), the missing chunker (D3), and a new text-normalization step (D3b) — are listed in that plan and have been applied to this document. **Slices 1a–1c, the engine, are built and merged to `main` (2026-10-15); slices 2 and 3 are not.** The build found more, recorded in the plan's annex: the normalizer also strips asterisks, bracketed citation numbers and emoji, and punctuation-only text is silence. The voice was chosen by ear on the same day (see _What I read_), and the engine fork (D1) was settled with him: **live first, rendering supported later**.
+**Status:** Design approved section by section with Jason on 2026-10-15; the written spec was approved by him the same day, and the engine half (slices 1a–1c) is planned in `docs/superpowers/plans/2026-10-15-voice-reader-engine.md`. **Five amendments found while planning — the espeak data path (D2), the bundle size (AC4), snake_case RPC names (D3), the missing chunker (D3), and a new text-normalization step (D3b) — are listed in that plan and have been applied to this document. **Slices 1a–1c, the engine, are built and merged to `main` (2026-10-15). Slice 2, the reader half (Listen button, bar, sentence highlight, Read from here), is built and live-verified on `feat/voice-reader-ui` (2026-10-15; the outcomes are marked on AC12–AC21 below, and the build record is the annex of `docs/superpowers/plans/2026-10-15-voice-reader-ui.md`) with one open item: AC21 cold fails its target on its worst run. Slice 3, the lexicon, is not built.** The build found more, recorded in the plan's annex: the normalizer also strips asterisks, bracketed citation numbers and emoji, and punctuation-only text is silence. The voice was chosen by ear on the same day (see _What I read_), and the engine fork (D1) was settled with him: **live first, rendering supported later**.
 **Scope:** Reading a book aloud inside the Mac reader: a Listen control, a transport bar, sentence-level highlighting that carries the page along, a voice and a speed, and a library-wide pronunciation lexicon so names are read correctly. Speech is synthesized locally, offline, for free, by Kokoro-82M (int8) in the Python sidecar. It does **not** cover rendering a book to an audio file, streaming audio to the phone, word-level highlighting, media keys or a sleep timer (see _Rejected and deferred_). It is designed so that rendering is an additive slice (D9).
 **Depends on:** `docs/invariants/reader.md` (the reader, foliate-js, the reflow's D10 — the reader learns nothing about PDFs), `docs/invariants/packaging-and-python.md` (the managed venv, `extraResources`, the Swift helper's precedent), `docs/invariants/shelves.md` (the shape of a library-level JSON file), `docs/invariants/settings-and-editing.md` (persisted UI state), `docs/invariants/files-and-deletion.md` → _The `derived/` folder_.
 **Interacts with:** `sidecar/main.py` (one new method and a lane), `sidecar/requirements.txt` (two pins), `electron-builder.yml` (a bundled library), `electron/main/services/` (a new `tts.ts`, a new `lexicon.ts`), `src/components/reader/` (the engine arm, the header, a bar, the selection chip), `src/lib/theme/reader-palette.ts` (one role), and `stores/reader.store.ts` (two prefs).
@@ -92,6 +92,8 @@ espeak-ng reads a decimal point as a sentence end, so `3.5 million` is spoken "t
 ## D5 — Playback: foliate's marked sentences, a two-sentence prefetch, the Web Audio clock
 
 **Decision.** `ReaderEngine` gains a speech arm that calls `view.initTTS('sentence', highlight)` for the current section and drives its `start()` / `next()` / `from(range)` / `setMark(name)`. The SSML each returns is flattened by a pure function (`src/lib/speech-queue.ts`) into `{ mark, text, blockEnd }` units — SSML the book itself carries (`<phoneme>`, `<sub>`) is reduced to its text, because Kokoro takes none. The player asks main for sentence _n+1_ and _n+2_ while _n_ plays and schedules the returned buffers on one `AudioContext` clock, so there is no gap and no timer in the audible path. Pause is `suspend()`, resume is `resume()`; neither re-synthesizes.
+
+**Amendments found building slice 2 (2026-10-15).** (1) The highlight scrolls with `scrollToAnchor(range, false)`, not the engine's default or `true`, and only when the sentence is off the page: `true` selects each sentence, raising the Highlight chip and feeding the ask panel on every sentence, and scrolling every sentence wipes a selection the user holds and restarts the position-save debounce. (2) Prefetch never crosses a block boundary and the *player* gates it: foliate's `next()` rebuilds its range map, so the next block is not taken until the last sentence of the old one has started. (3) A *section* is not advanced until the old section's last sentence has **ended** (`PlayerSource.ended(unit)`); advancing when it started jumped the page 6.9 s early. (4) A restart on a page turn drops sentences that start before the page, because `tts.from()` returns the whole block from its first sentence when the page opens inside the block's last sentence. (5) Escape gains a rung: search results, the panels, the listen bar, the book (D6 was silent). Rules and measurements: `docs/invariants/voice-reader.md`.
 
 **Pauses are the player's, not the voice's:** ≈ 350 ms after a sentence, ≈ 700 ms after a block.
 
@@ -195,6 +197,23 @@ No SQLite migration, no `metadata.json` or `catalog.json` change, no new `musaeu
 20. **Window minimized or hidden: speech continues for at least ten minutes without a gap.** This is a live check; if it fails the design's background premise is wrong and this document is amended before anything ships.
 21. First sentence of a session is audible within 2 s of pressing play with the model cold, and within 1 s warm (measured, recorded).
 
+**Outcomes, slice 2 (built and live-verified 2026-10-15 on `feat/voice-reader-ui`; EPUB *Darwin's Devices*, AZW3 *Yellowface*, reflowed PDFs *Attention is All You Need* and *Politics, Philosophy, Culture*; isolated profiles).**
+
+| AC | Outcome |
+| --- | --- |
+| 12 | Met. `speech-queue` flattens a captured real SSML fixture; CDATA, quoted `>` and bad numeric entities are handled |
+| 13 | Met. The player test simulates 0.5 s latency with a two-sentence prefetch and finds no gap beyond the configured pause |
+| 14 | Met in tests (pause and resume without re-synthesis, previous and next, spec changes from the next sentence) |
+| 15 | **Met after a fix.** Page boundary: the highlight starts 37 to 57 ms (median) after the buffer, max 101 ms, over 330 sentences, on all three formats. Section boundary failed on the first pass (the page moved as the old section's last sentence *began*); fixed by `ended()` and re-measured: 6 of 6 crossings, the page moves 20 to 51 ms after the end, the next sentence is audible 698 to 702 ms after it |
+| 16 | Met. The saved `reading_position` and `metadata.json` equal the CFI listening reached. Reopen lands one page early, which a control with no speech shows is pre-existing (7 to 6, 8 to 7) |
+| 17 | **Met after a fix.** TOC jump (808 ms), search jumps (3 of 3) and a turn during the first sentence passed. ArrowRight failed 13 of 24 trials near figures and captions (Darwin chapter 4, pages 6 to 7: 10 of 10 failed); after the fix 10 of 10 on that page and 23 of 23 mixed turns |
+| 18 | Met. The bar stays open beside ToC, search, notes and ask; 0 CSP violations during a listen (a positive control was caught); `AudioContext.state` was `running` at the first `start()` |
+| 19 | Met. The `speech` role exists in every built-in theme; `derive.test.ts` sweeps all of them (minimum 3.032 against the 3.0 floor) |
+| 20 | **Met.** Minimized 600 s and hidden 180 s without a gap (invariants file for the numbers) |
+| 21 | **Warm met, cold not met.** Cold: 1,796, 1,529 and 3,192 ms, median 1.80 s, **worst 3.19 s against the 2 s target**. Warm: 656, 777 and 124 ms, median 0.66 s against 1 s |
+
+**AC21 cold is an open item, stated plainly.** The median passes and the worst run does not. The worst run's first sentence was long ("Richard Ellis, in his book Sea Dragons, notes that Conybeare...") and the fresh app had not loaded the model, so the model load and a long synthesis both sat in front of the first audible sample. Two options, neither built: pre-warm the model (load it when the bar opens, or when a book opens, instead of on the first Play), or split a long first sentence so the first audible chunk is short. Three cold runs are a small sample; the choice is the owner's.
+
 ### Slice 3 — the lexicon
 
 22. `lexicon.json` write discipline holds: `.part` with a random id; an unparseable file or unknown `version` is not rewritten and refuses with the verbatim sentence; unknown keys and entry shapes survive a write; an offline write refuses.
@@ -247,8 +266,10 @@ Slices 1b, 2 and 3 are each inside the ~10-file bound; slice 2 is the closest an
 
 - That `speechSynthesis` in Electron exposes the Enhanced and Premium voices (never tested; not needed unless the Apple fallback is revived).
 - ~~That a respelling run through the bundled espeak yields phonemes as good as the hand-written ones~~ — listened to by Jason on 2026-10-15 (`HAY-gul`, `ko-ZHEV`; `af_heart`, `bm_george`) and judged fine. AC24 holds for the engine's derivation; the lexicon popover (slice 3) still has to show it.
-- That speech survives a minimized window (AC20), and that it holds while a bulk refresh runs (risk 3).
-- That no CSP change is needed (AC18).
+- ~~That speech survives a minimized window (AC20)~~ — measured 2026-10-15: 600 s minimized and 180 s hidden, no gap (see AC20 above). Risk 3 (a bulk refresh running alongside) was measured only lightly: synthesis median 621 ms against 260 ms idle, and the bulk job was network-bound, so heavy CPU contention is still **not verified**.
+- ~~That no CSP change is needed (AC18)~~ — none was needed; 0 violations during a listen (2026-10-15).
+- ~~The first real model download~~ — measured 2026-10-15: 120,575,669 bytes in 3.70 s, both hashes matched, cancel clean.
+- AC21 cold (above): the worst run misses the target.
 - That the bundled espeak works in a **signed** build. It is verified in a packaged but unsigned build (`Hegel` → `hˈɛdʒəl`, 2026-10-15, plan annex); signing and notarization have not been run against it.
 - Kokoro's 54-voice list beyond the five Jason heard, and any voice's behaviour on non-English text. The spec is English.
 - The throughput numbers are one machine, one run, three short passages. They bound the design and are not benchmarks.

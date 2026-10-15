@@ -492,3 +492,77 @@ For each task: dispatch the named repo agent (`sidecar-engineer` Task 1; `render
 - **Amended, not violated:** D3 *The lane* and AC7 (Task 1). The owner chose this; it is recorded where the next reader will look.
 - **Deferred engine minors** are not fixed here (normalizer edge cases, `services/tts.ts` error-path consistency, RPC param validation). The one that slice 2 touches, the retry-versus-old-`.part` race, is handled by the 2 s Retry delay and measured in Task 8; the 30-minute app-side timeout leaving a Python job running is unchanged and stays in the annex's list.
 - **Slice 3** (lexicon file, popover, Preview) is untouched; `services/tts.ts`'s `NO_LEXICON` stays.
+
+---
+
+## Annex — what the build found
+
+Built 2026-10-15 on `feat/voice-reader-ui` (commits `c9c1c1e` to `0ca3f5d`, 18 of them) by subagent-driven execution with a review after every task; the live pass (Task 8) found two failures that became Task 9. The rules this slice taught are in `docs/invariants/voice-reader.md`; the spec's acceptance outcomes are marked on AC12 to AC21 in the design.
+
+**Test counts.** Baseline (end of the engine): `npm test` 2248 passed in 102 files. Along the way: Task 6, 2349 in 106 files; Task 7a, 2410 in 108; Task 7b, 2425 in 109; Task 9, 2437 passed in 109 files. Task 1 added three pytest cases (543 passed and 24 skipped without the models, 566 passed with them, at that task). Typecheck and lint clean at every task.
+
+FINAL COUNTS: TBD by controller
+
+**Deviations from the plan, each with its reason.**
+
+- (a) `scrollToAnchor(range, false)`, not `(range, true)` as Fact 3 said: `true` selects each sentence, raising the Highlight chip and feeding the ask panel on every sentence. It also scrolls only when the sentence is off the page, because scrolling every sentence wiped a selection the user held and restarted the save debounce.
+- (b) The Escape ladder gained a rung (results, panels, the listen bar, the book). Spec D6 was silent; a listener must be able to quiet the voice without losing their page.
+- (c) Prefetch is gated per block by the player (`take()` is not called until `started(last)`), which the plan left to the controller; foliate's `next()` rebuilds its range map.
+- (d) `PlayerSource` gained an optional `abort()` and `ended(unit)`, which the plan's interface did not have. `ended` is Task 9's: a section is not advanced until the old section's last sentence has ended.
+- (e) `isSaved(cfi)` became a required controller dependency, and `show-annotation` in `ReaderEngine` returns early for a speech fill, so a speech fill never replaces a saved highlight or opens Notes.
+- (f) The controller reads each unit's range through `tts.setMark` with a capturing probe (`onPage`) so a restart can drop sentences that start before the page; `tts.from()` returns the whole block when the page opens inside its last sentence.
+- (g) The end of the book is decided from `book.sections` (`linear !== 'no'`), not from `nextSection()` resolving to nothing, because it resolves `undefined` both when it moves and at the last section.
+- (h) Task 5: no search-contrast decider existed to copy, so a `src/` decider over ink, paper and the default plus the two tightest literals was accepted, and an `electron/main` sweep in `derive.test.ts` was added so AC19's "every built-in theme" is a standing test (13 themes, minimum ratio 3.032).
+- (i) The reducer lives in `src/lib/speech-state.ts`, not in the hook, so its test imports no React or vendor code; `isSavedValue` was added to `src/lib/annotations.ts` over the plan's own offer predicate.
+
+**Rulings taken during the build, each with its cost.**
+
+- Task 2: a same-book reopen resets `listenOpen` like `tocOpen` and `prefsOpen`, for consistency with its siblings. Cost: double-clicking the open book closes the bar mid-playback.
+- Task 5: see (h). Cost: none standing now that the sweep exists.
+- Task 6: `scrollToAnchor(range, false)`; see (a). Cost: a spec and plan deviation, recorded here.
+- Task 6: the 150 ms `nextSection` retry kept running after `abort()` until the 10 s deadline, so a page turn during a chapter crossing could be followed by one extra section step. Deferred at the time and fixed in Task 7a (the retry stops once the move is superseded).
+- Task 7a: the commit trailer is `Claude Sonnet 5.5` on every commit regardless of the harness's own attribution line (the owner's mandate); `ec75657` was reworded to `7733115` for it.
+- Task 7a: download state is hook-local, so closing the reader mid-download and reopening shows "Download the voice" until it is pressed; the press rejoins the same job. Cost: a stale bar until pressed, and the store-as-truth convention is bent for this one slice. The reversal is to move the phase into the store.
+- Task 7b: the one CSP console error seen while building was the fixture book's own `kindle:embed` image blocked by `img-src` at book load, before any listening; AC18 is judged on violations during a listen. The Task 8 corpus never produced it.
+- Task 7b: Escape gets a rung; see (b). Cost: Escape no longer closes the book in one press while the bar is open.
+
+**Deferred minor findings.**
+
+- Task 1: `models.py` has a comment before the docstring (predates this slice). The two wording fixes the review asked of `docs/invariants/voice-reader.md` (the 30-minute timeout stated twice; "is what makes that safe") are made in the Task 8 doc pass.
+- Task 2: the persist test does not set a non-default voice and speed first; the `closeListen` cleanup is not in a `finally`.
+- Task 3: tokenizing is quadratic on malformed SSML only (bare `<` runs: 50,000 characters take about 2.7 s); engine SSML is well-formed and realistic blocks take 0.3 ms. Lone-surrogate numeric entities pass the guard.
+- Task 4: a deferred rewind that fails later in `fill()` calls `fail()` after the audio was cut; the player class is about 375 lines against the planned 250; a refused rewind in the replay branch is untested.
+- Task 5: the sweep pins `stems.length > 0` rather than the built-in theme count; `derive.test.ts` has prettier drift that predates this slice.
+- Task 6: the own-section-change check has a one-sentence window (a hand turn inside the new section while the old last sentence still sounds is read as our own move); the d.ts has no `sections` on some books, in which case a later section is assumed to exist. A user highlight with exactly the spoken sentence's CFI is skipped by `isSaved`, so that one sentence gets no fill.
+- Task 7a: the `useSpeech` tests are source-regex scans, weak against behaviour; the damaged-model notice kept visible during `loading` may mask a later error; an image-only start that crosses a section, followed by a page turn before the first sentence, is still ignored. `isSaved` also counts a highlight the engine refused to draw.
+- Task 7b: Escape inside the voice `<select>` does nothing (`isTypingTarget`); the bar's gating (needs-model, downloading, error) is pinned by source scan only, and its needs-model path was first exercised live in Task 8; the `noFocus` comment overstates, since only the Listen button applies it.
+- Engine minors from the engine annex remain as listed there.
+
+**The live pass (Task 8, 2026-10-15, `d46c7da`, no source changes; isolated profiles; Task 9 re-measured the two failures at `0ca3f5d`).**
+
+| Step | Result |
+| --- | --- |
+| 1 First real download | Pass. 120,575,669 B in 3.70 s (32.6 MB/s), 98 progress events, hashes and sizes match, one 302 redirect, cancel at 41.1 MB leaves the directory empty, re-download 4.73 s |
+| 2 AC15 | Page boundary pass (highlight 37 to 57 ms after the buffer, median; max 101 ms; 330 sentences; 3 formats). Section boundary **failed**, fixed in Task 9: 6 of 6 crossings, page moves +20..51 ms after the end, next audible +698..702 ms, section load 24 to 55 ms |
+| 3 AC16 | Pass for the save. Reopen one page early is pre-existing (control with no speech: 7 to 6, 8 to 7) |
+| 4 AC17 | TOC and search jumps pass. ArrowRight near figures **failed** (13 of 24), fixed in Task 9: 10 of 10 on the stuck page, 23 of 23 mixed |
+| 5 AC18 | Pass. 0 CSP violations during a listen (positive control caught); `AudioContext` running at the first `start()` |
+| 6 AC21 | Warm pass (median 0.66 s). **Cold fails on its worst run**: 1,796, 1,529, 3,192 ms; median 1.80 s |
+| 7 AC20 | Pass. Minimized 600 s: ratio 0.999 to 1.001, max sample gap 5.006 s, max silence 0.700 s, none over 0.75 s. Hidden 180 s: the same |
+| 8 Risk 3 | Measured, not a gate. During a bulk rehydrate: synthesis median 621 ms (p90 1,405) against 260 ms idle. Light load; the job was network-bound |
+| 9 Control lane | Pass. `tts.status()` during a 63.5 s reflow: median 0.5 ms, max 9.7 ms |
+| a to d | Pass. Escape closes the bar then the book; a click on the spoken sentence leaves Notes closed; a held selection and its chip survive sentence changes; an image-only cover starts at the first text |
+
+Task 9 also ruled out the "two `addAnnotation` calls per sentence" Task 8 reported: foliate's `deleteAnnotation(a)` is `addAnnotation(a, true)` and the harness's wrapper counted each removal as an add. Live, split on the `remove` argument: 4 buffers, 4 draws, 4 removes.
+
+**Open items.**
+
+- **AC21 cold fails on its worst run** (median 1.80 s passes; worst 3.19 s, on a long first sentence, against 2 s). Options: pre-warm the model, or split a long first sentence. The owner's call.
+- **The first sentence of a new section is synthesized inside the 700 ms pause**, with 440 to 540 ms spare on short headings. A long first sentence with a cold cache (idle p90 1.4 s) can overrun and lengthen the pause. A warm-up from `book.sections[i+1].createDocument()` would remove it; not built.
+- **Read from here inside a block's last sentence starts at the block's first sentence** (`from()`'s whole-block fallback). The right answer is the sentence containing the selection.
+- **The reader reopens a book one page early even without speech.** Pre-existing, observed in the live pass; the bar shrinking the column makes it one page more with speech.
+- **A single unit can be 87.6 s** (Darwin section 14, inside the 4,000-character cap); previous, next and the highlight are coarse there.
+- **`paginator.js:1113` TypeError** (`#view` is null in the `setStyles` rAF) fired twice on reader close and reopen. It is in `vendor/`, which is never edited, and is unrelated to speech.
+- **The `OceanofPDF.com` watermark is read aloud at every chapter end of the AZW3 fixture.** That is the book's content, not the app's. The reflowed PDF also reads footnotes inline.
+- **Heavy CPU contention is unmeasured** (risk 3 ran under a light load).
+- Slice 3 (the lexicon file, popover and Preview) is untouched, and `services/tts.ts`'s `NO_LEXICON` stays.
