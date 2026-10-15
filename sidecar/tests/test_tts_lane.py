@@ -89,3 +89,32 @@ def test_the_control_lane_is_not_the_speech_lane():
     assert main.lane_for({"method": "tts_model_status"}) is main.CONTROL_POOL
     assert main.lane_for({"method": "tts_synthesize"}) is main.TTS_POOL
     assert main.CONTROL_POOL is not main.TTS_POOL
+
+
+def test_a_queued_download_cancelled_through_the_control_lane_never_fetches(monkeypatch, tmp_path):
+    import tts.models as models
+
+    sent = []
+    monkeypatch.setattr(main, "send", sent.append)
+
+    def no_network(*a, **k):
+        raise AssertionError("a cancelled download must not touch the network")
+
+    monkeypatch.setattr(models.requests, "get", no_network)
+    gate = threading.Event()
+    blockers = [main.POOL.submit(gate.wait) for _ in range(4)]
+    job = "lane-test-cancel-before-start"
+    try:
+        main.dispatch({"id": 10, "method": "tts_download_model",
+                       "params": {"model_dir": str(tmp_path), "job_id": job}})
+        main.dispatch({"id": 11, "method": "tts_cancel_download", "params": {"job_id": job}})
+        _wait_for(sent, n=1)
+        assert [m["id"] for m in sent] == [11]  # cancel answered; download still queued
+    finally:
+        gate.set()
+        for b in blockers:
+            b.result(5)
+    _wait_for(sent, n=2)
+    reply = next(m for m in sent if m["id"] == 10)
+    assert reply["error"] is None
+    assert reply["result"] == {"status": "cancelled"}
