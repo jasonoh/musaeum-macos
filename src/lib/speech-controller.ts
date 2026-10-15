@@ -306,7 +306,8 @@ export class SpeechController implements PlayerSource {
       this.setBlock(this.onPage(flattenSsml(ssml), page))
       this.sounding = collapsedStart(page)
       this.wake()
-      if (this.blockUnits.length === 0 && (await this.nextBlock(ssml === null)) !== true) return null
+      if (this.blockUnits.length === 0 && (await this.nextBlock(ssml === null)) !== true)
+        return null
       return this.blockUnits[0] ?? null
     })
   }
@@ -360,7 +361,10 @@ export class SpeechController implements PlayerSource {
       // outside the queue, so a page turn meanwhile is not held up behind it; `ended()`, a
       // restart, `abort()` and `dispose()` all wake it.
       if (ok === 'wait') {
-        if (!this.lastEnded && !ticket.settled && !this.disposed) await this.sleep()
+        // only while the wait still stands: an ended(), a restart (setBlock clears `sectionSpent`)
+        // or an abort that landed before this line would otherwise be a lost wakeup
+        if (this.sectionSpent && !this.lastEnded && !ticket.settled && !this.disposed)
+          await this.sleep()
         continue
       }
       if (!ok) return null

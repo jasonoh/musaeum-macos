@@ -237,7 +237,10 @@ export class SpeechPlayer {
       if (next && !this.rewindTo(next)) return
       // still the block's last unit sounding: it ends when the replay does
       this.discard(true, sounding)
-      this.items = [{ ...sounding, scheduled: false, node: null }] // announced already
+      const replay: Item = { ...sounding, scheduled: false, node: null } // announced already
+      this.items = [replay]
+      // tick() never announces it again: it is the sounding one now, for a second skip and its end
+      this.current = replay
       void this.schedule()
     }
     void this.fill()

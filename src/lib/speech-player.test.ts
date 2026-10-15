@@ -789,6 +789,35 @@ describe('SpeechPlayer', () => {
     expect(r.source.ended.mock.calls.map(([x]) => x.mark)).toEqual(['0', '1'])
   })
 
+  it('a second skip(-1) during a replay replays it again and ends it once, when that replay ends (review I1)', async () => {
+    const source = new BlockSource([
+      [u(0), u(1, true)],
+      [u(2), u(3, true)]
+    ])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(1500) // 1 sounds from 1.35 s; the next block's take is held open
+    const endsOfOne = (): number => source.ended.mock.calls.filter(([x]) => x.mark === '1').length
+    r.player.skip(-1) // the replay: 1.5 s to 2.5 s
+    await flush()
+    await r.advance(300)
+    r.player.skip(-1) // again, during the replay: 1.8 s to 2.8 s
+    await flush()
+    expect(r.onError).not.toHaveBeenCalled()
+    expect(endsOfOne()).toBe(0)
+    const replays = r.ctx.sources.filter((s) => s.mark === '1')
+    expect(replays).toHaveLength(3)
+    expect(replays[1]?.stopped).toBe(true)
+    expect(replays[2]?.when).toBeCloseTo(1.8, 9)
+    await r.advance(980)
+    expect(endsOfOne()).toBe(0)
+    await r.advance(40) // the second replay ends at 2.8 s
+    expect(endsOfOne()).toBe(1)
+    await r.advance(2000)
+    expect(endsOfOne()).toBe(1)
+  })
+
   it('a sounding unit that is cut is ended too: skip(1), restartAt and stop', async () => {
     const r = rig([u(0), u(1), u(2), u(3), u(4), u(5, true)], latencySynth(0))
     r.player.start()
@@ -806,7 +835,7 @@ describe('SpeechPlayer', () => {
     expect(r.source.ended.mock.calls.map(([x]) => x.mark)).toEqual(['0', '1', '4'])
   })
 
-  it('skip(-1) replaying a block\'s last unit ends it once, when the replay ends', async () => {
+  it("skip(-1) replaying a block's last unit ends it once, when the replay ends", async () => {
     const source = new BlockSource([
       [u(0), u(1, true)],
       [u(2), u(3, true)]

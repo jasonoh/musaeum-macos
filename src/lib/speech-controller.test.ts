@@ -802,7 +802,10 @@ describe('SpeechController', () => {
   })
 
   it('(AC15) an end reported before a rewind is stale: the replayed last unit is waited for again', async () => {
-    const { view, controller } = make([section('s0', [['A one.', 'A two.']]), section('s1', [['N.']])])
+    const { view, controller } = make([
+      section('s0', [['A one.', 'A two.']]),
+      section('s1', [['N.']])
+    ])
     await controller.begin()
     const a0 = (await controller.take())!
     const a1 = (await controller.take())!
@@ -853,7 +856,11 @@ describe('SpeechController', () => {
    */
   function captionBook() {
     // positions: A 0-9 / A' 10-19 | FIG 20-29, caption 30-39... the page starts at 35
-    const s = section('s0', [['A one.', 'A two.'], ['FIG. 2.', 'Selection and history interact.'], ['Next para.']])
+    const s = section('s0', [
+      ['A one.', 'A two.'],
+      ['FIG. 2.', 'Selection and history interact.'],
+      ['Next para.']
+    ])
     return s
   }
 
@@ -867,13 +874,23 @@ describe('SpeechController', () => {
     // the new page starts inside the caption's last sentence
     const page = new FakeRange(s.doc, cap.start + 5, 69)
     view.relocate(page)
+    await flush()
+    const drawn = view.added.length
+    const own = view.tts!.highlight
     const first = await controller.onRelocate(page as unknown as Range)
     expect(first?.text).toBe('Next para.')
+    // the probe read the ranges without drawing, and gave the highlight back
+    await flush()
+    expect(view.added).toHaveLength(drawn)
+    expect(view.tts!.highlight).toBe(own)
     expect(await controller.take()).toBe(first)
     // its highlight is on the new page: no scroll at all, and never back
     view.renderer.scrollToAnchor.mockClear()
     controller.started(first!)
+    await flush()
     expect(view.renderer.scrollToAnchor).not.toHaveBeenCalled()
+    expect(view.added).toHaveLength(drawn + 1)
+    expect(view.added.at(-1)?.value).toBe(`0@${s.blocks[2]!.sentences[0]!.range.start}`)
   })
 
   it('(AC17) a page that starts inside a block keeps the sentences of that block that start on it', async () => {
@@ -885,8 +902,14 @@ describe('SpeechController', () => {
     const fig = s.blocks[1]!.sentences
     const page = new FakeRange(s.doc, fig[0]!.range.start + 3, 59)
     view.relocate(page)
+    await flush()
+    const drawn = view.added.length
+    const own = view.tts!.highlight
     const first = await controller.onRelocate(page as unknown as Range)
     expect(first?.text).toBe('Caption one.')
+    await flush()
+    expect(view.added).toHaveLength(drawn)
+    expect(view.tts!.highlight).toBe(own)
     expect(await controller.take()).toBe(first)
     expect((await controller.take())?.text).toBe('Caption two.')
   })
