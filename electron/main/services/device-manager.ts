@@ -127,9 +127,13 @@ export async function scanDocuments(mountPath: string): Promise<Map<string, stri
   return stems
 }
 
-/** The key a device file is matched under: lowercased, extension stripped. */
+/**
+ * The key a device file is matched under: lowercased, extension stripped, NFC.
+ * The device's filesystem returns accented names decomposed (`e` + U+0301) while
+ * the library holds them precomposed, so unnormalized the same name is two keys.
+ */
 function fileStem(name: string): string {
-  return name.replace(/\.[^.]+$/, '').toLowerCase()
+  return name.replace(/\.[^.]+$/, '').normalize('NFC').toLowerCase()
 }
 
 function isSidecarDir(name: string): boolean {
@@ -440,7 +444,7 @@ function pathsWeSent(deviceId: string, bookId: string, stems: Map<string, string
 
 /** The key a library title and a file's own title are compared under. */
 export function titleKey(title: string): string {
-  return sanitizeTitle(title).toLowerCase()
+  return sanitizeTitle(title).normalize('NFC').toLowerCase()
 }
 
 /**
@@ -455,6 +459,7 @@ export function titleKey(title: string): string {
  */
 export function authorKey(author: string): string {
   return sanitizeTitle(author)
+    .normalize('NFC')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()

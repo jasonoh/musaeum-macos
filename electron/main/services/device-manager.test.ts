@@ -480,6 +480,18 @@ describe('on-device presence', () => {
     expect(getOnDeviceBookIds('kindle:Kindle').sort()).toEqual(['a', 'b'])
   })
 
+  it('matches a title whose accents the device stored decomposed', async () => {
+    // The Kindle's filesystem hands names back as NFD (`e` + U+0301) while the
+    // library holds the title as NFC (`é`) — the same name, different bytes
+    await putOnDevice('Kindle', 'Me\u0301ridien Fixture.azw3')
+    mountVolume('Kindle', 8_000_000_000)
+    insertBook(makeBook('a', 'M\u00e9ridien Fixture'))
+
+    await poll()
+
+    expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['a'])
+  })
+
   it('answers per device, and says nothing about one that is not connected', async () => {
     await putOnDevice('Kindle A', 'Leviathan Wakes.azw3')
     await putOnDevice('Kindle B', 'Caliban’s War.epub')
