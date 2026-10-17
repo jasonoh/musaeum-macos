@@ -14,6 +14,7 @@ import * as deviceManager from './device-manager'
 import * as events from './events'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
+import * as reflow from './reflow'
 import { LIBRARY_KIND_KEY } from './storage-kind'
 import * as sidecar from './sidecar'
 import { getTransferProgress, sendToDevice } from './transfer-queue'
@@ -24,6 +25,25 @@ import { getTransferProgress, sendToDevice } from './transfer-queue'
  * exactly what these tests are asking about.
  */
 vi.mock('./sidecar', () => ({ call: vi.fn() }))
+
+/**
+ * The reflow pass is minutes of Vision work in the sidecar, so what these cases
+ * decide is only how the queue *reacts* to its verdict. `resolveReflowFile`
+ * stays real: the artifact is a file the case puts in `derived/`.
+ */
+vi.mock('./reflow', () => ({ ensure: vi.fn() }))
+
+const REFUSED = {
+  status: 'fallback' as const,
+  reason: 'This PDF has no text layer.',
+  verdict: 'no_text_layer',
+  epub: '',
+  stampFile: '',
+  pages: 0,
+  bytes: 0,
+  seconds: 0
+}
+const PRODUCED = { ...REFUSED, status: 'produced' as const, reason: '', verdict: '' }
 
 /**
  * The device half is stubbed rather than staged: `getDevice` reads a map that
@@ -115,6 +135,8 @@ beforeEach(async () => {
   insertBook(makeBook('a', TITLE))
 
   vi.mocked(sidecar.call).mockReset()
+  // Unless a case says otherwise, a PDF has no readable reflow
+  vi.mocked(reflow.ensure).mockReset().mockResolvedValue(REFUSED)
   vi.mocked(deviceManager.getDevice).mockReturnValue({
     id: DEVICE_ID,
     kind: 'kindle',
@@ -208,7 +230,7 @@ describe('format choice', () => {
     expect(spy.mock.calls.map(([channel]) => channel)).toContain('libraryChanged')
   })
 
-  it('sends a PDF-only book as PDF and never converts it', async () => {
+  it('sends a PDF-only book as PDF, unconverted, when its reflow is refused', async () => {
     updateBook('a', { formats: ['pdf'] })
     await put(`${STEM}.pdf`, '%PDF-1.4 bytes')
 
@@ -217,10 +239,90 @@ describe('format choice', () => {
     expect(job).toMatchObject({ status: 'done', format: 'pdf' })
     expect(await documents()).toEqual([`${TITLE}.pdf`])
     expect(await delivered(`${TITLE}.pdf`)).toBe('%PDF-1.4 bytes')
-    // Kindles render PDF natively and conversion output is unacceptable, so the
-    // converter is not merely skipped — it is never consulted
+    // A refused reflow (no text layer) leaves only the original; the PDF is
+    // never itself fed to the converter
     expect(sidecar.call).not.toHaveBeenCalled()
     expect(getBook('a')?.formats).toEqual(['pdf'])
+  })
+
+  describe('a PDF-only book with a readable reflow', () => {
+    const derived = (): string => join(bookDir, 'derived')
+
+    beforeEach(async () => {
+      updateBook('a', { formats: ['pdf'] })
+      await put(`${STEM}.pdf`, '%PDF-1.4 bytes')
+      await fs.mkdir(derived())
+      await fs.writeFile(join(derived(), 'reflow.epub'), 'reflowed epub')
+      vi.mocked(reflow.ensure).mockResolvedValue(PRODUCED)
+      vi.mocked(sidecar.call).mockImplementation(async (_method, params) => {
+        await fs.writeFile((params as { output_path: string }).output_path, 'reflow azw3 bytes')
+        return {}
+      })
+    })
+
+    it('sends the reflow as azw3, not the original PDF', async () => {
+      const job = await transfer()
+
+      expect(job).toMatchObject({ status: 'done', format: 'azw3' })
+      expect(sidecar.call).toHaveBeenCalledWith(
+        'convert_format',
+        { input_path: join(derived(), 'reflow.epub'), output_path: join(derived(), 'reflow.azw3') },
+        expect.any(Number)
+      )
+      expect(await documents()).toEqual([`${TITLE}.azw3`])
+      expect(await delivered(`${TITLE}.azw3`)).toBe('reflow azw3 bytes')
+    })
+
+    it('keeps the rendering cache out of the book: formats and metadata stay as they were', async () => {
+      await transfer()
+
+      // A derived artifact is never a format the book holds (files-and-deletion.md)
+      expect(getBook('a')?.formats).toEqual(['pdf'])
+      expect(librarySync.upsertCatalog).not.toHaveBeenCalled()
+      expect(existsSync(join(bookDir, 'metadata.json'))).toBe(false)
+    })
+
+    it('reuses a converted file that is as new as the reflow', async () => {
+      await transfer()
+      await fs.rm(join(mount, 'documents'), { recursive: true })
+      vi.mocked(sidecar.call).mockClear()
+
+      const job = await transfer()
+
+      expect(job).toMatchObject({ status: 'done', format: 'azw3' })
+      expect(sidecar.call).not.toHaveBeenCalled()
+    })
+
+    it('converts again when the reflow was regenerated after the last conversion', async () => {
+      await transfer()
+      const later = new Date(Date.now() + 60_000)
+      await fs.utimes(join(derived(), 'reflow.epub'), later, later)
+      vi.mocked(sidecar.call).mockClear()
+
+      await transfer()
+
+      expect(sidecar.call).toHaveBeenCalledTimes(1)
+    })
+
+    it('still sends the PDF when the conversion fails', async () => {
+      vi.mocked(sidecar.call).mockRejectedValue(new Error('conversion failed'))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+      const job = await transfer()
+
+      expect(job).toMatchObject({ status: 'done', format: 'pdf' })
+      expect(await documents()).toEqual([`${TITLE}.pdf`])
+      expect(warn).toHaveBeenCalled()
+    })
+
+    it('still sends the PDF when the reflow pass cannot start', async () => {
+      vi.mocked(reflow.ensure).mockRejectedValue(new Error('metadata engine unavailable'))
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+      const job = await transfer()
+
+      expect(job).toMatchObject({ status: 'done', format: 'pdf' })
+    })
   })
 
   it('fails with an actionable message when there is nothing sendable at all', async () => {
@@ -373,7 +475,7 @@ describe('the device cover entry', () => {
     expect(job).toMatchObject({ status: 'done', format: 'pdf' })
     expect(await thumbnails()).toEqual([])
     // Likewise ordinary — every PDF send would log one otherwise
-    expect(warn).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('no cover entry'))
   })
 
   it('reports the send as done when the jacket cannot be encoded', async () => {

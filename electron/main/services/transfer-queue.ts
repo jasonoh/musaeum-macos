@@ -5,6 +5,7 @@ import { Transform } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { BookFormat } from '@shared/book.types'
 import type { TransferJob } from '@shared/device.types'
+import { resolveReflowFile } from './book-bytes'
 import { computeFileSizeBytes } from './book-files'
 import { writeDeviceCover } from './device-covers'
 import * as db from './db'
@@ -13,6 +14,7 @@ import { broadcast } from './events'
 import * as importer from './importer'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
+import * as reflow from './reflow'
 import { sanitizeTitle } from './sanitize'
 import * as sidecar from './sidecar'
 
@@ -119,12 +121,22 @@ async function runTransfer(job: TransferJob): Promise<void> {
         librarySync.upsertCatalog([updated])
         broadcast('libraryChanged')
       } else {
-        // PDF-only book: Kindles render PDF natively; conversion output is
-        // unacceptable, so PDFs always transfer as-is
+        // PDF-only book. The original is the *last resort*, not the plan: a
+        // Kindle renders a PDF at the page's fixed size, which on a six-inch
+        // screen is barely readable. The reflowed EPUB the reader already makes
+        // (`services/reflow.ts`) is the readable rendering, so it is laid out,
+        // converted by the same writer an EPUB send uses, and that goes out.
         const pdf = await findFormatFile(bookDir, 'pdf')
         if (!pdf) throw new Error('No source file available for conversion')
-        sourceFile = pdf
-        format = 'pdf'
+        emit(job, { status: 'converting', format: 'azw3' })
+        const reflowed = await reflowedAzw3(book.id, bookDir)
+        if (reflowed) {
+          sourceFile = reflowed
+          format = 'azw3'
+        } else {
+          sourceFile = pdf
+          format = 'pdf'
+        }
       }
     }
 
@@ -172,6 +184,48 @@ async function runTransfer(job: TransferJob): Promise<void> {
     const message = err instanceof Error ? err.message : String(err)
     db.logDeviceTransfer(job.bookId, job.deviceId, job.deviceName, job.format ?? 'unknown', message)
     emit(job, { status: 'error', error: message })
+  }
+}
+
+/**
+ * A PDF-only book's reflow as a Kindle file, or null when it has none.
+ *
+ * Lives at `{book}/derived/reflow.azw3` beside the artifact it is built from, and
+ * **never enters `formats` or `file_size_bytes`**: like `reflow.epub` it is a
+ * disposable rendering cache, and a PDF-only book must not start claiming an
+ * azw3 it does not hold (`docs/invariants/files-and-deletion.md` → *The
+ * `derived/` folder*). That is the difference from the EPUB branch above, whose
+ * converted file is a real ebook and is recorded.
+ *
+ * Reused while it is at least as new as `reflow.epub`; a regenerated reflow
+ * (replaced PDF, new converter version) is therefore converted again.
+ *
+ * Null — and the PDF goes out as before — when the reflow refuses the book (no
+ * text layer, D6), the metadata engine is down, or the conversion fails: the
+ * book's bytes reaching the device is what "sent" means (invariant 12), and a
+ * readable copy is the improvement, not the precondition.
+ */
+async function reflowedAzw3(bookId: string, bookDir: string): Promise<string | null> {
+  try {
+    const result = await reflow.ensure(bookId)
+    if (result.status === 'fallback') {
+      console.warn(`[transfer] sending the original PDF for ${bookId}: ${result.reason}`)
+      return null
+    }
+    const epub = await resolveReflowFile(bookId)
+    if (!epub) return null
+    const target = join(bookDir, 'derived', 'reflow.azw3')
+    const [epubStat, azwStat] = await Promise.all([
+      fs.stat(epub),
+      fs.stat(target).catch(() => null)
+    ])
+    if (!azwStat || azwStat.mtimeMs < epubStat.mtimeMs) {
+      await sidecar.call('convert_format', { input_path: epub, output_path: target }, 300_000)
+    }
+    return target
+  } catch (err) {
+    console.warn(`[transfer] could not reflow ${bookId} for the device; sending the PDF:`, err)
+    return null
   }
 }
 
