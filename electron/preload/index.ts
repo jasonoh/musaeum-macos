@@ -117,8 +117,14 @@ const api: MusaeumAPI = {
   tts: {
     status: () => invoke('tts:status'),
     synthesize: (request) => invoke('tts:synthesize', request),
+    preview: (request) => invoke('tts:preview', request),
     downloadModel: () => invoke('tts:downloadModel'),
     cancelDownload: () => invoke('tts:cancelDownload')
+  },
+  lexicon: {
+    list: () => invoke('lexicon:list'),
+    save: (input) => invoke('lexicon:save', input),
+    remove: (word) => invoke('lexicon:remove', word)
   },
   ai: {
     getStatus: () => invoke('ai:getStatus'),

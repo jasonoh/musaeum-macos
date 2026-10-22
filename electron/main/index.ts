@@ -14,6 +14,7 @@ import { registerMigrationHandlers } from './ipc/migration'
 import { registerNASHandlers } from './ipc/nas'
 import { registerReaderHandlers } from './ipc/reader'
 import { registerAnnotationHandlers } from './ipc/annotations'
+import { registerLexiconHandlers } from './ipc/lexicon'
 import { registerTtsHandlers } from './ipc/tts'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerShelvesHandlers } from './ipc/shelves'
@@ -216,6 +217,7 @@ app.whenReady().then(() => {
   registerShelvesHandlers()
   registerReaderHandlers()
   registerAnnotationHandlers()
+  registerLexiconHandlers()
   registerThemeHandlers()
   registerAiHandlers()
   registerTtsHandlers()

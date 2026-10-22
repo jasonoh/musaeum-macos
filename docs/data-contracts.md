@@ -106,6 +106,22 @@ A hand-edited or corrupted file — invalid JSON, or a manual shelf missing a re
 
 ---
 
+## lexicon.json (library-level, stored on NAS)
+
+The pronunciation list (`docs/superpowers/specs/2026-10-15-voice-reader-design.md`, D8; rules in `docs/invariants/voice-reader.md`). A sibling of `shelves.json`, canonical for its own kind of data, written only by `electron/main/services/lexicon.ts`, and read on every spoken sentence so a respelling saved on either Mac is heard without an adoption step. `test/invariants.test.ts` keeps the file to one reader: exactly one module spells the name (`src/types/lexicon.types.ts`, because both processes need it) and only `services/lexicon.ts` imports the path builder.
+
+```json
+{
+  "version": 1,
+  "entries": [{ "word": "Hegel", "soundsLike": "HAY-gul", "addedAt": "2026-10-22T11:35:05.321Z" }]
+}
+```
+
+- `word` — matched whole-word and case-sensitive, one entry per spelling (`Van Gogh` is one entry). Possessives use their base word's entry.
+- `soundsLike` — what a person typed; the part in capitals carries the stress. **Never IPA**, so the file does not freeze a phonemizer version. Letters, spaces, hyphens and apostrophes only.
+- `addedAt` — ISO; stamped on add, kept on an edit. `""` for an entry hand-written into the file, stamped the first time it is edited.
+- A file that does not parse, or whose `version` is not 1, is never rewritten — every mutation refuses with `LEXICON_UNREADABLE` until it is repaired. Unknown top-level keys and unknown entry shapes are carried through a write verbatim and never spoken.
+
 ## annotations.json (per book, stored on NAS)
 
 One file per book, beside its `metadata.json` — `{library_root}/books/{uuid}/annotations.json`, canonical for its own kind of data and never derived (annotations design D1). Written only by `electron/main/services/annotations.ts`; the name, the parser and the atomic write live in `services/annotations-file.ts`, and `test/invariants.test.ts` enforces both halves of that (one module spells the name, and only the service imports it).
@@ -376,6 +392,20 @@ interface MusaeumAPI {
   }
   reader: {
     saveProgress(report: ProgressReport): Promise<void>  // tiered write; see docs/invariants/reader.md
+  }
+  tts: {
+    // the voice reader; see docs/invariants/voice-reader.md
+    status(): Promise<TtsModelStatus> // { ready, missing: [name], totalBytes }
+    synthesize(request: TtsRequest): Promise<TtsAudio> // text + voice + speed → mono s16le PCM @24 kHz
+    preview(request: LexiconPreviewRequest): Promise<TtsAudio> // the word with a one-entry lexicon; writes nothing
+    downloadModel(): Promise<TtsDownloadResult> // progress via on.ttsModelProgress
+    cancelDownload(): Promise<void>
+  }
+  lexicon: {
+    // `{library root}/lexicon.json`; see docs/invariants/voice-reader.md
+    list(): Promise<LexiconRead> // never rejects: state is 'ok' | 'missing' | 'unreadable'
+    save(input: LexiconSaveInput): Promise<LexiconEntryView[]> // add or replace; answers the whole list
+    remove(word: string): Promise<LexiconEntryView[]> // a word not in the file rejects by name
   }
   on: {                                          // all return an Unsubscribe fn
     nasStatusChanged(cb): Unsubscribe

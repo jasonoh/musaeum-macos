@@ -32,13 +32,19 @@ interface Props {
    * engine's handler closes over the selection's range and passes it on.
    */
   onReadFromHere?(): void
+  /**
+   * Fix how the selection is pronounced (voice reader D8). Passed only when the selection
+   * is a word — the engine's own `cleanWord` decides — and the popover that opens is the
+   * engine's, at the same rect, because only the engine holds both the text and the rect.
+   */
+  onPronounce?(): void
 }
 
 /** Roughly the chip's own box and the gap it keeps — used only to decide above-or-below. */
 const CHIP_HEIGHT = 26
 const CHIP_GAP = 8
 
-export function SelectionChip({ rect, busy, onActivate, onReadFromHere }: Props) {
+export function SelectionChip({ rect, busy, onActivate, onReadFromHere, onPronounce }: Props) {
   // Above the selection when there is room, below it when there is not: the chip
   // must never be the thing that covers the words it is about.
   const above = rect.top - CHIP_GAP - CHIP_HEIGHT >= 0
@@ -81,6 +87,18 @@ export function SelectionChip({ rect, busy, onActivate, onReadFromHere }: Props)
           title="Read aloud from here"
         >
           Read from here
+        </button>
+      )}
+      {onPronounce && (
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={busy}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onPronounce}
+          title="Fix how this word is pronounced"
+        >
+          Pronounce…
         </button>
       )}
     </div>

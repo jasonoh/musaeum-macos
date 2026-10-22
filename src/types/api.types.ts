@@ -50,6 +50,12 @@ import type {
   SettingsView
 } from './settings.types'
 import type { ShelfAddResult, ShelfMembership, ShelfScope, ShelfSummary } from './shelf.types'
+import type {
+  LexiconEntryView,
+  LexiconPreviewRequest,
+  LexiconRead,
+  LexiconSaveInput
+} from './lexicon.types'
 import type { ThemeImportResult, ThemeView } from './theme.types'
 import type {
   TtsAudio,
@@ -409,9 +415,33 @@ export interface MusaeumAPI {
      * pronunciation data is missing — a normal outcome the bar shows in one line.
      */
     synthesize(request: TtsRequest): Promise<TtsAudio>
+    /**
+     * Speak one word as a respelling says it (D8's Preview) — the respelling phonemized
+     * and spliced at the word boundary, exactly as reading the word aloud after Save
+     * would do. Writes nothing. Rejects with a sentence for a word with nothing in it, a
+     * respelling that is not letters/hyphens, or an engine that is not ready.
+     */
+    preview(request: LexiconPreviewRequest): Promise<TtsAudio>
     /** Resolves with the outcome; progress arrives as `on.ttsModelProgress`. */
     downloadModel(): Promise<TtsDownloadResult>
     cancelDownload(): Promise<void>
+  }
+  /**
+   * The library's pronunciation list — `{library root}/lexicon.json`
+   * (`docs/superpowers/specs/2026-10-15-voice-reader-design.md`, D8; slice annex
+   * `docs/superpowers/plans/2026-10-22-voice-reader-lexicon.md`).
+   *
+   * `list` never rejects: it answers a state, because "no pronunciations yet" and "a
+   * pronunciation list that could not be read" are different sentences on screen. The
+   * two mutations reject with main's own sentence and answer with the file's **whole**
+   * list as it now stands, since another Mac may have edited it since this one looked.
+   */
+  lexicon: {
+    list(): Promise<LexiconRead>
+    /** Add or replace one respelling. `addedAt` is main's — stamped on add, kept on an edit. */
+    save(input: LexiconSaveInput): Promise<LexiconEntryView[]>
+    /** A word that is not in the file rejects by name rather than doing nothing quietly. */
+    remove(word: string): Promise<LexiconEntryView[]>
   }
   ai: {
     /**

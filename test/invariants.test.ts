@@ -227,6 +227,56 @@ describe('a book’s annotations file has one reader', () => {
   })
 })
 
+/**
+ * The pronunciation list, slice 3, enforced: **the library's `lexicon.json` has one reader.**
+ *
+ * The same rule as the annotations file above, at library scope: the name lives in
+ * `src/types/lexicon.types.ts` (both processes need it), the path builder, the parser and the
+ * atomic write in `services/lexicon-file.ts`, and every read and write in
+ * `services/lexicon.ts`. A second reader that took `lexiconPath()` — a Settings list, an
+ * exporter, a "did this book use it" badge — would be a second place the file's shape is
+ * understood, and the drift surfaces as lost pronunciations rather than as a build error
+ * (`docs/invariants/voice-reader.md`).
+ *
+ * The literal is spelled here rather than imported, for the `TS6307` reason the annotations
+ * walk records above.
+ */
+describe('the library’s pronunciation list has one reader', () => {
+  it('is spelled by one module, and imported only by the service that owns its rules', () => {
+    const root = process.cwd()
+    const literal = 'lexicon.json'
+    const namingModule = 'src/types/lexicon.types.ts'
+    const file = 'electron/main/services/lexicon-file.ts'
+    const service = 'electron/main/services/lexicon.ts'
+
+    const codeLines = (path: string): string[] =>
+      readFileSync(path, 'utf8')
+        .split('\n')
+        .map((text) => text.replace(/\/\/.*$/, ''))
+        .map((text) => text.trim())
+        .filter((text) => text !== '' && !/^(\*|\/\*)/.test(text))
+
+    const walked = ['src', 'electron', 'sidecar'].flatMap((tree) => sources(join(root, tree)))
+
+    // Exactly one module spells the file's name — the shared types, because both processes
+    // need it; `lexicon-file.ts` builds the path from the constant rather than respelling it.
+    const naming = walked
+      .filter((path) => codeLines(path).some((text) => text.includes(literal)))
+      .map((path) => relative(root, path))
+    expect(naming).toEqual([namingModule])
+
+    // …and the file module exists and is where the path is built, so a rename cannot leave
+    // the walk passing while the constant points at nothing.
+    expect(codeLines(join(root, file)).some((text) => text.includes('join(root'))).toBe(true)
+
+    const importing = walked
+      .filter((path) => codeLines(path).some((text) => /from ['"].*lexicon-file['"]/.test(text)))
+      .map((path) => relative(root, path))
+    expect(importing.filter((path) => path !== service)).toEqual([])
+    expect(importing).toContain(service)
+  })
+})
+
 describe('the bundled helpers (voice reader, spec D2)', () => {
   it('ships helpers/bin whole, so the espeak bundle travels with the layout helper', () => {
     const yml = readFileSync(join(process.cwd(), 'electron-builder.yml'), 'utf8')

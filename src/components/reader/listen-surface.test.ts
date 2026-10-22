@@ -124,7 +124,9 @@ describe('the icons', () => {
 describe('the chip’s second button', () => {
   it('is "Read from here", app-no-drag, with onMouseDown preventDefault', () => {
     const buttons = CHIP.split('<button').slice(1)
-    expect(buttons.length).toBe(2)
+    // Three since slice 3 added Pronounce… after it (lexicon annex AC25); the count stays
+    // exact because a walk that found one button would pass with the others unmarked.
+    expect(buttons.length).toBe(3)
     const second = buttons[1]!
     const open = second.slice(0, second.indexOf('>\n') >= 0 ? second.indexOf('>\n') : 400)
     expect(second).toContain('Read from here')

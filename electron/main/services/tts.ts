@@ -2,6 +2,13 @@ import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { app } from 'electron'
 import {
+  cleanRespelling,
+  cleanWord,
+  toSpokenEntry,
+  type LexiconPreviewRequest,
+  type SpokenLexiconEntry
+} from '@shared/lexicon.types'
+import {
   TTS_VOICES,
   clampTtsSpeed,
   type TtsAudio,
@@ -10,6 +17,7 @@ import {
   type TtsRequest
 } from '@shared/tts.types'
 import * as events from './events'
+import * as lexicon from './lexicon'
 import * as sidecar from './sidecar'
 
 /**
@@ -27,17 +35,18 @@ import * as sidecar from './sidecar'
  * - **One download at a time.** A second press shares the first; progress is rebroadcast
  *   on the app's own channel rather than handed to a caller, because the sidecar's frames
  *   arrive whether or not anything awaits the result.
+ *
+ * **Every sentence is phonemized with the library's pronunciations** (D8, annex R1): the
+ * entries come from `services/lexicon.ts` on each call, so a respelling saved mid-book is
+ * in the next sentence and no restart is needed (AC26). The read is stat-keyed, so this
+ * costs one `stat` on the share rather than a read, and it never throws — a library that
+ * cannot be read is a sentence with no respellings, not a sentence that fails to speak.
  */
 
 /** A sentence is ~0.3–0.5 s warm. Thirty seconds is a stuck engine, not a slow one. */
 export const SYNTH_TIMEOUT_MS = 30_000
 /** One sentence, not one chapter: a request this long is a caller bug. */
 export const MAX_TEXT_CHARS = 4_000
-/**
- * The lexicon is the library's `lexicon.json` (slice 3). Until that service exists there
- * is nothing to read, and this is the one line slice 3 replaces.
- */
-const NO_LEXICON: never[] = []
 
 export function modelDir(): string {
   return join(app.getPath('userData'), 'tts-models')
@@ -57,7 +66,7 @@ interface SidecarStatus {
   total_bytes?: unknown
 }
 
-function text(value: unknown): string {
+function asText(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
@@ -70,7 +79,9 @@ export async function status(): Promise<TtsModelStatus> {
   const answer = await sidecar.call<SidecarStatus>('tts_model_status', { model_dir: modelDir() })
   return {
     ready: answer.ready === true,
-    missing: Array.isArray(answer.missing) ? answer.missing.filter((m): m is string => typeof m === 'string') : [],
+    missing: Array.isArray(answer.missing)
+      ? answer.missing.filter((m): m is string => typeof m === 'string')
+      : [],
     totalBytes: count(answer.total_bytes)
   }
 }
@@ -82,27 +93,61 @@ export async function synthesize(request: TtsRequest): Promise<TtsAudio> {
   const sentence = request.text.trim()
   if (!sentence) throw new Error('There is nothing to speak')
   if (sentence.length > MAX_TEXT_CHARS) throw new Error('That passage is too long to speak at once')
+  return speak(sentence, request.voice, request.speed, await lexicon.spokenEntries())
+}
+
+/**
+ * Speak one word as a respelling says it (D8's Preview, annex R3).
+ *
+ * The word goes to the engine **with a one-entry lexicon**, which is deliberately the
+ * same path saving it and reading the word aloud would take: the respelling is phonemized
+ * and spliced at the word boundary, so what a person hears is what the library will do —
+ * not espeak reading the letters of `HAY-gul`. It writes nothing.
+ *
+ * This is also AC24's instrument: the derivation from a respelling is the substitution D8
+ * named as not yet listened to, and this is the only path that produces it.
+ */
+export async function preview(request: LexiconPreviewRequest): Promise<TtsAudio> {
+  if (!(TTS_VOICES as readonly string[]).includes(request.voice)) {
+    throw new Error(`Unknown voice: ${String(request.voice)}`)
+  }
+  const word = cleanWord(request.word)
+  if (!word) throw new Error('A pronunciation needs a word.')
+  const soundsLike = cleanRespelling(request.soundsLike)
+  if (!soundsLike) {
+    throw new Error('A respelling is letters, spaces and hyphens — like HAY-gul.')
+  }
+  const entry = toSpokenEntry({ word, soundsLike, addedAt: '' })
+  return speak(word, request.voice, request.speed, [entry])
+}
+
+async function speak(
+  text: string,
+  voice: TtsRequest['voice'],
+  speed: number,
+  entries: SpokenLexiconEntry[]
+): Promise<TtsAudio> {
   sidecar.assertAvailable()
   const answer = await sidecar.call<SidecarAudio>(
     'tts_synthesize',
     {
       model_dir: modelDir(),
-      text: sentence,
-      voice: request.voice,
-      speed: clampTtsSpeed(request.speed),
-      lexicon: NO_LEXICON
+      text,
+      voice,
+      speed: clampTtsSpeed(speed),
+      lexicon: entries
     },
     SYNTH_TIMEOUT_MS
   )
   if (typeof answer.error === 'string' && answer.error) throw new Error(answer.error)
-  const bytes = Buffer.from(text(answer.pcm), 'base64')
+  const bytes = Buffer.from(asText(answer.pcm), 'base64')
   return {
     sampleRate: count(answer.sample_rate) || 24000,
     // A copy, not a view: `Buffer.from` may sit in Node's shared pool slab, and structured
     // clone (which Electron's IPC uses) sends a view's *whole* underlying buffer.
     samples: Uint8Array.from(bytes),
     durationMs: count(answer.duration_ms),
-    lexiconVersion: text(answer.lexicon_version)
+    lexiconVersion: asText(answer.lexicon_version)
   }
 }
 
@@ -114,8 +159,8 @@ function subscribeOnce(): void {
   subscribed = true
   sidecar.onNotification('tts_model_progress', (params) => {
     const frame = (params ?? {}) as Record<string, unknown>
-    const jobId = text(frame.job_id)
-    const file = text(frame.file)
+    const jobId = asText(frame.job_id)
+    const file = asText(frame.file)
     if (!jobId || !file) return
     events.broadcast('ttsModelProgress', {
       jobId,
@@ -132,7 +177,11 @@ export function downloadModel(): Promise<TtsDownloadResult> {
   subscribeOnce()
   const jobId = randomUUID()
   const promise = sidecar
-    .call<TtsDownloadResult>('tts_download_model', { model_dir: modelDir(), job_id: jobId }, 30 * 60_000)
+    .call<TtsDownloadResult>(
+      'tts_download_model',
+      { model_dir: modelDir(), job_id: jobId },
+      30 * 60_000
+    )
     .catch((err: unknown) => {
       // The call gave up (app-side timeout, sidecar restart) but the Python job may still be
       // running: stop it, so the next download cannot race it on the same `.part`.

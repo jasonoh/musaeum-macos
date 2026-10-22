@@ -12,6 +12,7 @@ import '@vendor/foliate-js/view.js'
 import { Overlayer } from '@vendor/foliate-js/overlayer.js'
 import type { ReadingState, ReaderFormat } from '@shared/book.types'
 import type { Annotation } from '@shared/annotation.types'
+import { cleanWord } from '@shared/lexicon.types'
 import {
   annotationFromSelection,
   isAnnotationDrawKind,
@@ -27,6 +28,7 @@ import { readerPageCss, resolveReaderPalette } from '@/lib/theme/reader-palette'
 import type { ReaderPrefs, ReaderSection, ReaderTocItem } from '@/stores/reader.store'
 import { useThemeStore } from '@/stores/theme.store'
 import { SelectionChip, type SelectionRect } from './SelectionChip'
+import { PronouncePopover } from './PronouncePopover'
 
 interface Props {
   bookId: string
@@ -255,6 +257,13 @@ export function ReaderEngine({
     range: Range
   } | null>(null)
   const [saving, setSaving] = useState(false)
+
+  /**
+   * The Pronounce… popover (D8): the word the selection named, and where it was. The
+   * selection itself is gone by the time a field takes the click, so both are copied out
+   * of the chip when it is opened.
+   */
+  const [pronounce, setPronounce] = useState<{ word: string; rect: SelectionRect } | null>(null)
 
   /**
    * Run the plan against the view (AC14, AC15, R12/R13).
@@ -572,6 +581,22 @@ export function ReaderEngine({
     setChip(null)
   }, [chip])
 
+  /**
+   * The chip's third gesture: fix how the selection is pronounced (D8).
+   *
+   * The word is the selection itself, and only when `cleanWord` accepts it — the same
+   * validator main uses, so the button appears for exactly what a save would accept. The
+   * chip goes and the popover opens at the same rect: from here the popover owns the word,
+   * because selecting anything else is what dismisses it.
+   */
+  const onChipPronounce = useCallback(() => {
+    if (!chip) return
+    const word = cleanWord(chip.capture.quote)
+    if (!word) return
+    setPronounce({ word, rect: chip.rect })
+    setChip(null)
+  }, [chip])
+
   return (
     <div ref={hostRef} className="h-full w-full">
       {chip && (
@@ -580,6 +605,14 @@ export function ReaderEngine({
           busy={saving}
           onActivate={onChipActivate}
           onReadFromHere={onReadFromHere ? onChipReadFromHere : undefined}
+          onPronounce={cleanWord(chip.capture.quote) ? onChipPronounce : undefined}
+        />
+      )}
+      {pronounce && (
+        <PronouncePopover
+          word={pronounce.word}
+          rect={pronounce.rect}
+          onClose={() => setPronounce(null)}
         />
       )}
     </div>
