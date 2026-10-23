@@ -153,6 +153,29 @@ class BlockSource implements PlayerSource {
   }
 }
 
+/** A source that can step back across a block, as the controller can (`tts.prev()`). */
+class BackSource extends BlockSource {
+  readonly back = vi.fn((unit: SpeechUnit): boolean => {
+    for (let b = this.b; b >= 0; b--) {
+      const k = (this.blocks[b] ?? []).findIndex((x) => x.mark === unit.mark)
+      if (k < 0) continue
+      // the sentence before this one: earlier in its block, or its previous block's last
+      if (k > 0) {
+        this.b = b
+        this.i = k - 1
+      } else if (b > 0) {
+        this.b = b - 1
+        this.i = Math.max(0, (this.blocks[this.b] ?? []).length - 1)
+      } else {
+        return false
+      }
+      this.held = null
+      return true
+    }
+    return false
+  })
+}
+
 interface Deferred<T> {
   promise: Promise<T>
   resolve(v: T): void
@@ -618,6 +641,91 @@ describe('SpeechPlayer', () => {
     expect(spoken[2]?.when).toBeCloseTo(1.5 + 1 + 0.7, 9)
     expect(r.starts.map((s) => s.mark)).toEqual(['0', '1', '2', '3', '4'])
     expect(r.onEnd).not.toHaveBeenCalled()
+  })
+
+  it("Previous from a block's last sentence, once the cursor moved on, plays the sentence before it at once (crosses a paragraph)", async () => {
+    const source = new BackSource([
+      [u(0), u(1, true)],
+      [u(2), u(3, true)]
+    ])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(1400) // 1 sounds from 1.35 s; the next block's take is held
+    source.release() // 2 and 3 are prefetched: the cursor has left block 0
+    await r.advance(100)
+    expect(r.ctx.sources.map((s) => s.mark)).toEqual(['0', '1', '2', '3'])
+
+    r.player.skip(-1)
+    await flush()
+    expect(r.onError).not.toHaveBeenCalled()
+    expect(source.back).toHaveBeenLastCalledWith(u(1, true)) // the sentence before the sounding one
+    expect(source.rewind).not.toHaveBeenCalled() // a step, not a rewind across the block
+    await r.advance(20)
+    // the sentence before it, at once: no block pause in front of a sentence just asked for
+    expect(r.starts.at(-1)).toEqual({ mark: '0', t: 1.5 })
+    expect(r.ctx.sources.filter((s) => s.mark === '0')).toHaveLength(2)
+    expect(r.ctx.sources.find((s) => s.mark === '0' && s.when === 1.5)?.stopped).toBe(false)
+  })
+
+  it("Previous from a block's first sentence crosses into the block before it", async () => {
+    const source = new BackSource([
+      [u(0), u(1, true)],
+      [u(2), u(3, true)]
+    ])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(1400)
+    source.release()
+    await r.advance(1900) // 1 ends at 2.35 s; 2 starts at 3.05 s
+    expect(r.starts.at(-1)?.mark).toBe('2')
+
+    r.player.skip(-1)
+    await flush()
+    expect(r.onError).not.toHaveBeenCalled()
+    expect(source.back).toHaveBeenLastCalledWith(u(2))
+    await r.advance(20)
+    // block 0's last sentence, not a replay of 2
+    expect(r.starts.at(-1)?.mark).toBe('1')
+  })
+
+  it('Previous across a block while a take is in flight is applied when that take settles', async () => {
+    const source = new BackSource([
+      [u(0), u(1, true)],
+      [u(2, true)] // one sentence: the source is asked for the block after it and holds
+    ])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(1400)
+    source.release()
+    await r.advance(1900) // 2 sounds at 3.05 s; the take past it is held
+    expect(r.starts.at(-1)?.mark).toBe('2')
+    expect(source.held).not.toBeNull()
+
+    r.player.skip(-1)
+    await flush()
+    expect(r.onError).not.toHaveBeenCalled()
+    expect(source.back).toHaveBeenLastCalledWith(u(2, true))
+    await r.advance(20)
+    expect(r.starts.at(-1)?.mark).toBe('1') // the block's last sentence, spoken
+  })
+
+  it("Previous at the section's first sentence still replays it: back says there is nothing earlier", async () => {
+    const source = new BackSource([[u(0), u(1, true)]])
+    const r = rigWith(source, latencySynth(0))
+    r.player.start()
+    await flush()
+    await r.advance(10) // 0 sounds
+    r.player.skip(-1)
+    await flush()
+    expect(source.back).toHaveBeenCalledWith(u(0))
+    expect(r.onError).not.toHaveBeenCalled()
+    // nothing earlier anywhere: the rewind-replay the player has always done at an edge
+    expect(source.rewind).toHaveBeenLastCalledWith(u(0))
+    await r.advance(20)
+    expect(r.starts.at(-1)?.mark).toBe('0')
   })
 
   it('restartAt(null) with a take in flight and no abort() keeps what that take brings (re-review)', async () => {

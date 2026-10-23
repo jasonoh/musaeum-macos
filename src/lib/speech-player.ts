@@ -56,6 +56,14 @@ export interface PlayerSource {
   ended?(unit: SpeechUnit): void
   /** Move the cursor so the next take() returns `unit` again. Only ever asked for a unit of the current block. */
   rewind(unit: SpeechUnit): void
+  /**
+   * Step the cursor one sentence back, **crossing a block** (a paragraph): the next `take()`
+   * returns that sentence. Only ever asked for the sounding unit, and only when `rewind()` cannot
+   * reach the one before it (the block's first sentence, or a cursor already on the next block).
+   * False when there is nothing earlier — a section's first sentence — and the player then
+   * replays what is sounding. A source without it is one that cannot step back at all.
+   */
+  back?(unit: SpeechUnit): boolean
   /** Settle a pending take() now (with null): called by `restartAt` and `stop` when one is in flight. */
   abort?(): void
 }
@@ -136,11 +144,13 @@ interface Item {
  * Decisions the controls rely on:
  * - "The sounding sentence" is the last one to have started, even in the pause after it ended.
  * - `skip(1)` cuts it and plays the next at once (the remaining pause is dropped); `skip(-1)` cuts
- *   it and plays the one before it in the same block, or replays it if it is the first of its
- *   block. If it was the last of its block and the source has moved on to the next one, it is
- *   replayed from the audio already in hand: rewinding across a block is impossible (Facts 1),
- *   and `started()` is not called a second time for it. Any of the next block's units already
- *   taken are given back (rewound) first, so they follow the replay.
+ *   it and plays the one before it in the same block. **From a block's first sentence (or once the
+ *   source has moved on past a block's last), the sentence before it is the previous paragraph's
+ *   last**, which `rewind()` cannot reach — the source's `back()` can, and everything taken from
+ *   the block being left is given up so Previous's sentence starts at once. A source without
+ *   `back()` (or a section's first sentence, where there is nothing earlier) replays what is
+ *   sounding instead, from the audio already in hand: `started()` is not called a second time for
+ *   a replay.
  * - `restartAt(null)` with a take in flight: a source with `abort()` has it settled and ignored;
  *   a source without one is continued from, and that take's unit is kept.
  * - While paused (suspended), a skip still schedules the target at the frozen clock time and
@@ -173,6 +183,8 @@ export class SpeechPlayer {
   private dropTake = false
   /** A rewind deferred until the in-flight take settles. */
   private pendingRewind: SpeechUnit | null = null
+  /** A cross-block step back deferred the same way (a take is in flight). */
+  private pendingBack: SpeechUnit | null = null
   private scheduling = false
   private wake: () => void = () => {}
   private ticker: ReturnType<typeof setInterval> | null = null
@@ -227,23 +239,65 @@ export class SpeechPlayer {
       const next = this.items.find((i) => !i.announced)?.unit
       if (next && !this.rewindTo(next)) return
       this.discard(true)
-    } else if (at >= 0) {
+    } else if (at > 0) {
       if (!this.rewindTo(this.blockTaken[at - 1] ?? sounding.unit)) return
       this.discard(true)
-    } else {
-      if (!sounding.node) return // silence: nothing to replay
-      // the next block's units already taken are in the source's current block: give them back
-      const next = this.items.find((i) => !i.announced)?.unit
-      if (next && !this.rewindTo(next)) return
-      // still the block's last unit sounding: it ends when the replay does
-      this.discard(true, sounding)
-      const replay: Item = { ...sounding, scheduled: false, node: null } // announced already
-      this.items = [replay]
-      // tick() never announces it again: it is the sounding one now, for a second skip and its end
-      this.current = replay
-      void this.schedule()
+    } else if (!this.stepBack(sounding)) {
+      // nothing earlier in the section: replay what is sounding, from a block's or its first edge
+      if (at === 0) {
+        if (!this.rewindTo(sounding.unit)) return
+        this.discard(true)
+      } else {
+        if (!sounding.node) return // silence: nothing to replay
+        // the next block's units already taken are in the source's current block: give them back
+        const next = this.items.find((i) => !i.announced)?.unit
+        if (next && !this.rewindTo(next)) return
+        // still the block's last unit sounding: it ends when the replay does
+        this.discard(true, sounding)
+        const replay: Item = { ...sounding, scheduled: false, node: null } // announced already
+        this.items = [replay]
+        // tick() never announces it again: it is the sounding one now, for a second skip and its end
+        this.current = replay
+        void this.schedule()
+      }
     }
     void this.fill()
+  }
+
+  /**
+   * Previous across a block (a paragraph): the source is asked for the sentence before this one,
+   * and everything taken but unspoken belongs to a block the listener has stepped out of, so it
+   * is given up. The source's next `take()` brings Previous's sentence, which starts at once —
+   * the pause belongs between sentences, not before the one just asked for.
+   *
+   * A take in flight is superseded the way a rewind supersedes one: dropped, and the step applied
+   * when it settles. False when the source cannot step back (no `back()`, or a section's first
+   * sentence), and the caller then replays the sounding sentence.
+   */
+  private stepBack(sounding: Item): boolean {
+    if (!this.deps.source.back) return false
+    if (this.taking) {
+      this.pendingBack = sounding.unit
+      this.dropTake = true
+      this.deps.source.abort?.()
+    } else if (!this.applyBack(sounding.unit)) {
+      return false
+    }
+    this.blockTaken = []
+    this.newBlockNext = false
+    this.sourceDone = false
+    this.discard(true)
+    void this.fill()
+    return true
+  }
+
+  private applyBack(unit: SpeechUnit): boolean {
+    try {
+      return this.deps.source.back?.(unit) === true
+    } catch (e) {
+      this.fail(null, e)
+      return false
+    }
   }
 
   restartAt(unit: SpeechUnit | null): void {
@@ -257,6 +311,7 @@ export class SpeechPlayer {
     this.failed = null
     this.blockTaken = []
     this.newBlockNext = false
+    this.pendingBack = null
     if (unit && !this.rewindTo(unit)) return
     this.discard(true)
     this.sourceDone = false
@@ -313,8 +368,13 @@ export class SpeechPlayer {
         if (this.dropTake) {
           this.dropTake = false
           const target = this.pendingRewind
+          const back = this.pendingBack
           this.pendingRewind = null
-          if (target && !this.applyRewind(target)) return
+          this.pendingBack = null
+          if (back && !this.applyBack(back)) {
+            // nothing earlier after all: fall through, and let the source's own take answer
+            if (this.failed) return
+          } else if (target && !this.applyRewind(target)) return
           continue
         }
         if (this.failed) return

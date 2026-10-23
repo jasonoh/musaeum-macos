@@ -26,6 +26,12 @@
  * emptied block gives way to the next one.
  *
  * Format-blind by rule (reader invariant D10): a reflowed PDF is an EPUB here.
+ *
+ * **Read from here is the sentence containing the selection, and Previous crosses a block.**
+ * `from(range)` cuts at the first sentence *starting at or after* the range, so a mid-sentence
+ * selection skipped its own words; `begin(from)` recovers the un-cut block through `resume()` and
+ * cuts at-or-before instead. And because the engine keeps every block it has walked, `back()`
+ * takes Previous to the paragraph before this one (`prev()`) rather than replaying a block's edge.
  */
 import type { FoliateTTS } from '@vendor/foliate-js/view.js'
 import type { PlayerSource } from './speech-player'
@@ -104,6 +110,15 @@ function startsBefore(page: Range, inner: Range): boolean {
   }
 }
 
+/** Whether `inner` starts after `at` does — i.e. `at` is at or before it. */
+function startsAfter(at: Range, inner: Range): boolean {
+  try {
+    return docOf(at) === docOf(inner) && at.compareBoundaryPoints(START_TO_START, inner) < 0
+  } catch {
+    return false
+  }
+}
+
 /** Whether `inner` starts on the page `page` covers (both ends inclusive). */
 function startsInside(page: Range, inner: Range): boolean {
   try {
@@ -131,6 +146,22 @@ function collapsedStart(range: Range): Range {
 function blockFrom(tts: FoliateTTS, range: Range): string | null {
   try {
     return tts.from(range) ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The block the cursor landed on, **un-cut**. `from()` slices the SSML to begin at the first
+ * sentence starting at or after the given range (`tts.js:262-268`), and the sentences it dropped
+ * are not recoverable from what it returned — but `resume()` re-serializes the block the cursor
+ * is on from its first sentence whenever no mark has been highlighted yet (`tts.js:242-246`),
+ * which is the state `from()` leaves behind (`#lastMark = null`). That is how Read from here gets
+ * the selection's own sentence instead of the one after it.
+ */
+function blockWhole(tts: FoliateTTS): string | null {
+  try {
+    return tts.resume() ?? null
   } catch {
     return null
   }
@@ -209,9 +240,14 @@ export class SpeechController implements PlayerSource {
         ssml = blockFrom(tts, anchor)
         pastEnd = ssml === null
         if (!pastEnd) start = collapsedStart(anchor)
-        units = flattenSsml(ssml)
-        // a page, not a chosen place: speech starts on it (Read from here is left as `from()` cut it)
-        if (!from) units = this.onPage(units, anchor)
+        // Read from here begins on the sentence **containing** the selection. `from()` cuts the
+        // block at the first sentence starting at or after the selection, so a word in the middle
+        // of a sentence was skipped and its words were never spoken; the un-cut block is recovered
+        // through `resume()`, and the cut is taken at-or-before here instead.
+        const whole = from && !pastEnd ? blockWhole(tts) : null
+        units = flattenSsml(whole ?? ssml)
+        // a page, not a chosen place: speech starts on it
+        units = this.cut(units, anchor, from ? 'selection' : 'page')
       } else {
         ssml = tts.start()
         units = flattenSsml(ssml)
@@ -282,6 +318,57 @@ export class SpeechController implements PlayerSource {
     this.lastEnded = false
   }
 
+  /**
+   * One sentence back, **crossing a block** (the player's Previous): the next `take()` brings it.
+   *
+   * `rewind()` cannot cross a block — the engine's range map holds the current block only, and
+   * names restart at `"0"` in every one — so `tts.prev()` is what moves the engine, handing back
+   * that block *whole*, which is why its units are re-serialized (new objects, same marks). The
+   * iterator keeps every block it has been through, which is exactly the blocks a listener has
+   * heard; before the section's first block it answers `undefined`.
+   *
+   * False when there is nothing earlier — a section's first sentence, or a cursor that cannot
+   * move — and the player then replays what is sounding, which is all an edge can honestly offer.
+   */
+  back(unit: SpeechUnit): boolean {
+    if (this.disposed || !this.tts) return false
+    let at = this.blockUnits.indexOf(unit)
+    if (at < 0) {
+      // the cursor has left the sounding unit's block (its last sentence is still sounding)
+      if (!this.adoptPrevious()) return false
+      at = this.blockUnits.findIndex((u) => u.mark === unit.mark)
+      if (at < 0) return false
+    }
+    if (at > 0) {
+      this.idx = at - 1
+      return true
+    }
+    // the block's first sentence: the paragraph before it, from its last sentence
+    if (!this.adoptPrevious()) return false
+    this.idx = this.blockUnits.length - 1
+    return true
+  }
+
+  /** Make the engine's previous block the current one, skipping any with nothing to say. */
+  private adoptPrevious(): boolean {
+    const tts = this.tts
+    if (!tts) return false
+    for (;;) {
+      let ssml: string | undefined
+      try {
+        ssml = tts.prev()
+      } catch {
+        return false
+      }
+      if (ssml === undefined) return false
+      const units = flattenSsml(ssml)
+      if (units.length > 0) {
+        this.setBlock(units)
+        return true
+      }
+    }
+  }
+
   abort(): void {
     // A section change in flight is left to finish — the reader really is moving, and
     // abandoning it would make the next take step a second section — but its timeout is
@@ -303,7 +390,7 @@ export class SpeechController implements PlayerSource {
         if (!(await this.bind()) || !this.tts || this.tts.doc !== pageDoc) return null
       }
       const ssml = blockFrom(this.tts, page)
-      this.setBlock(this.onPage(flattenSsml(ssml), page))
+      this.setBlock(this.cut(flattenSsml(ssml), page, 'page'))
       this.sounding = collapsedStart(page)
       this.wake()
       if (this.blockUnits.length === 0 && (await this.nextBlock(ssml === null)) !== true)
@@ -502,11 +589,16 @@ export class SpeechController implements PlayerSource {
   }
 
   /**
-   * The units of the block `from(page)` just landed on, from the first that starts on the page.
+   * The units to speak from a cut point: `'page'` keeps those starting on the page (the first
+   * that starts at or after its start), `'selection'` keeps those from the sentence *containing*
+   * a chosen place (the last that starts at or before it).
+   *
    * Each unit's range is read through `setMark` with the highlight swapped for a probe: the
-   * engine keeps the ranges private, and `setMark` is its one way to hand one out.
+   * engine keeps the ranges private, and `setMark` is its one way to hand one out. A unit whose
+   * range cannot be read is kept — better a sentence early than none — so a probe miss reads as
+   * "start here" for a page and as "no containing sentence found" for a selection.
    */
-  private onPage(units: SpeechUnit[], page: Range): SpeechUnit[] {
+  private cut(units: SpeechUnit[], at: Range, where: 'page' | 'selection'): SpeechUnit[] {
     const tts = this.tts
     if (!tts || units.length === 0) return units
     const own = tts.highlight
@@ -514,18 +606,31 @@ export class SpeechController implements PlayerSource {
     tts.highlight = (range) => {
       probe.range = range
     }
+    const rangeOf = (unit: SpeechUnit): Range | null => {
+      probe.range = null
+      try {
+        tts.setMark(unit.mark)
+      } catch {
+        return null
+      }
+      return probe.range
+    }
     try {
-      const at = units.findIndex((unit) => {
-        probe.range = null
-        try {
-          tts.setMark(unit.mark)
-        } catch {
-          return true
-        }
-        // a unit whose range cannot be read is kept: better a sentence early than none
-        return !probe.range || !startsBefore(page, probe.range)
+      if (where === 'page') {
+        const first = units.findIndex((unit) => {
+          const range = rangeOf(unit)
+          return !range || !startsBefore(at, range)
+        })
+        return first < 0 ? [] : units.slice(first)
+      }
+      // the sentence containing the selection: the last one starting at or before it. A unit
+      // replayed by the page-follow is out of scope here — this runs once, on a chosen place.
+      let containing = -1
+      units.forEach((unit, index) => {
+        const range = rangeOf(unit)
+        if (range && !startsAfter(at, range)) containing = index
       })
-      return at < 0 ? [] : units.slice(at)
+      return containing <= 0 ? units : units.slice(containing)
     } finally {
       tts.highlight = own
     }

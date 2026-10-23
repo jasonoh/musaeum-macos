@@ -119,6 +119,16 @@ class FakeTTS {
   start(): string | undefined {
     return this.sec.blocks.length ? this.land(0) : undefined
   }
+  /** `from()`/`start()` leave `#lastMark` null, so the vendor's `resume()` re-speaks the block whole. */
+  resume(): string | undefined {
+    if (this.cursor < 0) return this.start()
+    return this.land(this.cursor)
+  }
+  /** Like `ListIterator.prev`: only blocks already walked are materialized, so 0 has nothing before it. */
+  prev(): string | undefined {
+    if (this.cursor <= 0) return undefined
+    return this.land(this.cursor - 1)
+  }
   next(): string | undefined {
     // like ListIterator: past the end the cursor (and the map) stay where they were
     if (this.cursor + 1 >= this.sec.blocks.length) return undefined
@@ -557,16 +567,84 @@ describe('SpeechController', () => {
     expect(onError).not.toHaveBeenCalled()
   })
 
-  it('begin from a range starts at the first sentence at or after it', async () => {
+  it('begin from a range starts at the sentence **containing** it, not the next one', async () => {
+    const s = section('s0', [
+      ['A one.', 'A two.'], // A one. spans 0-9, A two. 10-19
+      ['B one.', 'B two.'] // B one. spans 20-29, B two. 30-39
+    ])
+    const { controller } = make([s])
+    const b = s.blocks[1]!.sentences
+    // exactly at the second sentence's start: that sentence, not the one after it
+    const exact = new FakeRange(s.doc, b[1]!.range.start, b[1]!.range.end)
+    expect(await controller.begin(exact as unknown as Range)).toBe(true)
+    expect((await controller.take())?.text).toBe('B two.')
+
+    // a few characters *inside* the first sentence: it was never spoken before this fix, because
+    // `from()` cut the block at the next sentence (`tts.js:262-268`)
+    const inside = new FakeRange(s.doc, b[0]!.range.start + 3, b[0]!.range.end)
+    expect(await controller.begin(inside as unknown as Range)).toBe(true)
+    expect((await controller.take())?.text).toBe('B one.')
+  })
+
+  it("back() steps one sentence back, crossing into the previous block's last sentence", async () => {
     const s = section('s0', [
       ['A one.', 'A two.'],
       ['B one.', 'B two.']
     ])
     const { controller } = make([s])
-    const b = s.blocks[1]!.sentences
-    const from = new FakeRange(s.doc, b[1]!.range.start, b[1]!.range.end)
-    expect(await controller.begin(from as unknown as Range)).toBe(true)
-    expect((await controller.take())?.text).toBe('B two.')
+    await controller.begin()
+    // each take announced, so the cursor is free to move on (the block gate)
+    const takeStarted = async (): Promise<string> => {
+      const unit = (await controller.take())!
+      controller.started(unit)
+      return unit.text
+    }
+    expect(await takeStarted()).toBe('A one.')
+    expect(await takeStarted()).toBe('A two.')
+    // the cursor moves to the next block once the last unit of this one has started
+    const b0 = (await controller.take())!
+    controller.started(b0)
+    expect(b0.text).toBe('B one.')
+    // the paragraph before this one, from its last sentence
+    expect(controller.back(b0)).toBe(true)
+    const back1 = (await controller.take())!
+    expect(back1.text).toBe('A two.')
+    // and forward again, one sentence at a time
+    controller.started(back1)
+    expect(await takeStarted()).toBe('B one.')
+    const b1 = (await controller.take())!
+    expect(b1.text).toBe('B two.')
+    expect(controller.back(b1)).toBe(true)
+    expect((await controller.take())?.text).toBe('B one.')
+  })
+
+  it("back() from a block's last sentence after the cursor moved on lands on the sentence before it", async () => {
+    const s = section('s0', [
+      ['A one.', 'A two.'],
+      ['B one.', 'B two.']
+    ])
+    const { controller } = make([s])
+    await controller.begin()
+    const a0 = (await controller.take())!
+    controller.started(a0)
+    const a1 = (await controller.take())!
+    controller.started(a1)
+    const b0 = (await controller.take())! // the cursor is on block 1; A two. is still sounding
+    expect(b0.text).toBe('B one.')
+    // the sounding unit is no longer in the cursor's block: the step adopts the block it left
+    expect(controller.back(a1)).toBe(true)
+    expect((await controller.take())?.text).toBe('A one.')
+  })
+
+  it('back() at the section’s first sentence says there is nothing earlier', async () => {
+    const s = section('s0', [['A one.', 'A two.']])
+    const { controller } = make([s])
+    await controller.begin()
+    const a0 = (await controller.take())!
+    controller.started(a0)
+    expect(controller.back(a0)).toBe(false)
+    // unchanged: the cursor still brings the next sentence
+    expect((await controller.take())?.text).toBe('A two.')
   })
 
   it("begin without a range starts at the page on screen (the view's last location)", async () => {
