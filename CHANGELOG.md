@@ -25,6 +25,7 @@ All notable changes to Musaeum. Format loosely follows [Keep a Changelog](https:
 
 ### Fixed
 
+- **Previous works once a book has finished being read aloud.** At the end of the book the Previous button used to do nothing; it now plays the last sentence again, and pressing it again goes back a sentence at a time as usual.
 - **The voice starts sooner on a cold launch.** Opening the Listen bar now warms the voice — the model is loaded and its first sentence-synthesis paid — so pressing Play a moment later begins in about two seconds on a long first sentence instead of up to three. Nothing is shown and nothing is spoken by the warm-up, and a book you only read never loads the voice. Pressing Play in the same instant the bar opens still queues behind the warm-up, which is the one case it does not help.
 - **Read from here now starts on the sentence your selection sits in.** Picking a word in the middle of a sentence and pressing **Read from here** used to begin at the _next_ sentence — the words you had selected were the one passage it skipped. It now reads the sentence containing your selection, and everything after it.
 - **Previous goes back a paragraph.** Pressing Previous on the first sentence of a paragraph used to replay the sentence you were hearing, and pressing it again replayed it again — in a book with one-sentence paragraphs, Previous was effectively a replay button. It now reads the previous paragraph's last sentence and carries on forwards from there. Both were fixed in the reader on 2026-10-22 and checked in the running app.

@@ -228,7 +228,14 @@ export class SpeechPlayer {
   }
 
   skip(delta: -1 | 1): void {
-    if (this.stopped || !this.running || this.failed) return
+    if (this.stopped || this.failed) return
+    if (this.ended) {
+      // the book has run out: nothing is sounding and nothing follows. Previous plays the last
+      // sentence again (it is the sentence "before" the end); Next has nowhere to go
+      if (delta === -1) this.replayLast()
+      return
+    }
+    if (!this.running) return
     this.tick()
     const sounding = this.current
     if (!sounding) return
@@ -262,6 +269,21 @@ export class SpeechPlayer {
       }
     }
     void this.fill()
+  }
+
+  /**
+   * Previous once the book has ended: the last sentence to have sounded plays again, and the
+   * transport is live from there (a second Previous is an ordinary one). The source is rewound the
+   * way `skip(-1)` rewinds inside a block; one that has moved off the sentence refuses, and that is
+   * reported through `onError` with nothing cut.
+   */
+  private replayLast(): void {
+    const last = this.current
+    if (!last) return
+    if (!this.rewindTo(last.unit)) return
+    this.discard(true)
+    this.sourceDone = false
+    this.run()
   }
 
   /**

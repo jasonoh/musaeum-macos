@@ -869,6 +869,42 @@ describe('SpeechPlayer', () => {
     expect(r.starts.at(-1)?.mark).toBe('1')
   })
 
+  it('Previous after the end of the book replays the last sentence, and a second Previous goes on back', async () => {
+    const r = rigWith(
+      new BackSource([
+        [u(0), u(1, true)],
+        [u(2), u(3, true)]
+      ]),
+      latencySynth(0)
+    )
+    r.player.start()
+    await flush()
+    await r.advance(500)
+    r.source.release()
+    await r.advance(5000)
+    // nothing more: the source's held take is settled by its own end of the book
+    r.source.abort()
+    await r.advance(5000)
+    expect(r.onEnd).toHaveBeenCalledTimes(1)
+    r.starts.length = 0
+
+    r.player.skip(1) // nothing after the end
+    await flush()
+    expect(r.starts).toEqual([])
+
+    r.player.skip(-1)
+    await flush()
+    await r.advance(100)
+    expect(r.starts.map((s) => s.mark)).toEqual(['3'])
+    expect(r.ctx.sources.at(-1)?.mark).toBe('3')
+    expect(r.ctx.sources.at(-1)?.stopped).toBe(false)
+
+    r.player.skip(-1) // an ordinary Previous from the replay
+    await flush()
+    await r.advance(100)
+    expect(r.starts.map((s) => s.mark)).toEqual(['3', '2'])
+  })
+
   // ------------------------------------------------------------ ended (AC15, a section boundary)
 
   it('tells the source a unit has finished sounding: ended() once, when its buffer ends, after started()', async () => {
