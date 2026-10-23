@@ -396,6 +396,7 @@ interface MusaeumAPI {
   tts: {
     // the voice reader; see docs/invariants/voice-reader.md
     status(): Promise<TtsModelStatus> // { ready, missing: [name], totalBytes }
+    warm(request: TtsWarmRequest): Promise<TtsWarmResult> // load + first inference, quietly; { warmed }
     synthesize(request: TtsRequest): Promise<TtsAudio> // text + voice + speed → mono s16le PCM @24 kHz
     preview(request: LexiconPreviewRequest): Promise<TtsAudio> // the word with a one-entry lexicon; writes nothing
     downloadModel(): Promise<TtsDownloadResult> // progress via on.ttsModelProgress
