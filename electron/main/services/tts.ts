@@ -14,7 +14,9 @@ import {
   type TtsAudio,
   type TtsDownloadResult,
   type TtsModelStatus,
-  type TtsRequest
+  type TtsRequest,
+  type TtsWarmRequest,
+  type TtsWarmResult
 } from '@shared/tts.types'
 import * as events from './events'
 import * as lexicon from './lexicon'
@@ -47,6 +49,15 @@ import * as sidecar from './sidecar'
 export const SYNTH_TIMEOUT_MS = 30_000
 /** One sentence, not one chapter: a request this long is a caller bug. */
 export const MAX_TEXT_CHARS = 4_000
+
+/**
+ * What a pre-warm speaks, and never plays. The point is not the sentence: it is that the
+ * model's load plus its first inference — measured at 1.0 to 1.7 s of a cold first sentence
+ * (3.186 s cold against 1.499 s warm for the same 329-character sentence, and 1.462 s after
+ * this call) — are paid when the bar opens rather than in front of the first thing a person
+ * hears. Short on purpose: the cost is the load and the graph's first run, not the text.
+ */
+export const WARM_SENTENCE = 'Ready.'
 
 export function modelDir(): string {
   return join(app.getPath('userData'), 'tts-models')
@@ -119,6 +130,28 @@ export async function preview(request: LexiconPreviewRequest): Promise<TtsAudio>
   }
   const entry = toSpokenEntry({ word, soundsLike, addedAt: '' })
   return speak(word, request.voice, request.speed, [entry])
+}
+
+/**
+ * Load the voice and pay its first inference, so the model's load does not land in front of the
+ * first sentence a person hears (spec AC21's cold start; the measurement is in `tasks.md`).
+ *
+ * **Quiet by rule.** A bar opening is not a request to speak, so nothing here may fail loudly:
+ * an unknown voice, an unavailable sidecar, a missing model, a failed load or the engine's own
+ * refusal all answer `{ warmed: false }` and never reject. Nothing is shown for either answer,
+ * and the audio is discarded. It reads no lexicon — a share `stat` for a sentence nobody hears
+ * is a cost this call does not need (the entries do not change what the model loads).
+ */
+export async function warm(request: TtsWarmRequest): Promise<TtsWarmResult> {
+  if (!(TTS_VOICES as readonly string[]).includes(request.voice)) return { warmed: false }
+  try {
+    const model = await status()
+    if (!model.ready) return { warmed: false }
+    await speak(WARM_SENTENCE, request.voice, request.speed, [])
+    return { warmed: true }
+  } catch {
+    return { warmed: false }
+  }
 }
 
 async function speak(

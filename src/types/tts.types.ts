@@ -34,6 +34,20 @@ export interface TtsRequest {
   speed: number
 }
 
+/** A pre-warm: the voice and speed a first sentence would be spoken with. No text — see `tts.warm`. */
+export interface TtsWarmRequest {
+  voice: TtsVoice
+  speed: number
+}
+
+/**
+ * What a pre-warm answered. False is not a failure: the bar opening is not a request to speak,
+ * so a missing model or an unavailable engine just means nothing was warmed.
+ */
+export interface TtsWarmResult {
+  warmed: boolean
+}
+
 /** One synthesized sentence: mono signed 16-bit little-endian PCM. Empty `samples` is silence. */
 export interface TtsAudio {
   sampleRate: number
@@ -58,6 +72,4 @@ export interface TtsDownloadProgress {
 }
 
 export type TtsDownloadResult =
-  | { status: 'ready' }
-  | { status: 'cancelled' }
-  | { status: 'failed'; error: string }
+  { status: 'ready' } | { status: 'cancelled' } | { status: 'failed'; error: string }

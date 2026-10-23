@@ -116,6 +116,7 @@ const api: MusaeumAPI = {
   },
   tts: {
     status: () => invoke('tts:status'),
+    warm: (request) => invoke('tts:warm', request),
     synthesize: (request) => invoke('tts:synthesize', request),
     preview: (request) => invoke('tts:preview', request),
     downloadModel: () => invoke('tts:downloadModel'),

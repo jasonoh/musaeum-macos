@@ -173,3 +173,52 @@ describe('review fixes (Task 7a)', () => {
     expect(play).toMatch(/if \(!begun\) \{[\s\S]{0,80}send\(\{ type: 'nothing-to-read' \}\)/)
   })
 })
+
+/**
+ * The pre-warm (AC21's cold start). The call's own behaviour — `{ warmed: false }` for an
+ * unknown voice, an unavailable engine, a missing model or the engine's refusal — is decided in
+ * `electron/main/services/tts.test.ts`; what this walk pins is the wiring a later edit drops
+ * silently, since no suite here can render the hook: it fires on the **bar opening**, **once**
+ * per opening, and **quietly**. The reading that matters — press Play cold, first sentence
+ * audible — is the app pass.
+ */
+describe('the pre-warm the bar opening pays for (AC21)', () => {
+  /**
+   * The effect that carries it, exactly — from its own ref to its dependency list, comments
+   * stripped. A fixed-width window does not do: the teardown effect above it also opens with
+   * `if (!listenOpen)`, and a window wide enough to include that line satisfies the gate
+   * assertion while the pre-warm's own branch is missing (measured: the "warms with the bar
+   * closed" mutant survived until this became exact).
+   */
+  function warmEffect(): string {
+    const code = SOURCE.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|\s)\/\/[^\n]*/gm, '$1')
+    const start = code.indexOf('const warmed = useRef(false)')
+    expect(start, 'the pre-warm has a ref of its own').toBeGreaterThan(0)
+    const end = code.indexOf('}, [listenOpen, voice, speed])', start)
+    expect(end, "the effect closes on the bar's own state").toBeGreaterThan(start)
+    expect(code.slice(start, end)).toContain('window.Musaeum.tts.warm(')
+    return code.slice(start, end + 30)
+  }
+
+  it('asks main to warm, with the voice and speed a sentence would use', () => {
+    expect(warmEffect()).toMatch(/window\.Musaeum\.tts\.warm\(\{\s*voice,\s*speed\s*\}\)/)
+  })
+
+  it('fires on the bar opening, not on a play or a book opening', () => {
+    const effect = warmEffect()
+    expect(effect).toMatch(/if \(!listenOpen\)/)
+    expect(effect).toMatch(/\}, \[listenOpen, voice, speed\]\)/)
+  })
+
+  it('fires once per opening: the guard resets when the bar closes', () => {
+    const effect = warmEffect()
+    expect(effect).toMatch(/warmed\.current = false/)
+    expect(effect).toMatch(/if \(warmed\.current\) return/)
+    expect(effect).toMatch(/warmed\.current = true/)
+  })
+
+  it('is quiet: a refusal is swallowed, never shown', () => {
+    expect(warmEffect()).toMatch(/\.catch\(\(\) => \{\}\)/)
+    expect(SOURCE).not.toMatch(/warm\([^)]*\)\s*\.then/)
+  })
+})

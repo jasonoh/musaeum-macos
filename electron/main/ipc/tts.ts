@@ -1,5 +1,5 @@
 import type { LexiconPreviewRequest } from '@shared/lexicon.types'
-import type { TtsRequest } from '@shared/tts.types'
+import type { TtsRequest, TtsWarmRequest } from '@shared/tts.types'
 import * as tts from '../services/tts'
 import { handle } from './handle'
 
@@ -13,6 +13,7 @@ import { handle } from './handle'
  */
 export function registerTtsHandlers(): void {
   handle('tts:status', () => tts.status())
+  handle('tts:warm', (request: TtsWarmRequest) => tts.warm(request))
   handle('tts:synthesize', (request: TtsRequest) => tts.synthesize(request))
   handle('tts:preview', (request: LexiconPreviewRequest) => tts.preview(request))
   handle('tts:downloadModel', () => tts.downloadModel())

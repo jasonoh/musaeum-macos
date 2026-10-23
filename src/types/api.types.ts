@@ -62,7 +62,9 @@ import type {
   TtsDownloadProgress,
   TtsDownloadResult,
   TtsModelStatus,
-  TtsRequest
+  TtsRequest,
+  TtsWarmRequest,
+  TtsWarmResult
 } from './tts.types'
 
 /**
@@ -409,6 +411,13 @@ export interface MusaeumAPI {
   tts: {
     /** Whether the model files are on disk; cheap (existence and size). */
     status(): Promise<TtsModelStatus>
+    /**
+     * Load the voice and pay its first inference, without speaking anything audible — called
+     * when the Listen bar opens, so the model's cold load is not in front of the first sentence
+     * (AC21). Never rejects: an unknown voice, an unavailable engine or a missing model answers
+     * `{ warmed: false }`, and neither answer is shown.
+     */
+    warm(request: TtsWarmRequest): Promise<TtsWarmResult>
     /**
      * One sentence → mono 16-bit PCM at 24 kHz. An empty `samples` is silence (text with
      * nothing to say). **Rejects with a sentence** when there is no model yet or the

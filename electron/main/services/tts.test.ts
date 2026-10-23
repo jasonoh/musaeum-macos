@@ -7,13 +7,15 @@ import * as sidecar from './sidecar'
 import {
   MAX_TEXT_CHARS,
   SYNTH_TIMEOUT_MS,
+  WARM_SENTENCE,
   cancelDownload,
   downloadModel,
   modelDir,
   preview,
   resetForTests,
   status,
-  synthesize
+  synthesize,
+  warm
 } from './tts'
 
 /** Whole-module mocks, as `reflow.test.ts` does: `assertAvailable` would otherwise start a live Python. */
@@ -242,6 +244,71 @@ describe('status', () => {
       totalBytes: 120575669
     })
     expect(call).toHaveBeenCalledWith('tts_model_status', { model_dir: modelDir() })
+  })
+})
+
+describe('warm', () => {
+  const ready = { ready: true, missing: [], total_bytes: 0 }
+
+  it('loads the voice by speaking one short sentence and discards the audio', async () => {
+    call.mockResolvedValueOnce(ready as never).mockResolvedValueOnce({
+      sample_rate: 24000,
+      pcm: pcm(1, 2),
+      duration_ms: 30,
+      lexicon_version: 'x'
+    } as never)
+
+    await expect(warm({ voice: 'bf_emma', speed: 1.1 })).resolves.toEqual({ warmed: true })
+    expect(call).toHaveBeenNthCalledWith(1, 'tts_model_status', { model_dir: modelDir() })
+    expect(call).toHaveBeenNthCalledWith(
+      2,
+      'tts_synthesize',
+      {
+        model_dir: modelDir(),
+        text: WARM_SENTENCE,
+        voice: 'bf_emma',
+        speed: 1.1,
+        lexicon: []
+      },
+      SYNTH_TIMEOUT_MS
+    )
+  })
+
+  it('reads no pronunciation list: nothing is spoken aloud, and a share stat buys nothing', async () => {
+    call.mockResolvedValue({ ready: true, missing: [], total_bytes: 0 } as never)
+    await warm({ voice: 'af_heart', speed: 1 })
+    expect(libraryEntries).not.toHaveBeenCalled()
+  })
+
+  it('says nothing was warmed when the model is not on disk', async () => {
+    call.mockResolvedValue({
+      ready: false,
+      missing: ['kokoro-v1.0.int8.onnx'],
+      total_bytes: 0
+    } as never)
+    await expect(warm({ voice: 'af_heart', speed: 1 })).resolves.toEqual({ warmed: false })
+    const called = call.mock.calls.map(([method]) => method)
+    expect(called).not.toContain('tts_synthesize')
+  })
+
+  it('never rejects: an unavailable engine, a failed load and the engine’s own refusal all answer false', async () => {
+    vi.mocked(sidecar.assertAvailable).mockImplementation(() => {
+      throw new Error('The metadata engine is not running.')
+    })
+    await expect(warm({ voice: 'af_heart', speed: 1 })).resolves.toEqual({ warmed: false })
+
+    vi.mocked(sidecar.assertAvailable).mockImplementation(() => {})
+    call.mockRejectedValueOnce(new Error('socket closed'))
+    await expect(warm({ voice: 'af_heart', speed: 1 })).resolves.toEqual({ warmed: false })
+
+    call.mockResolvedValueOnce({ ready: true, missing: [], total_bytes: 0 } as never)
+    call.mockResolvedValueOnce({ error: 'The voice could not be loaded: bad model' } as never)
+    await expect(warm({ voice: 'af_heart', speed: 1 })).resolves.toEqual({ warmed: false })
+  })
+
+  it('refuses an unknown voice without touching the engine', async () => {
+    await expect(warm({ voice: 'nope' as never, speed: 1 })).resolves.toEqual({ warmed: false })
+    expect(call).not.toHaveBeenCalled()
   })
 })
 

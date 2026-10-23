@@ -348,6 +348,23 @@ export function useSpeech({ viewRef, bookId }: UseSpeechArgs): SpeechApi {
     }
   }, [listenOpen, teardown, send])
 
+  // The bar opened: the model's load and first inference are paid now rather than in front of
+  // the first sentence a person hears (AC21's cold start; measured 3.186 s cold against 1.462 s
+  // after a warm). Once per opening, quiet either way — `warm()` never rejects, and it is not
+  // re-run for a voice or speed change because the model is already resident, which is the half
+  // of the cost this pays for. Fires on `listenOpen` only, so a book read without listening
+  // never loads the voice (docs/invariants/voice-reader.md: loaded on use).
+  const warmed = useRef(false)
+  useEffect(() => {
+    if (!listenOpen) {
+      warmed.current = false
+      return
+    }
+    if (warmed.current) return
+    warmed.current = true
+    void window.Musaeum.tts.warm({ voice, speed }).catch(() => {})
+  }, [listenOpen, voice, speed])
+
   useEffect(() => {
     session.current?.player.specChanged()
   }, [voice, speed])
