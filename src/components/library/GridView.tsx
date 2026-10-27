@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
+import { useUIStore } from '@/stores/ui.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
+import { useGridFlip } from '@/hooks/useGridFlip'
 import {
   rowWindow,
   useAnchoredScroll,
@@ -51,8 +53,13 @@ export function GridView() {
   const resultKey = useLibraryStore((s) =>
     resultSetKey({ query: s.query, filters: s.filters, sort: s.sort, shelfId: s.activeShelfId })
   )
+  // Both side panels (one book's details, several books' actions) take 360px
+  // from this grid, which is what the glide in `useGridFlip` covers for
+  const panelOpen = useUIStore((s) => s.selection.ids.size > 0)
+  // The book the reader last touched; `useBookNavigation` already renders this view on every move of it
+  const cursorId = useUIStore((s) => s.selection.cursor)
   const bookIds = useMemo(() => books.map((b) => b.id), [books])
-  const { ref, node, metrics } = useScrollMetrics<HTMLDivElement>()
+  const { ref, node, metrics, sync } = useScrollMetrics<HTMLDivElement>()
 
   const contentWidth = Math.max(0, metrics.width - PAD_X * 2)
   const columns = columnCount(contentWidth)
@@ -75,7 +82,9 @@ export function GridView() {
   // comment — so a result-set change's anchor is recorded against the reset
   // scrollTop, not a stale one.
   useResetScrollOnResultChange(node, resultKey)
-  useAnchoredScroll(node, bookIds, columns, rowHeight, PAD_TOP, metrics.scrollTop)
+  useAnchoredScroll(node, bookIds, columns, rowHeight, PAD_TOP, metrics.scrollTop, cursorId, sync)
+  // After the anchor hook, which re-positions the scroll the tiles are measured against
+  useGridFlip(node, panelOpen, metrics.width, metrics.scrollTop)
 
   return (
     <div ref={ref} className="no-scroll-anchor h-full overflow-y-auto px-6 py-5">

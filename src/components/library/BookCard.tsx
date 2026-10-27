@@ -92,6 +92,8 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
   return (
     <div
       className="group relative"
+      // How `useGridFlip` finds this card to glide it when the panel opens
+      data-book-id={book.id}
       // The drag lives on this box rather than on the button inside it: the
       // button is the card's click target (select, open) and a `draggable`
       // button competes with its own click in Chromium, where the outer box

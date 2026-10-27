@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 
 /**
  * Row windowing for the library views. Both the grid and the list are uniform
@@ -30,36 +31,45 @@ export function useScrollMetrics<T extends HTMLElement>(): {
   /** The measured element, for imperative scrolling (see useBookNavigation). */
   node: T | null
   metrics: ScrollMetrics
+  /** Re-read the element now. For a layout effect that has just moved the scroll itself. */
+  sync: () => void
 } {
   const [node, setNode] = useState<T | null>(null)
   const [metrics, setMetrics] = useState<ScrollMetrics>(ZERO)
   const ref = useCallback((el: T | null) => setNode(el), [])
+
+  const measure = useCallback(() => {
+    if (!node) return
+    setMetrics((prev) =>
+      prev.scrollTop === node.scrollTop &&
+      prev.viewport === node.clientHeight &&
+      prev.width === node.clientWidth
+        ? prev // identity-stable so an unchanged scroll event can't re-render
+        : { scrollTop: node.scrollTop, viewport: node.clientHeight, width: node.clientWidth }
+    )
+  }, [node])
 
   useEffect(() => {
     // No node: keep the last metrics. Nothing renders against them while the
     // container is unmounted, and remounting re-measures immediately.
     if (!node) return
 
-    const measure = () =>
-      setMetrics((prev) =>
-        prev.scrollTop === node.scrollTop &&
-        prev.viewport === node.clientHeight &&
-        prev.width === node.clientWidth
-          ? prev // identity-stable so an unchanged scroll event can't re-render
-          : { scrollTop: node.scrollTop, viewport: node.clientHeight, width: node.clientWidth }
-      )
-
-    measure()
+    // `observe` delivers an initial notification, so there is no separate first
+    // measure; it arrives before the first paint
     node.addEventListener('scroll', measure, { passive: true })
-    const observer = new ResizeObserver(measure)
+    // Flushed, not scheduled: a resize delivered here is followed by a paint
+    // before a scheduled render would run, and that frame shows the old
+    // geometry stretched across the new width — a flash the panel opening
+    // makes visible, and `useGridFlip` cannot start from.
+    const observer = new ResizeObserver(() => flushSync(measure))
     observer.observe(node)
     return () => {
       node.removeEventListener('scroll', measure)
       observer.disconnect()
     }
-  }, [node])
+  }, [node, measure])
 
-  return { ref, node, metrics }
+  return { ref, node, metrics, sync: measure }
 }
 
 /** See useAnchoredScroll — separated so the lint rule against mutating hook
@@ -78,11 +88,30 @@ function setScrollTop(el: HTMLElement, top: number): void {
  * book and letting the panel close left the identical scrollTop showing books
  * 148–168.
  *
- * So the anchor is a book, not a pixel: the item at the top of the viewport is
- * recorded on every scroll, and when the geometry changes it is put back at the
- * top. `useBookNavigation`'s ensure-visible effect runs after this one (layout
+ * So the anchor is a book, not a pixel. Two are kept:
+ *
+ * - the **focused book** (`focusId`, the selection's cursor), at the height
+ *   it had in the viewport — it is the one the reader just clicked and is
+ *   watching, so it stays at the same height and only the tiles around it
+ *   move. Anchoring the top of the viewport instead sent the clicked tile
+ *   (and, relative to it, everything else) up to 600px when the panel opened.
+ *   It is a dependency, so the click that opens the panel records the
+ *   book's height before the layout changes under it. The id is kept after the
+ *   selection clears, because closing the panel is exactly when the selection
+ *   has just gone. Only used while the book is
+ *   inside the viewport; a selection scrolled out of view anchors nothing.
+ * - otherwise the item at the top of the viewport, recorded on every scroll.
+ *
+ * `useBookNavigation`'s ensure-visible effect runs after this one (layout
  * effects precede plain effects), so a selection that this scroll pushed out of
  * view is nudged back — the two compose instead of fighting.
+ *
+ * `onScrolled` is how the caller's metrics learn of the move *before paint*.
+ * This render's row window was computed from the old `scrollTop`, so after the
+ * jump part of the viewport is spacer; waiting for the scroll event leaves that
+ * frame on screen and pops the missing tiles in a commit later — measured, with
+ * the detail panel opening: 20 of 40 rendered tiles swapped, none animated.
+ * A state update from a layout effect is flushed before paint.
  */
 export function useAnchoredScroll(
   node: HTMLElement | null,
@@ -90,10 +119,14 @@ export function useAnchoredScroll(
   columns: number,
   rowHeight: number,
   contentTop: number,
-  scrollTop: number
+  scrollTop: number,
+  focusId: string | null,
+  onScrolled: () => void
 ): void {
   const geometry = useRef({ columns: 0, rowHeight: 0 })
   const anchorId = useRef<string | null>(null)
+  const focus = useRef<{ id: string; offset: number } | null>(null)
+  const lastFocusId = useRef<string | null>(null)
 
   useLayoutEffect(() => {
     if (!node || rowHeight <= 0 || columns <= 0 || !ids.length) return
@@ -105,16 +138,37 @@ export function useAnchoredScroll(
     geometry.current = { columns, rowHeight }
 
     if (changed) {
+      const held = focus.current
+      const heldIndex = held ? ids.indexOf(held.id) : -1
+      if (held && heldIndex >= 0) {
+        const row = Math.floor(heldIndex / columns)
+        setScrollTop(node, Math.max(0, contentTop + row * rowHeight - held.offset))
+        onScrolled()
+        return
+      }
       const index = anchorId.current ? ids.indexOf(anchorId.current) : -1
       if (index >= 0) {
         setScrollTop(node, contentTop + Math.floor(index / columns) * rowHeight)
+        onScrolled()
         return // recording now would capture the pre-paint offset
       }
     }
 
     const row = Math.max(0, Math.round((node.scrollTop - contentTop) / rowHeight))
     anchorId.current = ids[Math.min(ids.length - 1, row * columns)] ?? null
-  }, [node, ids, columns, rowHeight, contentTop, scrollTop])
+
+    lastFocusId.current = focusId ?? lastFocusId.current
+    const focusIndex = lastFocusId.current ? ids.indexOf(lastFocusId.current) : -1
+    const offset =
+      focusIndex >= 0
+        ? contentTop + Math.floor(focusIndex / columns) * rowHeight - node.scrollTop
+        : NaN
+    // The tile's top edge has to be on screen for holding its height to mean anything
+    focus.current =
+      lastFocusId.current && offset >= 0 && offset < node.clientHeight
+        ? { id: lastFocusId.current, offset }
+        : null
+  }, [node, ids, columns, rowHeight, contentTop, scrollTop, focusId, onScrolled])
 }
 
 /**
