@@ -257,3 +257,26 @@ describe('the persisted sort, as wired', () => {
     expect(source).toMatch(/restoredSort\(sort\)/)
   })
 })
+
+describe('filterByAuthor', () => {
+  it('replaces query and facets, leaves the shelf, and restores the library sort', async () => {
+    const calls = emptyCalls()
+    stubLibrary(calls)
+    const AUTHOR_DESC: BookSort = { field: 'author', direction: 'desc' }
+    useLibraryStore.setState({
+      activeShelfId: 'shelf-1',
+      sort: SHELF_DESC,
+      librarySort: AUTHOR_DESC,
+      query: 'dune',
+      filters: { series: ['Dune'] }
+    })
+    useLibraryStore.getState().filterByAuthor('Terry Pratchett')
+    await Promise.resolve()
+    const s = useLibraryStore.getState()
+    expect(s.query).toBe('')
+    expect(s.activeShelfId).toBeNull()
+    expect(s.filters).toEqual({ coAuthor: 'Terry Pratchett' })
+    expect(s.sort).toEqual(AUTHOR_DESC)
+    expect(calls.getBooks).toEqual([{ coAuthor: 'Terry Pratchett', sort: AUTHOR_DESC }])
+  })
+})

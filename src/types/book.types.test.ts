@@ -12,6 +12,7 @@ import {
   seriesDisplay,
   sortableAuthor,
   sortableTitle,
+  splitAuthors,
   sortLabel,
   readerTarget,
   type Book,
@@ -244,5 +245,27 @@ describe('readerTarget', () => {
 
   it('is null for a book with nothing to open', () => {
     expect(readerTarget(book([]))).toBeNull()
+  })
+})
+
+describe('splitAuthors', () => {
+  it('splits on &, "and" and ;', () => {
+    expect(splitAuthors('Neil Gaiman & Terry Pratchett')).toEqual(['Neil Gaiman', 'Terry Pratchett'])
+    expect(splitAuthors('Brad Feld and Jason Mendelson')).toEqual(['Brad Feld', 'Jason Mendelson'])
+    expect(splitAuthors('A One; B Two')).toEqual(['A One', 'B Two'])
+  })
+
+  it('does not split a name that merely contains "and"', () => {
+    expect(splitAuthors('Alexander Anderson')).toEqual(['Alexander Anderson'])
+  })
+
+  it('keeps a single-comma inverted name whole, and splits a list', () => {
+    expect(splitAuthors('Pratchett, Terry')).toEqual(['Pratchett, Terry'])
+    expect(splitAuthors('A One, B Two, C Three')).toEqual(['A One', 'B Two', 'C Three'])
+  })
+
+  it('is empty for no author', () => {
+    expect(splitAuthors(null)).toEqual([])
+    expect(splitAuthors('')).toEqual([])
   })
 })

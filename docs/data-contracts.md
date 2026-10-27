@@ -314,7 +314,7 @@ Exposed via contextBridge as `window.Musaeum`. Full contract: `src/types/api.typ
 ```typescript
 interface MusaeumAPI {
   library: {
-    getBooks(filters?: BookFilters): Promise<Book[]>
+    getBooks(filters?: BookFilters): Promise<Book[]>          // `coAuthor` matches one name inside a multi-author string; `authors` is the exact-string facet
     getBook(id: string): Promise<Book>
     searchBooks(query: string, sort?: BookSort, scope?: ShelfScope): Promise<Book[]>  // sort ?? rank; scope narrows to one shelf
     updateBook(id: string, updates: Partial<Book>): Promise<void>

@@ -49,6 +49,7 @@ export function filterCount(filters: BookFilters): number {
     count += value?.length ?? 0
   }
   if (filters.minRating != null) count += 1
+  if (filters.coAuthor) count += 1
   return count
 }
 

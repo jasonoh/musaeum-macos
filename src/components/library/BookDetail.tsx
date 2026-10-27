@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReadStatus } from '@shared/book.types'
-import { readerTarget, seriesDisplay } from '@shared/book.types'
+import { readerTarget, seriesDisplay, splitAuthors } from '@shared/book.types'
 import { sendErrorFor, sendStateFor, useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
@@ -25,6 +25,22 @@ import { refreshBookMetadata } from '@/lib/metadata-refresh'
 import { removeFromShelf } from '@/lib/shelf-membership'
 import { descriptionText } from '@/lib/description'
 import { notifyError } from '@/lib/notify'
+
+/**
+ * The author string as names and the text between them, so "A and B" keeps its
+ * "and" and "Pratchett, Terry" its comma. A name the string does not contain
+ * verbatim (`splitAuthors` collapses whitespace) falls back to " & ".
+ */
+function authorSegments(author: string | null): { separator: string; name: string }[] {
+  let from = 0
+  return splitAuthors(author).map((name, i) => {
+    const at = author ? author.indexOf(name, from) : -1
+    if (at < 0) return { separator: i > 0 ? ' & ' : '', name }
+    const separator = author!.slice(from, at)
+    from = at + name.length
+    return { separator, name }
+  })
+}
 
 const READ_STATUS_OPTIONS: { value: ReadStatus; label: string }[] = [
   { value: 'unread', label: 'Unread' },
@@ -52,6 +68,7 @@ export function BookDetail() {
   // *this* book's refresh starts or ends and not on any other's
   const refreshing = useUIStore((s) => Boolean(bookId && s.refreshingBooks[bookId]))
   const setActiveShelf = useLibraryStore((s) => s.setActiveShelf)
+  const filterByAuthor = useLibraryStore((s) => s.filterByAuthor)
   const revision = useShelvesStore((s) => s.revision)
   const byBook = useShelvesStore((s) => s.byBook)
   const loadForBook = useShelvesStore((s) => s.loadForBook)
@@ -126,7 +143,20 @@ export function BookDetail() {
           {book.title}
         </h2>
         {book.author && (
-          <p className="mt-1 text-center text-sm text-parchment-dim">{book.author}</p>
+          <p className="mt-1 text-center text-sm text-parchment-dim">
+            {authorSegments(book.author).map(({ separator, name }, i) => (
+              <span key={`${i}:${name}`}>
+                {separator}
+                <button
+                  onClick={() => filterByAuthor(name)}
+                  title={`Show all books by ${name}`}
+                  className="transition-colors hover:text-gold-300 hover:underline"
+                >
+                  {name}
+                </button>
+              </span>
+            ))}
+          </p>
         )}
         {book.seriesName && (
           <p className="mt-1 text-center text-[13px] italic text-gold-400">

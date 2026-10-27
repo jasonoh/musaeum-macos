@@ -113,6 +113,19 @@ describe('sorting', () => {
   })
 })
 
+describe('coAuthor filter', () => {
+  it('finds a person whether first, later or sole author, and nothing else', () => {
+    insertBook({ ...makeBook('a', 'Good Omens'), author: 'Neil Gaiman & Terry Pratchett' })
+    insertBook({ ...makeBook('b', 'Mort'), author: 'Terry Pratchett' })
+    insertBook({ ...makeBook('c', 'Coraline'), author: 'Neil Gaiman' })
+    insertBook({ ...makeBook('d', 'Other'), author: 'Terry Pratchettson' })
+    const titles = (coAuthor: string): string[] =>
+      getBooks({ coAuthor, sort: { field: 'title', direction: 'asc' } }).map((b) => b.title)
+    expect(titles('Terry Pratchett')).toEqual(['Good Omens', 'Mort'])
+    expect(titles('Neil Gaiman')).toEqual(['Coraline', 'Good Omens'])
+  })
+})
+
 describe('searchBooks ordering', () => {
   function seedMatches() {
     insertBook({ ...makeBook('a', 'Voyage Charlie'), author: 'Adams' })

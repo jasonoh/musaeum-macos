@@ -347,6 +347,13 @@ export function defaultSortDirection(field: SortField): 'asc' | 'desc' {
 
 export interface BookFilters {
   authors?: string[]
+  /**
+   * One person, matched against every name in a book's author string — "Neil
+   * Gaiman" finds *Good Omens* though the column holds "Neil Gaiman & Terry
+   * Pratchett". Distinct from `authors`, which is the sidebar's exact-string
+   * facet (and the REST API's `authors` parameter) and must stay one.
+   */
+  coAuthor?: string
   series?: string[]
   tags?: string[]
   formats?: BookFormat[]
@@ -477,6 +484,28 @@ const NAME_PARTICLES = new Set([
 
 /** Generational suffixes, kept with the surname so "King Jr." still sorts under K. */
 const NAME_SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'i', 'ii', 'iii', 'iv', 'v'])
+
+/**
+ * The names inside a book's author string. The schema keeps one string
+ * (`tasks.md`: no multi-author editing), so a co-authored book reads
+ * "A & B", "A and B", "A; B" or "A, B, C" depending on its source.
+ *
+ * A *single* comma is never a separator — "Pratchett, Terry" is one inverted
+ * name, the same call `sortableAuthor` makes. The residual is "A, B & C", whose
+ * "A, B" half stays whole; a rare shape, and a wrong split would be worse.
+ */
+export function splitAuthors(author: string | null | undefined): string[] {
+  if (!author) return []
+  const names: string[] = []
+  for (const part of author.split(/\s*(?:&|;|\band\b)\s*/i)) {
+    const commas = part.split(',')
+    for (const piece of commas.length > 2 ? commas : [part]) {
+      const name = piece.trim().replace(/\s+/g, ' ')
+      if (name) names.push(name)
+    }
+  }
+  return names
+}
 
 /** "Seth Dickinson" → "Dickinson, Seth" */
 export function sortableAuthor(name: string | null | undefined): string | null {

@@ -54,6 +54,11 @@ interface LibraryState {
   setQuery(query: string): void
   toggleFilter(kind: FacetKind, value: string): void
   clearFilters(): void
+  /**
+   * Show every book one person wrote or co-wrote: the whole library, no query,
+   * no other facet, in the library's own sort. Leaves an open shelf for that.
+   */
+  filterByAuthor(name: string): void
   setSort(sort: BookSort): void
   /** Open a shelf, or leave it with null. Remembers and restores the library sort. */
   setActiveShelf(shelfId: string | null): void
@@ -239,6 +244,16 @@ export const useLibraryStore = create<LibraryState>()(
 
         clearFilters() {
           set({ filters: EMPTY_FILTERS })
+          void get().load()
+        },
+
+        filterByAuthor(name) {
+          const { activeShelfId, librarySort } = get()
+          set({
+            query: '',
+            filters: { coAuthor: name },
+            ...(activeShelfId ? { activeShelfId: null, sort: librarySort } : {})
+          })
           void get().load()
         },
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLibraryStore, type FacetKind } from '@/stores/library.store'
-import { CheckIcon, ChevronIcon } from './icons'
+import { CheckIcon, ChevronIcon, CloseIcon } from './icons'
 
 const READ_STATUS_LABELS: Record<string, string> = {
   unread: 'Unread',
@@ -99,6 +99,18 @@ export function FilterSidebar() {
           </button>
         )}
       </div>
+      {filters.coAuthor && (
+        <div className="mb-1 flex items-center gap-2 rounded-md bg-gold-500/15 px-2 py-1 text-[13px] text-gold-300">
+          <span className="truncate">Author: {filters.coAuthor}</span>
+          <button
+            onClick={clearFilters}
+            aria-label="Clear filters"
+            className="ml-auto shrink-0 hover:text-gold-200"
+          >
+            <CloseIcon className="h-3 w-3" />
+          </button>
+        </div>
+      )}
       <FacetGroup label="Format" kind="formats" items={facets.formats} format={(v) => v.toUpperCase()} />
       <FacetGroup
         label="Status"

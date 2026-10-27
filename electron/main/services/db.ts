@@ -10,7 +10,7 @@ import type {
   ReadingState,
   ReadStatus
 } from '@shared/book.types'
-import { sortableAuthor, sortableTitle } from '@shared/book.types'
+import { sortableAuthor, sortableTitle, splitAuthors } from '@shared/book.types'
 import type { ConflictCandidate, MetadataConflict, OwnedFields } from '@shared/metadata.types'
 import type { ShelfScope, ShelfSummary, ShelvesFile } from '@shared/shelf.types'
 import { isManualShelf } from '@shared/shelf.types'
@@ -75,6 +75,13 @@ function registerFunctions(d: Database.Database): void {
   )
   d.function('musaeum_author_sort', { deterministic: true }, (author: unknown) =>
     typeof author === 'string' ? sortableAuthor(author) : null
+  )
+  // `BookFilters.coAuthor`: the renderer's name splitter, so a click on one
+  // name in the detail panel and the SQL that answers it cannot disagree.
+  d.function('musaeum_author_has', { deterministic: true }, (author: unknown, name: unknown) =>
+    typeof author === 'string' && typeof name === 'string' && splitAuthors(author).includes(name)
+      ? 1
+      : 0
   )
 }
 
@@ -313,6 +320,10 @@ function bookWhere(filters?: BookFilters, tablePrefix = ''): BookWhere {
   if (filters?.authors?.length) {
     conditions.push(`${col('author')} IN (${filters.authors.map(() => '?').join(',')})`)
     params.push(...filters.authors)
+  }
+  if (filters?.coAuthor) {
+    conditions.push(`musaeum_author_has(${col('author')}, ?)`)
+    params.push(filters.coAuthor)
   }
   if (filters?.series?.length) {
     conditions.push(`${col('series_name')} IN (${filters.series.map(() => '?').join(',')})`)
