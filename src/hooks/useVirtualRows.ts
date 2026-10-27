@@ -79,6 +79,23 @@ function setScrollTop(el: HTMLElement, top: number): void {
 }
 
 /**
+ * The `scrollTop` that puts item `index` at the top of the viewport. Row 0 maps
+ * to 0, not `contentTop`: the container's top padding belongs to the top of the
+ * list, and restoring to `contentTop` scrolled it away, leaving the first row of
+ * covers flush against the toolbar (and clipping their hover lift) after the
+ * scrollbar appeared as books loaded.
+ */
+export function anchorScrollTop(
+  index: number,
+  columns: number,
+  rowHeight: number,
+  contentTop: number
+): number {
+  const row = Math.floor(index / columns)
+  return row === 0 ? 0 : contentTop + row * rowHeight
+}
+
+/**
  * Hold the reader's place across a change in row geometry.
  *
  * `scrollTop` is a pixel offset, but the grid's column count and row height
@@ -148,7 +165,7 @@ export function useAnchoredScroll(
       }
       const index = anchorId.current ? ids.indexOf(anchorId.current) : -1
       if (index >= 0) {
-        setScrollTop(node, contentTop + Math.floor(index / columns) * rowHeight)
+        setScrollTop(node, anchorScrollTop(index, columns, rowHeight, contentTop))
         onScrolled()
         return // recording now would capture the pre-paint offset
       }
