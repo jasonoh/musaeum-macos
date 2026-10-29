@@ -1,6 +1,6 @@
 # Design: OPDS catalog server (delivery to a second device)
 
-**Date:** 2026-09-19 **Status:** **Proposed — conditional.** Read the precondition before the design. **Scope:** an OPDS 1.2 catalog served by the running app, so another device can browse and download the library without a browser, a sync client, or a second copy of the books. **Related:** the iOS/REST contract staged at `electron/main/api/rest.ts` (a different consumer — see D3). The reader (`specs/2026-08-13-native-reader-design.md`) is unrelated but shares the containment rule this feature must reuse.
+**Date:** 2026-09-19 · **Amended 2026-10-29** **Status:** **Approved to build (O1 first) — 2026-10-29.** The precondition fired (see _Amendment 2026-10-29_ below). Read that section before the rest: it supersedes D4, the _Security_ section's bind rules, AC2.10 and AC2.14 where they differ. **Scope:** an OPDS 1.2 catalog served by the running app, so another device can browse and download the library without a browser, a sync client, or a second copy of the books. **Related:** the iOS/REST contract staged at `electron/main/api/rest.ts` (a different consumer — see D3). The reader (`specs/2026-08-13-native-reader-design.md`) is unrelated but shares the containment rule this feature must reuse.
 
 ---
 
@@ -14,6 +14,22 @@ Two further things must be true at the same time, and both are properties of the
 2. **The security posture is decided** (see Security). This is the app's **first network surface** — for a tool whose entire data model was arranged around "nothing listens", that is a posture change, not a checkbox.
 
 If the trigger fires, this spec is actionable as written. If it does not, the correct action is to leave it in tasks.md.
+
+---
+
+## Amendment 2026-10-29 — the trigger fired, and the transport changed
+
+**Trigger.** Jason owns a Boox Palma and today moves books to it by hand through BooxDrop (a LAN web page: join the Wi-Fi, open the page, upload each file). OPDS replaces that: the Palma browses, searches and downloads from the library itself. The precondition (a second device that speaks OPDS) is met by an Android OPDS client on the Palma — Boox's built-in NeoReader has no OPDS browser, so **a client app must be installed on the device** (KOReader, Librera or Moon+ Reader; which one is the owner's pick and is checked in AC2.19).
+
+**Decided with Jason, 2026-10-29:**
+
+- **A1 — Tailscale is the main path.** The Palma joins the tailnet and reaches the Mac at home and away. This replaces D4's "loopback default": a loopback-only server is unreachable from the Palma. Whether Tailscale installs and runs on the Palma's e-ink Android build is **not verified** and is the first live check (AC2.19).
+- **A2 — Reuse the REST server's bind and lifecycle machinery, not a copy.** `services/api/bind.ts` (`resolveBindAddress`, `isAllowedBindAddress`: loopback or tailnet only) decides the address; a blank `opds_bind` means "this machine's tailnet address", exactly as `rest_api_bind` does. **No LAN or `0.0.0.0` bind exists in v1** — the predicate refuses it. A home-LAN bind was discussed and is deliberately left out: it would send the token in cleartext on every request, and on a tailnet that concern disappears. _Reversal:_ the owner decides Tailscale on the Palma is not workable → add a LAN opt-in as its own decision, with the D4 warning.
+- **A3 — Separate listener, separate flag, own port.** Still D3: `opds_enabled`, `opds_port`, `opds_bind`, `opds_token`. Default port **8789** (8787 is taken on this machine, 8788 is the REST default). Not folded into `rest.ts`: that file is 66 KB, carries a different contract, and its tests forbid binding the real tailnet address.
+- **A4 — Auth is HTTP Basic with a fixed username (`musaeum`) and the generated token as the password.** KOReader and the other candidate clients speak Basic, not Bearer. The token follows the REST rules in `docs/invariants/settings-and-editing.md` ("generated on enable, never typed"; the UI never sends the key; masked with reveal and copy).
+- **A5 — Settings row mirrors _Phone access_:** switch, port, bind override, masked token, the URL to type into the device, and the server's own status line. It follows the same stop-then-start rule when a listen-time key moves.
+
+**What remains the builder's call:** the page-size constant (measure against < 500 KB per page), the summary truncation length, and whether pagination needs a new `LIMIT`/`OFFSET` in the existing query builder (check first; add it _to_ the builder if so).
 
 ---
 
@@ -205,11 +221,11 @@ Conditional GET is the one omission worth revisiting cheaply: if a device re-wal
 - **AC2.7** A book with no cover yields no artwork links rather than a broken URL; `/opds/cover` for it answers 404.
 - **AC2.8** `/opds/book/{id}/{format}` serves bytes **identical to the file on disk** (hash compare) with a correct `Content-Length`, and answers 404 for: an unknown format, a format the book does not have, a book id that does not exist, and a `nasPath` that escapes the root.
 - **AC2.9** `/opds/search.xml` is served with `application/opensearchdescription+xml`, its template resolves against the live server, and `?q=` returns the same books the app's own search returns for that query.
-- **AC2.10** The server binds `127.0.0.1` by default and refuses a non-loopback address without the explicit opt-in.
+- **AC2.10** With a blank `opds_bind` the server binds this machine's tailnet address; a saved `opds_bind` that is neither loopback nor a tailnet address is refused at save time (same predicate as `rest_api_bind`). No case in the suite binds the real tailnet address (inject the interface map).
 - **AC2.11** **A bind failure is not fatal**: with the port occupied, the app starts, the library works, and the reason is visible in Settings.
 - **AC2.12** With the NAS unmounted: `/opds` and `/opds/all` still answer 200 from the cache; `/opds/book/...` answers 503; the app is unaffected.
 - **AC2.13** `opds_enabled = false` (the default) means nothing listens at all — verified by a connection attempt being refused.
-- **AC2.14** Exactly one `startOpdsIfEnabled()` call site, and the REST stub's behavior is unchanged with `rest_api_enabled` set (D3).
+- **AC2.14** Exactly one `startOpdsIfEnabled()` call site; OPDS and the REST API can both be enabled at once on different ports, and neither's status or behavior changes the other's (D3, A3).
 - **AC2.15** `npm run typecheck` (0), `npm run lint` (0), `npm test` green.
 
 **O2 — the browse tree**
@@ -220,7 +236,7 @@ Conditional GET is the one omission worth revisiting cheaply: if a device re-wal
 
 **Live, on the real device — the only test that proves the point**
 
-- **AC2.19** KOReader (or the actual device's client) can add the catalog by URL with a username/token, browse, search, download a book, and open it. Recorded in the CHANGELOG with the client version.
+- **AC2.19** On the Boox Palma: Tailscale connects; the chosen OPDS client adds the catalog by URL with username `musaeum` and the token, browses, searches, downloads a book and opens it — on the home network and again off it (cellular hotspot). Recorded in the CHANGELOG with the client and Tailscale versions.
 - **AC2.20** If OPDS sync is wanted, the device's sync walks `/opds/new` without error.
 
 ---
