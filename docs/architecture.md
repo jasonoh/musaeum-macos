@@ -140,8 +140,10 @@ Musaeum/
 │   │   │   ├── api/              # the REST surface's logic, none of it in the socket
 │   │   │   │   ├── auth.ts       #   bearer check + the rejection record
 │   │   │   │   ├── bind.ts       #   where the API may listen (tailnet, or named exactly)
-│   │   │   │   ├── shape.ts      #   THE wire's payloads — pure, one place (D10)
-│   │   │   └── ../opds/      #   the catalog's pure halves: feed.ts (Atom builders, OPDS_PAGE_SIZE), basic-auth.ts
+│   │   │   │   └── shape.ts      #   THE wire's payloads — pure, one place (D10)
+│   │   │   ├── opds/             # the OPDS catalog's pure halves
+│   │   │   │   ├── feed.ts       #   Atom builders, OPDS_PAGE_SIZE
+│   │   │   │   └── basic-auth.ts #   the Basic credential check
 │   │   │   ├── book-bytes.ts     # book + cover path resolution, containment, byte ranges
 │   │   │   ├── reading-state.ts  # tiered position writes + quit flush
 │   │   │   ├── quit.ts           # before-quit handshake (flush, then teardown)

@@ -641,7 +641,8 @@ describe('the OPDS settings', () => {
       lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
       utun9: [{ address: '100.64.0.1', family: 'IPv4', internal: false }]
     } as unknown as InterfaceMap
-    expect(getOpdsView(tailnet).url).toBe('http://100.64.0.1:8789')
+    expect(getOpdsView(tailnet).url).toBe('http://100.64.0.1:8789/opds')
+    expect(new URL(getOpdsView(tailnet).url ?? '').pathname).toBe('/opds')
     expect(getOpdsView(tailnet).addressSource).toBe('tailnet')
   })
 

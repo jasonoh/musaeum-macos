@@ -7,8 +7,8 @@ import { tokensMatch, type AuthResult } from '../api/auth'
  *
  * The rules are the REST check's, restated for a different header:
  *
- * 1. **The shared constant-time compare.** The password is the same token the
- *    REST API uses, so it goes through `tokensMatch` — never `===`.
+ * 1. **The shared constant-time compare.** The password is the catalog's own
+ *    `opds_token` (separate from the REST API's), so it goes through `tokensMatch` — never `===`.
  * 2. **Fail closed.** No configured token means no request is authorized.
  * 3. **A refusal logs the client, never the attempt.**
  *
@@ -46,7 +46,7 @@ function credentialsFrom(header: string): { user: string; password: string } | n
 /**
  * Whether a request may proceed.
  *
- * `token` is the *real* value (`resolveRestApiConfig().token`), never a masked
+ * `token` is the *real* value (`resolveOpdsConfig().token`), never a masked
  * view. Username and password are both compared, and the second comparison runs
  * whether or not the first matched, so the response time does not say which
  * half was wrong.

@@ -5,7 +5,7 @@ import { statusLine } from '../../lib/rest-api-status'
 
 /**
  * The OPDS catalog's row — the Settings surface for the server a Kindle-class
- * reader app (KOReader, Boox's Neo Reader, Marvin) browses
+ * reader app (an OPDS reader app such as KOReader or Librera) browses
  * (`docs/superpowers/specs/2026-09-19-opds-catalog-design.md`, Amendments A4/A5).
  *
  * It mirrors `RestApiSection` on purpose and the rules carry over unchanged
@@ -87,7 +87,7 @@ export function OpdsSection({
           <div className="min-w-0 flex-1">
             <p className="text-[13px] text-parchment">Serve the library to e-reader apps</p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-parchment-dim">
-              An OPDS catalog that apps like KOReader and the Boox reader browse: search the library
+              An OPDS catalog that an OPDS reader app such as KOReader or Librera browses: search the library
               and download a book straight onto the device. It binds the tailnet only, so the device
               needs Tailscale, and every request carries the username and token below.
             </p>

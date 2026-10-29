@@ -851,6 +851,15 @@ describe('the byte budgets', () => {
 // ---------------------------------------------------------------------------
 
 describe('the lifecycle', () => {
+  // The failure paths log through console.warn on purpose; keep the run quiet.
+  let warnSpy: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
   it('creates nothing when disabled (AC2.13)', async () => {
     const listen = recordingListen()
     const status = await startOpdsIfEnabled({

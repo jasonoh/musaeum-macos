@@ -626,7 +626,9 @@ export function getOpdsView(
     // (the server does the same rewrite for its status reason).
     addressReason: decision.reason?.replaceAll('rest_api_bind', 'opds_bind') ?? null,
     port: config.port,
-    url: decision.address ? restApiUrl(decision.address, config.port) : null
+    // The catalog answers only under `/opds` (an authenticated `GET /` is the
+    // uniform 404) and OPDS clients do not add the path themselves.
+    url: decision.address ? `${restApiUrl(decision.address, config.port)}/opds` : null
   }
 }
 
