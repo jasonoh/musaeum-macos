@@ -5,6 +5,7 @@ import { pathToFileURL } from 'url'
 import type { ThemeView } from '@shared/theme.types'
 import { TRAFFIC_LIGHT_POSITION } from '@shared/window-chrome'
 import { startRestApiIfEnabled } from './api/rest'
+import { startOpdsIfEnabled } from './api/opds'
 import { registerAiHandlers } from './ipc/ai'
 import { registerDeviceHandlers } from './ipc/device'
 import { registerFileHandlers } from './ipc/files'
@@ -282,6 +283,9 @@ app.whenReady().then(() => {
   // token is recorded on `getRestApiStatus()` and logged, never thrown, so a
   // failure here can never keep the window from opening (invariant 12).
   void startRestApiIfEnabled()
+  // The OPDS catalog's socket (O1): a second listener, its own flag and port. Never
+  // fatal either — a failed bind is recorded on `getOpdsStatus()` and logged.
+  void startOpdsIfEnabled()
 
   app.on('activate', () => {
     // **The count is not the question.** A resolver window is created lazily on

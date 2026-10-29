@@ -285,3 +285,32 @@ describe('the bundled helpers (voice reader, spec D2)', () => {
     expect(yml).toMatch(/- from: helpers\/bin\n\s+to: helpers\/bin\n/)
   })
 })
+
+/**
+ * OPDS O1, AC2.14 enforced: **the catalog's socket has one starter.**
+ *
+ * `startOpdsIfEnabled` has one START-UP call site: `app.whenReady` in `electron/main/index.ts`,
+ * beside the REST API's. The only other caller is `services/settings.ts`, whose
+ * `syncOpdsListener` is the stop-then-start that moves a running listener when a listen-time
+ * key changed — the same shape as the REST row's. Any third call site (a menu item, an IPC
+ * handler) would be a listener the stop-then-start rule does not know about. The definition's
+ * own line is excluded.
+ */
+describe('OPDS — one starter (AC2.14)', () => {
+  it('calls startOpdsIfEnabled( from the start-up site and the settings restart only', () => {
+    const root = process.cwd()
+    const sites = sources(join(root, 'electron', 'main')).flatMap((path) =>
+      readFileSync(path, 'utf8')
+        .split('\n')
+        .map((text) => text.replace(/\/\/.*$/, '').trim())
+        .filter((text) => !/^(\*|\/\*)/.test(text))
+        .filter((text) => text.includes('startOpdsIfEnabled('))
+        .filter((text) => !/^export (async )?function startOpdsIfEnabled\(/.test(text))
+        .map(() => relative(root, path))
+    )
+    expect(sites).toEqual([
+      join('electron', 'main', 'index.ts'),
+      join('electron', 'main', 'services', 'settings.ts')
+    ])
+  })
+})
