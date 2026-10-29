@@ -622,7 +622,9 @@ export function getOpdsView(
     status: getOpdsStatus(),
     address: decision.address,
     addressSource: decision.source,
-    addressReason: decision.reason,
+    // The resolver words its refusals for the REST key; this row names its own
+    // (the server does the same rewrite for its status reason).
+    addressReason: decision.reason?.replaceAll('rest_api_bind', 'opds_bind') ?? null,
     port: config.port,
     url: decision.address ? restApiUrl(decision.address, config.port) : null
   }

@@ -583,6 +583,19 @@ describe('the OPDS settings', () => {
     expect(getConfig(OPDS_CONFIG_KEYS.bind)).toBe('100.64.0.9')
   })
 
+  it('words the missing-address reason for the OPDS key, not the phone API’s', () => {
+    const none: InterfaceMap = { lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }] }
+    const view = getOpdsView(none)
+    expect(view.url).toBeNull()
+    expect(view.addressReason).toContain('opds_bind')
+    expect(view.addressReason).not.toContain('rest_api')
+
+    setConfig(OPDS_CONFIG_KEYS.bind, '0.0.0.0')
+    const refused = getOpdsView(none)
+    expect(refused.addressReason).toContain('opds_bind')
+    expect(refused.addressReason).not.toContain('rest_api')
+  })
+
   it('rejects a bad token without echoing it, and a blank deletes the key', () => {
     let message = ''
     try {

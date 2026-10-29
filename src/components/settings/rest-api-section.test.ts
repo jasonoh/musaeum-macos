@@ -32,7 +32,7 @@ function count(source: string, needle: string): number {
 function setEnabledBody(): string {
   const start = MODAL.indexOf('const setEnabled =')
   expect(start, 'the row must have its own write').toBeGreaterThan(-1)
-  return MODAL.slice(start, MODAL.indexOf('const set = (key: keyof FormState)'))
+  return MODAL.slice(start, MODAL.indexOf('const setOpdsEnabled ='))
 }
 
 describe('the phone API row', () => {
@@ -148,7 +148,8 @@ describe('the phone API row', () => {
     // renderer names no raw key: the typed fields are what the type checker can
     // enumerate (`services/settings.ts`'s `CONFIG_KEYS`), which is the whole
     // reason `EditableSettings` carries the four.
-    expect(count(MODAL, 'window.Musaeum.settings.save(')).toBe(2)
+    // the dialog's Save, this switch, and the OPDS switch's twin
+    expect(count(MODAL, 'window.Musaeum.settings.save(')).toBe(3)
     expect(count(MODAL, 'window.Musaeum.settings.get(')).toBe(1)
     expect(SECTION).not.toContain('window.Musaeum')
     expect(MODAL).not.toContain('rest_api_')

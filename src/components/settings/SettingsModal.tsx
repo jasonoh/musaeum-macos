@@ -4,6 +4,7 @@ import type { EditableSettings, ExecutableKind, SettingsView } from '@shared/set
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
 import { AppearanceSection } from './AppearanceSection'
+import { OpdsSection } from './OpdsSection'
 import { RestApiSection } from './RestApiSection'
 import { useLibraryStore } from '@/stores/library.store'
 import { CheckIcon, EyeIcon, SpinnerIcon } from '@/components/shared/icons'
@@ -38,6 +39,8 @@ interface FormState {
   smbUrl: string
   restApiPort: string
   restApiBind: string
+  opdsPort: string
+  opdsBind: string
   aiBaseUrl: string
   aiModel: string
   aiApiKey: string
@@ -49,6 +52,8 @@ const EMPTY_FORM: FormState = {
   smbUrl: '',
   restApiPort: '',
   restApiBind: '',
+  opdsPort: '',
+  opdsBind: '',
   aiBaseUrl: '',
   aiModel: '',
   aiApiKey: '',
@@ -64,6 +69,9 @@ function toForm(view: SettingsView): FormState {
     // generated when the API is enabled and never typed by hand (D13).
     restApiPort: view.values.restApiPort ?? '',
     restApiBind: view.values.restApiBind ?? '',
+    // The OPDS twin: the flag and the token are likewise not form fields.
+    opdsPort: view.values.opdsPort ?? '',
+    opdsBind: view.values.opdsBind ?? '',
     aiBaseUrl: view.values.aiBaseUrl ?? '',
     aiModel: view.values.aiModel ?? '',
     aiApiKey: view.values.aiApiKey ?? '',
@@ -197,6 +205,33 @@ export function SettingsModal() {
       // A refused port or bind leaves the switch where it was: the save wrote
       // nothing, so the flag the row renders is still the truth. The refusal
       // lands in the dialog's error line, where the other fields' refusals go.
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  /**
+   * The OPDS switch — the phone switch's twin, applied on click for the same
+   * reason and sending the same shape: the flag, plus the row's port and bind
+   * only when they moved. `opdsToken` is never in this payload (a blank one
+   * would clear the credential the reader app already holds).
+   */
+  const setOpdsEnabled = async (enabled: boolean) => {
+    if (!view) return
+    const updates: Partial<EditableSettings> = { opdsEnabled: enabled ? 'true' : 'false' }
+    if (form.opdsPort.trim() !== (view.values.opdsPort ?? '').trim()) {
+      updates.opdsPort = form.opdsPort.trim() || null
+    }
+    if (form.opdsBind.trim() !== (view.values.opdsBind ?? '').trim()) {
+      updates.opdsBind = form.opdsBind.trim() || null
+    }
+
+    setApplying(true)
+    setError(null)
+    try {
+      setView(await window.Musaeum.settings.save(updates))
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setApplying(false)
@@ -588,11 +623,24 @@ export function SettingsModal() {
               />
             </Section>
 
+            <Section title="Device access (OPDS)">
+              <OpdsSection
+                view={view}
+                applying={applying}
+                busy={busy}
+                onSetEnabled={(next) => void setOpdsEnabled(next)}
+                port={form.opdsPort}
+                bind={form.opdsBind}
+                onPort={set('opdsPort')}
+                onBind={set('opdsBind')}
+              />
+            </Section>
+
             <p className="text-[11px] leading-relaxed text-parchment-faint">
               Leave a field blank to go back to auto-detection. Changing the interpreter or the
               metadata API key restarts the metadata sidecar; the Ask settings are read per question
               and restart nothing. The phone API’s switch applies the moment you click it, carrying
-              a port or bind you have changed with it.
+              a port or bind you have changed with it, and the OPDS switch applies on click too.
             </p>
           </div>
         )}
