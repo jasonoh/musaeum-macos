@@ -61,6 +61,25 @@ export interface PageWindow {
 const EPOCH = '1970-01-01T00:00:00Z'
 
 /**
+ * Atom wants an RFC 3339 date-time and a strict client rejects or mis-sorts a
+ * feed over one bad entry, while the stored columns are free text (Calibre
+ * imports, sidecar writes). Accept only what `Date.parse` reads and normalize it.
+ */
+function rfc3339(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? undefined : new Date(parsed).toISOString()
+}
+
+/** DCMI W3CDTF: a year, a year-month, a date, or a full date-time. Anything else is omitted rather than guessed at. */
+function w3cdtf(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  return /^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?)?)?$/.test(value)
+    ? value
+    : undefined
+}
+
+/**
  * Escape for element text and attribute values, and drop what XML 1.0 cannot
  * carry at all (C0 controls other than tab/LF/CR, lone surrogates, U+FFFE/FFFF).
  * One book with a stray NUL in its description would otherwise make every page
@@ -151,7 +170,7 @@ function header(
 ): string {
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n<feed ${NS}>\n` +
-    `<id>${escapeXml(id)}</id>\n<title>${escapeXml(title)}</title>\n<updated>${escapeXml(ctx.now)}</updated>\n` +
+    `<id>${escapeXml(id)}</id>\n<title>${escapeXml(title)}</title>\n<updated>${escapeXml(rfc3339(ctx.now) ?? EPOCH)}</updated>\n` +
     `<author><name>Musaeum</name></author>\n` +
     `${link('self', selfHref, type)}\n${link('start', `${ctx.baseUrl}/opds`, OPDS_NAV_TYPE)}\n` +
     `${link('search', `${ctx.baseUrl}/opds/search.xml`, OPENSEARCH_TYPE)}\n`
@@ -160,7 +179,7 @@ function header(
 
 export function buildRootFeed(ctx: FeedContext): string {
   const nav = (id: string, title: string, path: string, content: string, rel: string): string =>
-    `<entry>\n<id>${id}</id>\n<title>${escapeXml(title)}</title>\n<updated>${escapeXml(ctx.now)}</updated>\n` +
+    `<entry>\n<id>${escapeXml(id)}</id>\n<title>${escapeXml(title)}</title>\n<updated>${escapeXml(rfc3339(ctx.now) ?? EPOCH)}</updated>\n` +
     `<content type="text">${escapeXml(content)}</content>\n${link(rel, `${ctx.baseUrl}${path}`, OPDS_ACQ_TYPE)}\n</entry>\n`
   return (
     header(ctx, 'urn:musaeum:opds:root', 'Musaeum', `${ctx.baseUrl}/opds`, OPDS_NAV_TYPE) +
@@ -181,9 +200,12 @@ function buildEntry(ctx: FeedContext, book: Book): string {
   parts.push(`<id>urn:uuid:${escapeXml(book.id)}</id>`)
   parts.push(`<title>${escapeXml(book.title)}</title>`)
   if (book.author) parts.push(`<author><name>${escapeXml(book.author)}</name></author>`)
-  parts.push(`<updated>${escapeXml(book.lastModified || book.dateAdded || EPOCH)}</updated>`)
+  parts.push(
+    `<updated>${escapeXml(rfc3339(book.lastModified) ?? rfc3339(book.dateAdded) ?? EPOCH)}</updated>`
+  )
   if (book.language) parts.push(`<dc:language>${escapeXml(book.language)}</dc:language>`)
-  if (book.publishedDate) parts.push(`<dc:issued>${escapeXml(book.publishedDate)}</dc:issued>`)
+  const issued = w3cdtf(book.publishedDate)
+  if (issued) parts.push(`<dc:issued>${escapeXml(issued)}</dc:issued>`)
   const isbn = book.isbn13 || book.isbn10
   if (isbn) parts.push(`<dc:identifier>urn:isbn:${escapeXml(isbn)}</dc:identifier>`)
   if (book.publisher) parts.push(`<dc:publisher>${escapeXml(book.publisher)}</dc:publisher>`)

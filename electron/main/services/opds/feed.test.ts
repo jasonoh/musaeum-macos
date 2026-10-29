@@ -129,11 +129,36 @@ describe('acquisition entries', () => {
       feedOf([{ ...makeBook('a'), ...b }]).split('<entry>')[1] ?? ''
     expect(
       entry({ lastModified: '2026-01-02T00:00:00Z', dateAdded: '2025-01-01T00:00:00Z' })
-    ).toContain('<updated>2026-01-02T00:00:00Z</updated>')
+    ).toContain('<updated>2026-01-02T00:00:00.000Z</updated>')
     expect(entry({ dateAdded: '2025-01-01T00:00:00Z' })).toContain(
-      '<updated>2025-01-01T00:00:00Z</updated>'
+      '<updated>2025-01-01T00:00:00.000Z</updated>'
     )
     expect(entry({})).toContain('<updated>1970-01-01T00:00:00Z</updated>')
+  })
+
+  it('atom:updated skips unparseable dates and normalizes loose ones', () => {
+    const entry = (b: Partial<Book>): string =>
+      feedOf([{ ...makeBook('a'), ...b }]).split('<entry>')[1] ?? ''
+    expect(entry({ lastModified: 'garbage', dateAdded: '2025-01-01T00:00:00Z' })).toContain(
+      '<updated>2025-01-01T00:00:00.000Z</updated>'
+    )
+    expect(entry({ lastModified: 'garbage', dateAdded: 'nope' })).toContain(
+      '<updated>1970-01-01T00:00:00Z</updated>'
+    )
+    expect(entry({ lastModified: '', dateAdded: '2025-01-01T00:00:00Z' })).toContain(
+      '<updated>2025-01-01T00:00:00.000Z</updated>'
+    )
+    expect(entry({ lastModified: '2020-01-01 00:00:00+00:00' })).toContain(
+      '<updated>2020-01-01T00:00:00.000Z</updated>'
+    )
+  })
+
+  it('dc:issued is emitted only for W3CDTF values', () => {
+    const entry = (d: string): string =>
+      feedOf([{ ...makeBook('a'), publishedDate: d }]).split('<entry>')[1] ?? ''
+    expect(entry('circa 1850')).not.toContain('dc:issued')
+    expect(entry('1850')).toContain('<dc:issued>1850</dc:issued>')
+    expect(entry('2020-03-04')).toContain('<dc:issued>2020-03-04</dc:issued>')
   })
 
   it('emits the full field set when present', () => {
