@@ -5,6 +5,8 @@ import { existsSync, statSync } from 'fs'
 import type {
   AppSettings,
   EditableSettings,
+  OpdsListenState,
+  OpdsView,
   RestApiListenState,
   RestApiView,
   SettingsView
@@ -23,7 +25,15 @@ import {
   stopRestApi,
   type RestApiStatus
 } from '../api/rest'
-import { TAILNET_CIDR, isAllowedBindAddress, resolveBindAddress } from './api/bind'
+// The OPDS listener's twin of the above, with the same benign cycle
+// (`api/opds.ts` imports `resolveOpdsConfig` from this file).
+import { getOpdsStatus, startOpdsIfEnabled, stopOpds, type OpdsStatus } from '../api/opds'
+import {
+  TAILNET_CIDR,
+  isAllowedBindAddress,
+  resolveBindAddress,
+  type InterfaceMap
+} from './api/bind'
 import { deleteConfig, getConfig, setConfig } from './db'
 import { getLibraryRoot } from './nas-manager'
 import { readLibraryKind, syncClientFor } from './storage-kind'
@@ -81,12 +91,27 @@ export const DEFAULT_REST_API_PORT = 8788
 export const MIN_REST_API_PORT = 1024
 export const MAX_REST_API_PORT = 65535
 
+/** The OPDS catalog's four keys: the same shape as the phone API's, and wholly separate from them. */
+export const OPDS_CONFIG_KEYS = {
+  enabled: 'opds_enabled',
+  port: 'opds_port',
+  token: 'opds_token',
+  bind: 'opds_bind'
+} as const
+
+/** The port the OPDS catalog listens on unless the owner sets another: one above the phone API's. */
+export const DEFAULT_OPDS_PORT = 8789
+
 const CONFIG_KEYS: Record<keyof EditableSettings, string> = {
   smbUrl: 'smb_url',
   restApiEnabled: REST_API_CONFIG_KEYS.enabled,
   restApiPort: REST_API_CONFIG_KEYS.port,
   restApiToken: REST_API_CONFIG_KEYS.token,
   restApiBind: REST_API_CONFIG_KEYS.bind,
+  opdsEnabled: OPDS_CONFIG_KEYS.enabled,
+  opdsPort: OPDS_CONFIG_KEYS.port,
+  opdsToken: OPDS_CONFIG_KEYS.token,
+  opdsBind: OPDS_CONFIG_KEYS.bind,
   // The ask panel's endpoint, model and key. Not in SIDECAR_KEYS below: they are
   // read per request, so changing one must not bounce the Python process out
   // from under a hydration that is in flight.
@@ -116,6 +141,10 @@ export function getSettings(): SettingsView {
     restApiPort: getConfig(CONFIG_KEYS.restApiPort),
     restApiToken: getConfig(CONFIG_KEYS.restApiToken),
     restApiBind: getConfig(CONFIG_KEYS.restApiBind),
+    opdsEnabled: getConfig(CONFIG_KEYS.opdsEnabled),
+    opdsPort: getConfig(CONFIG_KEYS.opdsPort),
+    opdsToken: getConfig(CONFIG_KEYS.opdsToken),
+    opdsBind: getConfig(CONFIG_KEYS.opdsBind),
     aiBaseUrl: getConfig(CONFIG_KEYS.aiBaseUrl),
     aiModel: getConfig(CONFIG_KEYS.aiModel),
     aiApiKey: getConfig(CONFIG_KEYS.aiApiKey),
@@ -135,6 +164,7 @@ export function getSettings(): SettingsView {
     // this machine's own interfaces (D13's "the listen status is resolved into
     // `SettingsView` in the main process rather than held in a store").
     restApi: getRestApiView(),
+    opds: getOpdsView(),
     // D7: the one line naming the cloud client that holds this folder, or null.
     // Composed here because the folder is a path only the main process holds —
     // the renderer has no `homedir` and no business having one.
@@ -245,7 +275,14 @@ export function saveSettings(updates: Partial<EditableSettings>): void {
     ([field, value]) => field === 'restApiEnabled' && value === 'true'
   )
   if (enabling && !getConfig(REST_API_CONFIG_KEYS.token)) {
-    setConfig(REST_API_CONFIG_KEYS.token, generateRestApiToken())
+    setConfig(REST_API_CONFIG_KEYS.token, generateApiToken())
+  }
+  // The OPDS catalog's twin of the above, for its own token and nothing else.
+  const enablingOpds = normalized.some(
+    ([field, value]) => field === 'opdsEnabled' && value === 'true'
+  )
+  if (enablingOpds && !getConfig(OPDS_CONFIG_KEYS.token)) {
+    setConfig(OPDS_CONFIG_KEYS.token, generateApiToken())
   }
 
   // The interpreter and the API key are both read at spawn time
@@ -255,9 +292,10 @@ export function saveSettings(updates: Partial<EditableSettings>): void {
 /**
  * A fresh credential: 32 random bytes, hex. Generated over a user-chosen
  * password because a token that is only ever used here cannot be a credential
- * reused from somewhere else (the OPDS spec's D8, adopted as written).
+ * reused from somewhere else (the OPDS spec's D8, adopted as written). Shared
+ * by the phone API and the OPDS catalog, each of which keeps its own.
  */
-function generateRestApiToken(): string {
+function generateApiToken(): string {
   return randomBytes(32).toString('hex')
 }
 
@@ -293,6 +331,7 @@ function validate(field: keyof EditableSettings, value: string): void {
       // rejected key already degrades to unauthenticated fetches
       return
     case 'restApiEnabled':
+    case 'opdsEnabled':
       // `'true'`/`'false'` rather than a boolean because `app_config` is a
       // string table — and strict rather than case-insensitive so the one value
       // the server reads (`=== 'true'`) is the one value that can be stored.
@@ -300,7 +339,8 @@ function validate(field: keyof EditableSettings, value: string): void {
         throw new Error(`Not a flag: ${value} — expected 'true' or 'false'`)
       }
       return
-    case 'restApiPort': {
+    case 'restApiPort':
+    case 'opdsPort': {
       const port = /^\d+$/.test(value) ? Number(value) : NaN
       // Written as a positive range test on purpose: `port < MIN || port > MAX`
       // is false for NaN, so `'eighty'` would sail through a negative test
@@ -312,12 +352,20 @@ function validate(field: keyof EditableSettings, value: string): void {
       return
     }
     case 'restApiToken':
+    case 'opdsToken':
       // Never typed by hand (it is generated on enable), so this only has to
       // stop a value an HTTP header cannot carry — and it never echoes the
       // value back, only its length: a rejected credential is still a secret.
       if (!/^[!-~]{16,}$/.test(value)) {
         throw new Error(
           `Not a token: ${value.length} characters — a token is at least 16 printable characters with no spaces`
+        )
+      }
+      return
+    case 'opdsBind':
+      if (!isAllowedBindAddress(value)) {
+        throw new Error(
+          `Not a bind address: ${value} — OPDS binds loopback or a tailnet address (${TAILNET_CIDR})`
         )
       }
       return
@@ -484,8 +532,10 @@ export async function saveSettingsAndApply(
   updates: Partial<EditableSettings>
 ): Promise<SettingsView> {
   const before = resolveRestApiConfig()
+  const opdsBefore = resolveOpdsConfig()
   saveSettings(updates)
   await syncRestApiListener(before)
+  await syncOpdsListener(opdsBefore)
   return getSettings()
 }
 
@@ -523,4 +573,73 @@ async function syncRestApiListener(before: ResolvedRestApiConfig): Promise<void>
 
   await stopRestApi()
   await startRestApiIfEnabled()
+}
+
+// ---------------------------------------------------------------------------
+// The OPDS catalog: resolved for the server, read by the row, kept in sync
+// ---------------------------------------------------------------------------
+
+/** What `api/opds.ts` runs with: the four keys, resolved. */
+export interface ResolvedOpdsConfig {
+  /** `opds_enabled === 'true'` — absent or anything else means nothing listens. */
+  enabled: boolean
+  /** The port to bind, or the default when the key is unset or unusable. */
+  port: number
+  /** An address named in `opds_bind`, or `''` to resolve one from the interfaces. */
+  bind: string
+  /** The credential in force, or null when there is none (the server then refuses to start). */
+  token: string | null
+}
+
+/** The values the OPDS server runs with: the real token, and a port re-checked against its range, as `resolveRestApiConfig` does. */
+export function resolveOpdsConfig(): ResolvedOpdsConfig {
+  const stored = getConfig(OPDS_CONFIG_KEYS.port)
+  const port = stored ? Number(stored) : NaN
+  return {
+    enabled: getConfig(OPDS_CONFIG_KEYS.enabled) === 'true',
+    port:
+      Number.isInteger(port) && port >= MIN_REST_API_PORT && port <= MAX_REST_API_PORT
+        ? port
+        : DEFAULT_OPDS_PORT,
+    bind: getConfig(OPDS_CONFIG_KEYS.bind)?.trim() ?? '',
+    token: getConfig(OPDS_CONFIG_KEYS.token)?.trim() || null
+  }
+}
+
+/** Compile-time proof that the row's OPDS state union and the socket's are the same set of members. */
+export const OPDS_STATES_AGREE: SameMembers<OpdsListenState, OpdsStatus['state']> = true
+
+/**
+ * The OPDS row's live half. `interfaces` is the seam a test injects a tailnet
+ * through; production reads this machine's own.
+ */
+export function getOpdsView(
+  interfaces: InterfaceMap = networkInterfaces() as InterfaceMap
+): OpdsView {
+  const config = resolveOpdsConfig()
+  const decision = resolveBindAddress(interfaces, config.bind)
+  return {
+    status: getOpdsStatus(),
+    address: decision.address,
+    addressSource: decision.source,
+    addressReason: decision.reason,
+    port: config.port,
+    url: decision.address ? restApiUrl(decision.address, config.port) : null
+  }
+}
+
+/** The OPDS twin of `syncRestApiListener`: the same four outcomes over the OPDS keys. */
+async function syncOpdsListener(before: ResolvedOpdsConfig): Promise<void> {
+  const after = resolveOpdsConfig()
+  if (!after.enabled) {
+    await stopOpds()
+    return
+  }
+
+  const moved =
+    before.port !== after.port || before.bind !== after.bind || before.token !== after.token
+  if (!moved && getOpdsStatus().state === 'listening') return
+
+  await stopOpds()
+  await startOpdsIfEnabled()
 }

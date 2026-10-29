@@ -31,6 +31,15 @@ export interface AppSettings {
   restApiPort: string | null
   restApiToken: string | null
   restApiBind: string | null
+  /**
+   * The OPDS catalog's four, the same shape as the phone API's and independent
+   * of it: its own flag, port (default 8789), generated token and bind. Blank
+   * means the compiled-in behavior.
+   */
+  opdsEnabled: string | null
+  opdsPort: string | null
+  opdsToken: string | null
+  opdsBind: string | null
   smbUrl: string | null
   aiBaseUrl: string | null
   aiModel: string | null
@@ -120,6 +129,38 @@ export interface RestApiView {
   port: number
 }
 
+/** What the OPDS socket is doing; restated like `RestApiListenState`, and checked by `OPDS_STATES_AGREE`. */
+export type OpdsListenState = 'disabled' | 'starting' | 'listening' | 'failed'
+
+/** The OPDS socket's own report, carried across the bridge unchanged. */
+export interface OpdsListenStatus {
+  state: OpdsListenState
+  /** The address bound, or the one the attempt named. Null when disabled. */
+  address: string | null
+  /** The port bound, or the one the attempt named. Null when disabled. */
+  port: number | null
+  /** Why it is not listening, in the socket's own words. Null when it is. */
+  reason: string | null
+  /** When the last attempt settled (ISO). Null before the first one. */
+  at: string | null
+}
+
+/** The OPDS row's live half, composed in the main process; the same members as `RestApiView`. */
+export interface OpdsView {
+  /** The listener's own report. Never branched on. */
+  status: OpdsListenStatus
+  /** `http://<address>:<port>` — what to type into the reader app, or null when no address resolves. */
+  url: string | null
+  /** The address the URL names: the stored `opds_bind`, or this machine's tailnet address. */
+  address: string | null
+  /** Which rule chose it: the setting, the tailnet scan, or nothing at all. */
+  addressSource: 'override' | 'tailnet' | 'none'
+  /** Why there is no address, in the resolver's words. Null when there is one. */
+  addressReason: string | null
+  /** The port in force — `opds_port`, or the compiled-in default. */
+  port: number
+}
+
 /** One read of everything the settings modal shows. */
 export interface SettingsView {
   values: AppSettings
@@ -129,6 +170,8 @@ export interface SettingsView {
    * any of this, and the row re-reads it rather than remembering it.
    */
   restApi: RestApiView
+  /** The OPDS catalog's live half, composed in main like `restApi`. */
+  opds: OpdsView
   /**
    * One line naming the cloud client that syncs the library folder, or null
    * (D7 of `docs/superpowers/specs/2026-09-24-local-library-design.md`).

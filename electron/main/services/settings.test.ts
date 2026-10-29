@@ -5,11 +5,17 @@ import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AI_CONFIG_KEYS, AI_ENV_KEYS, DEFAULT_AI_BASE_URL } from './ai'
 import { closeDb, getConfig, getDb, setConfig } from './db'
+import type { InterfaceMap } from './api/bind'
 import {
+  DEFAULT_OPDS_PORT,
   DEFAULT_REST_API_PORT,
+  OPDS_CONFIG_KEYS,
+  OPDS_STATES_AGREE,
   REST_API_CONFIG_KEYS,
   REST_API_STATES_AGREE,
+  getOpdsView,
   getRestApiView,
+  resolveOpdsConfig,
   getSettings,
   saveSettings,
   saveSettingsAndApply
@@ -66,6 +72,36 @@ vi.mock('../api/rest', () => ({
   }
 }))
 
+/** The OPDS listener's module, stubbed as a recorder for the same reason as the socket above. */
+const opdsSocket = vi.hoisted(() => ({
+  order: [] as string[],
+  status: {
+    state: 'disabled',
+    address: null,
+    port: null,
+    reason: null,
+    at: null
+  } as {
+    state: 'disabled' | 'starting' | 'listening' | 'failed'
+    address: string | null
+    port: number | null
+    reason: string | null
+    at: string | null
+  }
+}))
+
+vi.mock('../api/opds', () => ({
+  getOpdsStatus: () => ({ ...opdsSocket.status }),
+  startOpdsIfEnabled: async () => {
+    opdsSocket.order.push('start')
+    return { ...opdsSocket.status }
+  },
+  stopOpds: async () => {
+    opdsSocket.order.push('stop')
+    return { ...opdsSocket.status }
+  }
+}))
+
 /** The venv interpreter the sidecar prefers — a real, valid Python path. */
 const VENV_PYTHON = join(process.cwd(), 'sidecar', '.venv', 'bin', 'python')
 const hasVenv = existsSync(VENV_PYTHON)
@@ -80,6 +116,8 @@ beforeEach(() => {
   // Each case starts with nothing of ours on the wire
   socket.order.length = 0
   socket.status = { state: 'disabled', address: null, port: null, reason: null, at: null }
+  opdsSocket.order.length = 0
+  opdsSocket.status = { state: 'disabled', address: null, port: null, reason: null, at: null }
 })
 
 describe('getSettings', () => {
@@ -493,5 +531,154 @@ describe('the phone API settings', () => {
     expect(members(says('src/types/settings.types.ts'), 'RestApiListenState')).toBe(
       members(says('electron/main/api/rest.ts'), 'RestApiState')
     )
+  })
+})
+
+/**
+ * The OPDS catalog's settings: the phone API's four keys over again, under
+ * their own names, with the same rules and the same listener sync — and wholly
+ * independent of them (AC2.14). The `api/opds` module is a recorder here as
+ * `api/rest` is above; no case opens a socket.
+ */
+describe('the OPDS settings', () => {
+  const PORT = '8798'
+  const BIND = '127.0.0.1'
+
+  const listening = (): void => {
+    setConfig(OPDS_CONFIG_KEYS.enabled, 'true')
+    setConfig(OPDS_CONFIG_KEYS.port, PORT)
+    setConfig(OPDS_CONFIG_KEYS.bind, BIND)
+    opdsSocket.status = {
+      state: 'listening',
+      address: BIND,
+      port: Number(PORT),
+      reason: null,
+      at: null
+    }
+  }
+
+  it('accepts the flag only as true or false', async () => {
+    await expect(saveSettingsAndApply({ opdsEnabled: 'yes' })).rejects.toThrow(/Not a flag/)
+    await saveSettingsAndApply({ opdsEnabled: 'false' })
+    expect(getConfig(OPDS_CONFIG_KEYS.enabled)).toBe('false')
+  })
+
+  it('validates the port as an integer in range', async () => {
+    for (const bad of ['eighty', '80', '70000']) {
+      await expect(saveSettingsAndApply({ opdsPort: bad })).rejects.toThrow(/Not a port/)
+    }
+    await saveSettingsAndApply({ opdsPort: '8789' })
+    expect(getConfig(OPDS_CONFIG_KEYS.port)).toBe('8789')
+  })
+
+  it('refuses a bind that is not loopback or tailnet, naming OPDS and the tailnet CIDR', async () => {
+    await expect(saveSettingsAndApply({ opdsBind: '0.0.0.0' })).rejects.toThrow(
+      /Not a bind address.*OPDS.*100\.64\.0\.0\/10/
+    )
+    await expect(saveSettingsAndApply({ opdsBind: '192.168.1.10' })).rejects.toThrow(
+      /Not a bind address/
+    )
+    await saveSettingsAndApply({ opdsBind: '127.0.0.1' })
+    await saveSettingsAndApply({ opdsBind: '100.64.0.9' })
+    expect(getConfig(OPDS_CONFIG_KEYS.bind)).toBe('100.64.0.9')
+  })
+
+  it('rejects a bad token without echoing it, and a blank deletes the key', () => {
+    let message = ''
+    try {
+      saveSettings({ opdsToken: 'has space in it!!' })
+    } catch (e) {
+      message = (e as Error).message
+    }
+    expect(message).toMatch(/Not a token/)
+    expect(message).not.toContain('has space')
+    expect(() => saveSettings({ opdsToken: 'short' })).toThrow(/Not a token/)
+
+    setConfig(OPDS_CONFIG_KEYS.token, 'a'.repeat(32))
+    saveSettings({ opdsToken: null })
+    expect(getConfig(OPDS_CONFIG_KEYS.token)).toBeNull()
+  })
+
+  it('generates a token on enable, keeps it on re-enable, and leaves none behind on a rejected save', async () => {
+    await expect(saveSettingsAndApply({ opdsEnabled: 'true', opdsPort: 'eighty' })).rejects.toThrow(
+      /Not a port/
+    )
+    expect(getConfig(OPDS_CONFIG_KEYS.token)).toBeNull()
+
+    await saveSettingsAndApply({ opdsEnabled: 'true' })
+    const token = getConfig(OPDS_CONFIG_KEYS.token)
+    expect(token).toMatch(/^[0-9a-f]{64}$/)
+    await saveSettingsAndApply({ opdsEnabled: 'true' })
+    expect(getConfig(OPDS_CONFIG_KEYS.token)).toBe(token)
+    await saveSettingsAndApply({ opdsEnabled: 'false' })
+    expect(getConfig(OPDS_CONFIG_KEYS.token)).toBe(token)
+    expect(getSettings().values.opdsToken).toBe(token)
+  })
+
+  it('resolves a hand-edited bad port to the default', () => {
+    setConfig(OPDS_CONFIG_KEYS.port, 'banana')
+    expect(resolveOpdsConfig().port).toBe(DEFAULT_OPDS_PORT)
+    expect(DEFAULT_OPDS_PORT).toBe(8789)
+    setConfig(OPDS_CONFIG_KEYS.port, '9000')
+    expect(resolveOpdsConfig().port).toBe(9000)
+  })
+
+  it('builds the URL from an injected tailnet interface', () => {
+    const tailnet = {
+      lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+      utun9: [{ address: '100.64.0.1', family: 'IPv4', internal: false }]
+    } as unknown as InterfaceMap
+    expect(getOpdsView(tailnet).url).toBe('http://100.64.0.1:8789')
+    expect(getOpdsView(tailnet).addressSource).toBe('tailnet')
+  })
+
+  it('stops then starts the listener when first enabled and when the port moves', async () => {
+    await saveSettingsAndApply({ opdsEnabled: 'true' })
+    expect(opdsSocket.order).toEqual(['stop', 'start'])
+    opdsSocket.order.length = 0
+    listening()
+    await saveSettingsAndApply({ opdsPort: '8799' })
+    expect(opdsSocket.order).toEqual(['stop', 'start'])
+  })
+
+  it('stops the listener when disabled', async () => {
+    listening()
+    await saveSettingsAndApply({ opdsEnabled: 'false' })
+    expect(opdsSocket.order).toEqual(['stop'])
+  })
+
+  it('leaves a listening socket alone for an unrelated re-save', async () => {
+    listening()
+    await saveSettingsAndApply({ smbUrl: 'smb://nas.local' })
+    expect(opdsSocket.order).toEqual([])
+  })
+
+  it('retries a failed listen on any save', async () => {
+    listening()
+    opdsSocket.status = { ...opdsSocket.status, state: 'failed', reason: 'in use' }
+    await saveSettingsAndApply({ smbUrl: 'smb://nas.local' })
+    expect(opdsSocket.order).toEqual(['stop', 'start'])
+  })
+
+  it('hands the row the socket’s own report and keeps the union in agreement', () => {
+    opdsSocket.status = { state: 'failed', address: BIND, port: 1, reason: 'x', at: null }
+    expect(getOpdsView().status).toEqual(opdsSocket.status)
+    expect(OPDS_STATES_AGREE).toBe(true)
+  })
+
+  it('is independent of the phone API in both directions (AC2.14)', async () => {
+    // The flag may be seeded by the schema, so compare before and after
+    const restFlag = getConfig(REST_API_CONFIG_KEYS.enabled)
+    await saveSettingsAndApply({ opdsEnabled: 'true' })
+    expect(getConfig(REST_API_CONFIG_KEYS.enabled)).toBe(restFlag)
+    expect(getConfig(REST_API_CONFIG_KEYS.token)).toBeNull()
+    expect(socket.status.state).toBe('disabled')
+
+    const opdsToken = getConfig(OPDS_CONFIG_KEYS.token)
+    await saveSettingsAndApply({ restApiEnabled: 'true' })
+    expect(getConfig(OPDS_CONFIG_KEYS.token)).toBe(opdsToken)
+    expect(getConfig(OPDS_CONFIG_KEYS.enabled)).toBe('true')
+    expect(getConfig(REST_API_CONFIG_KEYS.token)).not.toBe(opdsToken)
+    expect(getConfig(REST_API_CONFIG_KEYS.token)).toMatch(/^[0-9a-f]{64}$/)
   })
 })
