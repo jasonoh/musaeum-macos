@@ -24,7 +24,8 @@ import {
   getOpdsStatus,
   startOpdsIfEnabled,
   stopOpds,
-  type ListenOutcome
+  type ListenOutcome,
+  type OpdsServerOptions
 } from './opds'
 
 /**
@@ -578,66 +579,270 @@ describe('the byte routes', () => {
   })
 })
 
-describe('the byte budget', () => {
-  let server: Server
+describe('the byte budgets', () => {
+  let server: Server | null
   let base: string
   let root: string
+  let dir: string
+  /** Transfers the seam is holding open: each holds its slot until it is destroyed. */
   let held: PassThrough[]
+  /** Every stream the seam opened, and for which path. */
+  let opened: { path: string; stream: Readable }[]
+  let hold: { books: boolean; covers: boolean }
+  const aborts: AbortController[] = []
+
+  const COVERS = 20
+  const coverBytes = (i: number): Buffer => Buffer.from(`cover ${i} `.repeat(40 + i))
+  const BOOK = Buffer.alloc(64 * 1024, 3)
 
   beforeEach(async () => {
     root = mkdtempSync(join(tmpdir(), 'musaeum-opds-gate-'))
     await nas.setLibraryRoot(root)
     vi.mocked(nas.isOnline).mockReturnValue(true)
-    const dir = join(root, 'books', 'epub-1')
+    dir = join(root, 'books', 'epub-1')
     mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'Book.epub'), Buffer.alloc(1024, 1))
+    writeFileSync(join(dir, 'Book.epub'), BOOK)
     db.insertBook({ ...makeBook('epub-1'), formats: ['epub'] })
+    for (let i = 0; i < COVERS; i++) {
+      const id = `cov-${i}`
+      mkdirSync(join(root, 'books', id), { recursive: true })
+      writeFileSync(join(root, 'books', id, 'cover_thumb.jpg'), coverBytes(i))
+      db.insertBook({ ...makeBook(id), formats: ['epub'], coverThumbPath: 'cover_thumb.jpg' })
+    }
 
     held = []
-    // A file that never finishes: each transfer holds its slot until the client leaves
-    server = createOpdsServer(config({ port: 0, bind: '127.0.0.1' }), {
-      openFile: () => {
-        const stream = new PassThrough()
-        stream.write(Buffer.alloc(16, 1))
-        held.push(stream)
-        return stream
-      }
-    })
-    base = await listenLocal(server)
+    opened = []
+    hold = { books: false, covers: false }
+    server = null
   })
 
   afterEach(async () => {
-    await closeServer(server)
+    for (const ctl of aborts.splice(0)) ctl.abort()
+    for (const stream of held) stream.destroy()
+    if (server) await closeServer(server)
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('refuses a transfer past the cap with 503 and Retry-After, and frees the slot on hang-up', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const aborts: AbortController[] = []
-    try {
-      const open = async (): Promise<Response> => {
-        const ctl = new AbortController()
-        aborts.push(ctl)
-        return fetch(`${base}/opds/book/epub-1/epub`, { headers: AUTH, signal: ctl.signal })
-      }
-      const first = await open()
-      const second = await open()
-      expect(first.status).toBe(200)
-      expect(second.status).toBe(200)
+  async function start(options: OpdsServerOptions = {}): Promise<void> {
+    server = createOpdsServer(config({ port: 0, bind: '127.0.0.1' }), {
+      openFile: (path) => {
+        const isCover = path.endsWith('.jpg')
+        let stream: Readable
+        if (isCover ? hold.covers : hold.books) {
+          // A file that never finishes: its transfer holds a slot until destroyed
+          const pass = new PassThrough()
+          pass.write(Buffer.alloc(16, 1))
+          held.push(pass)
+          stream = pass
+        } else {
+          stream = createReadStream(path)
+        }
+        opened.push({ path, stream })
+        return stream
+      },
+      ...options
+    })
+    base = await listenLocal(server)
+  }
 
-      const refused = await open()
+  function get(path: string): Promise<Response> {
+    const ctl = new AbortController()
+    aborts.push(ctl)
+    return fetch(`${base}${path}`, { headers: AUTH, signal: ctl.signal })
+  }
+
+  const coverPath = (i: number): string => `/opds/cover/cov-${i}/thumb`
+  const opensOf = (needle: string): number => opened.filter((o) => o.path.includes(needle)).length
+
+  it('serves twenty parallel covers, every one 200 with its own bytes (I-1)', async () => {
+    await start()
+    const responses = await Promise.all(Array.from({ length: COVERS }, (_, i) => get(coverPath(i))))
+    for (const [i, res] of responses.entries()) {
+      expect(res.status).toBe(200)
+      expect(Buffer.from(await res.arrayBuffer())).toEqual(coverBytes(i))
+    }
+  })
+
+  it('a held book download refuses no cover, and a cover burst refuses no book (I-1)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      hold.books = true
+      await start()
+      // Both book slots taken by downloads that never finish
+      expect((await get('/opds/book/epub-1/epub')).status).toBe(200)
+      expect((await get('/opds/book/epub-1/epub')).status).toBe(200)
+
+      const covers = await Promise.all(Array.from({ length: COVERS }, (_, i) => get(coverPath(i))))
+      for (const [i, res] of covers.entries()) {
+        expect(res.status).toBe(200)
+        expect(Buffer.from(await res.arrayBuffer())).toEqual(coverBytes(i))
+      }
+
+      // Free one book slot, then fill every cover slot and queue more behind them
+      held[0]!.destroy()
+      hold.books = false
+      hold.covers = true
+      const burst = Array.from({ length: 8 }, (_, i) => get(coverPath(i)))
+      await vi.waitFor(() => expect(opensOf('.jpg')).toBe(COVERS + 4))
+
+      const book = await get('/opds/book/epub-1/epub')
+      expect(book.status).toBe(200)
+      expect(Buffer.from(await book.arrayBuffer())).toEqual(BOOK)
+
+      for (const ctl of aborts) ctl.abort()
+      await Promise.allSettled(burst)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('a cover request abandoned in the queue leaves it, holding nothing (I-1)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      hold.covers = true
+      await start({ coverQueue: { concurrency: 1 } })
+      expect((await get(coverPath(0))).status).toBe(200)
+
+      // Queued behind the held one, then the client gives up
+      const ctl = new AbortController()
+      const queued = fetch(`${base}${coverPath(1)}`, { headers: AUTH, signal: ctl.signal })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      ctl.abort()
+      await expect(queued).rejects.toThrow()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // The held transfer ends; the slot must go to the next live request
+      hold.covers = false
+      held[0]!.destroy()
+      const later = await get(coverPath(2))
+      expect(later.status).toBe(200)
+      expect(Buffer.from(await later.arrayBuffer())).toEqual(coverBytes(2))
+      // Nothing was ever opened for the request that left: no write to a dead response
+      expect(opensOf('cov-1/')).toBe(0)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('answers 503 with Retry-After when a queued cover outlives the deadline (I-1)', async () => {
+    hold.covers = true
+    await start({ coverQueue: { concurrency: 1, deadlineMs: 30 } })
+    expect((await get(coverPath(0))).status).toBe(200)
+
+    const late = await get(coverPath(1))
+    expect(late.status).toBe(503)
+    expect(late.headers.get('retry-after')).toBe('1')
+    expect(opensOf('cov-1/')).toBe(0)
+  })
+
+  it('answers 503 at once when the queue itself is full (I-1)', async () => {
+    hold.covers = true
+    await start({ coverQueue: { concurrency: 1, maxWaiters: 1, deadlineMs: 5000 } })
+    expect((await get(coverPath(0))).status).toBe(200)
+    const waiting = get(coverPath(1))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const startedAt = Date.now()
+    const refused = await get(coverPath(2))
+    expect(refused.status).toBe(503)
+    expect(refused.headers.get('retry-after')).toBe('1')
+    expect(Date.now() - startedAt).toBeLessThan(1000)
+
+    for (const ctl of aborts) ctl.abort()
+    await Promise.allSettled([waiting])
+  })
+
+  it('refuses a book download past its cap with 503 and Retry-After, and frees the slot on hang-up', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      hold.books = true
+      await start()
+      const ctl = new AbortController()
+      const first = await fetch(`${base}/opds/book/epub-1/epub`, {
+        headers: AUTH,
+        signal: ctl.signal
+      })
+      expect(first.status).toBe(200)
+      expect((await get('/opds/book/epub-1/epub')).status).toBe(200)
+
+      const refused = await get('/opds/book/epub-1/epub')
       expect(refused.status).toBe(503)
       expect(refused.headers.get('retry-after')).toBe('1')
 
       // The client leaves; the slot comes back
-      aborts[0]!.abort()
+      ctl.abort()
       await vi.waitFor(() => expect(held[0]!.destroyed).toBe(true), { timeout: 3000 })
-      const again = await open()
-      expect(again.status).toBe(200)
+      expect((await get('/opds/book/epub-1/epub')).status).toBe(200)
     } finally {
-      for (const ctl of aborts) ctl.abort()
       warn.mockRestore()
     }
+  })
+
+  it("drops a stalled client's download after the idle bound, and the slot comes back (M-2)", async () => {
+    // Far past the loopback socket buffers, so a client that stops reading stalls the write
+    writeFileSync(join(dir, 'Book.epub'), Buffer.alloc(32 * 1024 * 1024, 5))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const clients: { destroy(): void }[] = []
+    try {
+      await start({ idleTimeoutMs: 100 })
+      const port = (server!.address() as AddressInfo).port
+
+      // Two clients that take the headers and then never read again: both book slots
+      for (let i = 0; i < 2; i++) {
+        await new Promise<void>((resolve, reject) => {
+          const req = request(
+            { host: '127.0.0.1', port, path: '/opds/book/epub-1/epub', headers: AUTH },
+            (res: IncomingMessage) => {
+              expect(res.statusCode).toBe(200)
+              res.pause()
+              resolve()
+            }
+          )
+          req.on('error', () => undefined)
+          clients.push(req)
+          req.end()
+          setTimeout(() => reject(new Error('no response')), 5000)
+        })
+      }
+      await vi.waitFor(
+        () => {
+          expect(opened).toHaveLength(2)
+          for (const o of opened) expect(o.stream.destroyed).toBe(true)
+        },
+        { timeout: 5000 }
+      )
+      expect(warn.mock.calls.flat().join(' ')).toContain('idle for 100 ms')
+
+      writeFileSync(join(dir, 'Book.epub'), BOOK)
+      const next = await get('/opds/book/epub-1/epub')
+      expect(next.status).toBe(200)
+      expect(Buffer.from(await next.arrayBuffer())).toEqual(BOOK)
+    } finally {
+      for (const c of clients) c.destroy()
+      warn.mockRestore()
+    }
+  })
+
+  it('serves a title whose 150-character cut lands in a surrogate pair, and one with CR/LF (M-1)', async () => {
+    db.insertBook({
+      ...makeBook('astral', 'a'.repeat(149) + '\u{20000}x'),
+      nasPath: 'books/epub-1'
+    })
+    db.insertBook({ ...makeBook('crlf', 'Line\r\nX-Injected: yes'), nasPath: 'books/epub-1' })
+    await start()
+
+    const astral = await get('/opds/book/astral/epub')
+    expect(astral.status).toBe(200)
+    expect(astral.headers.get('content-disposition')).toContain('%F0%A0%80%80.epub')
+    await astral.arrayBuffer()
+
+    const crlf = await get('/opds/book/crlf/epub')
+    expect(crlf.status).toBe(200)
+    expect(crlf.headers.get('x-injected')).toBeNull()
+    expect(crlf.headers.get('content-disposition')).toBe(
+      `attachment; filename="Line X-Injected: yes.epub"; filename*=UTF-8''Line%20X-Injected%3A%20yes.epub`
+    )
+    await crlf.arrayBuffer()
   })
 })
 
@@ -775,6 +980,22 @@ describe('the lifecycle', () => {
     await expect(
       fetch(`http://127.0.0.1:${bound}/opds`, { signal: AbortSignal.timeout(2000) })
     ).rejects.toThrow()
+  })
+
+  it('a stop during an in-flight start whose listen then fails reports disabled, not failed (M-5)', async () => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const listen = vi.fn(async () => {
+      await gate
+      return { ok: false as const, message: 'the port said no' }
+    })
+    const activation = startOpdsIfEnabled({ config: config(), interfaces: MEASURED, listen })
+    expect((await stopOpds()).state).toBe('disabled')
+    release()
+    expect((await activation).state).toBe('disabled')
+    expect(getOpdsStatus()).toMatchObject({ state: 'disabled', reason: null })
   })
 
   it('is a settled no-op stopped twice, and callable with no arguments', async () => {

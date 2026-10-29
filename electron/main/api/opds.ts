@@ -106,17 +106,42 @@ const BUSY_RETRY_AFTER_SECONDS = 1
 const OFFLINE_RETRY_AFTER_SECONDS = 5
 
 /**
- * At most this many byte transfers in flight, covers included.
+ * At most this many **book** downloads in flight; the next is refused with 503 +
+ * `Retry-After`.
  *
  * The same bound as `rest.ts`'s `MAX_BYTE_TRANSFERS` and for its reason: the
  * libuv threadpool is four slots for the whole process, a book read off the
  * share is a long-held slot (528 MiB in 25.6 s, measured 2026-09-22), and a
  * stalled mount holds a slot until the kernel gives up. This gate is its own —
- * one per server, beside the REST server's — so the two listeners together can
- * hold at most four, and a misbehaving e-reader cannot starve the app below
- * that. A client that meets the cap gets 503 + `Retry-After`.
+ * one per server, beside the REST server's — so a misbehaving e-reader cannot
+ * hold more than two long reads.
  */
-const MAX_BYTE_TRANSFERS = 2
+const MAX_BOOK_TRANSFERS = 2
+
+/**
+ * Covers do **not** share the book gate, and they wait rather than being refused.
+ *
+ * The client this server exists for is an Android OPDS reader on a Boox Palma,
+ * which asks for a feed page's thumbnails — up to `OPDS_PAGE_SIZE` of them — at
+ * once and may not retry a 503. Behind a refuse-on-full gate shared with books,
+ * one long download would leave a single slot for every thumbnail, and a burst
+ * of thumbnails could refuse the book the user just tapped. So covers get their
+ * own small concurrency (a cover read is ~50 ms) fed by a FIFO queue: a request
+ * waits for a slot, and is refused only when it has waited `COVER_QUEUE_DEADLINE_MS`
+ * or when the queue is already `MAX_COVER_WAITERS` deep (a client asking for far
+ * more than a page). A client that hangs up while queued leaves the queue.
+ */
+const MAX_COVER_TRANSFERS = 4
+const MAX_COVER_WAITERS = 200
+const COVER_QUEUE_DEADLINE_MS = 10_000
+
+/**
+ * How long a transfer may sit with no socket activity before it is dropped. An
+ * e-reader that goes to sleep mid-download would otherwise hold a book slot until
+ * TCP gave up, and two of them would hold both. A minute is long past any
+ * healthy pause on a tailnet, and short enough that the slot comes back.
+ */
+const TRANSFER_IDLE_TIMEOUT_MS = 60_000
 
 /** The text every refusal carries: short, and the same whatever the reason (spec, *Failure semantics*). */
 const BODIES = {
@@ -208,7 +233,7 @@ interface ByteGate {
   release(): void
 }
 
-function createByteGate(max: number = MAX_BYTE_TRANSFERS): ByteGate {
+function createByteGate(max: number): ByteGate {
   let inFlight = 0
   return {
     acquire: () => {
@@ -219,6 +244,63 @@ function createByteGate(max: number = MAX_BYTE_TRANSFERS): ByteGate {
     // Guarded: a double release would raise the cap silently
     release: () => {
       inFlight = Math.max(0, inFlight - 1)
+    }
+  }
+}
+
+/** The covers' budget: a bounded concurrency with a FIFO wait (see `MAX_COVER_TRANSFERS`). */
+interface CoverQueue {
+  /**
+   * Resolves true when a slot is this request's, false when it is not: the
+   * deadline passed, the queue was full, or the client hung up while waiting —
+   * in which case the caller must not write to `res` again unless it is alive.
+   */
+  acquire(res: ServerResponse): Promise<boolean>
+  release(): void
+}
+
+interface CoverQueueLimits {
+  concurrency: number
+  maxWaiters: number
+  deadlineMs: number
+}
+
+function createCoverQueue(limits: CoverQueueLimits): CoverQueue {
+  let inFlight = 0
+  const waiting: (() => void)[] = []
+
+  return {
+    acquire: (res) => {
+      if (res.destroyed) return Promise.resolve(false)
+      if (inFlight < limits.concurrency) {
+        inFlight += 1
+        return Promise.resolve(true)
+      }
+      if (waiting.length >= limits.maxWaiters) return Promise.resolve(false)
+
+      return new Promise<boolean>((resolve) => {
+        const settle = (granted: boolean): void => {
+          clearTimeout(timer)
+          res.off('close', leave)
+          resolve(granted)
+        }
+        // Granted: `release` handed this waiter the slot it freed, so `inFlight` is unchanged
+        const grant = (): void => settle(true)
+        // Timed out, or the client went away: out of the queue, holding nothing
+        const leave = (): void => {
+          const at = waiting.indexOf(grant)
+          if (at >= 0) waiting.splice(at, 1)
+          settle(false)
+        }
+        const timer = setTimeout(leave, limits.deadlineMs)
+        res.once('close', leave)
+        waiting.push(grant)
+      })
+    },
+    release: () => {
+      const next = waiting.shift()
+      if (next) next()
+      else inFlight = Math.max(0, inFlight - 1)
     }
   }
 }
@@ -247,7 +329,10 @@ function contentDisposition(title: string, format: BookFormat): string {
       const drop = c < 0x20 || c === 0x7f || (c >= 0xd800 && c <= 0xdfff) || '"\\/'.includes(ch)
       out += drop ? ' ' : ch
     }
-    return out.replace(/\s+/g, ' ').trim().slice(0, 150).trim()
+    // Cut by code points, never UTF-16 units: a cut through a surrogate pair
+    // leaves a lone half, and `encodeURIComponent` throws on one
+    const collapsed = out.replace(/\s+/g, ' ').trim()
+    return [...collapsed].slice(0, 150).join('').trim()
   }
 
   const unicode = clean(title) || 'book'
@@ -267,31 +352,36 @@ function contentDisposition(title: string, format: BookFormat): string {
 }
 
 interface RouteDeps {
-  gate: ByteGate
+  bookGate: ByteGate
+  coverQueue: CoverQueue
   openFile: (path: string) => Readable
+  idleTimeoutMs: number
   baseUrl: () => string
 }
 
 /**
  * One file, from the resolver to the socket: always the whole file, always 200
- * (no `Range` — the spec's *Out of scope*), with its length.
+ * (no `Range` — the spec's *Out of scope*), with its length. The caller holds a
+ * slot; `release` gives it back, in the `finally`, whatever happened.
  *
  * A file that vanished between the resolver and the `stat` is the uniform 404.
  * A transfer that fails after its headers went out — a client that hung up, a
- * share that went away mid-read — cannot be re-answered, so it is a log line and
- * a dropped socket; `pipeline` destroys the file stream on the way out, and the
- * `finally` gives the slot back (Review Focus 5).
+ * share that went away mid-read, a socket idle past `idleTimeoutMs` — cannot be
+ * re-answered, so it is a log line and a dropped socket; `pipeline` destroys the
+ * file stream on the way out (Review Focus 5).
  */
 async function sendFile(
   req: IncomingMessage,
   res: ServerResponse,
   path: string,
   headers: Record<string, string>,
-  deps: RouteDeps
+  deps: RouteDeps,
+  release: () => void
 ): Promise<void> {
-  if (!deps.gate.acquire()) {
-    sendUnavailable(res, 'busy')
-    return
+  const socket = res.socket
+  const onIdle = (): void => {
+    console.warn(`[opds] ${req.method} ${req.url} — idle for ${deps.idleTimeoutMs} ms, dropped`)
+    res.destroy()
   }
   try {
     let size: number
@@ -301,13 +391,18 @@ async function sendFile(
       sendNotFound(res)
       return
     }
+    // The socket's own inactivity clock. Not cleared afterwards: on a finished
+    // response `node:http` re-arms it with the keep-alive timeout, and clearing it
+    // here would leave an idle keep-alive socket with no timeout at all
+    socket?.setTimeout(deps.idleTimeoutMs, onIdle)
     res.writeHead(200, { ...headers, 'content-length': size, 'cache-control': 'no-store' })
     await pipeline(deps.openFile(path), res)
   } catch (err) {
     console.warn(`[opds] ${req.method} ${req.url} — transfer failed: ${describeError(err)}`)
     res.destroy()
   } finally {
-    deps.gate.release()
+    socket?.off('timeout', onIdle)
+    release()
   }
 }
 
@@ -357,7 +452,15 @@ async function serveBytes(
       sendNotFound(res)
       return
     }
-    await sendFile(req, res, cover.path, { 'content-type': 'image/jpeg' }, deps)
+    // Waits for a slot rather than refusing (see `MAX_COVER_TRANSFERS`)
+    if (!(await deps.coverQueue.acquire(res))) {
+      // A client that hung up while queued has nobody left to answer
+      if (!res.destroyed) sendUnavailable(res, 'busy')
+      return
+    }
+    await sendFile(req, res, cover.path, { 'content-type': 'image/jpeg' }, deps, () =>
+      deps.coverQueue.release()
+    )
     return
   }
 
@@ -369,18 +472,17 @@ async function serveBytes(
     sendNotFound(res)
     return
   }
-  const title = getBook(route.id)?.title ?? ''
-  await sendFile(
-    req,
-    res,
-    path,
-    {
-      // The feed's own table, so a link's `type` and the bytes' label agree (azw3 included)
-      'content-type': FORMAT_TYPES[format],
-      'content-disposition': contentDisposition(title, format)
-    },
-    deps
-  )
+  const headers = {
+    // The feed's own table, so a link's `type` and the bytes' label agree (azw3 included)
+    'content-type': FORMAT_TYPES[format],
+    'content-disposition': contentDisposition(getBook(route.id)?.title ?? '', format)
+  }
+  // Refused, never queued: a book is a long read, and a client told "busy" retries
+  if (!deps.bookGate.acquire()) {
+    sendUnavailable(res, 'busy')
+    return
+  }
+  await sendFile(req, res, path, headers, deps, () => deps.bookGate.release())
 }
 
 // ---------------------------------------------------------------------------
@@ -524,6 +626,14 @@ export interface OpdsServerOptions {
    * the byte cap without a slow disk — `rest.ts`'s `transfer` seam's reason.
    */
   openFile?: (path: string) => Readable
+  /**
+   * The covers' queue: concurrency, depth and deadline. Defaults
+   * `MAX_COVER_TRANSFERS`, `MAX_COVER_WAITERS`, `COVER_QUEUE_DEADLINE_MS`; a seam
+   * so a case decides the deadline in milliseconds rather than ten seconds.
+   */
+  coverQueue?: Partial<CoverQueueLimits>
+  /** A transfer's socket idle bound; default `TRANSFER_IDLE_TIMEOUT_MS`. A seam for the same reason. */
+  idleTimeoutMs?: number
 }
 
 /**
@@ -534,9 +644,15 @@ export function createOpdsServer(
   config: ResolvedOpdsConfig,
   options: OpdsServerOptions = {}
 ): Server {
-  // One gate per server, created here so it outlives a request
+  // One gate and one queue per server, created here so they outlive a request
   const deps: RouteDeps = {
-    gate: createByteGate(),
+    bookGate: createByteGate(MAX_BOOK_TRANSFERS),
+    coverQueue: createCoverQueue({
+      concurrency: options.coverQueue?.concurrency ?? MAX_COVER_TRANSFERS,
+      maxWaiters: options.coverQueue?.maxWaiters ?? MAX_COVER_WAITERS,
+      deadlineMs: options.coverQueue?.deadlineMs ?? COVER_QUEUE_DEADLINE_MS
+    }),
+    idleTimeoutMs: options.idleTimeoutMs ?? TRANSFER_IDLE_TIMEOUT_MS,
     openFile: options.openFile ?? ((path) => createReadStream(path)),
     baseUrl: () => options.baseUrl ?? boundBaseUrl(server)
   }
@@ -662,10 +778,10 @@ async function activate(options: StartOptions): Promise<OpdsStatus> {
   const server = createOpdsServer(config)
   const outcome = await (options.listen ?? listenOn)(server, decision.address, config.port)
 
-  if (!outcome.ok) return fail(outcome.message, decision.address, config.port)
-
   // **A stop that arrived while we were binding wins** — otherwise the socket
-  // opens after the stop reported success, with nothing holding it to close
+  // opens after the stop reported success, with nothing holding it to close.
+  // Checked before the listen's own outcome: a bind that failed after the owner
+  // switched the catalog off is still "off", not a failure to show them
   if (epoch !== stopEpoch) {
     await closeListener(server)
     return record({
@@ -676,6 +792,8 @@ async function activate(options: StartOptions): Promise<OpdsStatus> {
       at: new Date().toISOString()
     })
   }
+
+  if (!outcome.ok) return fail(outcome.message, decision.address, config.port)
 
   openServer = server
 
