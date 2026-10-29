@@ -35,6 +35,7 @@ Electron Main Process (Node.js)
 ├── USB device detection (Kindle)
 ├── SQLite cache manager (better-sqlite3)
 ├── Transfer queue manager
+├── REST API listener (tailnet; the phone) and OPDS listener (tailnet; the Boox) — both off by default
 └── Python sidecar process manager
 
 Electron Renderer Process (React)
@@ -53,6 +54,9 @@ Python Sidecar (spawned by main process)
 ├── Calibre migration orchestrator
 └── AZW3 conversion (in-house writer)
 ```
+
+
+**The second listener.** `electron/main/api/opds.ts` is an OPDS 1.2 catalog (Atom/XML, `/opds`, `/opds/new`, `/opds/all`, `/opds/search`, plus cover and book byte routes) on its own flag, port (default 8789) and token, authenticated by HTTP Basic with the fixed username `musaeum`. It is the same shape as the REST listener, a thin `node:http` socket over services, and shares its bind rule (`services/api/bind.ts`: loopback or tailnet, never LAN), its constant-time compare and `services/book-bytes.ts`'s containment, but not its lifecycle code: that is a deliberate parallel, because `api/rest.ts` is large and its tests forbid binding the real tailnet. Pages and search go through `db.getBooksPage` / `db.searchBooksPage`, the feed's XML through `services/opds/feed.ts`. Rules: `docs/invariants/settings-and-editing.md` → *The OPDS keys*; design: `docs/superpowers/specs/2026-09-19-opds-catalog-design.md`.
 
 ---
 
@@ -102,7 +106,8 @@ Musaeum/
 │   │   ├── index.ts              # app lifecycle, window, musaeum:// protocol
 │   │   ├── env.d.ts              # *.sql?raw / *.yaml?raw module declarations
 │   │   ├── api/
-│   │   │   └── rest.ts           # the JSON API's node:http socket (thin) — off unless rest_api_enabled
+│   │   │   ├── rest.ts           # the JSON API's node:http socket (thin) — off unless rest_api_enabled
+│   │   │   └── opds.ts           # the OPDS 1.2 catalog's node:http socket — off unless opds_enabled
 │   │   ├── ipc/
 │   │   │   ├── handle.ts         # IPCResult wrapper — all handlers use this
 │   │   │   ├── library.ts        # book CRUD + import handlers
@@ -136,7 +141,8 @@ Musaeum/
 │   │   │   ├── api/              # the REST surface's logic, none of it in the socket
 │   │   │   │   ├── auth.ts       #   bearer check + the rejection record
 │   │   │   │   ├── bind.ts       #   where the API may listen (tailnet, or named exactly)
-│   │   │   │   └── shape.ts      #   THE wire's payloads — pure, one place (D10)
+│   │   │   │   ├── shape.ts      #   THE wire's payloads — pure, one place (D10)
+│   │   │   └── ../opds/      #   the catalog's pure halves: feed.ts (Atom builders, OPDS_PAGE_SIZE), basic-auth.ts
 │   │   │   ├── book-bytes.ts     # book + cover path resolution, containment, byte ranges
 │   │   │   ├── reading-state.ts  # tiered position writes + quit flush
 │   │   │   ├── quit.ts           # before-quit handshake (flush, then teardown)

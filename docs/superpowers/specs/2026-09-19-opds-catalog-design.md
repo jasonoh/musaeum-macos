@@ -29,6 +29,8 @@ If the trigger fires, this spec is actionable as written. If it does not, the co
 - **A4 — Auth is HTTP Basic with a fixed username (`musaeum`) and the generated token as the password.** KOReader and the other candidate clients speak Basic, not Bearer. The token follows the REST rules in `docs/invariants/settings-and-editing.md` ("generated on enable, never typed"; the UI never sends the key; masked with reveal and copy).
 - **A5 — Settings row mirrors _Phone access_:** switch, port, bind override, masked token, the URL to type into the device, and the server's own status line. It follows the same stop-then-start rule when a listen-time key moves.
 
+**Recorded call (O1 build, 2026-10-29): the page size is 80, which is above this document's "a few dozen".** `OPDS_PAGE_SIZE = 80` in `services/opds/feed.ts`. Measured: the worst-case 100-book page was 592,921 bytes, over the 500 KB target; an 80-entry page is under it, and 80 is the largest multiple of 10 that is. Pagination needed no new `LIMIT`/`OFFSET`: `db.getBooksPage` and `db.searchBooksPage` already carry a window.
+
 **What remains the builder's call:** the page-size constant (measure against < 500 KB per page), the summary truncation length, and whether pagination needs a new `LIMIT`/`OFFSET` in the existing query builder (check first; add it _to_ the builder if so).
 
 ---
