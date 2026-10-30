@@ -1,6 +1,8 @@
 import type { Book, SortField } from '@shared/book.types'
 import { defaultSortDirection, orderedFormats, seriesDisplay } from '@shared/book.types'
 import { modifiersFrom } from '@/lib/selection'
+import { deviceScanned } from '@/lib/device-scope'
+import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useReaderStore } from '@/stores/reader.store'
@@ -249,16 +251,25 @@ export function ListView() {
   // 'connected' keeps it (see `library-emptiness.ts`)
   const storageConnected = useNASStore((s) => s.status?.state === 'connected')
   const shelfId = useLibraryStore((s) => s.activeShelfId)
+  const deviceId = useLibraryStore((s) => s.activeDeviceId)
+  const scanned = useDeviceStore((s) => (deviceId ? deviceScanned(deviceId, s.onDevice) : true))
   const view = libraryViewState({
     loading,
     query,
     filters,
     resultCount: books.length,
     storageConnected,
-    shelfId
+    shelfId,
+    device: deviceId ? { scanned } : null
   })
   const resultKey = useLibraryStore((s) =>
-    resultSetKey({ query: s.query, filters: s.filters, sort: s.sort, shelfId: s.activeShelfId })
+    resultSetKey({
+      query: s.query,
+      filters: s.filters,
+      sort: s.sort,
+      shelfId: s.activeShelfId,
+      deviceId: s.activeDeviceId
+    })
   )
   const { ref, node, metrics } = useScrollMetrics<HTMLDivElement>()
   const { start, end, padTop, padBottom } = rowWindow(

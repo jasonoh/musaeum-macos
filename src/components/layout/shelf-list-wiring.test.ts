@@ -270,7 +270,7 @@ describe('the Library row is navigation (AC17)', () => {
     // is the shelf's count beside the word "Library" (measured live: an empty
     // shelf made the row read "Library 0"). The shelf's own count is on its row,
     // from main.
-    expect(bare(SIDEBAR)).toMatch(/\{activeShelfId === null && \(/)
+    expect(bare(SIDEBAR)).toMatch(/\{libraryActive && \(/)
   })
 
   it('mounts the shelf section in the same column', () => {

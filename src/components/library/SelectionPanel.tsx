@@ -6,6 +6,7 @@ import { selectionCount, useUIStore } from '@/stores/ui.store'
 import {
   BookIcon,
   CloseIcon,
+  DeviceIcon,
   RefreshIcon,
   SendIcon,
   SpinnerIcon,
@@ -34,6 +35,10 @@ export function SelectionPanel() {
   const onDevice = useDeviceStore((s) => s.onDevice)
   const transfers = useDeviceStore((s) => s.transfers)
   const sendBooksToDevice = useDeviceStore((s) => s.sendBooksToDevice)
+  // Only inside a device view: removal is the point of being there
+  const activeDeviceId = useLibraryStore((s) => s.activeDeviceId)
+  const activeDevice = devices.find((d) => d.id === activeDeviceId)
+  const requestBulkDeviceRemoval = useUIStore((s) => s.requestBulkDeviceRemoval)
 
   // In display order, so the preview matches what the user is looking at
   const selected = useMemo(() => books.filter((b) => selectedIds.has(b.id)), [books, selectedIds])
@@ -133,6 +138,22 @@ export function SelectionPanel() {
           <BookIcon className="h-4 w-4" />
           Add to Shelf…
         </button>
+        {/* Offered only inside a device view, where the selection *is* a set of
+            that device's books. Needs no NAS: it never touches the library. */}
+        {activeDevice && (
+          <button
+            onClick={() =>
+              requestBulkDeviceRemoval({
+                bookIds: selected.map((b) => b.id),
+                deviceId: activeDevice.id
+              })
+            }
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-ink-600 px-3 py-2 text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment"
+          >
+            <DeviceIcon className="h-4 w-4" />
+            Remove {count} from {activeDevice.name}…
+          </button>
+        )}
         {/* Set apart from the recoverable actions above it, and the only one
             styled as danger */}
         <button

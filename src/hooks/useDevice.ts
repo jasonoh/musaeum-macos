@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useDeviceStore } from '@/stores/device.store'
+import { useLibraryStore } from '@/stores/library.store'
 
 /** Wire device + transfer events into the store. Mount once at app root. */
 export function useDevice(): void {
@@ -14,6 +15,16 @@ export function useDevice(): void {
   useEffect(() => {
     void refresh()
     const unsubs = [
+      // The library's device scope is a view of this store's presence: it is
+      // re-derived on every move of it (a scan settling, a removal landing),
+      // and left when its device goes. Wired here, once, not per component
+      useDeviceStore.subscribe((s, prev) => {
+        if (s.onDevice === prev.onDevice && s.devices === prev.devices) return
+        const library = useLibraryStore.getState()
+        if (!library.activeDeviceId) return
+        library.reconcileDeviceScope(s.devices.map((d) => d.id))
+        library.syncDeviceScope()
+      }),
       window.Musaeum.on.deviceConnected(addDevice),
       // The row's free space moves as books are sent; the device is the same
       // one, so this restates it rather than re-asking for its contents

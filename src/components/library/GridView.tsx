@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { deviceScanned } from '@/lib/device-scope'
+import { useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useUIStore } from '@/stores/ui.store'
@@ -42,16 +44,25 @@ export function GridView() {
   // 'connected' keeps it (see `library-emptiness.ts`)
   const storageConnected = useNASStore((s) => s.status?.state === 'connected')
   const shelfId = useLibraryStore((s) => s.activeShelfId)
+  const deviceId = useLibraryStore((s) => s.activeDeviceId)
+  const scanned = useDeviceStore((s) => (deviceId ? deviceScanned(deviceId, s.onDevice) : true))
   const view = libraryViewState({
     loading,
     query,
     filters,
     resultCount: books.length,
     storageConnected,
-    shelfId
+    shelfId,
+    device: deviceId ? { scanned } : null
   })
   const resultKey = useLibraryStore((s) =>
-    resultSetKey({ query: s.query, filters: s.filters, sort: s.sort, shelfId: s.activeShelfId })
+    resultSetKey({
+      query: s.query,
+      filters: s.filters,
+      sort: s.sort,
+      shelfId: s.activeShelfId,
+      deviceId: s.activeDeviceId
+    })
   )
   // Both side panels (one book's details, several books' actions) take 360px
   // from this grid, which is what the glide in `useGridFlip` covers for

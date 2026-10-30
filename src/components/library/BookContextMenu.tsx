@@ -53,6 +53,8 @@ export function BookContextMenu() {
   const selection = useUIStore((s) => s.selection)
   const clearSelection = useUIStore((s) => s.clearSelection)
   const requestSelectionDelete = useUIStore((s) => s.requestSelectionDelete)
+  const requestBulkDeviceRemoval = useUIStore((s) => s.requestBulkDeviceRemoval)
+  const activeDeviceId = useLibraryStore((s) => s.activeDeviceId)
   const books = useLibraryStore((s) => s.books)
   // The open shelf, for *Remove from “‹shelf›”*. The name is read from the list
   // rather than kept beside the id (R3), so a rename follows for free — and the
@@ -66,6 +68,7 @@ export function BookContextMenu() {
   // re-render on every unrelated device-store update
   const devices = useDeviceStore((s) => s.devices)
   const onDevice = useDeviceStore((s) => s.onDevice)
+  const scopedDevice = devices.find((d) => d.id === activeDeviceId)
   const transfers = useDeviceStore((s) => s.transfers)
   const sendToDevice = useDeviceStore((s) => s.sendToDevice)
   const ref = useRef<HTMLDivElement>(null)
@@ -136,6 +139,15 @@ export function BookContextMenu() {
             title={online ? undefined : label}
             onClick={() => requestShelfPicker({ bookIds: [...selection.ids] })}
           />
+          {scopedDevice && (
+            <MenuItem
+              icon={<DeviceIcon className="h-3.5 w-3.5" />}
+              label={`Remove ${count} from ${scopedDevice.name}…`}
+              onClick={() =>
+                requestBulkDeviceRemoval({ bookIds: [...selection.ids], deviceId: scopedDevice.id })
+              }
+            />
+          )}
           <MenuItem
             icon={<TrashIcon className="h-3.5 w-3.5" />}
             label={`Delete ${count} books…`}

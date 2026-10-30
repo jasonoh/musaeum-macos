@@ -6,6 +6,11 @@ function withDevice(devices: Device[], device: Device): Device[] {
   return [...devices.filter((d) => d.id !== device.id), device]
 }
 
+export interface RemoveBooksResult {
+  removed: string[]
+  failed: { bookId: string; error: string }[]
+}
+
 interface DeviceState {
   devices: Device[]
   transfers: Record<string, TransferJob>
@@ -21,6 +26,11 @@ interface DeviceState {
   sendToDevice(bookId: string, deviceId: string): Promise<void>
   sendBooksToDevice(bookIds: string[], deviceId: string): Promise<void>
   removeFromDevice(bookId: string, deviceId: string): Promise<void>
+  /**
+   * Bulk removal. Per-book failures come back in `failed` rather than throwing,
+   * so the caller can report them; only what was removed leaves `onDevice`.
+   */
+  removeBooksFromDevice(bookIds: string[], deviceId: string): Promise<RemoveBooksResult>
   setOnDevice(deviceId: string, bookIds: string[]): void
   refreshDeviceContents(deviceId: string): Promise<void>
 }
@@ -97,6 +107,19 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
         [deviceId]: (s.onDevice[deviceId] ?? []).filter((id) => id !== bookId)
       }
     }))
+  },
+
+  async removeBooksFromDevice(bookIds, deviceId) {
+    const result = await window.Musaeum.devices.removeBooksFromDevice(bookIds, deviceId)
+    // Immediately, as the single removal does: the rescan's broadcast trails it
+    const gone = new Set(result.removed)
+    set((s) => ({
+      onDevice: {
+        ...s.onDevice,
+        [deviceId]: (s.onDevice[deviceId] ?? []).filter((id) => !gone.has(id))
+      }
+    }))
+    return result
   },
 
   setOnDevice: (deviceId, bookIds) =>

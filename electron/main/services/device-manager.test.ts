@@ -15,6 +15,7 @@ import {
   noteSentFile,
   refreshDeviceContents,
   removeBookFromDevice,
+  removeBooksFromDevice,
   removeFilesWithStem,
   scanDocuments,
   startDeviceDetection,
@@ -763,6 +764,49 @@ describe('on-device presence', () => {
         false
       )
       expect(getOnDeviceBookIds('kindle:Kindle')).toEqual([])
+    })
+
+    it('removes several books in one call and updates presence once (bulk)', async () => {
+      await putOnDevice('Kindle', 'Fixture Alpha.azw3')
+      await putOnDevice('Kindle', 'Fixture Beta.epub')
+      insertBook(makeBook('a', 'Fixture Alpha'))
+      insertBook(makeBook('b', 'Fixture Beta'))
+      insertBook(makeBook('c', 'Fixture Gamma'))
+      await poll()
+      expect(getOnDeviceBookIds('kindle:Kindle').sort()).toEqual(['a', 'b'])
+
+      const result = await removeBooksFromDevice(['a', 'b'], 'kindle:Kindle')
+
+      expect(result).toEqual({ removed: ['a', 'b'], failed: [] })
+      expect(await existsOnDevice('Fixture Alpha.azw3')).toBe(false)
+      expect(await existsOnDevice('Fixture Beta.epub')).toBe(false)
+      expect(getOnDeviceBookIds('kindle:Kindle')).toEqual([])
+    })
+
+    it('reports a book that is not on the device or unknown, and still removes the rest (bulk)', async () => {
+      await putOnDevice('Kindle', 'Fixture Alpha.azw3')
+      await putOnDevice('Kindle', 'Fixture Beta.azw3')
+      insertBook(makeBook('a', 'Fixture Alpha'))
+      insertBook(makeBook('b', 'Fixture Beta'))
+      insertBook(makeBook('c', 'Fixture Gamma'))
+      await poll()
+
+      const result = await removeBooksFromDevice(['a', 'c', 'nope', 'b'], 'kindle:Kindle')
+
+      expect(result.removed).toEqual(['a', 'b'])
+      expect(result.failed).toEqual([
+        { bookId: 'c', error: '“Fixture Gamma” is not on Kindle' },
+        { bookId: 'nope', error: 'Book not found' }
+      ])
+      expect(await existsOnDevice('Fixture Alpha.azw3')).toBe(false)
+      expect(await existsOnDevice('Fixture Beta.azw3')).toBe(false)
+      expect(getOnDeviceBookIds('kindle:Kindle')).toEqual([])
+    })
+
+    it('throws only when the device is not connected (bulk)', async () => {
+      await expect(removeBooksFromDevice(['a'], 'kindle:Nowhere')).rejects.toThrow(
+        'Device is not connected'
+      )
     })
   })
 
