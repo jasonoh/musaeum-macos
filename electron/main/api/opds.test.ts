@@ -1091,9 +1091,16 @@ describe('the browse tree', () => {
     return { xml, links }
   }
 
-  const NAV = ['/opds/authors', '/opds/series', '/opds/titles', '/opds/authors/H', '/opds/series/D']
-  const ACQ = [
+  const NAV = [
     '/opds/unread',
+    '/opds/authors',
+    '/opds/series',
+    '/opds/titles',
+    '/opds/authors/H',
+    '/opds/series/D'
+  ]
+  const ACQ = [
+    '/opds/unread/D',
     '/opds/titles/D',
     '/opds/by-author/Frank%20Herbert',
     '/opds/by-series/Dune%20Chronicles'
@@ -1183,9 +1190,14 @@ describe('the browse tree', () => {
     expect(books.xml).toContain('<title>Frank Herbert</title>')
   })
 
-  it('serves the unread feed without the read book', async () => {
-    const { xml } = await walk('/opds/unread')
-    expect(entryIds(xml)).toEqual(['dune-1'])
+  it('reaches the unread book from the root through Unread and its letter, without the read book', async () => {
+    const rootFeed = await walk('/opds')
+    expect(rootFeed.links).toContain('/opds/unread')
+    const letters = await walk('/opds/unread')
+    expect(letters.xml).toContain('<title>D (1)</title>')
+    expect(letters.links).toEqual(['/opds/unread/D'])
+    const books = await walk(letters.links[0]!)
+    expect(entryIds(books.xml)).toEqual(['dune-1'])
   })
 
   it.each(['/opds/authors/dd', '/opds/by-author/', '/opds/authors/', '/opds/unread/'])(
@@ -1203,7 +1215,7 @@ describe('the browse tree', () => {
     }
   })
 
-  it.each(['/opds/unread', '/opds/authors/H', '/opds/titles/D', '/opds/by-author/x'])(
+  it.each(['/opds/unread/D', '/opds/authors/H', '/opds/titles/D', '/opds/by-author/x'])(
     'answers %s?page=0 with 400',
     async (path) => {
       expect((await get(`${path}?page=0`)).status).toBe(400)

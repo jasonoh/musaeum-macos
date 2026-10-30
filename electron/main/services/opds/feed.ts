@@ -214,7 +214,7 @@ export function buildRootFeed(ctx: FeedContext): string {
       title: 'Unread',
       content: 'Books you have not read yet',
       path: '/opds/unread',
-      kind: 'acquisition'
+      kind: 'navigation'
     },
     {
       id: 'urn:musaeum:opds:authors',

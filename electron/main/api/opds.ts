@@ -44,7 +44,7 @@ import { resolveOpdsConfig, type ResolvedOpdsConfig } from '../services/settings
  *
  * **Route by route:** `GET /opds` (navigation), `/opds/new`, `/opds/all`,
  * `/opds/search?q=` (acquisition), `/opds/search.xml` (OpenSearch), the browse tree
- * (`/opds/unread`, `/opds/authors[/{letter}]`, `/opds/series[/{letter}]`,
+ * (`/opds/unread[/{letter}]`, `/opds/authors[/{letter}]`, `/opds/series[/{letter}]`,
  * `/opds/titles[/{letter}]`, `/opds/by-author/{name}`, `/opds/by-series/{name}` —
  * `services/opds/browse.ts`),
  * `/opds/cover/{id}/{thumb|full}` and `/opds/book/{id}/{format}` (bytes).

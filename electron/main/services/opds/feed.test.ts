@@ -104,7 +104,7 @@ describe('buildRootFeed', () => {
         title: 'Unread',
         rel: 'subsection',
         href: `${base}/opds/unread`,
-        kind: 'acquisition'
+        kind: 'navigation'
       },
       {
         id: 'urn:musaeum:opds:authors',
