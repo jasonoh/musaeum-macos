@@ -22,6 +22,7 @@ import migration005 from '../schema/migrations/005_device_history_outlives_book.
 import migration006 from '../schema/migrations/006_shelves.sql?raw'
 import migration007 from '../schema/migrations/007_owned_fields.sql?raw'
 import migration008 from '../schema/migrations/008_read_status_at.sql?raw'
+import { BUCKETS, initialBucket, type Bucket } from './initials'
 import { parseOwnedFields } from './owned-fields'
 
 const MIGRATIONS: string[] = [
@@ -82,6 +83,11 @@ function registerFunctions(d: Database.Database): void {
     typeof author === 'string' && typeof name === 'string' && splitAuthors(author).includes(name)
       ? 1
       : 0
+  )
+  // The OPDS browse tree's initial-letter bucket. It exists so the SQL grouping and
+  // the TypeScript that turns a bucket into a URL cannot disagree on a bucket.
+  d.function('musaeum_initial', { deterministic: true }, (text: unknown) =>
+    initialBucket(typeof text === 'string' ? text : null)
   )
 }
 
@@ -292,6 +298,9 @@ const SORT_SQL: Record<string, (t: string) => string[]> = {
  */
 const READ_STATUS_FALLBACK = 'unread'
 
+/** `BookFilters` plus the db-only initial-letter filter the OPDS browse tree uses; not on the wire or IPC. */
+export type DbBookFilters = BookFilters & { titleInitial?: Bucket }
+
 /** What a set of filters becomes: one condition per filter, and the bound parameters. */
 interface BookWhere {
   conditions: string[]
@@ -312,7 +321,7 @@ interface BookWhere {
  * `books_fts` passes `books.` because the FTS table carries `title`/`author`
  * columns of its own and SQLite rejects those references as ambiguous.
  */
-function bookWhere(filters?: BookFilters, tablePrefix = ''): BookWhere {
+function bookWhere(filters?: DbBookFilters, tablePrefix = ''): BookWhere {
   const conditions: string[] = []
   const params: unknown[] = []
   const col = (name: string): string => `${tablePrefix}${name}`
@@ -320,6 +329,11 @@ function bookWhere(filters?: BookFilters, tablePrefix = ''): BookWhere {
   if (filters?.authors?.length) {
     conditions.push(`${col('author')} IN (${filters.authors.map(() => '?').join(',')})`)
     params.push(...filters.authors)
+  }
+  if (filters?.titleInitial) {
+    // The expression SORT_SQL.title sorts on, so a letter's books are a contiguous run of the title sort
+    conditions.push(`musaeum_initial(COALESCE(${col('sort_title')}, ${col('title')})) = ?`)
+    params.push(filters.titleInitial)
   }
   if (filters?.coAuthor) {
     conditions.push(`musaeum_author_has(${col('author')}, ?)`)
@@ -396,7 +410,7 @@ export interface BookPageRequest {
  * is opt-in by argument rather than by a default — a default that reached the
  * app's own call sites would change the library view, not the wire.
  */
-function selectBooks(filters: BookFilters | undefined, page: BookPageRequest | null): BookRow[] {
+function selectBooks(filters: DbBookFilters | undefined, page: BookPageRequest | null): BookRow[] {
   const where = bookWhere(filters)
   const order = orderClause(filters?.sort, '', filters?.shelfId)
   const paging = page ? ' LIMIT ? OFFSET ?' : ''
@@ -414,7 +428,7 @@ function selectBooks(filters: BookFilters | undefined, page: BookPageRequest | n
  * that keeps a tied sort stable is the same one a page walk relies on. A second
  * `ORDER BY` here is what would let a book appear on two pages or on none.
  */
-export function getBooksPage(filters: BookFilters | undefined, page: BookPageRequest): BookPage {
+export function getBooksPage(filters: DbBookFilters | undefined, page: BookPageRequest): BookPage {
   return {
     books: selectBooks(filters, page).map(rowToBook),
     total: countBooks(filters)
@@ -431,12 +445,58 @@ export function getBooksPage(filters: BookFilters | undefined, page: BookPageReq
  * retires the whole-library load 1a answered that route with (~115 ms at 7,100
  * books, on the phone's connect check).
  */
-export function countBooks(filters?: BookFilters): number {
+export function countBooks(filters?: DbBookFilters): number {
   const where = bookWhere(filters)
   const row = getDb()
     .prepare(`SELECT COUNT(*) AS n FROM books ${whereClause(where)}`)
     .get(...where.params) as { n: number }
   return row.n
+}
+
+export type NameKind = 'author' | 'series'
+
+/**
+ * The one CTE both name reads share: one row per distinct stored name, its book count, and
+ * its sort key (`MIN` across its books). A name's bucket is computed from that key, per
+ * name and never per book, so a name sits under exactly one bucket and a bucket's book
+ * count is the sum of its names' counts. Empty and NULL names are excluded.
+ */
+function namesCte(kind: NameKind): string {
+  const [col, key] =
+    kind === 'author' ? ['author', 'COALESCE(author_sort, author)'] : ['series_name', 'series_name']
+  return `WITH names AS (SELECT ${col} AS name, COUNT(*) AS n, MIN(${key}) AS sortkey FROM books WHERE ${col} IS NOT NULL AND ${col} <> '' GROUP BY ${col})`
+}
+
+/** Books per initial bucket (only non-empty buckets, in `BUCKETS` order). Author and series bucket by the name. */
+export function countBooksByInitial(kind: NameKind | 'title'): { bucket: Bucket; count: number }[] {
+  const sql =
+    kind === 'title'
+      ? `SELECT musaeum_initial(COALESCE(sort_title, title)) AS bucket, COUNT(*) AS count FROM books GROUP BY bucket`
+      : `${namesCte(kind)} SELECT musaeum_initial(sortkey) AS bucket, SUM(n) AS count FROM names GROUP BY bucket`
+  const rows = getDb().prepare(sql).all() as { bucket: Bucket; count: number }[]
+  const order = new Map(BUCKETS.map((b, i) => [b, i]))
+  return rows
+    .filter((r) => r.count > 0)
+    .sort((a, b) => (order.get(a.bucket) ?? 0) - (order.get(b.bucket) ?? 0))
+}
+
+/** One window of the distinct author or series names in a bucket, with their book counts. */
+export function listNamesByInitial(
+  kind: NameKind,
+  bucket: Bucket,
+  page: BookPageRequest
+): { names: { name: string; count: number }[]; total: number } {
+  const cte = namesCte(kind)
+  const db = getDb()
+  const rows = db
+    .prepare(
+      `${cte} SELECT name, n AS count FROM names WHERE musaeum_initial(sortkey) = ? ORDER BY sortkey COLLATE NOCASE, name LIMIT ? OFFSET ?`
+    )
+    .all(bucket, page.limit, page.offset) as { name: string; count: number }[]
+  const totalRow = db
+    .prepare(`${cte} SELECT COUNT(*) AS total FROM names WHERE musaeum_initial(sortkey) = ?`)
+    .get(bucket) as { total: number }
+  return { names: rows, total: totalRow.total }
 }
 
 /** An ORDER BY body and what it binds — only `shelf_added` binds anything. */
