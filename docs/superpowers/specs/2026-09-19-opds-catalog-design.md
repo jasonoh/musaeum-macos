@@ -102,11 +102,12 @@ electron/main/index.ts            startOpdsIfEnabled() next to startRestApiIfEna
 
 ### Routes (slice O2 — browse tree)
 
-Shape as built, per _Amendment 2_ (this supersedes the original table).
+Shape as built, per _Amendment 2_ and _Amendment 3_ (this supersedes the original table).
 
 | Route                                     | Kind                                                                               |
 | ----------------------------------------- | ---------------------------------------------------------------------------------- |
-| `GET /opds/unread?page=N`                 | Acquisition Feed over the app's `unread` status only                               |
+| `GET /opds/unread`                        | Navigation Feed of letters A–Z, `#` for the rest, over the `unread` status only (unpaged) |
+| `GET /opds/unread/{slug}?page=N`          | Acquisition Feed of the unread books under that letter                             |
 | `GET /opds/authors`                       | Navigation Feed of letters A–Z, `#` (slug `other`) for the rest                    |
 | `GET /opds/authors/{slug}?page=N`         | Navigation Feed of author names under that letter, with book counts (pages of 200) |
 | `GET /opds/by-author/{name}?page=N`       | Acquisition Feed of that author's books                                            |
