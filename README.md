@@ -122,7 +122,7 @@ Musaeum can serve its library to an e-reader as an OPDS catalog, so a Boox or an
 
 - **Off by default, and tailnet-only.** It binds the Mac's Tailscale address (or loopback), never the home network, and asks for the username `musaeum` and a generated token. The device needs Tailscale too, which is what makes it work away from home.
 - Switch on **Settings → Device access (OPDS)**, then type the URL Settings shows (it ends in `/opds`) into the reader's OPDS catalog list, with the username and token.
-- The catalog offers Newest, Unread, Authors, Series and Titles (each a letter, then names, then books), the whole library in pages, and search. It does not carry reading position or sync; that is the REST API's job for the phone.
+- The catalog offers Newest, then Unread, Authors, Series and Titles (each opens by letter, then names for authors and series, then books, with a book count beside every letter and name), the whole library in pages, and search. It does not carry reading position or sync; that is the REST API's job for the phone.
 - Design and limits: [`docs/superpowers/specs/2026-09-19-opds-catalog-design.md`](docs/superpowers/specs/2026-09-19-opds-catalog-design.md) and `docs/invariants/settings-and-editing.md` → _Known limits_.
 
 ## 🧭 Where it stands
