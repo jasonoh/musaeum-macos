@@ -1,6 +1,6 @@
 # Design: OPDS catalog server (delivery to a second device)
 
-**Date:** 2026-09-19 · **Amended 2026-10-29** **Status:** **Approved to build (O1 first) — 2026-10-29; O1 and O2 built (2026-10-29), O2's shape in _Amendment 2_.** The precondition fired (see _Amendment 2026-10-29_ below). Read that section before the rest: it supersedes D4, the _Security_ section's bind rules, AC2.10 and AC2.14 where they differ. **Scope:** an OPDS 1.2 catalog served by the running app, so another device can browse and download the library without a browser, a sync client, or a second copy of the books. **Related:** the iOS/REST contract staged at `electron/main/api/rest.ts` (a different consumer — see D3). The reader (`specs/2026-08-13-native-reader-design.md`) is unrelated but shares the containment rule this feature must reuse.
+**Date:** 2026-09-19 · **Amended 2026-10-29 (Amendment 1, the trigger and Tailscale; Amendment 2, the O2 shape)** **Status:** **Approved to build (O1 first) — 2026-10-29; O1 and O2 built (2026-10-29), O2's shape in _Amendment 2 (2026-10-29, the O2 shape)_.** The precondition fired (see _Amendment 1 (2026-10-29, the trigger and Tailscale)_ below). Read that section before the rest: it supersedes D4, the _Security_ section's bind rules, AC2.10 and AC2.14 where they differ. **Scope:** an OPDS 1.2 catalog served by the running app, so another device can browse and download the library without a browser, a sync client, or a second copy of the books. **Related:** the iOS/REST contract staged at `electron/main/api/rest.ts` (a different consumer — see D3). The reader (`specs/2026-08-13-native-reader-design.md`) is unrelated but shares the containment rule this feature must reuse.
 
 ---
 
@@ -17,7 +17,7 @@ If the trigger fires, this spec is actionable as written. If it does not, the co
 
 ---
 
-## Amendment 2026-10-29 — the trigger fired, and the transport changed
+## Amendment 1 (2026-10-29, the trigger and Tailscale) — the trigger fired, and the transport changed
 
 **Trigger.** Jason owns a Boox Palma and today moves books to it by hand through BooxDrop (a LAN web page: join the Wi-Fi, open the page, upload each file). OPDS replaces that: the Palma browses, searches and downloads from the library itself. The precondition (a second device that speaks OPDS) is met by an Android OPDS client on the Palma — Boox's built-in NeoReader has no OPDS browser, so **a client app must be installed on the device** (KOReader, Librera or Moon+ Reader; which one is the owner's pick and is checked in AC2.19).
 
@@ -33,9 +33,9 @@ If the trigger fires, this spec is actionable as written. If it does not, the co
 
 **What remains the builder's call:** the page-size constant (measure against < 500 KB per page), the summary truncation length, and whether pagination needs a new `LIMIT`/`OFFSET` in the existing query builder (check first; add it _to_ the builder if so).
 
-## Amendment 2 — 2026-10-29: the O2 shape
+## Amendment 2 (2026-10-29, the O2 shape)
 
-O2 was built on branch `worktree-feat-opds-o2` (plan `docs/superpowers/plans/2026-10-29-opds-o2.md`). The O2 route table below (_Routes (slice O2 — browse tree)_) is **superseded** by the one in that section as now written; four calls shaped it.
+O2 was built on branch `worktree-feat-opds-o2` (plan `docs/superpowers/plans/2026-10-29-opds-o2.md`). The O2 route table below (_Routes (slice O2 — browse tree)_) is **superseded** by the table in that section; four calls shaped it.
 
 - **Call 1 — two levels, not one.** The spec's `/opds/authors/{letter}` was an acquisition feed of every book under a letter (about 270 books under "S"), which is the long-list problem one level down. A letter now opens a navigation feed of names with book counts (`/opds/authors/{slug}`, `/opds/series/{slug}`), and a name opens that author's or series' books (`/opds/by-author/{name}`, `/opds/by-series/{name}`). The spec's shape is a subset of this one. Cost if wrong: one extra tap.
 - **Call 2 — Titles A–Z is added** (`/opds/titles`, `/opds/titles/{slug}`): the only fix for "All" itself, which stays as the complete list that search runs against.
@@ -251,12 +251,12 @@ Conditional GET is the one omission worth revisiting cheaply: if a device re-wal
 **O2 — the browse tree**
 
 - **AC2.16** `/opds/new` is ordered by `date_added` descending and advertised from the root with `rel="http://opds-spec.org/sort/new"` (§6.2 — "most recent items first" is the spec's own ordering requirement).
-- **AC2.17** `/opds/authors` is a navigation feed whose entries link to acquisition feeds, one per letter, with no author appearing under two letters, and every author in the library reachable.
+- **AC2.17** `/opds/authors` is a navigation feed of letters whose entries open navigation feeds of names, one per letter (and each name opens an acquisition feed), with no author appearing under two letters, and every author in the library reachable; books with no author are outside the tree (per Amendment 2).
 - **AC2.18** `/opds/unread` matches the app's own unread count. _Instrument:_ compare against `getFacets().readStatus`.
 
 **Live, on the real device — the only test that proves the point**
 
-- **AC2.19** On the Boox Palma: Tailscale connects; the chosen OPDS client adds the catalog by URL with username `musaeum` and the token, browses, searches, downloads a book and opens it — on the home network and again off it (cellular hotspot). Recorded in the CHANGELOG with the client and Tailscale versions.
+- **AC2.19** On the Boox Palma: Tailscale connects; the chosen OPDS client adds the catalog by URL with username `musaeum` and the token, browses, searches, downloads a book and opens it — on the home network and again off it (cellular hotspot). Recorded in the CHANGELOG with the client and Tailscale versions. (Run by the owner on 2026-10-29; the CHANGELOG records the client and Tailscale versions as not recorded.)
 - **AC2.20** If OPDS sync is wanted, the device's sync walks `/opds/new` without error.
 
 ---
