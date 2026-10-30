@@ -51,7 +51,9 @@ vi.mock('../services/db', async (importOriginal) => {
   return {
     ...actual,
     getBooksPage: vi.fn(actual.getBooksPage),
-    searchBooksPage: vi.fn(actual.searchBooksPage)
+    searchBooksPage: vi.fn(actual.searchBooksPage),
+    countBooksByInitial: vi.fn(actual.countBooksByInitial),
+    listNamesByInitial: vi.fn(actual.listNamesByInitial)
   }
 })
 
@@ -132,6 +134,8 @@ beforeEach(async () => {
   vi.mocked(nas.isOnline).mockReturnValue(false)
   vi.mocked(db.getBooksPage).mockClear()
   vi.mocked(db.searchBooksPage).mockClear()
+  vi.mocked(db.countBooksByInitial).mockClear()
+  vi.mocked(db.listNamesByInitial).mockClear()
   closeAndWipe()
   // A lifecycle case that listened must not leave the module's socket behind
   await stopOpds()
@@ -1030,5 +1034,148 @@ describe('the lifecycle', () => {
     } finally {
       await new Promise<void>((resolve) => held.close(() => resolve()))
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The browse tree (slice O2, Task 4)
+// ---------------------------------------------------------------------------
+
+describe('the browse tree', () => {
+  let server: Server
+  let base: string
+  let root: string
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'musaeum-opds-browse-'))
+    await nas.setLibraryRoot(root)
+    vi.mocked(nas.isOnline).mockReturnValue(true)
+    db.insertBook({
+      ...makeBook('dune-1', 'Dune'),
+      author: 'Frank Herbert',
+      authorSort: 'Herbert, Frank',
+      seriesName: 'Dune Chronicles',
+      seriesIndex: 1
+    })
+    db.insertBook({ ...makeBook('plain-1', 'Plain Book'), readStatus: 'read' })
+    server = createOpdsServer(config({ port: 0, bind: '127.0.0.1' }))
+    base = await listenLocal(server)
+  })
+
+  afterEach(async () => {
+    await closeServer(server)
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  function get(path: string, headers: Record<string, string> = AUTH): Promise<Response> {
+    return fetch(`${base}${path}`, { headers })
+  }
+
+  const unescapeXml = (text: string): string =>
+    text
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+
+  /** Fetch a feed, and return its subsection link paths (found in the XML) and book ids. */
+  async function walk(path: string): Promise<{ xml: string; links: string[] }> {
+    const res = await get(path)
+    expect(res.status).toBe(200)
+    const xml = await res.text()
+    expect(balanced(xml)).toBe(true)
+    const links = [...xml.matchAll(/<link rel="subsection" href="([^"]+)"/g)].map((m) =>
+      unescapeXml(m[1]!).slice(base.length)
+    )
+    return { xml, links }
+  }
+
+  const NAV = ['/opds/authors', '/opds/series', '/opds/titles', '/opds/authors/H', '/opds/series/D']
+  const ACQ = [
+    '/opds/unread',
+    '/opds/titles/D',
+    '/opds/by-author/Frank%20Herbert',
+    '/opds/by-series/Dune%20Chronicles'
+  ]
+  const BROWSE = [...NAV, ...ACQ]
+
+  it.each(NAV)('answers %s as a navigation feed', async (path) => {
+    const res = await get(path)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe(`${OPDS_NAV_TYPE};charset=utf-8`)
+  })
+
+  it.each(ACQ)('answers %s as an acquisition feed', async (path) => {
+    const res = await get(path)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe(`${OPDS_ACQ_TYPE};charset=utf-8`)
+  })
+
+  it.each(BROWSE)('answers 401 for %s without credentials, before any db read', async (path) => {
+    const res = await get(path, {})
+    expect(res.status).toBe(401)
+    expect(vi.mocked(db.getBooksPage)).not.toHaveBeenCalled()
+    expect(vi.mocked(db.countBooksByInitial)).not.toHaveBeenCalled()
+    expect(vi.mocked(db.listNamesByInitial)).not.toHaveBeenCalled()
+  })
+
+  it('reaches a seeded book from the root using only links found in the XML', async () => {
+    const rootFeed = await walk('/opds')
+    const authors = rootFeed.links.find((l) => l === '/opds/authors')
+    expect(authors).toBeDefined()
+
+    const letters = await walk(authors!)
+    const letter = letters.links.find((l) => l.endsWith('/H'))
+    expect(letter).toBeDefined()
+
+    const names = await walk(letter!)
+    expect(names.links).toEqual(['/opds/by-author/Frank%20Herbert'])
+
+    const books = await walk(names.links[0]!)
+    expect(entryIds(books.xml)).toEqual(['dune-1'])
+    expect(books.xml).toContain(
+      `rel="http://opds-spec.org/acquisition/open-access" href="${base}/opds/book/dune-1/epub"`
+    )
+  })
+
+  it('serves the unread feed without the read book', async () => {
+    const { xml } = await walk('/opds/unread')
+    expect(entryIds(xml)).toEqual(['dune-1'])
+  })
+
+  it.each(['/opds/authors/dd', '/opds/by-author/', '/opds/authors/', '/opds/unread/'])(
+    'answers %s with the uniform 404',
+    async (path) => {
+      const res = await get(path)
+      expect(res.status).toBe(404)
+      expect(await res.text()).toBe('not found')
+    }
+  )
+
+  it.each(BROWSE)('answers a non-GET to %s with 404', async (path) => {
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      expect((await fetch(`${base}${path}`, { method, headers: AUTH })).status).toBe(404)
+    }
+  })
+
+  it.each(['/opds/unread', '/opds/authors/H', '/opds/titles/D', '/opds/by-author/x'])(
+    'answers %s?page=0 with 400',
+    async (path) => {
+      expect((await get(`${path}?page=0`)).status).toBe(400)
+    }
+  )
+
+  it.each(BROWSE)('answers %s with 503 when no library is configured', async (path) => {
+    db.deleteConfig('library_root')
+    expect(nas.getLibraryRoot()).toBeFalsy()
+    const res = await get(path)
+    expect(res.status).toBe(503)
+    expect(res.headers.get('retry-after')).toBeTruthy()
+  })
+
+  it('serves the tree while the share is offline', async () => {
+    vi.mocked(nas.isOnline).mockReturnValue(false)
+    for (const path of BROWSE) expect((await get(path)).status).toBe(200)
   })
 })

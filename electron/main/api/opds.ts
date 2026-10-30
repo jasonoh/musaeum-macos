@@ -8,6 +8,7 @@ import { resolveBindAddress, type InterfaceMap } from '../services/api/bind'
 import { resolveBookFile, resolveCoverFile } from '../services/book-bytes'
 import { getBook, getBooksPage, searchBooksPage, type BookPage } from '../services/db'
 import * as nas from '../services/nas-manager'
+import { matchBrowsePath, serveBrowse } from '../services/opds/browse'
 import { checkBasic, logRejectedOpdsAttempt } from '../services/opds/basic-auth'
 import {
   FORMAT_TYPES,
@@ -43,7 +44,10 @@ import { resolveOpdsConfig, type ResolvedOpdsConfig } from '../services/settings
  * edit a 66 KB file whose contract is the phone's.
  *
  * **Route by route:** `GET /opds` (navigation), `/opds/new`, `/opds/all`,
- * `/opds/search?q=` (acquisition), `/opds/search.xml` (OpenSearch),
+ * `/opds/search?q=` (acquisition), `/opds/search.xml` (OpenSearch), the browse tree
+ * (`/opds/unread`, `/opds/authors[/{letter}]`, `/opds/series[/{letter}]`,
+ * `/opds/titles[/{letter}]`, `/opds/by-author/{name}`, `/opds/by-series/{name}` —
+ * `services/opds/browse.ts`),
  * `/opds/cover/{id}/{thumb|full}` and `/opds/book/{id}/{format}` (bytes).
  * Anything else — an unknown path, or any method but `GET` — is one uniform 404.
  *
@@ -600,6 +604,20 @@ async function handleRequest(
       case SEARCH_DESCRIPTION_ROUTE:
         sendXml(res, OPENSEARCH_TYPE, buildSearchDescription(ctx))
         return
+    }
+
+    // The browse tree: unread, authors, series, titles (`services/opds/browse.ts` owns the routes and the feeds)
+    const browse = matchBrowsePath(url.pathname)
+    if (browse) {
+      // The same check the root makes: no library yet is "busy", not an empty catalog a client caches
+      if (!nas.getLibraryRoot()) {
+        sendUnavailable(res, 'noLibrary')
+        return
+      }
+      const served = serveBrowse(browse, ctx, url.searchParams.get('page'))
+      if (served.status === 400) sendText(res, 400, BODIES[400])
+      else sendXml(res, served.type, served.body)
+      return
     }
 
     const bytes = matchBytePath(url.pathname)
