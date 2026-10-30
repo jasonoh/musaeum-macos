@@ -30,7 +30,14 @@ import type { BookFilters } from '@shared/book.types'
  * library is not.
  */
 export type LibraryViewState =
-  'loading' | 'empty-library' | 'empty-shelf' | 'no-matches' | 'library-unavailable' | 'books'
+  | 'loading'
+  | 'empty-library'
+  | 'empty-shelf'
+  | 'empty-device'
+  | 'reading-device'
+  | 'no-matches'
+  | 'library-unavailable'
+  | 'books'
 
 /**
  * Filters that are actually set. `sort` is not one — it orders the result rather
@@ -71,6 +78,11 @@ export function libraryViewState(input: {
    * silently drop.
    */
   shelfId: string | null
+  /**
+   * The open device, with whether its first scan has landed. Optional: only a
+   * view that can be scoped to a device has one to pass.
+   */
+  device?: { scanned: boolean } | null
 }): LibraryViewState {
   // A reload keeps the previous result set on screen (`load` replaces `books`
   // only when the answer arrives), so a non-empty result always wins — the
@@ -84,6 +96,11 @@ export function libraryViewState(input: {
   // doing: the cache answers both, and "clear the search" is advice that needs
   // no write. Checked before the storage branch on purpose
   if (input.query.trim() || filterCount(input.filters) > 0) return 'no-matches'
+  // A device's books are not the library's: its emptiness needs no storage
+  // (removal is a device operation) and its copy makes no write promise. Before
+  // the first scan lands the list is empty because it is unread, not because
+  // nothing is there — presence settles in the background
+  if (input.device) return input.device.scanned ? 'empty-device' : 'reading-device'
   // Positive evidence only. An unreported status is not a working library, and
   // this pane may not make its promise on a guess — the same reason the loading
   // branch above renders nothing rather than the first-run copy

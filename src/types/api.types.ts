@@ -288,6 +288,11 @@ export interface MusaeumAPI {
     getOnDeviceBookIds(deviceId: string): Promise<string[]>
     /** Delete the book's files (plus `.sdr` sidecars) from a connected device. */
     removeFromDevice(bookId: string, deviceId: string): Promise<{ removed: number }>
+    /** Bulk removal: one rescan, one refresh; per-book failures land in `failed`. */
+    removeBooksFromDevice(
+      bookIds: string[],
+      deviceId: string
+    ): Promise<{ removed: string[]; failed: { bookId: string; error: string }[] }>
   }
 
   nas: {

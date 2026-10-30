@@ -1,3 +1,5 @@
+import { useDeviceStore } from '@/stores/device.store'
+import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
 import { BookIcon } from '@/components/shared/icons'
 import { importBooksFromDialog } from '@/lib/add-books'
@@ -32,6 +34,9 @@ import type { LibraryViewState } from '@/lib/library-emptiness'
  */
 export function EmptyLibrary({ state, query }: { state: LibraryViewState; query: string }) {
   const openModal = useUIStore((s) => s.openModal)
+  const activeDeviceId = useLibraryStore((s) => s.activeDeviceId)
+  const deviceName =
+    useDeviceStore((s) => s.devices.find((d) => d.id === activeDeviceId)?.name) ?? 'the device'
 
   if (state === 'loading' || state === 'books' || state === 'library-unavailable') return null
 
@@ -44,6 +49,22 @@ export function EmptyLibrary({ state, query }: { state: LibraryViewState; query:
           <p className="text-sm">Nothing matches “{query.trim()}”</p>
           <p className="max-w-xs text-[12px]">
             Clear the search or the filters to see the library again
+          </p>
+        </>
+      ) : state === 'reading-device' ? (
+        <>
+          <p className="font-display text-lg text-parchment-dim">Reading {deviceName}…</p>
+          <p className="max-w-sm text-sm">
+            Its books appear here as the device is scanned — this can take a moment.
+          </p>
+        </>
+      ) : state === 'empty-device' ? (
+        <>
+          <p className="font-display text-lg text-parchment-dim">
+            None of your library is on {deviceName}
+          </p>
+          <p className="max-w-sm text-sm">
+            Send books from the library — right-click a book, or select several.
           </p>
         </>
       ) : state === 'empty-shelf' ? (

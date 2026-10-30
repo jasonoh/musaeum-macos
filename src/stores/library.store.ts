@@ -14,12 +14,21 @@ import type {
 import { isBookSort } from '@shared/book.types'
 import { applyRebuildProgress, settleCatalogSync, startCatalogSync } from '@/lib/catalog-sync'
 import { resultSetKey } from '@/lib/resultSetIdentity'
+import { scopeToDevice } from '@/lib/device-scope'
+import { useDeviceStore } from '@/stores/device.store'
 import type { BulkHydrateProgress } from '@shared/metadata.types'
 
 export type FacetKind = 'authors' | 'series' | 'tags' | 'formats' | 'readStatus'
 
 interface LibraryState {
+  /** What the views show: `loadedBooks`, narrowed to the open device's books when one is. */
   books: Book[]
+  /**
+   * The last read, before any device scope. Presence lives in the device store,
+   * not SQLite, so a device scope is a renderer-side narrowing of this list and
+   * `books` is re-derived from it whenever either side moves.
+   */
+  loadedBooks: Book[]
   facets: LibraryFacets | null
   loading: boolean
   query: string
@@ -33,6 +42,12 @@ interface LibraryState {
    * "never reopen filtered" rule, for the same reason.
    */
   activeShelfId: string | null
+  /**
+   * The open device, or null (mutually exclusive with `activeShelfId`): the grid
+   * and list show the books on that device, so they can be removed from it.
+   * Facets stay library-wide. Not persisted, like the shelf.
+   */
+  activeDeviceId: string | null
   /**
    * The library's *own* sort — the only one that outlives the session (D8).
    * While a shelf is open `sort` is that shelf's sort, and this is what leaving
@@ -64,6 +79,12 @@ interface LibraryState {
   setActiveShelf(shelfId: string | null): void
   /** Drop a scope the shelf list no longer holds. See the docblock. */
   reconcileScope(existingShelfIds: string[]): void
+  /** Open a device's books, or leave with null. Leaves any shelf; the library sort carries through. */
+  setActiveDevice(deviceId: string | null): void
+  /** Leave the device scope when its device is no longer connected. */
+  reconcileDeviceScope(connectedDeviceIds: string[]): void
+  /** Re-derive `books` from `loadedBooks` — presence moved, or the scope did. */
+  syncDeviceScope(): void
   upsertImportJob(progress: ImportProgress): void
   removeImportJob(jobId: string): void
   refreshLibrary(): Promise<void>
@@ -179,6 +200,7 @@ export const useLibraryStore = create<LibraryState>()(
 
       return {
         books: [],
+        loadedBooks: [],
         facets: null,
         loading: false,
         query: '',
@@ -186,6 +208,7 @@ export const useLibraryStore = create<LibraryState>()(
         sort: { field: 'title', direction: 'asc' },
         librarySort: { field: 'title', direction: 'asc' },
         activeShelfId: null,
+        activeDeviceId: null,
         importJobs: {},
         catalogSync: null,
         bulkHydrate: null,
@@ -217,7 +240,14 @@ export const useLibraryStore = create<LibraryState>()(
             // flight has issued a read of its own; that one owns the result set
             // and the loading flag, and this answer is stale
             if (readIdentity(get()) !== at) return
-            set({ books, facets, loading: false })
+            // The device scope is read now, not at the start: moving between the
+            // library and a device changes no read, only what is shown of it
+            set({
+              loadedBooks: books,
+              books: scopeToDevice(books, get().activeDeviceId, useDeviceStore.getState().onDevice),
+              facets,
+              loading: false
+            })
           } catch (err) {
             console.error('library load failed:', err)
             if (readIdentity(get()) === at) set({ loading: false })
@@ -252,6 +282,7 @@ export const useLibraryStore = create<LibraryState>()(
           set({
             query: '',
             filters: { coAuthor: name },
+            activeDeviceId: null,
             ...(activeShelfId ? { activeShelfId: null, sort: librarySort } : {})
           })
           void get().load()
@@ -265,13 +296,19 @@ export const useLibraryStore = create<LibraryState>()(
          * that visit's own (R1).
          */
         setActiveShelf(shelfId) {
-          const { activeShelfId, sort, librarySort } = get()
+          const { activeShelfId, activeDeviceId, sort, librarySort } = get()
+          // "Library" leaves a device as well as a shelf
+          if (shelfId === null && activeDeviceId) {
+            get().setActiveDevice(null)
+            return
+          }
           if (shelfId === activeShelfId) return
           if (shelfId === null) {
             set({ activeShelfId: null, sort: librarySort })
           } else {
             set({
               activeShelfId: shelfId,
+              activeDeviceId: null,
               librarySort: activeShelfId ? librarySort : sort,
               sort: SHELF_ADDED_DESC
             })
@@ -292,6 +329,37 @@ export const useLibraryStore = create<LibraryState>()(
           const { activeShelfId } = get()
           if (!activeShelfId || existingShelfIds.includes(activeShelfId)) return
           get().setActiveShelf(null)
+        },
+
+        /**
+         * Entering a device keeps the user's library sort — there is no device
+         * default — so `sort` and `librarySort` stay equal and `setSort` writes
+         * both. Coming from a shelf is the one case that needs a read: that
+         * shelf's sort and rows are what is loaded.
+         */
+        setActiveDevice(deviceId) {
+          const { activeDeviceId, activeShelfId, librarySort } = get()
+          if (deviceId === activeDeviceId) return
+          const fromShelf = deviceId !== null && activeShelfId !== null
+          set({
+            activeDeviceId: deviceId,
+            ...(fromShelf ? { activeShelfId: null, sort: librarySort } : {})
+          })
+          if (fromShelf) void get().load()
+          else get().syncDeviceScope()
+        },
+
+        reconcileDeviceScope(connectedDeviceIds) {
+          const { activeDeviceId } = get()
+          if (!activeDeviceId || connectedDeviceIds.includes(activeDeviceId)) return
+          get().setActiveDevice(null)
+        },
+
+        syncDeviceScope() {
+          const { loadedBooks, activeDeviceId } = get()
+          set({
+            books: scopeToDevice(loadedBooks, activeDeviceId, useDeviceStore.getState().onDevice)
+          })
         },
 
         setSort(sort) {

@@ -28,3 +28,5 @@ Both views show membership the same way (gold ring on a card, gold row tint); th
 **A drag carries the selection and changes nothing**, on the same rule. `dragScope` (`src/lib/book-drag.ts`) mirrors `contextMenuScope` — the whole selection when the dragged book is one of several, that book alone otherwise — and no caller moves the selection for a drag: it neither selects the book it starts from (Finder's rule again, rejected for the reason the right-click was) nor clears what was selected. The sources and the payload rule are held by `src/components/library/book-drag-wiring.test.ts` and `docs/invariants/shelves.md`; what is painted is decided by a driven drag over CDP.
 
 ---
+
+In a device view (`library-views.md` → *The open device*) ⌘A and the selection operate on the device-filtered list, and the multi-book menu and selection panel offer *Remove N from {device}…*. Removed books leave the list, and the existing `pruneSelection(books)` effect drops them from the selection.

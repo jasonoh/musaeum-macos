@@ -704,24 +704,76 @@ export async function removeBookFromDevice(
   // cache is up to a poll interval stale, and a file added since it was taken
   // would otherwise survive and keep the book reading as "on device"
   const scanned = await scanDocuments(device.mountPath)
-  const present = new Set([...scanned.values()].flat())
+  const library = deviceLibrary(deviceId, db.getBooks(), new Set([...scanned.values()].flat()))
 
-  const targets = new Set<string>()
-  for (const stem of stemsForBook(deviceId, bookId, book.title)) {
-    for (const path of scanned.get(stem) ?? []) targets.add(path)
-  }
-  // The identity cache can name a file the device no longer has; the library
-  // half only ever holds what the scan above found
-  const books = db.getBooks()
-  for (const path of filesCarryingBook(book, deviceLibrary(deviceId, books, present))) {
-    targets.add(path)
-  }
-
-  const removed = await removeFilesAt(device.mountPath, [...targets])
+  const removed = await removeFilesAt(
+    device.mountPath,
+    targetsForBook(deviceId, book, scanned, library)
+  )
   if (removed === 0) throw new Error(`“${book.title}” is not on ${device.name}`)
 
   await refreshDeviceContents(deviceId)
   return { removed }
+}
+
+/**
+ * The one match rule for removal: the files that made `book` read as on the
+ * device — stems by title and by names we sent, plus files whose own header
+ * names it. The identity cache can name a file the device no longer has; the
+ * library half only ever holds what the scan found.
+ */
+function targetsForBook(
+  deviceId: string,
+  book: Book,
+  scanned: Map<string, string[]>,
+  library: ReturnType<typeof deviceLibrary>
+): string[] {
+  const targets = new Set<string>()
+  for (const stem of stemsForBook(deviceId, book.id, book.title)) {
+    for (const path of scanned.get(stem) ?? []) targets.add(path)
+  }
+  for (const path of filesCarryingBook(book, library)) targets.add(path)
+  return [...targets]
+}
+
+/**
+ * Remove several books from a connected device with ONE rescan and ONE
+ * contents refresh. A book that is unknown, or has no file on the device,
+ * lands in `failed` and does not stop the others. Throws only when the device
+ * is not connected.
+ */
+export async function removeBooksFromDevice(
+  bookIds: string[],
+  deviceId: string
+): Promise<{ removed: string[]; failed: { bookId: string; error: string }[] }> {
+  const device = getDevice(deviceId)
+  if (!device) throw new Error('Device is not connected')
+
+  const scanned = await scanDocuments(device.mountPath)
+  const library = deviceLibrary(deviceId, db.getBooks(), new Set([...scanned.values()].flat()))
+
+  const removed: string[] = []
+  const failed: { bookId: string; error: string }[] = []
+  for (const bookId of bookIds) {
+    try {
+      const book = db.getBook(bookId)
+      if (!book) {
+        failed.push({ bookId, error: 'Book not found' })
+        continue
+      }
+      const count = await removeFilesAt(
+        device.mountPath,
+        targetsForBook(deviceId, book, scanned, library)
+      )
+      if (count === 0) failed.push({ bookId, error: `“${book.title}” is not on ${device.name}` })
+      else removed.push(bookId)
+    } catch (err) {
+      failed.push({ bookId, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  await refreshDeviceContents(deviceId)
+  return { removed, failed }
 }
 
 async function scan(): Promise<void> {

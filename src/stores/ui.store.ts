@@ -82,6 +82,11 @@ export interface DeviceRemovalTarget {
   deviceId: string
 }
 
+export interface BulkDeviceRemovalTarget {
+  bookIds: string[]
+  deviceId: string
+}
+
 interface UIState {
   viewMode: ViewMode
   selection: Selection
@@ -99,6 +104,8 @@ interface UIState {
   coverPickerBookId: string | null
   /** Book + device whose "remove from device" confirmation is open. */
   removingFromDevice: DeviceRemovalTarget | null
+  /** Books + device whose bulk "remove from device" confirmation is open. */
+  removingBooksFromDevice: BulkDeviceRemovalTarget | null
   /**
    * Books the *Add to Shelf…* picker is open for — the scope of the click or of
    * the selection. A list rather than a single id because the picker is the same
@@ -149,6 +156,7 @@ interface UIState {
   requestEdit(bookId: string | null): void
   requestCoverPicker(bookId: string | null): void
   requestDeviceRemoval(target: DeviceRemovalTarget | null): void
+  requestBulkDeviceRemoval(target: BulkDeviceRemovalTarget | null): void
   /** Books the *Add to Shelf…* picker is open for, or null. */
   requestShelfPicker(target: { bookIds: string[] } | null): void
   /** The shelf's own remove dialog, or null to close it. */
@@ -205,6 +213,7 @@ export const useUIStore = create<UIState>()(
       editingBookId: null,
       coverPickerBookId: null,
       removingFromDevice: null,
+      removingBooksFromDevice: null,
       shelfPicker: null,
       shelfRemove: null,
       pythonEnv: null,
@@ -265,6 +274,8 @@ export const useUIStore = create<UIState>()(
       // one dialog, so the menu has to go the way every other dialog's does
       requestCoverPicker: (coverPickerBookId) => set({ coverPickerBookId, contextMenu: null }),
       requestDeviceRemoval: (removingFromDevice) => set({ removingFromDevice, contextMenu: null }),
+      requestBulkDeviceRemoval: (removingBooksFromDevice) =>
+        set({ removingBooksFromDevice, contextMenu: null }),
       // Same rule as every other dialog: the menu that opened it goes
       requestShelfPicker: (shelfPicker) => set({ shelfPicker, contextMenu: null }),
       requestShelfRemove: (shelfRemove) => set({ shelfRemove }),

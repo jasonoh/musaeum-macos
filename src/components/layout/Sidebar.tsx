@@ -17,7 +17,8 @@ export function Sidebar() {
   const refreshLibrary = useLibraryStore((s) => s.refreshLibrary)
   const activeShelfId = useLibraryStore((s) => s.activeShelfId)
   const setActiveShelf = useLibraryStore((s) => s.setActiveShelf)
-  const libraryActive = activeShelfId === null
+  const activeDeviceId = useLibraryStore((s) => s.activeDeviceId)
+  const libraryActive = activeShelfId === null && activeDeviceId === null
   const canReload = canStartCatalogSync(nasStatus?.state, catalogSync)
   const syncRunning = catalogSync?.outcome === 'running'
 
@@ -111,7 +112,7 @@ export function Sidebar() {
                 number is the shelf's, sitting beside the word "Library" —
                 measured live, an empty shelf made this row read "Library 0".
                 Each shelf carries its own count on its own row, from main. */}
-            {activeShelfId === null && (
+            {libraryActive && (
               <span className="ml-auto text-[11px] tabular-nums text-parchment-faint">
                 {bookCount}
               </span>

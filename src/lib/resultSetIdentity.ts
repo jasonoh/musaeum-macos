@@ -18,6 +18,11 @@ export interface ResultSetIdentity {
    * active — a shelf scopes the search too.
    */
   shelfId: string | null
+  /**
+   * The open device, if any. Changes no read (presence is filtered in the
+   * renderer), but it is a different result set to the views: scroll resets.
+   */
+  deviceId?: string | null
 }
 
 /**
@@ -52,7 +57,8 @@ export function resultSetKey(identity: ResultSetIdentity): string {
     query,
     filters: query ? null : normalizeFilters(identity.filters),
     sort: { field: identity.sort.field, direction: identity.sort.direction },
-    shelfId: identity.shelfId
+    shelfId: identity.shelfId,
+    ...(identity.deviceId ? { deviceId: identity.deviceId } : {})
   })
 }
 

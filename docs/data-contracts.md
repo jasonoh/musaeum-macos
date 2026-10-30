@@ -361,6 +361,7 @@ interface MusaeumAPI {
     exportToAppleBooks(bookId: string): Promise<void>
     getOnDeviceBookIds(deviceId: string): Promise<string[]>
     removeFromDevice(bookId, deviceId): Promise<{ removed: number }>  // deletes off device
+    removeBooksFromDevice(bookIds, deviceId): Promise<{ removed: string[]; failed: { bookId: string; error: string }[] }>  // one rescan; a book that cannot be removed lands in `failed`, it never fails the batch
   }
   nas: {
     getStatus(): Promise<NASStatus>
