@@ -46,9 +46,9 @@ export function matchBrowsePath(pathname: string): BrowseRoute | null {
   const parts = pathname.split('/')
   // ['', 'opds', section, rest?]
   if (parts[0] !== '' || parts[1] !== 'opds') return null
+  if (parts.length < 3 || parts.length > 4) return null
   const section = parts[2]
   const rest = parts[3]
-  if (parts.length < 3 || parts.length > 4) return null
 
   if (section === 'unread') return parts.length === 3 ? { kind: 'unread' } : null
 
@@ -106,13 +106,19 @@ function acquisition(
   }
 }
 
+/** "1 book", "2 books". */
+function bookCount(n: number): string {
+  return `${n} ${n === 1 ? 'book' : 'books'}`
+}
+
+/** Unpaged: `?page=` is ignored here, since there is nothing to page. */
 function letters(ctx: FeedContext, tree: 'authors' | 'series' | 'titles'): Served {
   const counts = countBooksByInitial(tree === 'titles' ? 'title' : NAME_KIND[tree])
   const byBucket = new Map(counts.map((c) => [c.bucket, c.count]))
   const entries: NavEntry[] = BUCKETS.filter((b) => (byBucket.get(b) ?? 0) > 0).map((b) => ({
     id: `urn:musaeum:opds:${tree}:${bucketSlug(b)}`,
     title: b,
-    content: `${byBucket.get(b)} books`,
+    content: bookCount(byBucket.get(b) ?? 0),
     path: `/opds/${tree}/${bucketSlug(b)}`,
     kind: tree === 'titles' ? 'acquisition' : 'navigation'
   }))
@@ -145,7 +151,7 @@ function names(
   const entries: NavEntry[] = rows.map((r) => ({
     id: `urn:musaeum:opds:${target}:${encodeName(r.name)}`,
     title: r.name,
-    content: `${r.count} books`,
+    content: bookCount(r.count),
     path: `/opds/${target}/${encodeName(r.name)}`,
     kind: 'acquisition'
   }))

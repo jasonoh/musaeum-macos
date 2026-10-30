@@ -167,12 +167,24 @@ describe('letters (Review Focus 4)', () => {
     addBook('Three', { author: 'Dora D' })
     addBook('No author')
     const xml = ok({ kind: 'letters', tree: 'authors' })
-    const counts = [...xml.matchAll(/<content type="text">(\d+) books<\/content>/g)].map((m) =>
+    const counts = [...xml.matchAll(/<content type="text">(\d+) books?<\/content>/g)].map((m) =>
       Number(m[1])
     )
     expect(counts.reduce((a, b) => a + b, 0)).toBe(3)
     expect(subsectionPaths(xml)).toEqual(['/opds/authors/A', '/opds/authors/D'])
     expect(xml).not.toContain('<title>#</title>')
+  })
+
+  it('says "1 book" for a single book and "2 books" for more', () => {
+    addBook('One', { author: 'Alice A' })
+    addBook('Two', { author: 'Dora D' })
+    addBook('Three', { author: 'Dora D' })
+    const letters = ok({ kind: 'letters', tree: 'authors' })
+    expect(letters).toContain('<content type="text">1 book</content>')
+    expect(letters).toContain('<content type="text">2 books</content>')
+    const names = ok({ kind: 'names', tree: 'authors', bucket: 'A' })
+    expect(names).toContain('<content type="text">1 book</content>')
+    expect(names).not.toContain('1 books')
   })
 
   it('has the # bucket when something falls in it, titled "#" and linked as other', () => {
