@@ -467,13 +467,26 @@ function namesCte(kind: NameKind): string {
   return `WITH names AS (SELECT ${col} AS name, COUNT(*) AS n, MIN(${key}) AS sortkey FROM books WHERE ${col} IS NOT NULL AND ${col} <> '' GROUP BY ${col})`
 }
 
-/** Books per initial bucket (only non-empty buckets, in `BUCKETS` order). Author and series bucket by the name. */
-export function countBooksByInitial(kind: NameKind | 'title'): { bucket: Bucket; count: number }[] {
-  const sql =
-    kind === 'title'
-      ? `SELECT musaeum_initial(COALESCE(sort_title, title)) AS bucket, COUNT(*) AS count FROM books GROUP BY bucket`
-      : `${namesCte(kind)} SELECT musaeum_initial(sortkey) AS bucket, SUM(n) AS count FROM names GROUP BY bucket`
-  const rows = getDb().prepare(sql).all() as { bucket: Bucket; count: number }[]
+/**
+ * Books per initial bucket (only non-empty buckets, in `BUCKETS` order). Author and series bucket by the name.
+ * `filters` applies to `'title'` only (the OPDS Unread letters pass `{ readStatus: ['unread'] }`) and goes through `bookWhere`, so a letter is counted with exactly the conditions `getBooksPage` lists it by.
+ */
+export function countBooksByInitial(
+  kind: NameKind | 'title',
+  filters?: DbBookFilters
+): { bucket: Bucket; count: number }[] {
+  let sql: string
+  let params: unknown[] = []
+  if (kind === 'title') {
+    const where = bookWhere(filters)
+    params = where.params
+    sql = `SELECT musaeum_initial(COALESCE(sort_title, title)) AS bucket, COUNT(*) AS count FROM books ${whereClause(where)} GROUP BY bucket`
+  } else {
+    sql = `${namesCte(kind)} SELECT musaeum_initial(sortkey) AS bucket, SUM(n) AS count FROM names GROUP BY bucket`
+  }
+  const rows = getDb()
+    .prepare(sql)
+    .all(...params) as { bucket: Bucket; count: number }[]
   const order = new Map(BUCKETS.map((b, i) => [b, i]))
   return rows
     .filter((r) => r.count > 0)

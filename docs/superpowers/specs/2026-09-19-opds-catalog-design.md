@@ -1,6 +1,6 @@
 # Design: OPDS catalog server (delivery to a second device)
 
-**Date:** 2026-09-19 · **Amended 2026-10-29 (Amendment 1, the trigger and Tailscale; Amendment 2, the O2 shape)** **Status:** **Approved to build (O1 first) — 2026-10-29; O1 and O2 built (2026-10-29), O2's shape in _Amendment 2 (2026-10-29, the O2 shape)_.** The precondition fired (see _Amendment 1 (2026-10-29, the trigger and Tailscale)_ below). Read that section before the rest: it supersedes D4, the _Security_ section's bind rules, AC2.10 and AC2.14 where they differ. **Scope:** an OPDS 1.2 catalog served by the running app, so another device can browse and download the library without a browser, a sync client, or a second copy of the books. **Related:** the iOS/REST contract staged at `electron/main/api/rest.ts` (a different consumer — see D3). The reader (`specs/2026-08-13-native-reader-design.md`) is unrelated but shares the containment rule this feature must reuse.
+**Date:** 2026-09-19 · **Amended 2026-10-29 (Amendment 1, the trigger and Tailscale; Amendment 2, the O2 shape; Amendment 3, the Palma pass)** **Status:** **Approved to build (O1 first) — 2026-10-29; O1 and O2 built (2026-10-29), O2's shape in _Amendment 2 (2026-10-29, the O2 shape)_.** The precondition fired (see _Amendment 1 (2026-10-29, the trigger and Tailscale)_ below). Read that section before the rest: it supersedes D4, the _Security_ section's bind rules, AC2.10 and AC2.14 where they differ. **Scope:** an OPDS 1.2 catalog served by the running app, so another device can browse and download the library without a browser, a sync client, or a second copy of the books. **Related:** the iOS/REST contract staged at `electron/main/api/rest.ts` (a different consumer — see D3). The reader (`specs/2026-08-13-native-reader-design.md`) is unrelated but shares the containment rule this feature must reuse.
 
 ---
 
@@ -43,6 +43,14 @@ O2 was built on branch `worktree-feat-opds-o2` (plan `docs/superpowers/plans/202
 - **Call 4 — a name is the exact stored string.** "Neil Gaiman & Terry Pratchett" is its own author entry (the sidebar facet's rule). Splitting co-authors is a later decision (`splitAuthors` exists). Books with no author or no series are not in those trees; they are in All, Titles and Search.
 
 Buckets are A–Z or `#`, spelled `other` in URLs; a name's bucket is computed per name from its sort key (`services/initials.ts`, `db.listNamesByInitial`). Name lists are paged at 200 (`OPDS_NAV_PAGE_SIZE`), book pages stay at 80. Known limits: `docs/invariants/settings-and-editing.md` → _Known limits (O2)_.
+
+## Amendment 3 (2026-10-29, the Palma pass)
+
+The owner walked the O2 tree on the Boox Palma (KOReader v2026.07.1, Tailscale 1.104.4-t938213198-gb9d487fe6) and answered the open questions; plan `docs/superpowers/plans/2026-10-29-opds-tail.md`.
+
+- **Counts moved into the title.** KOReader renders only a navigation entry's title; its `thr:count` slot is facet-only (`plugins/opds.koplugin/opdsbrowser.lua`, read 2026-10-29). Every letter and name entry's title now ends in a bare " (n)" (`S (273)`, `Gaiman, Neil (12)`, `Foo (2) (3)` for an author named `Foo (2)`). The `content` text ("12 books" / "1 book"), ids, paths and destination-feed titles are unchanged, so the suffix is a display-only decoration and a name still round-trips to the stored string.
+- **Unread became a letters feed.** `/opds/unread` is an unpaged navigation feed of title letters with unread counts (path `/opds/unread/{slug}`, ids `urn:musaeum:opds:unread:{slug}`, only non-empty letters); `/opds/unread/{slug}` is the acquisition feed of that letter's unread books in title order, titled `Unread — {letter}` and paged at 80. The letter counts go through `bookWhere` (`countBooksByInitial('title', { readStatus: ['unread'] })`), the same conditions `getBooksPage` lists by, so a book is counted under the letter it is listed under. Amendment 2 call 3 stands: a `reading` book is in no Unread letter.
+- The depth (letter, then names, then books) was judged right on the device.
 
 ---
 
@@ -94,11 +102,12 @@ electron/main/index.ts            startOpdsIfEnabled() next to startRestApiIfEna
 
 ### Routes (slice O2 — browse tree)
 
-Shape as built, per _Amendment 2_ (this supersedes the original table).
+Shape as built, per _Amendment 2_ and _Amendment 3_ (this supersedes the original table).
 
 | Route                                     | Kind                                                                               |
 | ----------------------------------------- | ---------------------------------------------------------------------------------- |
-| `GET /opds/unread?page=N`                 | Acquisition Feed over the app's `unread` status only                               |
+| `GET /opds/unread`                        | Navigation Feed of letters A–Z, `#` for the rest, over the `unread` status only (unpaged) |
+| `GET /opds/unread/{slug}?page=N`          | Acquisition Feed of the unread books under that letter                             |
 | `GET /opds/authors`                       | Navigation Feed of letters A–Z, `#` (slug `other`) for the rest                    |
 | `GET /opds/authors/{slug}?page=N`         | Navigation Feed of author names under that letter, with book counts (pages of 200) |
 | `GET /opds/by-author/{name}?page=N`       | Acquisition Feed of that author's books                                            |
@@ -252,7 +261,7 @@ Conditional GET is the one omission worth revisiting cheaply: if a device re-wal
 
 - **AC2.16** `/opds/new` is ordered by `date_added` descending and advertised from the root with `rel="http://opds-spec.org/sort/new"` (§6.2 — "most recent items first" is the spec's own ordering requirement).
 - **AC2.17** `/opds/authors` is a navigation feed of letters whose entries open navigation feeds of names, one per letter (and each name opens an acquisition feed), with no author appearing under two letters, and every author in the library reachable; books with no author are outside the tree (per Amendment 2).
-- **AC2.18** `/opds/unread` matches the app's own unread count. _Instrument:_ compare against `getFacets().readStatus`.
+- **AC2.18** The `/opds/unread` letter counts sum to the app's own unread count, and each `/opds/unread/{slug}` lists exactly the books its letter counted (Amendment 3). _Instrument:_ sum the letter counts and compare against `getFacets().readStatus`.
 
 **Live, on the real device — the only test that proves the point**
 

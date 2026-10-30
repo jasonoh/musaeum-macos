@@ -104,7 +104,7 @@ describe('buildRootFeed', () => {
         title: 'Unread',
         rel: 'subsection',
         href: `${base}/opds/unread`,
-        kind: 'acquisition'
+        kind: 'navigation'
       },
       {
         id: 'urn:musaeum:opds:authors',
@@ -204,6 +204,13 @@ describe('buildNavigationFeed', () => {
     const q = build({ window, selfPath: '/opds/titles?q=a' })
     expect(q).toContain('href="http://100.64.0.1:8789/opds/titles?q=a&amp;page=3"')
     expect(q).not.toContain('opensearch:totalResults')
+  })
+
+  it('carries itemsPerPage equal to the window limit', () => {
+    const window = pageWindow(null, 450, OPDS_NAV_PAGE_SIZE)!
+    const xml = build({ window, total: 450 })
+    expect(window.limit).toBe(200)
+    expect(xml).toContain('<opensearch:itemsPerPage>200</opensearch:itemsPerPage>')
   })
 
   it('emits an encoded path attribute-escaped and otherwise unchanged', () => {

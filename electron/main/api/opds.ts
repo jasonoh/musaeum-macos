@@ -8,7 +8,7 @@ import { resolveBindAddress, type InterfaceMap } from '../services/api/bind'
 import { resolveBookFile, resolveCoverFile } from '../services/book-bytes'
 import { getBook, getBooksPage, searchBooksPage, type BookPage } from '../services/db'
 import * as nas from '../services/nas-manager'
-import { matchBrowsePath, serveBrowse } from '../services/opds/browse'
+import { matchBrowsePath, pageThrough, serveBrowse } from '../services/opds/browse'
 import { checkBasic, logRejectedOpdsAttempt } from '../services/opds/basic-auth'
 import {
   FORMAT_TYPES,
@@ -18,7 +18,6 @@ import {
   buildAcquisitionFeed,
   buildRootFeed,
   buildSearchDescription,
-  pageWindow,
   type FeedContext,
   type PageWindow
 } from '../services/opds/feed'
@@ -45,7 +44,7 @@ import { resolveOpdsConfig, type ResolvedOpdsConfig } from '../services/settings
  *
  * **Route by route:** `GET /opds` (navigation), `/opds/new`, `/opds/all`,
  * `/opds/search?q=` (acquisition), `/opds/search.xml` (OpenSearch), the browse tree
- * (`/opds/unread`, `/opds/authors[/{letter}]`, `/opds/series[/{letter}]`,
+ * (`/opds/unread[/{letter}]`, `/opds/authors[/{letter}]`, `/opds/series[/{letter}]`,
  * `/opds/titles[/{letter}]`, `/opds/by-author/{name}`, `/opds/by-series/{name}` —
  * `services/opds/browse.ts`),
  * `/opds/cover/{id}/{thumb|full}` and `/opds/book/{id}/{format}` (bytes).
@@ -496,7 +495,7 @@ async function serveBytes(
 /**
  * One acquisition page: validate `?page=`, query, build.
  *
- * `pageWindow` is asked twice — once to validate and size the query (the total
+ * `pageThrough` asks `pageWindow` twice — once to validate and size the query (the total
  * is not known yet, and `offset`/`limit` do not depend on it), once with the
  * query's total for the `next`/`previous` links. An absent `page` is page 1, a
  * present-but-invalid one is 400 (never an `OFFSET` of NaN), and a page past the
@@ -509,14 +508,12 @@ function serveAcquisition(
   feed: { id: string; title: string; selfPath: string },
   query: (window: PageWindow) => BookPage
 ): void {
-  const rawPage = url.searchParams.get('page')
-  const probe = pageWindow(rawPage, 0)
-  if (!probe) {
+  const paged = pageThrough(url.searchParams.get('page'), query)
+  if (!paged) {
     sendText(res, 400, BODIES[400])
     return
   }
-  const page = query(probe)
-  const window = pageWindow(rawPage, page.total) as PageWindow
+  const { result: page, window } = paged
   sendXml(
     res,
     OPDS_ACQ_TYPE,

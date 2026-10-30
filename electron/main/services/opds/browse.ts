@@ -4,6 +4,7 @@ import {
   getBooksPage,
   listNamesByInitial,
   type BookPage,
+  type DbBookFilters,
   type NameKind
 } from '../db'
 import { BUCKETS, bucketFromSlug, bucketSlug, type Bucket } from '../initials'
@@ -31,6 +32,7 @@ import {
 
 export type BrowseRoute =
   | { kind: 'unread' }
+  | { kind: 'unread-titles'; bucket: Bucket }
   | { kind: 'letters'; tree: 'authors' | 'series' | 'titles' }
   | { kind: 'names'; tree: 'authors' | 'series'; bucket: Bucket }
   | { kind: 'titles'; bucket: Bucket }
@@ -50,7 +52,11 @@ export function matchBrowsePath(pathname: string): BrowseRoute | null {
   const section = parts[2]
   const rest = parts[3]
 
-  if (section === 'unread') return parts.length === 3 ? { kind: 'unread' } : null
+  if (section === 'unread') {
+    if (parts.length === 3) return { kind: 'unread' }
+    const bucket = bucketFromSlug(rest ?? '')
+    return bucket ? { kind: 'unread-titles', bucket } : null
+  }
 
   if (section === 'authors' || section === 'series' || section === 'titles') {
     if (parts.length === 3) return { kind: 'letters', tree: section }
@@ -88,17 +94,32 @@ const NAME_KIND: Record<'authors' | 'series', NameKind> = { authors: 'author', s
 
 type Served = { status: 200; type: string; body: string } | { status: 400 }
 
+/**
+ * The probe-then-real window logic every paged feed shares: validate `?page=` and size the query
+ * with a zero-total window, run it, then window again with the real total. `null` means a bad
+ * `?page=` (a 400); a page past the end is a normal result with no entries.
+ */
+export function pageThrough<T extends { total: number }>(
+  rawPage: string | null,
+  query: (window: PageWindow) => T,
+  size?: number
+): { result: T; window: PageWindow } | null {
+  const probe = pageWindow(rawPage, 0, size)
+  if (!probe) return null
+  const result = query(probe)
+  const window = pageWindow(rawPage, result.total, size) as PageWindow
+  return { result, window }
+}
+
 function acquisition(
   ctx: FeedContext,
   rawPage: string | null,
   feed: { id: string; title: string; selfPath: string },
   query: (window: PageWindow) => BookPage
 ): Served {
-  // Asked twice, as `api/opds.ts` always has: once to validate and size the query, once with the total
-  const probe = pageWindow(rawPage, 0)
-  if (!probe) return { status: 400 }
-  const page = query(probe)
-  const window = pageWindow(rawPage, page.total) as PageWindow
+  const paged = pageThrough(rawPage, query)
+  if (!paged) return { status: 400 }
+  const { result: page, window } = paged
   return {
     status: 200,
     type: OPDS_ACQ_TYPE,
@@ -111,23 +132,36 @@ function bookCount(n: number): string {
   return `${n} ${n === 1 ? 'book' : 'books'}`
 }
 
-/** Unpaged: `?page=` is ignored here, since there is nothing to page. */
-function letters(ctx: FeedContext, tree: 'authors' | 'series' | 'titles'): Served {
-  const counts = countBooksByInitial(tree === 'titles' ? 'title' : NAME_KIND[tree])
+/**
+ * KOReader renders only a navigation entry's title, so the count rides there as a bare " (n)". Titles only: ids, paths and destination-feed titles keep the plain label.
+ */
+function withCount(label: string, n: number): string {
+  return `${label} (${n})`
+}
+
+/**
+ * Unpaged: `?page=` is ignored here, since there is nothing to page. `unread` is the Titles shape
+ * restricted to unread books, counted through the same filter `unread-titles` lists by.
+ */
+function letters(ctx: FeedContext, tree: 'authors' | 'series' | 'titles' | 'unread'): Served {
+  const counts =
+    tree === 'unread'
+      ? countBooksByInitial('title', { readStatus: ['unread'] })
+      : countBooksByInitial(tree === 'titles' ? 'title' : NAME_KIND[tree])
   const byBucket = new Map(counts.map((c) => [c.bucket, c.count]))
   const entries: NavEntry[] = BUCKETS.filter((b) => (byBucket.get(b) ?? 0) > 0).map((b) => ({
     id: `urn:musaeum:opds:${tree}:${bucketSlug(b)}`,
-    title: b,
+    title: withCount(b, byBucket.get(b) ?? 0),
     content: bookCount(byBucket.get(b) ?? 0),
     path: `/opds/${tree}/${bucketSlug(b)}`,
-    kind: tree === 'titles' ? 'acquisition' : 'navigation'
+    kind: tree === 'titles' || tree === 'unread' ? 'acquisition' : 'navigation'
   }))
   return {
     status: 200,
     type: OPDS_NAV_TYPE,
     body: buildNavigationFeed(ctx, {
       id: `urn:musaeum:opds:${tree}`,
-      title: TREE_LABEL[tree],
+      title: tree === 'unread' ? 'Unread' : TREE_LABEL[tree],
       selfPath: `/opds/${tree}`,
       entries
     })
@@ -140,17 +174,18 @@ function names(
   bucket: Bucket,
   rawPage: string | null
 ): Served {
-  const probe = pageWindow(rawPage, 0, OPDS_NAV_PAGE_SIZE)
-  if (!probe) return { status: 400 }
-  const { names: rows, total } = listNamesByInitial(NAME_KIND[tree], bucket, {
-    limit: probe.limit,
-    offset: probe.offset
-  })
-  const window = pageWindow(rawPage, total, OPDS_NAV_PAGE_SIZE) as PageWindow
+  const paged = pageThrough(
+    rawPage,
+    (w) => listNamesByInitial(NAME_KIND[tree], bucket, { limit: w.limit, offset: w.offset }),
+    OPDS_NAV_PAGE_SIZE
+  )
+  if (!paged) return { status: 400 }
+  const { names: rows, total } = paged.result
+  const { window } = paged
   const target = tree === 'authors' ? 'by-author' : 'by-series'
   const entries: NavEntry[] = rows.map((r) => ({
     id: `urn:musaeum:opds:${target}:${encodeName(r.name)}`,
-    title: r.name,
+    title: withCount(r.name, r.count),
     content: bookCount(r.count),
     path: `/opds/${target}/${encodeName(r.name)}`,
     kind: 'acquisition'
@@ -171,7 +206,7 @@ function names(
 
 /** Query and build the feed for a matched route. `rawPage` is the `?page=` value, or `null` when absent. */
 export function serveBrowse(route: BrowseRoute, ctx: FeedContext, rawPage: string | null): Served {
-  const at = (filters: BookFilters & { titleInitial?: Bucket }) => (w: PageWindow) =>
+  const at = (filters: DbBookFilters) => (w: PageWindow) =>
     getBooksPage(filters, { limit: w.limit, offset: w.offset })
 
   switch (route.kind) {
@@ -191,11 +226,17 @@ export function serveBrowse(route: BrowseRoute, ctx: FeedContext, rawPage: strin
         at({ titleInitial: route.bucket, sort: TITLE_ASC })
       )
     case 'unread':
+      return letters(ctx, 'unread')
+    case 'unread-titles':
       return acquisition(
         ctx,
         rawPage,
-        { id: 'urn:musaeum:opds:unread', title: 'Unread', selfPath: '/opds/unread' },
-        at({ readStatus: ['unread'], sort: TITLE_ASC })
+        {
+          id: `urn:musaeum:opds:unread:${bucketSlug(route.bucket)}`,
+          title: `Unread — ${route.bucket}`,
+          selfPath: `/opds/unread/${bucketSlug(route.bucket)}`
+        },
+        at({ readStatus: ['unread'], titleInitial: route.bucket, sort: TITLE_ASC })
       )
     case 'by-author':
       return acquisition(

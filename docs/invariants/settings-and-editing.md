@@ -73,8 +73,9 @@ Three keys — `ai_base_url`, `ai_model`, `ai_api_key` — with two rules of the
 - **A co-author string is one entry.** "Neil Gaiman & Terry Pratchett" is its own author in the browse tree, the sidebar facet's rule; splitting co-authors is a later decision.
 - **Books with no author or no series are outside those trees.** They are reachable through All, Titles A–Z and Search.
 - **`#` collects what has no Latin initial.** A letter with no Unicode decomposition (e.g. Ł) and any name whose sort key starts with a digit or a non-Latin script (e.g. "Zed 000", whose sort key is "000, Zed") buckets under `#`.
-- **`?page=` is ignored on the unpaged letters feeds** (the Authors, Series and Titles roots).
-- **Unread excludes books marked `reading`.** The feed equals the app's `unread` count; a `reading` book is in All.
+- **`?page=` is ignored on the unpaged letters feeds** (the Authors, Series, Titles and Unread roots).
+- **An author or series named exactly `.` or `..` is unreachable.** It is listed under `#`, but the client's URL parser resolves the dot segment before the request is made; fixing it would need a new name encoding on the wire.
+- **Unread excludes books marked `reading`.** `/opds/unread` is a letters feed whose counts sum to the app's `unread` count (Amendment 3); a `reading` book is in no Unread letter and is in All.
 
 ---
 

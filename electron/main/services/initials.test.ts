@@ -30,6 +30,24 @@ it('sends digits, non-Latin scripts and empties to #', () => {
   expect(initialBucket('—')).toBe('#')
 })
 
+it('sends a lone combining mark to #', () => {
+  expect(initialBucket('́')).toBe('#')
+})
+
+it('sends an astral letter to #', () => {
+  expect(initialBucket('\u{1D400}bc')).toBe('#')
+})
+
+it('skips a leading emoji like any leading non-alphanumeric', () => {
+  expect(initialBucket('😀 x')).toBe('X')
+})
+
+it('folds accented leads and pins that ß is # (it upper-cases to two letters)', () => {
+  expect(initialBucket('élan')).toBe('E')
+  expect(initialBucket('ångström')).toBe('A')
+  expect(initialBucket('ßeta')).toBe('#')
+})
+
 it('lists A-Z then #', () => {
   expect(BUCKETS).toHaveLength(27)
   expect(BUCKETS[0]).toBe('A')

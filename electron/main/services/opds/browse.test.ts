@@ -4,7 +4,15 @@ import { app } from 'electron'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { sortableAuthor, sortableTitle, type ReadStatus } from '@shared/book.types'
 import { makeBook } from '../../../../test/helpers/book'
-import { closeDb, getDb, getFacets, insertBook } from '../db'
+import {
+  closeDb,
+  getBooksPage,
+  getDb,
+  getFacets,
+  insertBook,
+  searchBooksPage,
+  type DbBookFilters
+} from '../db'
 import { matchBrowsePath, serveBrowse, type BrowseRoute } from './browse'
 import { OPDS_NAV_PAGE_SIZE, type FeedContext } from './feed'
 
@@ -63,6 +71,10 @@ function unescape(text: string): string {
 }
 
 /** Every `subsection` entry link's path, in document order, taken out of the XML. */
+/** Each entry's title, in order. */
+const titles = (xml: string): string[] =>
+  [...xml.matchAll(/<entry>[\s\S]*?<title>([^<]*)<\/title>/g)].map((m) => unescape(m[1]!))
+
 function subsectionPaths(xml: string): string[] {
   return [...xml.matchAll(/<link rel="subsection" href="([^"]+)"/g)].map((m) =>
     unescape(m[1]!).slice(CTX.baseUrl.length)
@@ -72,6 +84,9 @@ function subsectionPaths(xml: string): string[] {
 describe('matchBrowsePath', () => {
   it('matches every route', () => {
     expect(matchBrowsePath('/opds/unread')).toEqual({ kind: 'unread' })
+    expect(matchBrowsePath('/opds/unread/S')).toEqual({ kind: 'unread-titles', bucket: 'S' })
+    expect(matchBrowsePath('/opds/unread/other')).toEqual({ kind: 'unread-titles', bucket: '#' })
+    expect(matchBrowsePath('/opds/unread/xx')).toBeNull()
     expect(matchBrowsePath('/opds/authors')).toEqual({ kind: 'letters', tree: 'authors' })
     expect(matchBrowsePath('/opds/series')).toEqual({ kind: 'letters', tree: 'series' })
     expect(matchBrowsePath('/opds/titles')).toEqual({ kind: 'letters', tree: 'titles' })
@@ -172,7 +187,7 @@ describe('letters (Review Focus 4)', () => {
     )
     expect(counts.reduce((a, b) => a + b, 0)).toBe(3)
     expect(subsectionPaths(xml)).toEqual(['/opds/authors/A', '/opds/authors/D'])
-    expect(xml).not.toContain('<title>#</title>')
+    expect(xml).not.toContain('<title>#')
   })
 
   it('says "1 book" for a single book and "2 books" for more', () => {
@@ -191,7 +206,7 @@ describe('letters (Review Focus 4)', () => {
     addBook('One', { author: 'Alice A' })
     addBook('Two', { author: '2Pac' })
     const xml = ok({ kind: 'letters', tree: 'authors' })
-    expect(xml).toContain('<title>#</title>')
+    expect(xml).toContain('<title># (1)</title>')
     expect(subsectionPaths(xml)).toContain('/opds/authors/other')
   })
 
@@ -209,24 +224,103 @@ describe('letters (Review Focus 4)', () => {
   })
 })
 
+describe('counts in titles (KOReader shows only the title)', () => {
+  it('letters read "A (n)" with a bare number, and # stays "#"', () => {
+    addBook('One', { author: 'Alice A' })
+    addBook('Two', { author: 'Alan A' })
+    addBook('Three', { author: '2Pac' })
+    expect(titles(ok({ kind: 'letters', tree: 'authors' }))).toEqual(['A (2)', '# (1)'])
+  })
+
+  it('names read "Name (n)" as stored, a single book is (1), and the destination feed title is bare', () => {
+    addBook('One', { author: 'Gaiman, Neil' })
+    addBook('Two', { author: 'Gaiman, Neil' })
+    addBook('Three', { author: 'Gale, Solo' })
+    expect(titles(ok({ kind: 'names', tree: 'authors', bucket: 'G' }))).toEqual([
+      'Gaiman, Neil (2)',
+      'Gale, Solo (1)'
+    ])
+    expect(ok({ kind: 'by-author', name: 'Gaiman, Neil' })).toContain('<title>Gaiman, Neil</title>')
+  })
+
+  it('a one-book series reads (1)', () => {
+    addBook('One', { author: 'Ann', series: 'Orchard' })
+    expect(titles(ok({ kind: 'names', tree: 'series', bucket: 'O' }))).toEqual(['Orchard (1)'])
+  })
+
+  it('a name already ending in parentheses keeps its path', () => {
+    for (let i = 0; i < 3; i++) addBook(`T${i}`, { author: 'Foo (2)' })
+    const xml = ok({ kind: 'names', tree: 'authors', bucket: '#' })
+    expect(titles(xml)).toEqual(['Foo (2) (3)'])
+    expect(matchBrowsePath(subsectionPaths(xml)[0]!)).toEqual({
+      kind: 'by-author',
+      name: 'Foo (2)'
+    })
+  })
+})
+
 describe('unread (AC2.18)', () => {
-  it('matches the facet count, and leaves out reading and read books', () => {
-    const u1 = addBook('Unread One')
-    const u2 = addBook('Unread Two')
+  it('opens letters whose counts sum to the facet, leaving out reading and read books', () => {
+    addBook('Apple One')
+    addBook('Apple Two')
     const nul = addBook('Null Status')
     getDb().prepare('UPDATE books SET read_status = NULL WHERE id = ?').run(nul)
-    const reading = addBook('Reading', { status: 'reading' })
-    const read = addBook('Done', { status: 'read' })
+    addBook('Sky')
+    addBook('Reading', { status: 'reading' })
+    addBook('Done', { status: 'read' })
 
     const xml = ok({ kind: 'unread' })
-    const total = Number(/<opensearch:totalResults>(\d+)</.exec(xml)?.[1])
-    const facet = getFacets().readStatus.find((s) => s.value === 'unread')?.count
-    expect(total).toBe(facet)
-    expect(total).toBe(3)
-    const ids = bookIds(xml)
-    expect(ids).toEqual(expect.arrayContaining([u1, u2, nul]))
-    expect(ids).not.toContain(reading)
-    expect(ids).not.toContain(read)
+    expect(titles(xml)).toEqual(['A (2)', 'N (1)', 'S (1)'])
+    expect(subsectionPaths(xml)).toEqual(['/opds/unread/A', '/opds/unread/N', '/opds/unread/S'])
+    expect(xml).toContain('<id>urn:musaeum:opds:unread:A</id>')
+    const sum = [...xml.matchAll(/<title>[^<]* \((\d+)\)<\/title>/g)].reduce(
+      (n, m) => n + Number(m[1]),
+      0
+    )
+    expect(sum).toBe(getFacets().readStatus.find((s) => s.value === 'unread')?.count)
+  })
+
+  it('lists exactly the unread books of a letter, in title order', () => {
+    const s2 = addBook('Sword')
+    const s1 = addBook('Sail')
+    addBook('Sea', { status: 'reading' })
+    addBook('Sun', { status: 'read' })
+    addBook('Apple')
+    const xml = ok({ kind: 'unread-titles', bucket: 'S' })
+    expect(bookIds(xml)).toEqual([s1, s2])
+    expect(xml).toContain('<title>Unread — S</title>')
+  })
+
+  it('an all-read and an empty library answer 200 with no entries', () => {
+    expect(subsectionPaths(ok({ kind: 'unread' }))).toEqual([])
+    addBook('Done', { status: 'read' })
+    addBook('Busy', { status: 'reading' })
+    const xml = ok({ kind: 'unread' })
+    expect(subsectionPaths(xml)).toEqual([])
+    expect(xml).not.toContain('<entry>')
+  })
+
+  it('pages a bucket of more than 80 unread books under /opds/unread/{slug}', () => {
+    const ids: string[] = []
+    getDb().transaction(() => {
+      for (let i = 0; i < 170; i++) ids.push(addBook(`S${String(i).padStart(3, '0')}`))
+    })()
+    const seen: string[] = []
+    let path: string | null = '/opds/unread/S'
+    let pages = 0
+    while (path) {
+      expect(path.startsWith('/opds/unread/S')).toBe(true)
+      const route = matchBrowsePath(path.split('?')[0]!)
+      const page = new URL(path, CTX.baseUrl).searchParams.get('page')
+      const xml = ok(route!, page)
+      seen.push(...bookIds(xml))
+      const next = /<link rel="next" href="([^"]+)"/.exec(xml)?.[1]
+      path = next ? unescape(next).slice(CTX.baseUrl.length) : null
+      pages++
+    }
+    expect(pages).toBe(3)
+    expect(seen.slice().sort()).toEqual(ids.slice().sort())
+    expect(new Set(seen).size).toBe(170)
   })
 })
 
@@ -234,7 +328,7 @@ describe('paging', () => {
   it.each(['0', 'abc', '-1'])('answers ?page=%s with 400', (page) => {
     addBook('Anything', { author: 'Ann' })
     const routes: BrowseRoute[] = [
-      { kind: 'unread' },
+      { kind: 'unread-titles', bucket: 'A' },
       { kind: 'names', tree: 'authors', bucket: 'A' },
       { kind: 'titles', bucket: 'A' },
       { kind: 'by-author', name: 'Ann' }
@@ -247,7 +341,7 @@ describe('paging', () => {
     const names = ok({ kind: 'names', tree: 'authors', bucket: 'A' }, '99')
     expect(subsectionPaths(names)).toEqual([])
     expect(names).not.toContain('rel="next"')
-    const books = ok({ kind: 'unread' }, '99')
+    const books = ok({ kind: 'unread-titles', bucket: 'A' }, '99')
     expect(bookIds(books)).toEqual([])
     expect(books).not.toContain('rel="next"')
   })
@@ -302,5 +396,32 @@ describe('ordering and unknown names', () => {
       expect(res.status).toBe(200)
       expect(bookIds((res as { body: string }).body)).toEqual([])
     }
+  })
+})
+
+describe('titleInitial filter (db)', () => {
+  const page = { limit: 50, offset: 0 }
+
+  it('finds a book whose sort_title is NULL through its title', () => {
+    const nul = addBook('Tundra')
+    getDb().prepare('UPDATE books SET sort_title = NULL WHERE id = ?').run(nul)
+    const other = addBook('Apple')
+    const res = getBooksPage({ titleInitial: 'T' }, page)
+    expect(res.books.map((b) => b.id)).toEqual([nul])
+    expect(res.total).toBe(1)
+    expect(getBooksPage({ titleInitial: 'A' }, page).books.map((b) => b.id)).toEqual([other])
+  })
+
+  it('filters the same set through the books.-prefixed join path', () => {
+    const t1 = addBook('Tundra Walk')
+    const t2 = addBook('The Tundra Road')
+    getDb().prepare('UPDATE books SET sort_title = NULL WHERE id = ?').run(t1)
+    addBook('Apple Tundra')
+    const filters: DbBookFilters = { titleInitial: 'T' }
+    const plain = getBooksPage(filters, page)
+    const joined = searchBooksPage('tundra', page, filters)
+    expect(plain.books.map((b) => b.id).sort()).toEqual([t1, t2].sort())
+    expect(joined.books.map((b) => b.id).sort()).toEqual([t1, t2].sort())
+    expect(joined.total).toBe(2)
   })
 })

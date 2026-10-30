@@ -177,7 +177,7 @@ function header(
   )
 }
 
-/** Entries per page of a name list (authors, series, title buckets); an entry is tiny, so this is far above `OPDS_PAGE_SIZE`. */
+/** Entries per page of the author and series name lists (`/opds/authors/{slug}`, `/opds/series/{slug}`); an entry is tiny, so this is far above `OPDS_PAGE_SIZE`. Title buckets are acquisition feeds paged at `OPDS_PAGE_SIZE`, and the letters feeds are unpaged. */
 export const OPDS_NAV_PAGE_SIZE = 200
 
 /** One row of a navigation feed. `path` is absolute-from-root and already percent-encoded; `kind` is what it leads to. */
@@ -214,7 +214,7 @@ export function buildRootFeed(ctx: FeedContext): string {
       title: 'Unread',
       content: 'Books you have not read yet',
       path: '/opds/unread',
-      kind: 'acquisition'
+      kind: 'navigation'
     },
     {
       id: 'urn:musaeum:opds:authors',

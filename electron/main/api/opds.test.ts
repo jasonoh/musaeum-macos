@@ -1091,9 +1091,16 @@ describe('the browse tree', () => {
     return { xml, links }
   }
 
-  const NAV = ['/opds/authors', '/opds/series', '/opds/titles', '/opds/authors/H', '/opds/series/D']
-  const ACQ = [
+  const NAV = [
     '/opds/unread',
+    '/opds/authors',
+    '/opds/series',
+    '/opds/titles',
+    '/opds/authors/H',
+    '/opds/series/D'
+  ]
+  const ACQ = [
+    '/opds/unread/D',
     '/opds/titles/D',
     '/opds/by-author/Frank%20Herbert',
     '/opds/by-series/Dune%20Chronicles'
@@ -1139,9 +1146,58 @@ describe('the browse tree', () => {
     )
   })
 
-  it('serves the unread feed without the read book', async () => {
-    const { xml } = await walk('/opds/unread')
-    expect(entryIds(xml)).toEqual(['dune-1'])
+  it('reaches a seeded series book from the root using only links found in the XML', async () => {
+    const rootFeed = await walk('/opds')
+    const series = rootFeed.links.find((l) => l === '/opds/series')
+    expect(series).toBeDefined()
+
+    const letters = await walk(series!)
+    const letter = letters.links.find((l) => l.endsWith('/D'))
+    expect(letter).toBeDefined()
+
+    const names = await walk(letter!)
+    expect(names.links).toEqual(['/opds/by-series/Dune%20Chronicles'])
+
+    const books = await walk(names.links[0]!)
+    expect(entryIds(books.xml)).toEqual(['dune-1'])
+    expect(books.xml).toContain('<title>Dune</title>')
+  })
+
+  it('reaches a seeded book from the root through the Titles letters', async () => {
+    const rootFeed = await walk('/opds')
+    const titles = rootFeed.links.find((l) => l === '/opds/titles')
+    expect(titles).toBeDefined()
+
+    const letters = await walk(titles!)
+    const letter = letters.links.find((l) => l.endsWith('/D'))
+    expect(letter).toBeDefined()
+
+    const books = await walk(letter!)
+    expect(entryIds(books.xml)).toEqual(['dune-1'])
+    expect(books.xml).toContain('<title>Dune</title>')
+  })
+
+  it('puts counts in navigation entry titles on the wire, and leaves ids, paths and feed titles bare', async () => {
+    const letters = await walk('/opds/authors')
+    expect(letters.xml).toContain('<title>H (1)</title>')
+    expect(letters.xml).toContain('<id>urn:musaeum:opds:authors:H</id>')
+    const names = await walk('/opds/authors/H')
+    expect(names.xml).toContain('<title>Frank Herbert (1)</title>')
+    expect(names.links).toEqual(['/opds/by-author/Frank%20Herbert'])
+    const series = await walk('/opds/series/D')
+    expect(series.xml).toContain('<title>Dune Chronicles (1)</title>')
+    const books = await walk('/opds/by-author/Frank%20Herbert')
+    expect(books.xml).toContain('<title>Frank Herbert</title>')
+  })
+
+  it('reaches the unread book from the root through Unread and its letter, without the read book', async () => {
+    const rootFeed = await walk('/opds')
+    expect(rootFeed.links).toContain('/opds/unread')
+    const letters = await walk('/opds/unread')
+    expect(letters.xml).toContain('<title>D (1)</title>')
+    expect(letters.links).toEqual(['/opds/unread/D'])
+    const books = await walk(letters.links[0]!)
+    expect(entryIds(books.xml)).toEqual(['dune-1'])
   })
 
   it.each(['/opds/authors/dd', '/opds/by-author/', '/opds/authors/', '/opds/unread/'])(
@@ -1159,7 +1215,7 @@ describe('the browse tree', () => {
     }
   })
 
-  it.each(['/opds/unread', '/opds/authors/H', '/opds/titles/D', '/opds/by-author/x'])(
+  it.each(['/opds/unread/D', '/opds/authors/H', '/opds/titles/D', '/opds/by-author/x'])(
     'answers %s?page=0 with 400',
     async (path) => {
       expect((await get(`${path}?page=0`)).status).toBe(400)
@@ -1172,6 +1228,18 @@ describe('the browse tree', () => {
     const res = await get(path)
     expect(res.status).toBe(503)
     expect(res.headers.get('retry-after')).toBeTruthy()
+  })
+
+  it('answers a failing browse query with the uniform 500, and serves the next request', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(db.getBooksPage).mockImplementationOnce(() => {
+      throw new Error('boom')
+    })
+    const res = await get('/opds/titles/D')
+    expect(res.status).toBe(500)
+    expect(await res.text()).toBe('internal error')
+    warn.mockRestore()
+    expect((await get('/opds/titles')).status).toBe(200)
   })
 
   it('serves the tree while the share is offline', async () => {
