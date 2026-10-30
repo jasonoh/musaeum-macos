@@ -9,12 +9,15 @@ import {
   OPDS_PAGE_SIZE,
   OPENSEARCH_TYPE,
   SUMMARY_MAX,
+  OPDS_NAV_PAGE_SIZE,
   buildAcquisitionFeed,
+  buildNavigationFeed,
   buildRootFeed,
   buildSearchDescription,
   escapeXml,
   pageWindow,
-  type FeedContext
+  type FeedContext,
+  type NavEntry
 } from './feed'
 
 const ctx: FeedContext = { baseUrl: 'http://100.64.0.1:8789', now: '2026-10-29T12:00:00Z' }
@@ -78,10 +81,153 @@ describe('buildRootFeed', () => {
     expect(balanced(xml)).toBe(true)
   })
 
+  it('lists Newest, Unread, Authors, Series, Titles, All books in order with the right kinds', () => {
+    const entries = [...xml.matchAll(/<entry>[\s\S]*?<\/entry>/g)].map((m) => m[0])
+    const shape = entries.map((e) => ({
+      id: /<id>([^<]*)<\/id>/.exec(e)?.[1],
+      title: /<title>([^<]*)<\/title>/.exec(e)?.[1],
+      rel: /<link rel="([^"]*)"/.exec(e)?.[1],
+      href: /href="([^"]*)"/.exec(e)?.[1],
+      kind: /kind=(\w+)"/.exec(e)?.[1]
+    }))
+    const base = ctx.baseUrl
+    expect(shape).toEqual([
+      {
+        id: 'urn:musaeum:opds:new',
+        title: 'Newest',
+        rel: 'http://opds-spec.org/sort/new',
+        href: `${base}/opds/new`,
+        kind: 'acquisition'
+      },
+      {
+        id: 'urn:musaeum:opds:unread',
+        title: 'Unread',
+        rel: 'subsection',
+        href: `${base}/opds/unread`,
+        kind: 'acquisition'
+      },
+      {
+        id: 'urn:musaeum:opds:authors',
+        title: 'Authors',
+        rel: 'subsection',
+        href: `${base}/opds/authors`,
+        kind: 'navigation'
+      },
+      {
+        id: 'urn:musaeum:opds:series',
+        title: 'Series',
+        rel: 'subsection',
+        href: `${base}/opds/series`,
+        kind: 'navigation'
+      },
+      {
+        id: 'urn:musaeum:opds:titles',
+        title: 'Titles',
+        rel: 'subsection',
+        href: `${base}/opds/titles`,
+        kind: 'navigation'
+      },
+      {
+        id: 'urn:musaeum:opds:all',
+        title: 'All books',
+        rel: 'subsection',
+        href: `${base}/opds/all`,
+        kind: 'acquisition'
+      }
+    ])
+  })
+
   it('uses the exact media types', () => {
     expect(OPDS_NAV_TYPE).toBe('application/atom+xml;profile=opds-catalog;kind=navigation')
     expect(OPDS_ACQ_TYPE).toBe('application/atom+xml;profile=opds-catalog;kind=acquisition')
     expect(OPENSEARCH_TYPE).toBe('application/opensearchdescription+xml')
+  })
+})
+
+describe('buildNavigationFeed', () => {
+  const entries: NavEntry[] = [
+    {
+      id: 'urn:test:a&b',
+      title: 'Tom & <Jerry>\ud800',
+      content: 'Books by "Tom" & co',
+      path: '/opds/authors/T',
+      kind: 'navigation'
+    },
+    {
+      id: 'urn:test:b',
+      title: 'Plain',
+      content: 'A list',
+      path: '/opds/authors/T/x',
+      kind: 'acquisition'
+    }
+  ]
+  const build = (extra: Partial<Parameters<typeof buildNavigationFeed>[1]> = {}): string =>
+    buildNavigationFeed(ctx, {
+      id: 'urn:test:nav',
+      title: 'Authors',
+      selfPath: '/opds/authors',
+      entries,
+      ...extra
+    })
+
+  it('is a navigation feed whose entries carry subsection links typed by kind, escaped', () => {
+    const xml = build()
+    expect(OPDS_NAV_PAGE_SIZE).toBe(200)
+    expect(xml).toContain(
+      `<link rel="self" href="${ctx.baseUrl}/opds/authors" type="${OPDS_NAV_TYPE}"/>`
+    )
+    expect(xml).toContain('<id>urn:test:a&amp;b</id>')
+    expect(xml).toContain('<title>Tom &amp; &lt;Jerry&gt;</title>')
+    expect(xml).toContain('<content type="text">Books by &quot;Tom&quot; &amp; co</content>')
+    expect(xml).toContain(
+      `<link rel="subsection" href="${ctx.baseUrl}/opds/authors/T" type="${OPDS_NAV_TYPE}"/>`
+    )
+    expect(xml).toContain(
+      `<link rel="subsection" href="${ctx.baseUrl}/opds/authors/T/x" type="${OPDS_ACQ_TYPE}"/>`
+    )
+    expect(xml).not.toContain('rel="next"')
+    expect(xml).not.toContain('rel="previous"')
+    expect(xml).not.toContain('opensearch:totalResults')
+    expect(balanced(xml)).toBe(true)
+  })
+
+  it('carries next and previous from a window, and totalResults only when given', () => {
+    const window = { page: 2, offset: 200, limit: 200, hasNext: true, hasPrev: true }
+    const xml = build({ window, total: 450 })
+    expect(xml).toContain(
+      `<link rel="previous" href="${ctx.baseUrl}/opds/authors?page=1" type="${OPDS_NAV_TYPE}"/>`
+    )
+    expect(xml).toContain(
+      `<link rel="next" href="${ctx.baseUrl}/opds/authors?page=3" type="${OPDS_NAV_TYPE}"/>`
+    )
+    expect(xml).toContain('<opensearch:totalResults>450</opensearch:totalResults>')
+    const q = build({ window, selfPath: '/opds/titles?q=a' })
+    expect(q).toContain('href="http://100.64.0.1:8789/opds/titles?q=a&amp;page=3"')
+    expect(q).not.toContain('opensearch:totalResults')
+  })
+
+  it('emits an encoded path attribute-escaped and otherwise unchanged', () => {
+    const xml = build({
+      entries: [
+        {
+          id: 'urn:x',
+          title: 'X',
+          content: 'c',
+          path: '/opds/authors/a%2Fb%26c',
+          kind: 'navigation'
+        }
+      ]
+    })
+    expect(xml).toContain('href="http://100.64.0.1:8789/opds/authors/a%2Fb%26c"')
+  })
+
+  it('honours an entry rel override', () => {
+    const xml = build({
+      entries: [
+        { id: 'urn:x', title: 'X', content: 'c', path: '/p', kind: 'acquisition', rel: 'r' }
+      ]
+    })
+    expect(xml).toContain('<link rel="r" href="http://100.64.0.1:8789/p"')
   })
 })
 

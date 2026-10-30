@@ -177,22 +177,112 @@ function header(
   )
 }
 
+/** Entries per page of a name list (authors, series, title buckets); an entry is tiny, so this is far above `OPDS_PAGE_SIZE`. */
+export const OPDS_NAV_PAGE_SIZE = 200
+
+/** One row of a navigation feed. `path` is absolute-from-root and already percent-encoded; `kind` is what it leads to. */
+export type NavEntry = {
+  id: string
+  title: string
+  content: string
+  path: string
+  kind: 'navigation' | 'acquisition'
+  /** Defaults to `subsection`. */
+  rel?: string
+}
+
+function navEntry(ctx: FeedContext, entry: NavEntry): string {
+  const type = entry.kind === 'navigation' ? OPDS_NAV_TYPE : OPDS_ACQ_TYPE
+  return (
+    `<entry>\n<id>${escapeXml(entry.id)}</id>\n<title>${escapeXml(entry.title)}</title>\n<updated>${escapeXml(rfc3339(ctx.now) ?? EPOCH)}</updated>\n` +
+    `<content type="text">${escapeXml(entry.content)}</content>\n${link(entry.rel ?? 'subsection', `${ctx.baseUrl}${entry.path}`, type)}\n</entry>\n`
+  )
+}
+
 export function buildRootFeed(ctx: FeedContext): string {
-  const nav = (id: string, title: string, path: string, content: string, rel: string): string =>
-    `<entry>\n<id>${escapeXml(id)}</id>\n<title>${escapeXml(title)}</title>\n<updated>${escapeXml(rfc3339(ctx.now) ?? EPOCH)}</updated>\n` +
-    `<content type="text">${escapeXml(content)}</content>\n${link(rel, `${ctx.baseUrl}${path}`, OPDS_ACQ_TYPE)}\n</entry>\n`
+  const entries: NavEntry[] = [
+    {
+      id: 'urn:musaeum:opds:new',
+      title: 'Newest',
+      content: 'Recently added books',
+      path: '/opds/new',
+      kind: 'acquisition',
+      rel: 'http://opds-spec.org/sort/new'
+    },
+    {
+      id: 'urn:musaeum:opds:unread',
+      title: 'Unread',
+      content: 'Books you have not read yet',
+      path: '/opds/unread',
+      kind: 'acquisition'
+    },
+    {
+      id: 'urn:musaeum:opds:authors',
+      title: 'Authors',
+      content: 'Browse by author',
+      path: '/opds/authors',
+      kind: 'navigation'
+    },
+    {
+      id: 'urn:musaeum:opds:series',
+      title: 'Series',
+      content: 'Browse by series',
+      path: '/opds/series',
+      kind: 'navigation'
+    },
+    {
+      id: 'urn:musaeum:opds:titles',
+      title: 'Titles',
+      content: 'Browse by title',
+      path: '/opds/titles',
+      kind: 'navigation'
+    },
+    {
+      id: 'urn:musaeum:opds:all',
+      title: 'All books',
+      content: 'Every book, by title',
+      path: '/opds/all',
+      kind: 'acquisition'
+    }
+  ]
   return (
     header(ctx, 'urn:musaeum:opds:root', 'Musaeum', `${ctx.baseUrl}/opds`, OPDS_NAV_TYPE) +
-    nav(
-      'urn:musaeum:opds:new',
-      'Newest',
-      '/opds/new',
-      'Recently added books',
-      'http://opds-spec.org/sort/new'
-    ) +
-    nav('urn:musaeum:opds:all', 'All books', '/opds/all', 'Every book, by title', 'subsection') +
+    entries.map((e) => navEntry(ctx, e)).join('') +
     '</feed>\n'
   )
+}
+
+/** A feed of links to other feeds. `window` (when paged) carries next/previous; `total` is advertised only when known. */
+export function buildNavigationFeed(
+  ctx: FeedContext,
+  opts: {
+    id: string
+    title: string
+    selfPath: string
+    entries: NavEntry[]
+    total?: number
+    window?: PageWindow
+  }
+): string {
+  const { window } = opts
+  const href = (page: number): string => `${ctx.baseUrl}${withPage(opts.selfPath, page)}`
+  let out = header(
+    ctx,
+    opts.id,
+    opts.title,
+    window ? href(window.page) : `${ctx.baseUrl}${opts.selfPath}`,
+    OPDS_NAV_TYPE
+  )
+  if (opts.total !== undefined) {
+    out += `<opensearch:totalResults>${opts.total}</opensearch:totalResults>\n`
+  }
+  if (window) {
+    out += `<opensearch:itemsPerPage>${window.limit}</opensearch:itemsPerPage>\n`
+    if (window.hasPrev) out += link('previous', href(window.page - 1), OPDS_NAV_TYPE) + '\n'
+    if (window.hasNext) out += link('next', href(window.page + 1), OPDS_NAV_TYPE) + '\n'
+  }
+  for (const entry of opts.entries) out += navEntry(ctx, entry)
+  return out + '</feed>\n'
 }
 
 function buildEntry(ctx: FeedContext, book: Book): string {
