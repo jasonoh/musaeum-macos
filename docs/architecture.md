@@ -55,7 +55,7 @@ Python Sidecar (spawned by main process)
 └── AZW3 conversion (in-house writer)
 ```
 
-**The second listener.** `electron/main/api/opds.ts` is an OPDS 1.2 catalog (Atom/XML, `/opds`, `/opds/new`, `/opds/all`, `/opds/search`, plus cover and book byte routes) on its own flag, port (default 8789) and token, authenticated by HTTP Basic with the fixed username `musaeum`. It is the same shape as the REST listener, a thin `node:http` socket over services, and shares its bind rule (`services/api/bind.ts`: loopback or tailnet, never LAN), its constant-time compare and `services/book-bytes.ts`'s containment, but not its lifecycle code: that is a deliberate parallel, because `api/rest.ts` is large and its tests forbid binding the real tailnet. Pages and search go through `db.getBooksPage` / `db.searchBooksPage`, the feed's XML through `services/opds/feed.ts`. Rules: `docs/invariants/settings-and-editing.md` → _The OPDS keys_; design: `docs/superpowers/specs/2026-09-19-opds-catalog-design.md`.
+**The second listener.** `electron/main/api/opds.ts` is an OPDS 1.2 catalog (Atom/XML, `/opds`, `/opds/new`, `/opds/all`, `/opds/search`, the browse tree `/opds/unread`, `/opds/authors`, `/opds/series`, `/opds/titles` with `/opds/by-author/{name}` and `/opds/by-series/{name}` beneath them, plus cover and book byte routes) on its own flag, port (default 8789) and token, authenticated by HTTP Basic with the fixed username `musaeum`. It is the same shape as the REST listener, a thin `node:http` socket over services, and shares its bind rule (`services/api/bind.ts`: loopback or tailnet, never LAN), its constant-time compare and `services/book-bytes.ts`'s containment, but not its lifecycle code: that is a deliberate parallel, because `api/rest.ts` is large and its tests forbid binding the real tailnet. Pages and search go through `db.getBooksPage` / `db.searchBooksPage`, the feed's XML through `services/opds/feed.ts`. Rules: `docs/invariants/settings-and-editing.md` → _The OPDS keys_; design: `docs/superpowers/specs/2026-09-19-opds-catalog-design.md`.
 
 ---
 
@@ -143,7 +143,9 @@ Musaeum/
 │   │   │   │   └── shape.ts      #   THE wire's payloads — pure, one place (D10)
 │   │   │   ├── opds/             # the OPDS catalog's pure halves
 │   │   │   │   ├── feed.ts       #   Atom builders, OPDS_PAGE_SIZE
+│   │   │   │   ├── browse.ts     #   the browse tree's route matcher and feed server
 │   │   │   │   └── basic-auth.ts #   the Basic credential check
+│   │   │   ├── initials.ts       # A–Z / # bucket helper for the OPDS browse tree
 │   │   │   ├── book-bytes.ts     # book + cover path resolution, containment, byte ranges
 │   │   │   ├── reading-state.ts  # tiered position writes + quit flush
 │   │   │   ├── quit.ts           # before-quit handshake (flush, then teardown)

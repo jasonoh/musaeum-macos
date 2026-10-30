@@ -1,6 +1,6 @@
 # Design: OPDS catalog server (delivery to a second device)
 
-**Date:** 2026-09-19 · **Amended 2026-10-29** **Status:** **Approved to build (O1 first) — 2026-10-29.** The precondition fired (see _Amendment 2026-10-29_ below). Read that section before the rest: it supersedes D4, the _Security_ section's bind rules, AC2.10 and AC2.14 where they differ. **Scope:** an OPDS 1.2 catalog served by the running app, so another device can browse and download the library without a browser, a sync client, or a second copy of the books. **Related:** the iOS/REST contract staged at `electron/main/api/rest.ts` (a different consumer — see D3). The reader (`specs/2026-08-13-native-reader-design.md`) is unrelated but shares the containment rule this feature must reuse.
+**Date:** 2026-09-19 · **Amended 2026-10-29** **Status:** **Approved to build (O1 first) — 2026-10-29; O1 and O2 built (2026-10-29), O2's shape in _Amendment 2_.** The precondition fired (see _Amendment 2026-10-29_ below). Read that section before the rest: it supersedes D4, the _Security_ section's bind rules, AC2.10 and AC2.14 where they differ. **Scope:** an OPDS 1.2 catalog served by the running app, so another device can browse and download the library without a browser, a sync client, or a second copy of the books. **Related:** the iOS/REST contract staged at `electron/main/api/rest.ts` (a different consumer — see D3). The reader (`specs/2026-08-13-native-reader-design.md`) is unrelated but shares the containment rule this feature must reuse.
 
 ---
 
@@ -32,6 +32,17 @@ If the trigger fires, this spec is actionable as written. If it does not, the co
 **Recorded call (O1 build, 2026-10-29): the page size is 80, which is above this document's "a few dozen".** `OPDS_PAGE_SIZE = 80` in `services/opds/feed.ts`. Measured: the worst-case 100-book page was 592,921 bytes, over the 500 KB target; an 80-entry page is under it, and 80 is the largest multiple of 10 that is. Pagination needed no new `LIMIT`/`OFFSET`: `db.getBooksPage` and `db.searchBooksPage` already carry a window.
 
 **What remains the builder's call:** the page-size constant (measure against < 500 KB per page), the summary truncation length, and whether pagination needs a new `LIMIT`/`OFFSET` in the existing query builder (check first; add it _to_ the builder if so).
+
+## Amendment 2 — 2026-10-29: the O2 shape
+
+O2 was built on branch `worktree-feat-opds-o2` (plan `docs/superpowers/plans/2026-10-29-opds-o2.md`). The O2 route table below (_Routes (slice O2 — browse tree)_) is **superseded** by the one in that section as now written; four calls shaped it.
+
+- **Call 1 — two levels, not one.** The spec's `/opds/authors/{letter}` was an acquisition feed of every book under a letter (about 270 books under "S"), which is the long-list problem one level down. A letter now opens a navigation feed of names with book counts (`/opds/authors/{slug}`, `/opds/series/{slug}`), and a name opens that author's or series' books (`/opds/by-author/{name}`, `/opds/by-series/{name}`). The spec's shape is a subset of this one. Cost if wrong: one extra tap.
+- **Call 2 — Titles A–Z is added** (`/opds/titles`, `/opds/titles/{slug}`): the only fix for "All" itself, which stays as the complete list that search runs against.
+- **Call 3 — Unread means the app's `unread` status only** (`readStatus: ['unread']`), not the spec table's `read_status != 'read'`: AC2.18 says it must equal `getFacets().readStatus`'s unread count, and that count excludes `reading`. Cost if wrong: books marked `reading` are absent from Unread; they are one tap away in All.
+- **Call 4 — a name is the exact stored string.** "Neil Gaiman & Terry Pratchett" is its own author entry (the sidebar facet's rule). Splitting co-authors is a later decision (`splitAuthors` exists). Books with no author or no series are not in those trees; they are in All, Titles and Search.
+
+Buckets are A–Z or `#`, spelled `other` in URLs; a name's bucket is computed per name from its sort key (`services/initials.ts`, `db.listNamesByInitial`). Name lists are paged at 200 (`OPDS_NAV_PAGE_SIZE`), book pages stay at 80. Known limits: `docs/invariants/settings-and-editing.md` → _Known limits (O2)_.
 
 ---
 
@@ -83,12 +94,19 @@ electron/main/index.ts            startOpdsIfEnabled() next to startRestApiIfEna
 
 ### Routes (slice O2 — browse tree)
 
-| Route                                               | Kind                                                 |
-| --------------------------------------------------- | ---------------------------------------------------- |
-| `GET /opds/authors`                                 | Navigation Feed of letters A–Z, `Other` for the rest |
-| `GET /opds/authors/{letter}?page=N`                 | Acquisition Feed                                     |
-| `GET /opds/series` → `/opds/series/{letter}?page=N` | same shape                                           |
-| `GET /opds/unread?page=N`                           | Acquisition Feed over `read_status != 'read'`        |
+Shape as built, per _Amendment 2_ (this supersedes the original table).
+
+| Route                                     | Kind                                                                               |
+| ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /opds/unread?page=N`                 | Acquisition Feed over the app's `unread` status only                               |
+| `GET /opds/authors`                       | Navigation Feed of letters A–Z, `#` (slug `other`) for the rest                    |
+| `GET /opds/authors/{slug}?page=N`         | Navigation Feed of author names under that letter, with book counts (pages of 200) |
+| `GET /opds/by-author/{name}?page=N`       | Acquisition Feed of that author's books                                            |
+| `GET /opds/series`, `/opds/series/{slug}` | same shape, names are series                                                       |
+| `GET /opds/by-series/{name}?page=N`       | Acquisition Feed of that series' books                                             |
+| `GET /opds/titles`, `/opds/titles/{slug}` | Navigation Feed of letters, then an Acquisition Feed of the books under a letter   |
+
+The root lists Newest, Unread, Authors, Series, Titles and All books.
 
 `new` and `all` are not a browse tree, they are the two things a client needs to be _useful_: something to fetch (new) and something complete to search within (all). O2 is what makes it pleasant. Splitting here keeps each slice inside `CLAUDE.md`'s file bound.
 
