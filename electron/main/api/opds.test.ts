@@ -1174,6 +1174,18 @@ describe('the browse tree', () => {
     expect(res.headers.get('retry-after')).toBeTruthy()
   })
 
+  it('answers a failing browse query with the uniform 500, and serves the next request', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(db.getBooksPage).mockImplementationOnce(() => {
+      throw new Error('boom')
+    })
+    const res = await get('/opds/titles/D')
+    expect(res.status).toBe(500)
+    expect(await res.text()).toBe('internal error')
+    warn.mockRestore()
+    expect((await get('/opds/titles')).status).toBe(200)
+  })
+
   it('serves the tree while the share is offline', async () => {
     vi.mocked(nas.isOnline).mockReturnValue(false)
     for (const path of BROWSE) expect((await get(path)).status).toBe(200)

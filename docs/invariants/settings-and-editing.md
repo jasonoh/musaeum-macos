@@ -74,6 +74,7 @@ Three keys — `ai_base_url`, `ai_model`, `ai_api_key` — with two rules of the
 - **Books with no author or no series are outside those trees.** They are reachable through All, Titles A–Z and Search.
 - **`#` collects what has no Latin initial.** A letter with no Unicode decomposition (e.g. Ł) and any name whose sort key starts with a digit or a non-Latin script (e.g. "Zed 000", whose sort key is "000, Zed") buckets under `#`.
 - **`?page=` is ignored on the unpaged letters feeds** (the Authors, Series and Titles roots).
+- **An author or series named exactly `.` or `..` is unreachable.** It is listed under `#`, but the client's URL parser resolves the dot segment before the request is made; fixing it would need a new name encoding on the wire.
 - **Unread excludes books marked `reading`.** The feed equals the app's `unread` count; a `reading` book is in All.
 
 ---

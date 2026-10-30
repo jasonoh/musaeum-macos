@@ -4,6 +4,7 @@ import {
   getBooksPage,
   listNamesByInitial,
   type BookPage,
+  type DbBookFilters,
   type NameKind
 } from '../db'
 import { BUCKETS, bucketFromSlug, bucketSlug, type Bucket } from '../initials'
@@ -88,17 +89,32 @@ const NAME_KIND: Record<'authors' | 'series', NameKind> = { authors: 'author', s
 
 type Served = { status: 200; type: string; body: string } | { status: 400 }
 
+/**
+ * The probe-then-real window logic every paged feed shares: validate `?page=` and size the query
+ * with a zero-total window, run it, then window again with the real total. `null` means a bad
+ * `?page=` (a 400); a page past the end is a normal result with no entries.
+ */
+export function pageThrough<T extends { total: number }>(
+  rawPage: string | null,
+  query: (window: PageWindow) => T,
+  size?: number
+): { result: T; window: PageWindow } | null {
+  const probe = pageWindow(rawPage, 0, size)
+  if (!probe) return null
+  const result = query(probe)
+  const window = pageWindow(rawPage, result.total, size) as PageWindow
+  return { result, window }
+}
+
 function acquisition(
   ctx: FeedContext,
   rawPage: string | null,
   feed: { id: string; title: string; selfPath: string },
   query: (window: PageWindow) => BookPage
 ): Served {
-  // Asked twice, as `api/opds.ts` always has: once to validate and size the query, once with the total
-  const probe = pageWindow(rawPage, 0)
-  if (!probe) return { status: 400 }
-  const page = query(probe)
-  const window = pageWindow(rawPage, page.total) as PageWindow
+  const paged = pageThrough(rawPage, query)
+  if (!paged) return { status: 400 }
+  const { result: page, window } = paged
   return {
     status: 200,
     type: OPDS_ACQ_TYPE,
@@ -140,13 +156,14 @@ function names(
   bucket: Bucket,
   rawPage: string | null
 ): Served {
-  const probe = pageWindow(rawPage, 0, OPDS_NAV_PAGE_SIZE)
-  if (!probe) return { status: 400 }
-  const { names: rows, total } = listNamesByInitial(NAME_KIND[tree], bucket, {
-    limit: probe.limit,
-    offset: probe.offset
-  })
-  const window = pageWindow(rawPage, total, OPDS_NAV_PAGE_SIZE) as PageWindow
+  const paged = pageThrough(
+    rawPage,
+    (w) => listNamesByInitial(NAME_KIND[tree], bucket, { limit: w.limit, offset: w.offset }),
+    OPDS_NAV_PAGE_SIZE
+  )
+  if (!paged) return { status: 400 }
+  const { names: rows, total } = paged.result
+  const { window } = paged
   const target = tree === 'authors' ? 'by-author' : 'by-series'
   const entries: NavEntry[] = rows.map((r) => ({
     id: `urn:musaeum:opds:${target}:${encodeName(r.name)}`,
@@ -171,7 +188,7 @@ function names(
 
 /** Query and build the feed for a matched route. `rawPage` is the `?page=` value, or `null` when absent. */
 export function serveBrowse(route: BrowseRoute, ctx: FeedContext, rawPage: string | null): Served {
-  const at = (filters: BookFilters & { titleInitial?: Bucket }) => (w: PageWindow) =>
+  const at = (filters: DbBookFilters) => (w: PageWindow) =>
     getBooksPage(filters, { limit: w.limit, offset: w.offset })
 
   switch (route.kind) {
