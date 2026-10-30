@@ -38,6 +38,7 @@ Import once, let the metadata fill itself in, read the books, and send them to a
 | 🗂️ **Library**           | Built for 7,000+ books          | Virtualized grid and list, full-text search in about 18 ms, facets, six sorts, bulk actions.                                                                                                                                                 |
 | 📖 **Reader**            | EPUB, MOBI, AZW3 and PDF in-app | Search inside the book, an optional Ask panel pointed at a model you choose, and a reading position that follows you between machines. A PDF-only book is prepared into a readable EPUB on demand, and its original PDF is one gesture away. |
 | 📲 **Kindle**            | Over USB                        | Knows what's already on the device, converts to AZW3 on demand, and says what a send actually did.                                                                                                                                           |
+| 📟 **E-readers**         | OPDS over Tailscale             | Browse by author, series, title or unread, search, and download from KOReader or Librera on an e-ink reader, at home or away. Off by default, tailnet-only, behind a token.                                                                  |
 | 💾 **Storage**           | A share, a drive or a folder    | A NAS gets mount recovery and an offline read-only cache; a plain folder doesn't pretend a server exists.                                                                                                                                    |
 | 🎨 **Theming**           | A dark library, in your colors  | Import a base16, iTerm2 or Obsidian palette. Contrast floors are enforced, and a palette that can't hold them is refused.                                                                                                                    |
 | 📚 **Calibre migration** | Read-only                       | Copy a Calibre library across with progress. Nothing in Calibre is ever deleted.                                                                                                                                                             |
@@ -70,11 +71,11 @@ Musaeum is one person's Mac app, so the servers beat it on reach and Calibre bea
 | **Multi-user**             | ❌                                  | ⚠️ Content server      | ✅                        | ✅             | ✅               | ✅            |
 | **Automatic metadata**     | ✅ With a review queue              | ✅                     | ✅                        | ✅             | ⚠️ Paid Kavita+  | ❔            |
 | **Reads in-app**           | ✅ EPUB, MOBI, AZW3, PDF (reflowed) | ✅                     | ✅ Browser                | ✅             | ✅               | ✅            |
-| **Annotations**            | ❌                                  | ✅                     | ❔                        | ✅             | ✅               | ❔            |
+| **Annotations**            | ⚠️ Highlights and notes, Mac only   | ✅                     | ❔                        | ✅             | ✅               | ❔            |
 | **Comics and manga**       | ❌                                  | ⚠️                     | ❔                        | ✅             | ✅               | ✅            |
 | **Audiobooks**             | ❌                                  | ❔                     | ❔                        | ✅             | ❌               | ❌            |
 | **Kindle**                 | ✅ USB, judged by content           | ✅                     | ✅ Auto-send              | ❔             | ❔               | ❔            |
-| **Kobo / KOReader / OPDS** | ❌                                  | ❔                     | ✅                        | ✅             | ✅               | ✅            |
+| **Kobo / KOReader / OPDS** | ⚠️ OPDS over Tailscale, no sync     | ❔                     | ✅                        | ✅             | ✅               | ✅            |
 | **iPhone app**             | ⚠️ Build from source                | ❔                     | ❔                        | ✅ App Store   | ❔               | ❔            |
 | **License**                | MIT                                 | GPL-3.0                | GPL-3.0                   | AGPL-3.0       | GPL-3.0          | MIT           |
 
@@ -115,13 +116,22 @@ A companion iPhone app lives in [its own repository](https://github.com/jasonoh/
 - Switch on **Settings → Phone access**, then enter the URL and token on the phone.
 - [`docs/rest-api.md`](docs/rest-api.md) is the one document that owns the wire; the iOS repo derives its test fixtures from it.
 
+## 📟 E-readers (OPDS)
+
+Musaeum can serve its library to an e-reader as an OPDS catalog, so a Boox or any device running KOReader or Librera can browse, search and download without BooxDrop or a cable. It has been used on a Boox Palma with KOReader.
+
+- **Off by default, and tailnet-only.** It binds the Mac's Tailscale address (or loopback), never the home network, and asks for the username `musaeum` and a generated token. The device needs Tailscale too, which is what makes it work away from home.
+- Switch on **Settings → Device access (OPDS)**, then type the URL Settings shows (it ends in `/opds`) into the reader's OPDS catalog list, with the username and token.
+- The catalog offers Newest, Unread, Authors, Series and Titles (each a letter, then names, then books), the whole library in pages, and search. It does not carry reading position or sync; that is the REST API's job for the phone.
+- Design and limits: [`docs/superpowers/specs/2026-09-19-opds-catalog-design.md`](docs/superpowers/specs/2026-09-19-opds-catalog-design.md) and `docs/invariants/settings-and-editing.md` → _Known limits_.
+
 ## 🧭 Where it stands
 
 Musaeum is the app its author uses daily, against a real 7,000-book library and a real Kindle. It is a single-user tool, not a product with a support desk.
 
 - ✅ The full loop works: **import → hydrate → curate → read → send**, plus the iOS companion.
 - ⚠️ It is an **Electron** app, not a native one: macOS-only (arm64 build), single-user, and **unsigned** for now.
-- ⚠️ No annotations or highlights, no bulk metadata edit, no OPDS, no auto-update.
+- ⚠️ No bulk metadata edit and no auto-update. Highlights and notes exist in the reader but are not on the phone or the e-reader yet, and OPDS carries no reading position or sync.
 - ✅ **Kindle sends convert in-house.** EPUB → AZW3 is the app's own writer, so no Calibre binary is installed, detected or required; Calibre's _library_ is still readable for a migration, and nothing is ever deleted from it.
 - 🔬 Verification is layered: well over a thousand vitest cases, a pytest suite for the sidecar, strict TypeScript, and CI on every push.
 
@@ -129,19 +139,20 @@ Musaeum is the app its author uses daily, against a real 7,000-book library and 
 
 ## 📚 Documentation
 
-| Document                                                                                       | What's in it                                                                                                              |
-| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| [`docs/getting-started.md`](docs/getting-started.md)                                           | Requirements, first launch, the Google Books key, tests, packaging                                                        |
-| [`docs/project-overview.md`](docs/project-overview.md)                                         | The design bets, the full feature inventory, what isn't built, and how it compares to Calibre and the self-hosted servers |
-| [`docs/why-i-built-it.md`](docs/why-i-built-it.md)                                             | The story behind it: Calibre, a NAS, and a Kindle that was lying                                                          |
-| [`docs/architecture.md`](docs/architecture.md)                                                 | Process model, directory layout, path aliases, performance targets                                                        |
-| [`docs/data-contracts.md`](docs/data-contracts.md)                                             | `metadata.json`, the SQLite schema, the sidecar RPC, the preload API                                                      |
-| [`docs/rest-api.md`](docs/rest-api.md)                                                         | The HTTP contract the phone is written against                                                                            |
-| [`docs/invariants/`](docs/invariants/)                                                         | One file per subsystem: the rule, the measurement behind it, the rejected alternative                                     |
-| [`docs/how-this-was-built.md`](docs/how-this-was-built.md)                                     | How the project was built and verified                                                                                    |
-| [`tasks.md`](tasks.md) · [`CHANGELOG.md`](CHANGELOG.md) · [`requirements.md`](requirements.md) | The backlog, the history, and the original spec                                                                           |
-| [`docs/roadmap-history.md`](docs/roadmap-history.md)                                           | The shipped record, moved out of `tasks.md` — every landed slice and its numbers                                          |
-| [`CLAUDE.md`](CLAUDE.md)                                                                       | The agent brief: invariants, conventions, and which doc to read before touching what                                      |
+| Document                                                                                                               | What's in it                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/getting-started.md`](docs/getting-started.md)                                                                   | Requirements, first launch, the Google Books key, tests, packaging                                                        |
+| [`docs/project-overview.md`](docs/project-overview.md)                                                                 | The design bets, the full feature inventory, what isn't built, and how it compares to Calibre and the self-hosted servers |
+| [`docs/why-i-built-it.md`](docs/why-i-built-it.md)                                                                     | The story behind it: Calibre, a NAS, and a Kindle that was lying                                                          |
+| [`docs/architecture.md`](docs/architecture.md)                                                                         | Process model, directory layout, path aliases, performance targets                                                        |
+| [`docs/data-contracts.md`](docs/data-contracts.md)                                                                     | `metadata.json`, the SQLite schema, the sidecar RPC, the preload API                                                      |
+| [`docs/rest-api.md`](docs/rest-api.md)                                                                                 | The HTTP contract the phone is written against                                                                            |
+| [`docs/superpowers/specs/2026-09-19-opds-catalog-design.md`](docs/superpowers/specs/2026-09-19-opds-catalog-design.md) | The OPDS catalog for e-readers: design, amendments and acceptance criteria                                                |
+| [`docs/invariants/`](docs/invariants/)                                                                                 | One file per subsystem: the rule, the measurement behind it, the rejected alternative                                     |
+| [`docs/how-this-was-built.md`](docs/how-this-was-built.md)                                                             | How the project was built and verified                                                                                    |
+| [`tasks.md`](tasks.md) · [`CHANGELOG.md`](CHANGELOG.md) · [`requirements.md`](requirements.md)                         | The backlog, the history, and the original spec                                                                           |
+| [`docs/roadmap-history.md`](docs/roadmap-history.md)                                                                   | The shipped record, moved out of `tasks.md` — every landed slice and its numbers                                          |
+| [`CLAUDE.md`](CLAUDE.md)                                                                                               | The agent brief: invariants, conventions, and which doc to read before touching what                                      |
 
 ## 🤖 How this was built
 
