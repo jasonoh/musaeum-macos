@@ -127,13 +127,20 @@ function bookCount(n: number): string {
   return `${n} ${n === 1 ? 'book' : 'books'}`
 }
 
+/**
+ * KOReader renders only a navigation entry's title, so the count rides there as a bare " (n)". Titles only: ids, paths and destination-feed titles keep the plain label.
+ */
+function withCount(label: string, n: number): string {
+  return `${label} (${n})`
+}
+
 /** Unpaged: `?page=` is ignored here, since there is nothing to page. */
 function letters(ctx: FeedContext, tree: 'authors' | 'series' | 'titles'): Served {
   const counts = countBooksByInitial(tree === 'titles' ? 'title' : NAME_KIND[tree])
   const byBucket = new Map(counts.map((c) => [c.bucket, c.count]))
   const entries: NavEntry[] = BUCKETS.filter((b) => (byBucket.get(b) ?? 0) > 0).map((b) => ({
     id: `urn:musaeum:opds:${tree}:${bucketSlug(b)}`,
-    title: b,
+    title: withCount(b, byBucket.get(b) ?? 0),
     content: bookCount(byBucket.get(b) ?? 0),
     path: `/opds/${tree}/${bucketSlug(b)}`,
     kind: tree === 'titles' ? 'acquisition' : 'navigation'
@@ -167,7 +174,7 @@ function names(
   const target = tree === 'authors' ? 'by-author' : 'by-series'
   const entries: NavEntry[] = rows.map((r) => ({
     id: `urn:musaeum:opds:${target}:${encodeName(r.name)}`,
-    title: r.name,
+    title: withCount(r.name, r.count),
     content: bookCount(r.count),
     path: `/opds/${target}/${encodeName(r.name)}`,
     kind: 'acquisition'

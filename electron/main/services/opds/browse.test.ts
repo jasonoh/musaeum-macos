@@ -180,7 +180,7 @@ describe('letters (Review Focus 4)', () => {
     )
     expect(counts.reduce((a, b) => a + b, 0)).toBe(3)
     expect(subsectionPaths(xml)).toEqual(['/opds/authors/A', '/opds/authors/D'])
-    expect(xml).not.toContain('<title>#</title>')
+    expect(xml).not.toContain('<title>#')
   })
 
   it('says "1 book" for a single book and "2 books" for more', () => {
@@ -199,7 +199,7 @@ describe('letters (Review Focus 4)', () => {
     addBook('One', { author: 'Alice A' })
     addBook('Two', { author: '2Pac' })
     const xml = ok({ kind: 'letters', tree: 'authors' })
-    expect(xml).toContain('<title>#</title>')
+    expect(xml).toContain('<title># (1)</title>')
     expect(subsectionPaths(xml)).toContain('/opds/authors/other')
   })
 
@@ -214,6 +214,44 @@ describe('letters (Review Focus 4)', () => {
 
   it('an empty library has a letters feed with no entries', () => {
     expect(subsectionPaths(ok({ kind: 'letters', tree: 'series' }))).toEqual([])
+  })
+})
+
+describe('counts in titles (KOReader shows only the title)', () => {
+  const titles = (xml: string): string[] =>
+    [...xml.matchAll(/<entry>[\s\S]*?<title>([^<]*)<\/title>/g)].map((m) => unescape(m[1]!))
+
+  it('letters read "A (n)" with a bare number, and # stays "#"', () => {
+    addBook('One', { author: 'Alice A' })
+    addBook('Two', { author: 'Alan A' })
+    addBook('Three', { author: '2Pac' })
+    expect(titles(ok({ kind: 'letters', tree: 'authors' }))).toEqual(['A (2)', '# (1)'])
+  })
+
+  it('names read "Name (n)" as stored, a single book is (1), and the destination feed title is bare', () => {
+    addBook('One', { author: 'Gaiman, Neil' })
+    addBook('Two', { author: 'Gaiman, Neil' })
+    addBook('Three', { author: 'Gale, Solo' })
+    expect(titles(ok({ kind: 'names', tree: 'authors', bucket: 'G' }))).toEqual([
+      'Gaiman, Neil (2)',
+      'Gale, Solo (1)'
+    ])
+    expect(ok({ kind: 'by-author', name: 'Gaiman, Neil' })).toContain('<title>Gaiman, Neil</title>')
+  })
+
+  it('a one-book series reads (1)', () => {
+    addBook('One', { author: 'Ann', series: 'Orchard' })
+    expect(titles(ok({ kind: 'names', tree: 'series', bucket: 'O' }))).toEqual(['Orchard (1)'])
+  })
+
+  it('a name already ending in parentheses keeps its path', () => {
+    for (let i = 0; i < 3; i++) addBook(`T${i}`, { author: 'Foo (2)' })
+    const xml = ok({ kind: 'names', tree: 'authors', bucket: '#' })
+    expect(titles(xml)).toEqual(['Foo (2) (3)'])
+    expect(matchBrowsePath(subsectionPaths(xml)[0]!)).toEqual({
+      kind: 'by-author',
+      name: 'Foo (2)'
+    })
   })
 })
 

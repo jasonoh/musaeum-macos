@@ -1170,6 +1170,19 @@ describe('the browse tree', () => {
     expect(books.xml).toContain('<title>Dune</title>')
   })
 
+  it('puts counts in navigation entry titles on the wire, and leaves ids, paths and feed titles bare', async () => {
+    const letters = await walk('/opds/authors')
+    expect(letters.xml).toContain('<title>H (1)</title>')
+    expect(letters.xml).toContain('<id>urn:musaeum:opds:authors:H</id>')
+    const names = await walk('/opds/authors/H')
+    expect(names.xml).toContain('<title>Frank Herbert (1)</title>')
+    expect(names.links).toEqual(['/opds/by-author/Frank%20Herbert'])
+    const series = await walk('/opds/series/D')
+    expect(series.xml).toContain('<title>Dune Chronicles (1)</title>')
+    const books = await walk('/opds/by-author/Frank%20Herbert')
+    expect(books.xml).toContain('<title>Frank Herbert</title>')
+  })
+
   it('serves the unread feed without the read book', async () => {
     const { xml } = await walk('/opds/unread')
     expect(entryIds(xml)).toEqual(['dune-1'])
