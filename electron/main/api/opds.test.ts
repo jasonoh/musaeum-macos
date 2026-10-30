@@ -1139,6 +1139,37 @@ describe('the browse tree', () => {
     )
   })
 
+  it('reaches a seeded series book from the root using only links found in the XML', async () => {
+    const rootFeed = await walk('/opds')
+    const series = rootFeed.links.find((l) => l === '/opds/series')
+    expect(series).toBeDefined()
+
+    const letters = await walk(series!)
+    const letter = letters.links.find((l) => l.endsWith('/D'))
+    expect(letter).toBeDefined()
+
+    const names = await walk(letter!)
+    expect(names.links).toEqual(['/opds/by-series/Dune%20Chronicles'])
+
+    const books = await walk(names.links[0]!)
+    expect(entryIds(books.xml)).toEqual(['dune-1'])
+    expect(books.xml).toContain('<title>Dune</title>')
+  })
+
+  it('reaches a seeded book from the root through the Titles letters', async () => {
+    const rootFeed = await walk('/opds')
+    const titles = rootFeed.links.find((l) => l === '/opds/titles')
+    expect(titles).toBeDefined()
+
+    const letters = await walk(titles!)
+    const letter = letters.links.find((l) => l.endsWith('/D'))
+    expect(letter).toBeDefined()
+
+    const books = await walk(letter!)
+    expect(entryIds(books.xml)).toEqual(['dune-1'])
+    expect(books.xml).toContain('<title>Dune</title>')
+  })
+
   it('serves the unread feed without the read book', async () => {
     const { xml } = await walk('/opds/unread')
     expect(entryIds(xml)).toEqual(['dune-1'])

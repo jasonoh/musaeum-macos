@@ -206,6 +206,13 @@ describe('buildNavigationFeed', () => {
     expect(q).not.toContain('opensearch:totalResults')
   })
 
+  it('carries itemsPerPage equal to the window limit', () => {
+    const window = pageWindow(null, 450, OPDS_NAV_PAGE_SIZE)!
+    const xml = build({ window, total: 450 })
+    expect(window.limit).toBe(200)
+    expect(xml).toContain('<opensearch:itemsPerPage>200</opensearch:itemsPerPage>')
+  })
+
   it('emits an encoded path attribute-escaped and otherwise unchanged', () => {
     const xml = build({
       entries: [

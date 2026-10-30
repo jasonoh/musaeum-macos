@@ -4,7 +4,15 @@ import { app } from 'electron'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { sortableAuthor, sortableTitle, type ReadStatus } from '@shared/book.types'
 import { makeBook } from '../../../../test/helpers/book'
-import { closeDb, getDb, getFacets, insertBook } from '../db'
+import {
+  closeDb,
+  getBooksPage,
+  getDb,
+  getFacets,
+  insertBook,
+  searchBooksPage,
+  type DbBookFilters
+} from '../db'
 import { matchBrowsePath, serveBrowse, type BrowseRoute } from './browse'
 import { OPDS_NAV_PAGE_SIZE, type FeedContext } from './feed'
 
@@ -302,5 +310,32 @@ describe('ordering and unknown names', () => {
       expect(res.status).toBe(200)
       expect(bookIds((res as { body: string }).body)).toEqual([])
     }
+  })
+})
+
+describe('titleInitial filter (db)', () => {
+  const page = { limit: 50, offset: 0 }
+
+  it('finds a book whose sort_title is NULL through its title', () => {
+    const nul = addBook('Tundra')
+    getDb().prepare('UPDATE books SET sort_title = NULL WHERE id = ?').run(nul)
+    const other = addBook('Apple')
+    const res = getBooksPage({ titleInitial: 'T' }, page)
+    expect(res.books.map((b) => b.id)).toEqual([nul])
+    expect(res.total).toBe(1)
+    expect(getBooksPage({ titleInitial: 'A' }, page).books.map((b) => b.id)).toEqual([other])
+  })
+
+  it('filters the same set through the books.-prefixed join path', () => {
+    const t1 = addBook('Tundra Walk')
+    const t2 = addBook('The Tundra Road')
+    getDb().prepare('UPDATE books SET sort_title = NULL WHERE id = ?').run(t1)
+    addBook('Apple Tundra')
+    const filters: DbBookFilters = { titleInitial: 'T' }
+    const plain = getBooksPage(filters, page)
+    const joined = searchBooksPage('tundra', page, filters)
+    expect(plain.books.map((b) => b.id).sort()).toEqual([t1, t2].sort())
+    expect(joined.books.map((b) => b.id).sort()).toEqual([t1, t2].sort())
+    expect(joined.total).toBe(2)
   })
 })

@@ -30,6 +30,27 @@ it('sends digits, non-Latin scripts and empties to #', () => {
   expect(initialBucket('—')).toBe('#')
 })
 
+it('sends a lone combining mark to #', () => {
+  expect(initialBucket('́')).toBe('#')
+})
+
+it('sends an astral letter to #', () => {
+  expect(initialBucket('\u{1D400}bc')).toBe('#')
+})
+
+// FINDING (opds-tail Task 2 step 1): the plan expects '#', but the emoji and the space are both
+// leading non-alphanumerics, so they are skipped and the first letter is `x` (actual: 'X').
+// Kept as the plan wrote it, marked `fails`, until the owner decides whether plan or behavior is right.
+it.fails('sends emoji-led text to #', () => {
+  expect(initialBucket('😀 x')).toBe('#')
+})
+
+it('folds accented leads and pins that ß is # (it upper-cases to two letters)', () => {
+  expect(initialBucket('élan')).toBe('E')
+  expect(initialBucket('ångström')).toBe('A')
+  expect(initialBucket('ßeta')).toBe('#')
+})
+
 it('lists A-Z then #', () => {
   expect(BUCKETS).toHaveLength(27)
   expect(BUCKETS[0]).toBe('A')
