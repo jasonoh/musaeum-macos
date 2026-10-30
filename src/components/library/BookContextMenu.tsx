@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useDeviceStore } from '@/stores/device.store'
+import { sendStateFor, useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useReaderStore } from '@/stores/reader.store'
@@ -19,6 +19,7 @@ import {
   PencilIcon,
   ReaderIcon,
   RefreshIcon,
+  SendIcon,
   TrashIcon
 } from '@/components/shared/icons'
 import { orderedFormats } from '@shared/book.types'
@@ -65,6 +66,8 @@ export function BookContextMenu() {
   // re-render on every unrelated device-store update
   const devices = useDeviceStore((s) => s.devices)
   const onDevice = useDeviceStore((s) => s.onDevice)
+  const transfers = useDeviceStore((s) => s.transfers)
+  const sendToDevice = useDeviceStore((s) => s.sendToDevice)
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x: target?.x ?? 0, y: target?.y ?? 0 })
 
@@ -253,6 +256,26 @@ export function BookContextMenu() {
           />
         )}
         <div className="my-1 h-px bg-ink-700" />
+        {/* The companion of *Remove from*: offered for each connected device that
+            lacks the book. A finished send counts as present (the scan trails
+            it), and a live one disables the item, as the detail panel's button
+            does — so the same book can't be queued twice. The copy comes off
+            the NAS, hence the online gate; removal needs none. */}
+        {devices
+          .filter((d) => !holding.includes(d) && sendStateFor(transfers, book.id, d.id) !== 'sent')
+          .map((d) => (
+            <MenuItem
+              key={d.id}
+              icon={<SendIcon className="h-3.5 w-3.5" />}
+              label={`Add to ${d.name}`}
+              disabled={!online || sendStateFor(transfers, book.id, d.id) === 'sending'}
+              title={online ? undefined : label}
+              onClick={() => {
+                closeContextMenu()
+                void reportFailure(sendToDevice(book.id, d.id))
+              }}
+            />
+          ))}
         {holding.map((d) => (
           <MenuItem
             key={d.id}
