@@ -12,8 +12,9 @@ import type { AccentSlot, ThemeIr, ThemeVariant } from '@shared/theme.types'
 
 /** `base00`..`base0F`, in the prototype's order — note the uppercase hex letters,
  *  which is also how the curated corpus spells them. */
-export const BASE16_KEYS: string[] = Array.from({ length: 16 }, (_, i) =>
-  `base${i.toString(16).toUpperCase().padStart(2, '0')}`
+export const BASE16_KEYS: string[] = Array.from(
+  { length: 16 },
+  (_, i) => `base${i.toString(16).toUpperCase().padStart(2, '0')}`
 )
 
 export type Base16Scheme = {
@@ -21,9 +22,7 @@ export type Base16Scheme = {
   palette: Record<string, string>
 }
 
-export type Base16ParseResult =
-  | { ok: true; scheme: Base16Scheme }
-  | { ok: false; reason: string }
+export type Base16ParseResult = { ok: true; scheme: Base16Scheme } | { ok: false; reason: string }
 
 /** The four `key: "value"` lines the prototype reads, plus the palette slots. */
 const META_KEYS = ['name', 'author', 'variant', 'system'] as const

@@ -179,8 +179,13 @@ function readExthRecords(rec0: Buffer, headerLength: number): Map<number, string
     // The size covers the type and length fields too, and a record shorter than
     // them would walk backwards through the buffer
     if (size < RECORD_TABLE_ENTRY_BYTES) break
-    const value = rec0.toString('utf8', p + RECORD_TABLE_ENTRY_BYTES, Math.min(p + size, rec0.length))
-    if (kind === EXTH_AUTHOR || kind === EXTH_UUID || kind === EXTH_CDETYPE) records.set(kind, value)
+    const value = rec0.toString(
+      'utf8',
+      p + RECORD_TABLE_ENTRY_BYTES,
+      Math.min(p + size, rec0.length)
+    )
+    if (kind === EXTH_AUTHOR || kind === EXTH_UUID || kind === EXTH_CDETYPE)
+      records.set(kind, value)
     p += size
   }
   return records

@@ -307,9 +307,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
     // this file is `<`, and `NaN < floor` is false, so a NaN that reached one would
     // pass it and ship a theme whose tokens read `#NaNNaN0a`.
     if (!Number.isFinite(measured)) {
-      return reject(
-        malformed('fg', `the ${key} stop measured ${measured} against its backdrop`)
-      )
+      return reject(malformed('fg', `the ${key} stop measured ${measured} against its backdrop`))
     }
     if (measured < floor) {
       return reject(failure(key, measured, floor))
@@ -341,8 +339,7 @@ export function deriveTheme(ir: ThemeIr): DeriveResult {
     hint !== null && contrast(hexToRgb(hint), hexToRgb(ink['900'])) >= 3.0 ? hint : null
   // `max(…, key=chroma)` over the pair keeps the first on a tie, i.e. orange.
   const acc = hexToRgb(
-    hinted ??
-      maxBy([norm['accents.orange'], norm['accents.yellow']], (h) => chroma(hexToRgb(h)))
+    hinted ?? maxBy([norm['accents.orange'], norm['accents.yellow']], (h) => chroma(hexToRgb(h)))
   )
   // The ramp's *emphasis* direction is always toward fg -- the readable end of the
   // axis in both variants -- so 300 stays legible on a light theme too.

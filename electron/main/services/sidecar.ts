@@ -47,7 +47,10 @@ export function onNotification(method: string, handler: (params: unknown) => voi
  * environment so a key set in Settings survives a double-clicked .app, while
  * `infisical run -- npm run dev` still works with nothing configured.
  */
-export function resolveGoogleBooksKey(): { key: string | null; source: 'configured' | 'env' | 'none' } {
+export function resolveGoogleBooksKey(): {
+  key: string | null
+  source: 'configured' | 'env' | 'none'
+} {
   const configured = getConfig('google_books_api_key')
   if (configured) return { key: configured, source: 'configured' }
   const fromEnv = process.env.GOOGLE_BOOKS_API_KEY
@@ -155,7 +158,13 @@ export function restart(): boolean {
 }
 
 function handleMessage(line: string): void {
-  let msg: { id?: string; method?: string; params?: unknown; result?: unknown; error?: { message?: string } | string | null }
+  let msg: {
+    id?: string
+    method?: string
+    params?: unknown
+    result?: unknown
+    error?: { message?: string } | string | null
+  }
   try {
     msg = JSON.parse(line)
   } catch {

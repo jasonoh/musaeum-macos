@@ -340,7 +340,9 @@ function run(cmd: string, args: string[]): Promise<void> {
 
     const timer = setTimeout(() => {
       proc.kill()
-      reject(new Error(`${basename(cmd)} ${args.join(' ')} timed out after ${INSTALL_TIMEOUT_MS}ms`))
+      reject(
+        new Error(`${basename(cmd)} ${args.join(' ')} timed out after ${INSTALL_TIMEOUT_MS}ms`)
+      )
     }, INSTALL_TIMEOUT_MS)
 
     proc.on('error', (err) => {

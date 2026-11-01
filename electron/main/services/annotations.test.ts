@@ -469,7 +469,11 @@ describe('the artifact a cfi points into (AC7, R2, R6)', () => {
     // exists rather than trusted as a digest of something the pass could not have written.
     // This stamp is unusable in exactly one way — it has no version — so the version rule is
     // what has to catch it (the source rule catches the other shapes, above).
-    await fs.writeFile(stampPath('a'), JSON.stringify({ converter: TRIPLE, source: SOURCE }), 'utf8')
+    await fs.writeFile(
+      stampPath('a'),
+      JSON.stringify({ converter: TRIPLE, source: SOURCE }),
+      'utf8'
+    )
     expect((await create(input({ format: 'reflow', cfi: 'cfi-born' }))).created.stale).toBe(true)
     expect((await onDisk('a')).annotations[1]).toMatchObject({
       cfi: 'cfi-born',

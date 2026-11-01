@@ -40,11 +40,13 @@ describe('the reflow route over the real reflow service', () => {
 
   beforeEach(async () => {
     resetForTests()
-    vi.mocked(sidecar.call).mockReset().mockResolvedValue({
-      status: 'fallback',
-      reason: REASON,
-      verdict: 'no_text_layer'
-    } as never)
+    vi.mocked(sidecar.call)
+      .mockReset()
+      .mockResolvedValue({
+        status: 'fallback',
+        reason: REASON,
+        verdict: 'no_text_layer'
+      } as never)
     root = mkdtempSync(join(tmpdir(), 'musaeum-rest-reflow-int-'))
     await nas.setLibraryRoot(root)
     vi.mocked(nas.isOnline).mockReturnValue(true)

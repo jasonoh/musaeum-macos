@@ -162,7 +162,11 @@ export function normalizeHex(
   const raw = (v ?? '').trim()
   if (!/^#[0-9a-fA-F]{3,8}$/.test(raw)) return fallback
   let body = raw.slice(1)
-  if (body.length === 3) body = body.split('').map((c) => c + c).join('')
+  if (body.length === 3)
+    body = body
+      .split('')
+      .map((c) => c + c)
+      .join('')
   // alpha is dropped: surfaces are opaque
   if (body.length === 8) body = body.slice(0, 6)
   if (body.length !== 6) return fallback

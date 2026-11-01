@@ -115,7 +115,9 @@ describe('resolveConflict', () => {
   })
 
   it('throws when the conflict id does not exist', async () => {
-    await expect(resolveConflict(999, { title: 'google_books' })).rejects.toThrow(/Conflict not found/)
+    await expect(resolveConflict(999, { title: 'google_books' })).rejects.toThrow(
+      /Conflict not found/
+    )
   })
 
   it('renames the book files to the resolved title — the third title-settling path', async () => {
@@ -149,7 +151,9 @@ describe('resolveConflict', () => {
 
     await resolveConflict(id, { publisher: 'google_books' })
 
-    expect(upsert).toHaveBeenCalledWith([expect.objectContaining({ id: 'a', publisher: 'Orbit Books' })])
+    expect(upsert).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'a', publisher: 'Orbit Books' })
+    ])
   })
 })
 

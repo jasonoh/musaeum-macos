@@ -997,7 +997,11 @@ describe('the derivation rejects a malformed IR as a value, never a throw', () =
     expect(result.reason.role).toBe('parchment')
 
     // The accepted direction, pinned so the claim cannot drift back to the absolute one.
-    for (const file of ['catppuccin-latte.yaml', 'gruvbox-light-soft.yaml', 'tokyo-night-light.yaml']) {
+    for (const file of [
+      'catppuccin-latte.yaml',
+      'gruvbox-light-soft.yaml',
+      'tokyo-night-light.yaml'
+    ]) {
       const loaded = loadThemeFile(join(BUILTIN, file))
       if (!loaded.ok) throw new Error(`${file} did not load: ${loaded.reason}`)
       const white = deriveTheme(asIr({ ...loaded.ir, bg: '#fff' }))
@@ -1184,7 +1188,15 @@ describe('the derivation rejects a malformed IR as a value, never a throw', () =
     const result = deriveTheme(
       asIr({
         ...loaded.ir,
-        notes: ['kept', 42, { toString: () => { throw new Error('BOOM from toString') } }]
+        notes: [
+          'kept',
+          42,
+          {
+            toString: () => {
+              throw new Error('BOOM from toString')
+            }
+          }
+        ]
       })
     )
     expect(result.ok).toBe(true)
