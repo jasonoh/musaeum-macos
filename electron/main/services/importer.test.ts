@@ -402,6 +402,34 @@ describe('hydrate — a field the user has overridden', () => {
     )
   })
 
+  it('honors a lock the user took while the fetch was in flight (the stale-snapshot race)', async () => {
+    // A fetch runs for seconds to minutes; the person picks a jacket by hand in
+    // the meantime. The reply was built against the locks as they stood at the
+    // start, so its cover conflict and cover must be judged against the locks
+    // as they stand when it lands — otherwise the queue asks again, afterwards,
+    // for a choice already made (reported 2026-10-31).
+    vi.mocked(sidecar.call).mockImplementation(async () => {
+      fieldOverrides.markFromPatch('a', { coverFullPath: 'cover_full.jpg' }, null)
+      return {
+        ...reply({}, COVER),
+        conflicts: [
+          {
+            field: 'cover',
+            candidates: [
+              { source: 'google_books', value: 'https://example.test/a.jpg' },
+              { source: 'openlibrary', value: 'https://example.test/b.jpg' }
+            ]
+          }
+        ]
+      }
+    })
+
+    const outcome = await hydrate('a', join(dir, 'Book a.epub'), dir)
+
+    expect(getConflictQueue()).toHaveLength(0)
+    expect(outcome).toMatchObject({ ok: true, conflicts: 0 })
+  })
+
   it('tells the sidecar which fields the user owns', async () => {
     fieldOverrides.markFromPatch('a', { publisher: 'Penguin' }, makeBook('a', 'Book a'))
     vi.mocked(sidecar.call).mockResolvedValue(reply({}))
@@ -440,15 +468,16 @@ describe('hydrate — a field the user has overridden', () => {
     expect(outcome.ok && outcome.changed).toEqual([])
   })
 
-  it('reads the override map once per run, not once per field', async () => {
-    // Each read is a row fetch and a JSON parse, and the same list is both the
-    // RPC param and the reply filter, so a read per field would repeat both
+  it('reads the override map twice per run — at the ask and at the reply — not once per field', async () => {
+    // Each read is a row fetch and a JSON parse. The first is the RPC param; the
+    // second judges the reply against the locks as they stand when it lands (the
+    // fetch can outlive a choice made meanwhile). Neither is repeated per field.
     const reads = vi.spyOn(fieldOverrides, 'list')
     vi.mocked(sidecar.call).mockResolvedValue(reply({ title: 'Fetched Title' }))
 
     await hydrate('a', join(dir, 'Book a.epub'), dir)
 
-    expect(reads).toHaveBeenCalledTimes(1)
+    expect(reads).toHaveBeenCalledTimes(2)
   })
 })
 

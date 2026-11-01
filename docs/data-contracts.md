@@ -345,6 +345,8 @@ interface MusaeumAPI {
   metadata: {
     getConflictQueue(): Promise<MetadataConflict[]>
     resolveConflict(conflictId: number, choices: ConflictChoices): Promise<void>
+    /** "None of these": closes the conflict, changes nothing, records no chosen source. */
+    dismissConflict(conflictId: number): Promise<void>
     /**
      * Re-fetch one book's metadata and report what it did (`HydrateOutcome`).
      * Rejects only for the pre-flight failures — offline, no metadata engine,

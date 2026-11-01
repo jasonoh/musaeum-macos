@@ -5,9 +5,17 @@ import { join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
-import { coverPreviews, resolveConflict } from './conflicts'
+import { coverPreviews, dismissConflict, resolveConflict } from './conflicts'
 import { writeCatalog } from './catalog'
-import { closeDb, getBook, getConflictQueue, insertBook, insertConflict, updateBook } from './db'
+import {
+  closeDb,
+  getBook,
+  getConflictQueue,
+  getSourcePreferences,
+  insertBook,
+  insertConflict,
+  updateBook
+} from './db'
 import { list } from './field-overrides'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
@@ -154,6 +162,31 @@ describe('resolveConflict', () => {
     expect(upsert).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'a', publisher: 'Orbit Books' })
     ])
+  })
+})
+
+describe('dismissConflict', () => {
+  it('clears the notice without touching the book, locking a field or teaching a preference', async () => {
+    // The incident: a cover conflict whose candidates were a blank page and a
+    // foreign edition. Neither is a choice, so there must be a way to say so
+    await seed('a')
+    insertConflict('a', 'cover', [
+      { source: 'google_books', value: 'https://example.test/a.jpg' },
+      { source: 'openlibrary', value: 'https://example.test/b.jpg' }
+    ])
+    const before = getBook('a')
+
+    await dismissConflict(soleConflictId())
+
+    expect(getConflictQueue()).toHaveLength(0)
+    expect(getBook('a')).toEqual(before)
+    expect(list('a')).toEqual([])
+    expect(getSourcePreferences()).toEqual({})
+    expect(sidecar.call).not.toHaveBeenCalled()
+  })
+
+  it('throws for a conflict that does not exist', async () => {
+    await expect(dismissConflict(999)).rejects.toThrow(/Conflict not found/)
   })
 })
 

@@ -85,6 +85,21 @@ export async function resolveConflict(conflictId: number, choices: ConflictChoic
 }
 
 /**
+ * Clear a queued conflict without applying any candidate.
+ *
+ * The queue offered only "pick one of these", so a notice whose candidates were
+ * all wrong (a blank page and a foreign-language edition, reported 2026-10-31)
+ * could not be cleared at all. A dismissal changes nothing about the book, locks
+ * no field and records no chosen source, so it also teaches the merge nothing —
+ * "none of these" is not a vote for any of them.
+ */
+export async function dismissConflict(conflictId: number): Promise<void> {
+  if (!db.getConflict(conflictId)) throw new Error('Conflict not found')
+  db.dismissConflict(conflictId)
+  broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
+}
+
+/**
  * Small inlined previews for a cover conflict's candidates, keyed by URL.
  *
  * A cover candidate is an image **URL**, and the renderer's CSP names no remote

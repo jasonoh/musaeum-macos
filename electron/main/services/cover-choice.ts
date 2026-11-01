@@ -230,6 +230,14 @@ async function settleChoice(
     null
   )
 
+  // The jacket is chosen, so a queued "pick a cover" notice for this book has
+  // been answered — by a route the queue could not offer (the file's own jacket
+  // has no URL to queue). Left open it asked again for a choice already made,
+  // between candidates the person had just passed over. Announced
+  // unconditionally, as every other path that moves the conflict set does.
+  db.dismissOpenConflicts(bookId, 'cover')
+  broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
+
   const updated = db.getBook(bookId)
   if (!updated) throw new Error('Book not found')
 

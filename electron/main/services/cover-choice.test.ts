@@ -9,7 +9,7 @@ import { makeBook } from '../../../test/helpers/book'
 import { chooseCoverFromFile, type ShowImageDialog } from '../ipc/metadata'
 import { writeCatalog } from './catalog'
 import { chooseCover, chooseUploadedCover, coverCandidates, searchCovers } from './cover-choice'
-import { closeDb, getBook, insertBook, updateBook } from './db'
+import { closeDb, getBook, getConflictQueue, insertBook, insertConflict, updateBook } from './db'
 import { list } from './field-overrides'
 import * as librarySync from './library-sync'
 import * as nas from './nas-manager'
@@ -374,6 +374,46 @@ describe('chooseCover', () => {
  * gesture too. What differs is the pre-flight, and one difference is the feature
  * — a book with no EPUB can still be dressed (D6-e).
  */
+describe('a chosen cover settles the queued cover conflicts', () => {
+  const CANDIDATES = [
+    { source: 'google_books' as const, value: 'https://example.test/a.jpg' },
+    { source: 'openlibrary' as const, value: 'https://example.test/b.jpg' }
+  ]
+
+  /** The report: the picker's jacket was chosen, and the queue still asked for one */
+  async function seedQueue(): Promise<void> {
+    await seed('a')
+    await seed('b')
+    insertConflict('a', 'cover', CANDIDATES)
+    insertConflict('a', 'title', [
+      { source: 'embedded', value: 'One' },
+      { source: 'google_books', value: 'Two' }
+    ])
+    insertConflict('b', 'cover', CANDIDATES)
+    vi.mocked(sidecar.call).mockResolvedValue(WROTE)
+  }
+
+  function open(): string[] {
+    return getConflictQueue().map((c) => `${c.bookId}:${c.field}`)
+  }
+
+  it('a picked cover resolves that book’s cover conflicts and nothing else', async () => {
+    await seedQueue()
+
+    await chooseCover('a', { source: 'embedded' })
+
+    expect(open().sort()).toEqual(['a:title', 'b:cover'])
+  })
+
+  it('an uploaded cover does the same', async () => {
+    await seedQueue()
+
+    await chooseUploadedCover('a', '/tmp/jacket.jpg')
+
+    expect(open().sort()).toEqual(['a:title', 'b:cover'])
+  })
+})
+
 describe('chooseUploadedCover', () => {
   it('writes the two fixed filenames and settles the row, the file and the catalog', async () => {
     const dir = await seed('a')

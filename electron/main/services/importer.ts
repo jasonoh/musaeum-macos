@@ -406,7 +406,14 @@ export async function hydrate(
     )
 
     if (job) emit(job, 'cover')
-    const changed = applyHydration(bookId, withLocksRespected(result, locked))
+    // Read again, now: the RPC above can run for minutes, and the person may
+    // have chosen a jacket (or edited a field) in the meantime. The reply is
+    // judged against the locks as they stand when it lands, not as they stood
+    // when it was asked for — otherwise a fetch that began before the choice
+    // queues a conflict for it after. The RPC param keeps the first read: that
+    // is what the sidecar was *told*.
+    const respected = withLocksRespected(result, fieldOverrides.list(bookId))
+    const changed = applyHydration(bookId, respected)
 
     // The identity a *fetch* settles is one the pre-copy gate could never see:
     // the gate reads the file, and a file is frequently silent about its own
@@ -423,7 +430,9 @@ export async function hydrate(
       await bookFiles.renameToTitle(bookDir, updated.title)
     }
 
-    if (result.conflicts.length) {
+    // What was queued, not what was proposed: a conflict the locks dropped is
+    // neither in the queue nor something a refresh may tell the person to review
+    if (respected.conflicts.length) {
       broadcast('conflictQueueUpdated', db.getUnresolvedConflictCount())
     }
     if (!options.batched) broadcast('libraryChanged')
@@ -431,7 +440,7 @@ export async function hydrate(
     return {
       ok: true,
       changed,
-      conflicts: result.conflicts.length,
+      conflicts: respected.conflicts.length,
       duplicate: duplicate ?? undefined
     }
   } catch (err) {

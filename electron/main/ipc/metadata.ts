@@ -14,6 +14,8 @@ export function registerMetadataHandlers(): void {
     conflicts.resolveConflict(conflictId, choices)
   )
 
+  handle('metadata:dismissConflict', (conflictId: number) => conflicts.dismissConflict(conflictId))
+
   handle('metadata:rehydrateBook', (bookId: string) => bulkHydrate.rehydrateBook(bookId))
 
   handle('metadata:rehydrateBooks', (bookIds: string[]) => {

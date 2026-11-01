@@ -52,6 +52,7 @@ const api: MusaeumAPI = {
     getConflictQueue: () => invoke('metadata:getConflictQueue'),
     resolveConflict: (conflictId, choices) =>
       invoke('metadata:resolveConflict', conflictId, choices),
+    dismissConflict: (conflictId) => invoke('metadata:dismissConflict', conflictId),
     rehydrateBook: (bookId) => invoke('metadata:rehydrateBook', bookId),
     rehydrateBooks: (bookIds) => invoke('metadata:rehydrateBooks', bookIds),
     cancelRehydrate: () => invoke('metadata:cancelRehydrate'),

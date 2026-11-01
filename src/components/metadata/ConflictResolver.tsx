@@ -88,7 +88,7 @@ interface Props {
 
 /** Side-by-side comparison; clicking a candidate applies it. */
 export function ConflictResolver({ conflict, onResolved }: Props) {
-  const [busy, setBusy] = useState<MetadataSource | null>(null)
+  const [busy, setBusy] = useState<MetadataSource | 'dismiss' | null>(null)
   const [error, setError] = useState<string | null>(null)
   /**
    * Previews for a cover conflict's candidates, keyed by their URL. Only a cover
@@ -145,14 +145,40 @@ export function ConflictResolver({ conflict, onResolved }: Props) {
     }
   }
 
+  // "None of these": the queue used to offer only a pick among the candidates,
+  // so a notice whose candidates were all wrong could not be cleared at all
+  const dismiss = async () => {
+    setBusy('dismiss')
+    setError(null)
+    try {
+      await window.Musaeum.metadata.dismissConflict(conflict.id)
+      onResolved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div className="rounded-lg border border-ink-700 bg-ink-850 p-4">
-      <p className="text-[13px] text-parchment-dim">
-        <span className="font-semibold text-gold-300">
-          {FIELD_LABELS[conflict.field] ?? conflict.field}
-        </span>{' '}
-        for <span className="font-display italic">{conflict.bookTitle}</span>
-      </p>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[13px] text-parchment-dim">
+          <span className="font-semibold text-gold-300">
+            {FIELD_LABELS[conflict.field] ?? conflict.field}
+          </span>{' '}
+          for <span className="font-display italic">{conflict.bookTitle}</span>
+        </p>
+        <button
+          disabled={busy !== null}
+          onClick={() => void dismiss()}
+          title="Keep the book as it is and clear this notice"
+          className="flex shrink-0 items-center gap-1.5 text-[12px] text-parchment-faint hover:text-gold-300 disabled:opacity-50"
+        >
+          {busy === 'dismiss' && <SpinnerIcon className="h-3 w-3" />}
+          None of these
+        </button>
+      </div>
 
       <div
         className={`mt-3 grid gap-3 ${

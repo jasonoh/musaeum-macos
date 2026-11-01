@@ -203,6 +203,12 @@ export interface MusaeumAPI {
     getConflictQueue(): Promise<MetadataConflict[]>
     resolveConflict(conflictId: number, choices: ConflictChoices): Promise<void>
     /**
+     * Clear a queued conflict without applying any candidate — "none of these".
+     * Changes nothing about the book, locks nothing, and teaches the merge no
+     * source preference.
+     */
+    dismissConflict(conflictId: number): Promise<void>
+    /**
      * Re-fetch one book's metadata and report what it did, rather than
      * returning as soon as the work is queued. Rejects only for the pre-flight
      * failures (offline, no metadata engine, nothing to hydrate from); a

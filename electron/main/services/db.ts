@@ -1126,6 +1126,30 @@ export function markConflictResolved(id: number, chosenSource: string): void {
     .run(new Date().toISOString(), chosenSource, id)
 }
 
+/**
+ * Close a conflict without choosing a candidate: `resolved` with no
+ * `chosen_source`. The null is the point — `getSourcePreferences` counts only
+ * rows with a chosen source, so a dismissal says "none of these" and teaches
+ * the merge nothing about which source to trust.
+ */
+export function dismissConflict(id: number): void {
+  getDb()
+    .prepare(
+      'UPDATE metadata_conflicts SET resolved = 1, resolved_at = ?, chosen_source = NULL WHERE id = ?'
+    )
+    .run(new Date().toISOString(), id)
+}
+
+/** Dismiss every open conflict on one field of one book; returns how many closed. */
+export function dismissOpenConflicts(bookId: string, field: string): number {
+  return getDb()
+    .prepare(
+      `UPDATE metadata_conflicts SET resolved = 1, resolved_at = ?, chosen_source = NULL
+       WHERE book_id = ? AND field = ? AND resolved = 0`
+    )
+    .run(new Date().toISOString(), bookId, field).changes
+}
+
 /** Historical source preferences per field — used to bias future auto-resolution. */
 export function getSourcePreferences(): Record<string, Record<string, number>> {
   const rows = getDb()
