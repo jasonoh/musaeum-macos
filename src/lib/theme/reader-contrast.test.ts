@@ -89,6 +89,10 @@ describe('legibleColor', () => {
     expect(legibleColor({ r: 233, g: 225, b: 210, a: 0.1 }, hex(ink.bg), ink)).toBe(ink.fg)
   })
 
+  it('leaves fully transparent text alone — it is hidden on purpose', () => {
+    expect(legibleColor({ r: 0, g: 0, b: 0, a: 0 }, hex(ink.bg), ink)).toBeNull()
+  })
+
   it('leaves dark text on the paper page alone', () => {
     expect(legibleColor(hex('#000001'), hex(PAPER_PALETTE.bg), PAPER_PALETTE)).toBeNull()
   })
@@ -221,6 +225,35 @@ describe('guardSectionContrast', () => {
     expect(() => guardSectionContrast(fakeDoc([bad, good]), inkPage, computed)).not.toThrow()
     expect(bad.attrs.has(CONTRAST_ATTR)).toBe(false)
     expect(good.style.getPropertyValue('color')).toBe(INK_PALETTE.fg)
+  })
+
+  it('does not paint over transparent text (an OCR layer, a clipped heading)', () => {
+    const p = el('p', 'Hidden on purpose', { color: 'rgba(0, 0, 0, 0)' })
+    guardSectionContrast(fakeDoc([p]), inkPage, fromFake)
+    expect(p.style.getPropertyValue('color')).toBe('')
+    expect(p.attrs.has(CONTRAST_ATTR)).toBe(false)
+  })
+
+  it('reads every color before it writes any, so a large section recalculates style once', () => {
+    const a = el('p', 'One')
+    const b = el('p', 'Two')
+    const log: string[] = []
+    const computed: ComputedSource = (e) => {
+      log.push(e === (a as unknown) ? 'read-a' : 'read-b')
+      return fromFake(e)
+    }
+    const seen = (el: FakeEl, tag: string) => {
+      const set = el.style.setProperty
+      el.style.setProperty = (n: string, v: string, p?: string) => {
+        log.push(tag)
+        set(n, v, p)
+      }
+    }
+    seen(a, 'write-a')
+    seen(b, 'write-b')
+    guardSectionContrast(fakeDoc([a, b]), inkPage, computed)
+    expect(log.lastIndexOf('read-a')).toBeLessThan(log.indexOf('write-a'))
+    expect(log.lastIndexOf('read-b')).toBeLessThan(log.indexOf('write-a'))
   })
 
   it('skips an element whose color cannot be parsed (AC6)', () => {

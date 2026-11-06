@@ -208,10 +208,11 @@ export function ReaderEngine({
   // was loading must color the page it is about to show, not re-open it.
   const tokensRef = useRef(tokens)
   /**
-   * Every section document the contrast guard has been run on, so a palette
-   * change re-evaluates the ones still on screen (D7). Foliate keeps a section or
-   * two alive around the page and drops the rest; an entry whose `defaultView`
-   * has gone is detached and is forgotten on the next sweep.
+   * The section documents the contrast guard has run on, so a palette change
+   * re-evaluates the one still on screen (D7). The paginator keeps a single live
+   * view and destroys the old one when the next section opens, so a document whose
+   * `defaultView` has gone is detached: each `load` forgets those before adding its
+   * own, and a palette change skips any it finds.
    */
   const liveDocs = useRef<Set<Document>>(new Set())
   /** The `bg|fg` the guard last ran under — a typography change must not re-run it. */
@@ -407,10 +408,18 @@ export function ReaderEngine({
       const { doc, index } = (event as CustomEvent<FoliateLoadDetail>).detail
       doc.addEventListener('keydown', (e) => cb.current.onKeyDown(e))
       // A book that hard-codes near-black text must stay readable on a dark page.
-      // A nicety: it never stops a section from loading (spec D8).
+      // A nicety: it never stops a section from loading (spec D8). Only where the
+      // renderer styles the page: fixed-layout has no setStyles, so our stylesheet
+      // never paints those pages and "no opaque background in the chain" would not
+      // mean the page color — it would turn black text over an illustration light.
       try {
-        liveDocs.current.add(doc)
-        guardSectionContrast(doc, resolveReaderPalette(prefsRef.current.theme, tokensRef.current))
+        for (const old of liveDocs.current) {
+          if (!old.defaultView) liveDocs.current.delete(old)
+        }
+        if (typeof view.renderer?.setStyles === 'function') {
+          liveDocs.current.add(doc)
+          guardSectionContrast(doc, resolveReaderPalette(prefsRef.current.theme, tokensRef.current))
+        }
       } catch {
         /* the book keeps its own colors */
       }
@@ -549,6 +558,8 @@ export function ReaderEngine({
     // After setStyles, so the guard sees the new page. Keyed on the resolved
     // colors, not on every pref: a size or line-height change moves no color.
     const key = `${palette.bg}|${palette.fg}`
+    const canStyle = typeof renderer?.setStyles === 'function'
+    if (!canStyle) return
     if (key === guardKey.current) return
     guardKey.current = key
     for (const doc of liveDocs.current) {

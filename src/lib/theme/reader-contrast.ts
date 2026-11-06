@@ -102,6 +102,9 @@ export function legibleColor(
   const fg = parseCssColor(palette.fg)
   const pageBg = parseCssColor(palette.bg)
   if (!fg || !pageBg || !HEX.test(palette.fg) || !HEX.test(palette.bg)) return null
+  // Fully transparent text is hidden on purpose (an OCR layer over a scan, a
+  // background-clip heading, screen-reader-only text): never make it visible.
+  if (text.a <= 0.01) return null
   const seen = text.a < 1 ? compositeOver(text, bg) : text
   if (contrastRatio(seen, bg) >= CONTRAST_FLOOR) return null
   if (contrastRatio(fg, bg) >= CONTRAST_FLOOR) return palette.fg
@@ -143,10 +146,19 @@ function inSkippedSubtree(el: Element): boolean {
  * whether the injected stylesheet has been applied when a section loads.
  * `background-image` is ignored (a stated non-goal).
  */
-function effectiveBackground(el: Element, computed: ComputedSource, page: Rgba): Rgba {
+function effectiveBackground(
+  el: Element,
+  computed: ComputedSource,
+  page: Rgba,
+  cache: Map<Element, Rgba | null>
+): Rgba {
   const layers: Rgba[] = []
   for (let cur: Element | null = el; cur; cur = cur.parentElement) {
-    const c = parseCssColor(computed(cur).backgroundColor)
+    let c = cache.get(cur)
+    if (c === undefined) {
+      c = parseCssColor(computed(cur).backgroundColor)
+      cache.set(cur, c)
+    }
     if (c && c.a > 0) {
       layers.push(c)
       if (c.a >= 1) break
@@ -196,13 +208,25 @@ export function guardSectionContrast(
     const page = parseCssColor(palette.bg)
     if (!page) return
     clearOverrides(doc)
+    // Two phases, reads then writes. Interleaving them dirties style before the
+    // next getComputedStyle, which forces a recalculation per offender — on a
+    // book where every paragraph offends that is thousands of them. With no write
+    // between reads, an ancestor's background is also read once for the pass.
+    const backgrounds = new Map<Element, Rgba | null>()
+    const pending: { el: Element; next: string }[] = []
     for (const el of Array.from(doc.querySelectorAll('*'))) {
       try {
         if (!ownsText(el) || inSkippedSubtree(el)) continue
         const text = parseCssColor(source(el).color)
         if (!text) continue
-        const next = legibleColor(text, effectiveBackground(el, source, page), palette)
-        if (!next) continue
+        const next = legibleColor(text, effectiveBackground(el, source, page, backgrounds), palette)
+        if (next) pending.push({ el, next })
+      } catch {
+        /* this element keeps the book's color */
+      }
+    }
+    for (const { el, next } of pending) {
+      try {
         const style = (el as HTMLElement).style
         const prior = style.getPropertyValue('color')
         el.setAttribute(

@@ -48,6 +48,27 @@ describe('the reader runs the contrast guard (AC8)', () => {
     expect(effect).toContain('liveDocs.current')
   })
 
+  it('stays out of books whose renderer cannot style the page (fixed layout)', () => {
+    // fixed-layout.js has no setStyles, so readerPageCss never paints those pages:
+    // "nothing opaque in the chain" does not mean palette.bg there (review, Critical).
+    const load = between(ENGINE, "view.addEventListener('load'", 'void (async () => {')
+    const gate = load.indexOf("typeof view.renderer?.setStyles === 'function'")
+    expect(gate).toBeGreaterThan(-1)
+    expect(load.indexOf('guardSectionContrast(doc,')).toBeGreaterThan(gate)
+    const effect = between(
+      ENGINE,
+      'renderer?.setStyles?.(readerPageCss(prefs,',
+      '}, [prefs, tokens, viewRef])'
+    )
+    expect(effect).toContain("typeof renderer?.setStyles === 'function'")
+  })
+
+  it('forgets a detached section as the next one loads, not only on a theme change', () => {
+    const load = between(ENGINE, "view.addEventListener('load'", 'void (async () => {')
+    expect(load).toContain('.defaultView')
+    expect(load).toContain('liveDocs.current.delete(')
+  })
+
   it('drops detached sections and forgets them all when the book closes', () => {
     expect(ENGINE).toContain('doc.defaultView')
     const cleanup = between(ENGINE, 'disposed = true', 'view.remove()')
