@@ -24,6 +24,7 @@ import {
   type SelectionCapture
 } from '@/lib/annotations'
 import { SPEECH_DRAW_KIND } from '@/lib/speech-controller'
+import { guardSectionContrast } from '@/lib/theme/reader-contrast'
 import { readerPageCss, resolveReaderPalette } from '@/lib/theme/reader-palette'
 import type { ReaderPrefs, ReaderSection, ReaderTocItem } from '@/stores/reader.store'
 import { useThemeStore } from '@/stores/theme.store'
@@ -206,6 +207,15 @@ export function ReaderEngine({
   // both at the moment the bytes arrive, and a theme that changed *while* a book
   // was loading must color the page it is about to show, not re-open it.
   const tokensRef = useRef(tokens)
+  /**
+   * Every section document the contrast guard has been run on, so a palette
+   * change re-evaluates the ones still on screen (D7). Foliate keeps a section or
+   * two alive around the page and drops the rest; an entry whose `defaultView`
+   * has gone is detached and is forgotten on the next sweep.
+   */
+  const liveDocs = useRef<Set<Document>>(new Set())
+  /** The `bg|fg` the guard last ran under — a typography change must not re-run it. */
+  const guardKey = useRef('')
   /**
    * The page's own position and name, for the chip's locator (reading R11).
    *
@@ -396,6 +406,14 @@ export function ReaderEngine({
     view.addEventListener('load', (event) => {
       const { doc, index } = (event as CustomEvent<FoliateLoadDetail>).detail
       doc.addEventListener('keydown', (e) => cb.current.onKeyDown(e))
+      // A book that hard-codes near-black text must stay readable on a dark page.
+      // A nicety: it never stops a section from loading (spec D8).
+      try {
+        liveDocs.current.add(doc)
+        guardSectionContrast(doc, resolveReaderPalette(prefsRef.current.theme, tokensRef.current))
+      } catch {
+        /* the book keeps its own colors */
+      }
       // The selection has to be read where it is made: the overlay's own
       // listeners never see a selection inside the book's iframe. Captured
       // wide — a drag can end outside the section, and a shift-arrow makes one
@@ -496,12 +514,15 @@ export function ReaderEngine({
       }
     })()
 
+    // The set is created once and never reassigned; the alias is for the cleanup.
+    const docs = liveDocs.current
     return () => {
       disposed = true
       viewRef.current = null
       // A torn-down view must not leave a document behind for the next book's
       // relocate to measure against.
       loaded.current = null
+      docs.clear()
       // `close()` throws when `open()` resolved but nothing was ever
       // displayed — tearing down a book that failed mid-load is normal here
       try {
@@ -523,7 +544,20 @@ export function ReaderEngine({
   useEffect(() => {
     const renderer = viewRef.current?.renderer
     renderer?.setAttribute('margin', `${prefs.margin}px`)
-    renderer?.setStyles?.(readerPageCss(prefs, resolveReaderPalette(prefs.theme, tokens)))
+    const palette = resolveReaderPalette(prefs.theme, tokens)
+    renderer?.setStyles?.(readerPageCss(prefs, palette))
+    // After setStyles, so the guard sees the new page. Keyed on the resolved
+    // colors, not on every pref: a size or line-height change moves no color.
+    const key = `${palette.bg}|${palette.fg}`
+    if (key === guardKey.current) return
+    guardKey.current = key
+    for (const doc of liveDocs.current) {
+      if (!doc.defaultView) {
+        liveDocs.current.delete(doc)
+        continue
+      }
+      guardSectionContrast(doc, palette)
+    }
   }, [prefs, tokens, viewRef])
 
   /**
