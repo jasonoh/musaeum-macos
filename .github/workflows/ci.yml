@@ -10,7 +10,7 @@ jobs:
     # suite runs Electron-as-Node (`npm test`), matching the dev machine.
     # storage-kind.test.ts's `runIf(existsSync(...))` cases need the real
     # NAS/Dropbox mounts and skip here by design.
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
