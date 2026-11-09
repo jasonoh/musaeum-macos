@@ -693,6 +693,46 @@ describe('the import duplicate gate', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
+  describe('a file the sidecar cannot read (the 2026-09-19 observation)', () => {
+    /** Extraction rejects, as it does for text saved with an `.epub` extension. */
+    function scriptUnreadable(): void {
+      vi.mocked(sidecar.isAvailable).mockReturnValue(true)
+      vi.mocked(sidecar.call).mockImplementation(((method: string) =>
+        method === 'hydrate_metadata'
+          ? Promise.resolve(reply({ title: 'Not An Epub' }))
+          : Promise.reject(new Error('not a zip file'))) as typeof sidecar.call)
+      vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    }
+
+    it('returns, imports the file as a book, and never hangs on a first import', async () => {
+      scriptUnreadable()
+      const src = join(inbox, 'not-an-epub.epub')
+      await fs.writeFile(src, 'this is not a zip')
+
+      const [result] = await addFiles([src])
+
+      expect(result?.success).toBe(true)
+      expect(getBooks()).toHaveLength(1)
+      expect(progress.some((p) => p.step === 'error')).toBe(false)
+      await settleHydration()
+    })
+
+    it('a repeat of the same file collides on its filename title and waits for a decision', async () => {
+      scriptUnreadable()
+      const first = join(inbox, 'not-an-epub.epub')
+      await fs.writeFile(first, 'this is not a zip')
+      await addFiles([first])
+      await settleHydration()
+
+      // Same bytes, same name: the gate opens and the call stays pending until
+      // someone answers. A caller with no window open (the probe's eval) never does.
+      const { settled, jobId } = await startImport('not-an-epub.epub')
+      expect(await stillPending(settled)).toBe(true)
+      resolveDuplicate(jobId, { action: 'skip' })
+      await settled
+    })
+  })
+
   describe('what opens the gate', () => {
     it('blocks on an ISBN-13 match even when title and author look unrelated', async () => {
       await seed({
