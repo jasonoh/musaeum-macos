@@ -78,6 +78,26 @@ Each unit criterion names its mutation in the plan, per the repo's mutation-kill
 
 `docs/invariants/reader.md` gains one paragraph after the page-theme paragraph: the guard, the floor, why the effective background falls back to `palette.bg`, why inline `!important` on offenders is compatible with AC5.6, and the re-run obligation on a palette change. `docs/superpowers/specs/theming.md` AC5.6 gets a one-line pointer to this document. `CHANGELOG.md` gets an *Added* entry in the user's terms ("Books that hard-code black text are now readable on dark pages").
 
+## Amendment 1 — code chips (2026-11-13)
+
+**Why.** The owner read a book whose inline code is a bright `#f0eee6` chip with `#7a51d9` text and found it "too bright white" on the dark page. The guard could not help by design: AC3 protects dark text in a light box, and the non-goals say "not background repair". This amendment narrows that non-goal; it does not repeal it.
+
+**What it amends.** The *Non-goals* line "Not background repair" now reads "not background repair, **except a monospace chip that glares against the page**". AC3 is unchanged and still holds for anything not monospace. D2's floor is unchanged.
+
+**Decisions, all *my call* and unreviewed.**
+
+- **A1 — The signal is the font, not the tag.** A monospace computed `font-family` (`monospace`, or `courier`, `menlo`, `monaco`, `consolas`, `mono` as a word). Not `code`/`pre`/`kbd`: the book that showed this styles every chip as a classed `<span>`, so a tag rule would not have fired on the case that prompted it.
+- **A2 — "Glaring" is `CHIP_GLARE = 4`.** The element's own background, composited over what it sits on, contrasts with the page by more than 4. A cream chip is ~16:1 on `ink` and ~1:1 on `paper`; a mid-grey chip on a dark page is ~2:1 and is left as a design.
+- **A3 — Only on the page itself.** A chip whose parent is already bright (`contrast(parent, page) >= 4`) is left with its box; the box was the book's choice.
+- **A4 — The replacement is a tint of the page.** `palette.bg` with 8% of `palette.fg` over it, as `#rrggbb`, so it is on-theme on any palette and still reads as a chip (about 1.19:1 against `ink`). 8% is eyeballed, not derived; it is the faintest chip that still reads as a chip, and A5b below is what keeps the text on it readable.
+- **A5 — Text is judged against the tint.** The pass is document-ordered, so a chip's tint is seeded into the background cache before anything inside it is judged; dark text in a restyled `<pre>` is overridden by the ordinary D5 path.
+- **A5b — Text on a restyled chip is held to 7, not 3 (added the same day, raised twice).** The first cut left the book's purple at 3.02:1 against the tint, just over D2's floor, and the owner reported it "very difficult to read". A second cut lifted it to 4.5 (`#9878d7`) and the owner, in the repacked app, found it "still too dark": the book's code is Courier New, whose hairline strokes read lighter than their ratio says. The chip's background is now the guard's, so its legibility is too: `CHIP_TEXT_FLOOR = 7` (WCAG AAA). Text under 3 is repainted with the page foreground as before (D5); text between 3 and 7 is mixed toward the foreground by the least amount that reaches 7 (`chipTextColor`, a binary search on the `#rrggbb` that would be painted), so the book's hue survives (`#7a51d9` → `#baa3d5`). Past about 8 the purple washes out to grey, which is why it stops at 7. Text outside a chip keeps D2's floor.
+- **A6 — Same reversible shape as D6.** An inline `!important` on `background-color`, marked `data-musaeum-chip` with the prior inline value, cleared before every re-run. Reads still precede writes.
+
+**Not changed, and worth knowing.** The floor stays 3, so a publisher's grey italic at 3.0–4.5 is still left alone; the owner's italic (`#5e5d59`, 2.86:1) was already under it. A chip's own `border` is untouched. Raising the floor to 4.5 would also lift mid-grey italics but would repaint every muted caption; that is a separate decision.
+
+**Acceptance.** AC11, vitest: `chipBackground` quiets a bright monospace chip, leaves a non-monospace box (AC3), a chip on `paper`, a chip in a bright box, a no-background element, and a non-hex palette. AC12, vitest, DOM pass: the chip gets the tint, `!important` and the marker; chip text clears `CHIP_TEXT_FLOOR` and keeps its hue while a dim grey outside a chip is left alone; text inside a restyled chip is judged against the tint; a re-run under `paper` restores the book's own (and its inline value, with priority); reads still precede writes. AC13, live on the real book, 2026-11-13: chip `rgb(240, 238, 230)` → `rgb(37, 34, 29)`, italic overridden to `rgb(233, 225, 210)`, both seen on screen. Mutations that fail a test: drop the monospace gate, drop the parent-brightness guard, flip the glare comparison, skip seeding the tint into the cache, drop the chip cleanup, lift text outside chips, never lift, return the foreground instead of the blend, set the chip floor back to 3, and return the low end of the search (the rounding case).
+
 ## Known limits
 
 - Text over a `background-image`, or inside an SVG/canvas, is not examined.

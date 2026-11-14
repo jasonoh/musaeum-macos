@@ -112,14 +112,125 @@ export function legibleColor(
 }
 
 // ---------------------------------------------------------------------------
+// Code chips
+// ---------------------------------------------------------------------------
+
+/**
+ * A monospace element's own background is "glaring" when it contrasts with the
+ * page by more than this. A cream `#f0eee6` chip on the `ink` page is ~16:1; the
+ * same chip on the `paper` page is ~1:1 and is left alone. 4 sits well clear of
+ * both: a mid-grey chip on a dark page (about 2:1) is a design, not a glare.
+ */
+export const CHIP_GLARE = 4
+
+/** How much of the page foreground the replacement chip carries over the page. */
+const CHIP_TINT = 0.08
+
+/**
+ * Text on a chip this module restyled is held to a higher bar than the page's
+ * 3:1: the chip's background is now ours, so its legibility is too. 3.02:1 purple
+ * on the tint was reported unreadable, and 4.5:1 (AA) was still reported too dim
+ * (2026-11-13) — the book sets code in Courier New, whose hairline strokes read
+ * lighter than their ratio says. 7 is WCAG AAA; past ~8 a purple washes out to grey.
+ */
+export const CHIP_TEXT_FLOOR = 7
+
+const MONOSPACE = /monospace|\b(?:courier|menlo|monaco|consolas|mono)\b/i
+
+function toHex(c: Rgba): string {
+  const part = (v: number): string =>
+    Math.max(0, Math.min(255, Math.round(v)))
+      .toString(16)
+      .padStart(2, '0')
+  return `#${part(c.r)}${part(c.g)}${part(c.b)}`
+}
+
+/**
+ * The background a code chip should take on this page, or null to leave the
+ * book's own.
+ *
+ * Code in a book is routinely a bright chip behind purple or black monospace
+ * text, which reads well on a white page and as a hole punched in a dark one.
+ * The signal is the *font* (monospace) plus an own background that
+ * glares against the page — not a tag name, because exports like this one style
+ * code with `<span class="…">`. A bright box that is not monospace is a callout
+ * and stays (AC3), and so does a chip inside a bright box (`under` is what the
+ * element sits on). A translucent background is composited over `under` first, so a
+ * faint wash never counts as a glare. The replacement is the page color with a little of its own
+ * foreground in it: a chip that is still visibly a chip, on-theme on any palette.
+ */
+export function chipBackground(
+  own: Rgba | null,
+  fontFamily: string,
+  under: Rgba,
+  palette: Pick<ReaderPalette, 'fg' | 'bg'>
+): string | null {
+  const fg = parseCssColor(palette.fg)
+  const page = parseCssColor(palette.bg)
+  if (!fg || !page || !HEX.test(palette.fg) || !HEX.test(palette.bg)) return null
+  if (!MONOSPACE.test(fontFamily)) return null
+  if (!own || own.a <= 0) return null
+  if (contrastRatio(under, page) >= CHIP_GLARE) return null
+  if (contrastRatio(compositeOver(own, under), page) < CHIP_GLARE) return null
+  return toHex(compositeOver({ ...fg, a: CHIP_TINT }, page))
+}
+
+/**
+ * The color a chip's text should take so it clears `CHIP_TEXT_FLOOR` on `bg`, or
+ * null when it already does. It keeps the book's hue: the text is mixed toward
+ * the page foreground by the least amount that reaches the floor (a binary
+ * search, so a purple stays a lighter purple instead of becoming body text).
+ * Text under the ordinary floor never gets here — `legibleColor` repaints that
+ * with the foreground outright.
+ */
+export function chipTextColor(
+  text: Rgba,
+  bg: Rgba,
+  palette: Pick<ReaderPalette, 'fg' | 'bg'>
+): string | null {
+  const fg = parseCssColor(palette.fg)
+  if (!fg || !HEX.test(palette.fg) || !HEX.test(palette.bg)) return null
+  if (text.a <= 0.01) return null
+  const seen = text.a < 1 ? compositeOver(text, bg) : text
+  if (contrastRatio(seen, bg) >= CHIP_TEXT_FLOOR) return null
+  // Measure the color that will actually be painted: the search runs on the
+  // `#rrggbb` it would write, because rounding to a byte can land a hair under the
+  // floor that the unrounded mix cleared.
+  const painted = (t: number): string => toHex(compositeOver({ ...fg, a: t }, { ...seen, a: 1 }))
+  const reads = (t: number): boolean => {
+    const c = parseCssColor(painted(t))
+    return c !== null && contrastRatio(c, bg) >= CHIP_TEXT_FLOOR
+  }
+  if (!reads(1)) return painted(1)
+  let lo = 0
+  let hi = 1
+  for (let i = 0; i < 12; i++) {
+    const mid = (lo + hi) / 2
+    if (reads(mid)) hi = mid
+    else lo = mid
+  }
+  return painted(hi)
+}
+
+// ---------------------------------------------------------------------------
 // The DOM pass
 // ---------------------------------------------------------------------------
 
 /** The marker on every element this module has overridden (D6). */
 export const CONTRAST_ATTR = 'data-musaeum-contrast'
 
-/** What the pass reads off an element; `getComputedStyle` satisfies it. */
-export type ComputedSource = (el: Element) => { color: string; backgroundColor: string }
+/** The marker on every element whose background this module has replaced. */
+export const CHIP_ATTR = 'data-musaeum-chip'
+
+/**
+ * What the pass reads off an element; `getComputedStyle` satisfies it. A source
+ * that does not report `fontFamily` simply gets no chip handling.
+ */
+export type ComputedSource = (el: Element) => {
+  color: string
+  backgroundColor: string
+  fontFamily?: string
+}
 
 const TEXT_NODE = 3
 /** Subtrees whose text is never painted as page prose. */
@@ -146,19 +257,28 @@ function inSkippedSubtree(el: Element): boolean {
  * whether the injected stylesheet has been applied when a section loads.
  * `background-image` is ignored (a stated non-goal).
  */
-function effectiveBackground(
+function ownBackground(
   el: Element,
+  computed: ComputedSource,
+  cache: Map<Element, Rgba | null>
+): Rgba | null {
+  let c = cache.get(el)
+  if (c === undefined) {
+    c = parseCssColor(computed(el).backgroundColor)
+    cache.set(el, c)
+  }
+  return c
+}
+
+function effectiveBackground(
+  el: Element | null,
   computed: ComputedSource,
   page: Rgba,
   cache: Map<Element, Rgba | null>
 ): Rgba {
   const layers: Rgba[] = []
   for (let cur: Element | null = el; cur; cur = cur.parentElement) {
-    let c = cache.get(cur)
-    if (c === undefined) {
-      c = parseCssColor(computed(cur).backgroundColor)
-      cache.set(cur, c)
-    }
+    const c = ownBackground(cur, computed, cache)
     if (c && c.a > 0) {
       layers.push(c)
       if (c.a >= 1) break
@@ -167,27 +287,45 @@ function effectiveBackground(
   return layers.reduceRight((under, layer) => compositeOver(layer, under), page)
 }
 
-/** Remove every override this module made in `doc`, restoring a prior inline color. */
-function clearOverrides(doc: Document): void {
-  for (const el of Array.from(doc.querySelectorAll(`[${CONTRAST_ATTR}]`))) {
-    const saved = el.getAttribute(CONTRAST_ATTR)
-    ;(el as HTMLElement).style.removeProperty('color')
+/** Undo one marker's overrides: drop the inline property, give back what the book had. */
+function clearMarked(doc: Document, attr: string, property: string): void {
+  for (const el of Array.from(doc.querySelectorAll(`[${attr}]`))) {
+    const saved = el.getAttribute(attr)
+    ;(el as HTMLElement).style.removeProperty(property)
     if (saved) {
       try {
         const { v, p } = JSON.parse(saved) as { v: string; p: string }
         if (typeof v === 'string' && v) {
-          ;(el as HTMLElement).style.setProperty('color', v, typeof p === 'string' ? p : '')
+          ;(el as HTMLElement).style.setProperty(property, v, typeof p === 'string' ? p : '')
         }
       } catch {
         /* an unreadable marker restores nothing; the override is still gone */
       }
     }
-    el.removeAttribute(CONTRAST_ATTR)
+    el.removeAttribute(attr)
   }
 }
 
+/** Remove every override this module made in `doc`, restoring a prior inline value. */
+function clearOverrides(doc: Document): void {
+  clearMarked(doc, CONTRAST_ATTR, 'color')
+  clearMarked(doc, CHIP_ATTR, 'background-color')
+}
+
+/** Mark `el` and set one property on it as an inline `!important`, remembering what it had. */
+function override(el: Element, attr: string, property: string, value: string): void {
+  const style = (el as HTMLElement).style
+  const prior = style.getPropertyValue(property)
+  el.setAttribute(
+    attr,
+    prior ? JSON.stringify({ v: prior, p: style.getPropertyPriority(property) }) : ''
+  )
+  style.setProperty(property, value, 'important')
+}
+
 /**
- * Make illegible text legible in one section document, and nothing else (D4–D8).
+ * Make illegible text legible in one section document, and quiet a glaring code
+ * chip (`chipBackground`) — and nothing else (D4–D8).
  *
  * Clears this module's earlier overrides first, so it is safe to call again after
  * a palette change: a book that was overridden on a dark page gets its own color
@@ -214,28 +352,57 @@ export function guardSectionContrast(
     // between reads, an ancestor's background is also read once for the pass.
     const backgrounds = new Map<Element, Rgba | null>()
     const pending: { el: Element; next: string }[] = []
+    const chips: { el: Element; next: string }[] = []
+    const chipEls = new Set<Element>()
+    const inChip = (el: Element): boolean => {
+      for (let cur: Element | null = el; cur; cur = cur.parentElement)
+        if (chipEls.has(cur)) return true
+      return false
+    }
+    // Document order: an ancestor is decided before its descendants, so a restyled
+    // chip's tint is already in `backgrounds` when the text inside it is judged.
     for (const el of Array.from(doc.querySelectorAll('*'))) {
       try {
-        if (!ownsText(el) || inSkippedSubtree(el)) continue
-        const text = parseCssColor(source(el).color)
+        if (inSkippedSubtree(el)) continue
+        const style = source(el)
+        const tint = style.fontFamily
+          ? chipBackground(
+              ownBackground(el, source, backgrounds),
+              style.fontFamily,
+              effectiveBackground(el.parentElement, source, page, backgrounds),
+              palette
+            )
+          : null
+        const tinted = tint ? parseCssColor(tint) : null
+        if (tint && tinted) {
+          chips.push({ el, next: tint })
+          chipEls.add(el)
+          backgrounds.set(el, tinted)
+        }
+        if (!ownsText(el)) continue
+        const text = parseCssColor(style.color)
         if (!text) continue
-        const next = legibleColor(text, effectiveBackground(el, source, page, backgrounds), palette)
+        const under = effectiveBackground(el, source, page, backgrounds)
+        const next =
+          legibleColor(text, under, palette) ??
+          (inChip(el) ? chipTextColor(text, under, palette) : null)
         if (next) pending.push({ el, next })
       } catch {
-        /* this element keeps the book's color */
+        /* this element keeps the book's colors */
       }
     }
     for (const { el, next } of pending) {
       try {
-        const style = (el as HTMLElement).style
-        const prior = style.getPropertyValue('color')
-        el.setAttribute(
-          CONTRAST_ATTR,
-          prior ? JSON.stringify({ v: prior, p: style.getPropertyPriority('color') }) : ''
-        )
-        style.setProperty('color', next, 'important')
+        override(el, CONTRAST_ATTR, 'color', next)
       } catch {
         /* this element keeps the book's color */
+      }
+    }
+    for (const { el, next } of chips) {
+      try {
+        override(el, CHIP_ATTR, 'background-color', next)
+      } catch {
+        /* this element keeps the book's background */
       }
     }
   } catch {

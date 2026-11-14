@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CHIP_ATTR,
+  CHIP_GLARE,
+  CHIP_TEXT_FLOOR,
   CONTRAST_ATTR,
   CONTRAST_FLOOR,
+  chipBackground,
+  chipTextColor,
   compositeOver,
   contrastRatio,
   guardSectionContrast,
@@ -112,7 +117,7 @@ interface FakeEl {
   childNodes: { nodeType: number; textContent: string }[]
   style: ReturnType<typeof fakeStyle>
   attrs: Map<string, string>
-  computed: { color: string; backgroundColor: string }
+  computed: { color: string; backgroundColor: string; fontFamily?: string }
   getAttribute(name: string): string | null
   setAttribute(name: string, value: string): void
   removeAttribute(name: string): void
@@ -155,7 +160,9 @@ function el(
 function fakeDoc(els: FakeEl[]): Document {
   return {
     querySelectorAll: (selector: string) =>
-      selector === '*' ? els : els.filter((e) => e.attrs.has(CONTRAST_ATTR))
+      selector === '*'
+        ? els
+        : els.filter((e) => e.attrs.has(/^\[([^\]]+)\]$/.exec(selector)?.[1] ?? ''))
   } as unknown as Document
 }
 
@@ -269,5 +276,188 @@ describe('guardSectionContrast', () => {
     const style = el('style', 'p { color: black }')
     guardSectionContrast(fakeDoc([blank, svg, inSvg, style]), inkPage, fromFake)
     for (const e of [blank, svg, inSvg, style]) expect(e.attrs.has(CONTRAST_ATTR)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Code chips — a bright box behind monospace text on a dark page
+// ---------------------------------------------------------------------------
+
+describe('chipBackground', () => {
+  const ink = INK_PALETTE
+  const page = hex(ink.bg)
+  const MONO = '"Courier New", monospace'
+  const cream = hex('#f0eee6')
+
+  it('quiets a bright monospace chip on the dark page into a tint of the page', () => {
+    const tint = chipBackground(cream, MONO, page, ink)
+    expect(tint).toMatch(/^#[0-9a-f]{6}$/)
+    expect(contrastRatio(hex(tint ?? ''), page)).toBeLessThan(CHIP_GLARE)
+  })
+
+  it('leaves a bright box that is not monospace alone — a callout is deliberate (AC3)', () => {
+    expect(chipBackground(cream, 'Georgia, serif', page, ink)).toBeNull()
+  })
+
+  it('leaves the same chip alone on the paper page, where it is not bright against it', () => {
+    expect(chipBackground(cream, MONO, hex(PAPER_PALETTE.bg), PAPER_PALETTE)).toBeNull()
+  })
+
+  it('leaves a monospace element with no background of its own alone', () => {
+    expect(chipBackground(null, MONO, page, ink)).toBeNull()
+    expect(chipBackground({ r: 255, g: 255, b: 255, a: 0.2 }, MONO, page, ink)).toBeNull()
+  })
+
+  it("leaves a chip inside a light box alone — the box is the book's choice", () => {
+    expect(chipBackground(cream, MONO, hex('#f3ece0'), ink)).toBeNull()
+  })
+
+  it('leaves the book alone when the palette is not a hex pair', () => {
+    expect(chipBackground(cream, MONO, page, { fg: 'var(--x)', bg: ink.bg })).toBeNull()
+  })
+
+  it('recognizes the generic monospace family and the common named ones', () => {
+    for (const family of ['monospace', 'ui-monospace, Menlo', 'Consolas', '"SF Mono", Monaco']) {
+      expect(chipBackground(cream, family, page, ink)).not.toBeNull()
+    }
+  })
+})
+
+describe('guardSectionContrast — code chips', () => {
+  const MONO = '"Courier New", monospace'
+  // What the book's stylesheet gives `.class_s1JC-0`, read off a real epub.
+  const chipStyle = {
+    color: 'rgb(122, 81, 217)',
+    backgroundColor: 'rgb(240, 238, 230)',
+    fontFamily: MONO
+  }
+
+  it('replaces a bright chip background with a quiet tint, !important, and the marker', () => {
+    const chip = el('span', '.claude/agents/', chipStyle)
+    guardSectionContrast(fakeDoc([chip]), inkPage, fromFake)
+    const bg = chip.style.getPropertyValue('background-color')
+    expect(bg).toMatch(/^#[0-9a-f]{6}$/)
+    expect(chip.style.getPropertyPriority('background-color')).toBe('important')
+    expect(chip.attrs.has(CHIP_ATTR)).toBe(true)
+    expect(contrastRatio(hex(bg), hex(INK_PALETTE.bg))).toBeLessThan(CHIP_GLARE)
+  })
+
+  it('lifts the chip text to a comfortable contrast against the tint, keeping its hue', () => {
+    const chip = el('span', '.claude/agents/', chipStyle)
+    guardSectionContrast(fakeDoc([chip]), inkPage, fromFake)
+    const tint = hex(chip.style.getPropertyValue('background-color'))
+    const text = hex(chip.style.getPropertyValue('color'))
+    expect(contrastRatio(text, tint)).toBeGreaterThanOrEqual(CHIP_TEXT_FLOOR)
+    // still the book's purple, only lighter: blue leads, and it is not the page foreground
+    expect(text.b).toBeGreaterThan(text.g)
+    expect(text.b).toBeGreaterThan(text.r)
+    expect(chip.style.getPropertyValue('color')).not.toBe(INK_PALETTE.fg)
+  })
+
+  it('holds text outside a chip to the ordinary floor (a dim grey is left alone)', () => {
+    const p = el('p', 'A muted caption', { color: 'rgb(110, 110, 110)' })
+    guardSectionContrast(fakeDoc([p]), inkPage, fromFake)
+    expect(p.attrs.has(CONTRAST_ATTR)).toBe(false)
+  })
+
+  it('judges dark text inside a restyled chip against the tint, not the old bright box', () => {
+    const block = el('pre', null, {
+      color: 'rgb(20, 20, 19)',
+      backgroundColor: 'rgb(240, 238, 230)',
+      fontFamily: MONO
+    })
+    const line = el('span', 'npm install', { color: 'rgb(20, 20, 19)', fontFamily: MONO }, block)
+    guardSectionContrast(fakeDoc([block, line]), inkPage, fromFake)
+    expect(line.style.getPropertyValue('color')).toBe(INK_PALETTE.fg)
+  })
+
+  it('does not touch a chip on the paper page', () => {
+    const chip = el('span', 'code', chipStyle)
+    guardSectionContrast(fakeDoc([chip]), paperPage, fromFake)
+    expect(chip.attrs.has(CHIP_ATTR)).toBe(false)
+    expect(chip.style.getPropertyValue('background-color')).toBe('')
+  })
+
+  it('does not touch a bright callout that is not monospace (AC3)', () => {
+    const box = el('div', null, { backgroundColor: 'rgb(240, 238, 230)', fontFamily: 'Georgia' })
+    const p = el('p', 'A callout', { fontFamily: 'Georgia' }, box)
+    guardSectionContrast(fakeDoc([box, p]), inkPage, fromFake)
+    expect(box.attrs.has(CHIP_ATTR)).toBe(false)
+    expect(box.style.getPropertyValue('background-color')).toBe('')
+  })
+
+  it('gives the book its own chip back when re-run under the paper page', () => {
+    const chip = el('span', 'code', chipStyle)
+    const doc = fakeDoc([chip])
+    guardSectionContrast(doc, inkPage, fromFake)
+    expect(chip.attrs.has(CHIP_ATTR)).toBe(true)
+    guardSectionContrast(doc, paperPage, fromFake)
+    expect(chip.style.getPropertyValue('background-color')).toBe('')
+    expect(chip.attrs.has(CHIP_ATTR)).toBe(false)
+  })
+
+  it('restores an inline background the book already had, with its priority', () => {
+    const chip = el('span', 'code', chipStyle)
+    chip.style.setProperty('background-color', '#f0eee6', '')
+    const doc = fakeDoc([chip])
+    guardSectionContrast(doc, inkPage, fromFake)
+    expect(chip.style.getPropertyValue('background-color')).not.toBe('#f0eee6')
+    guardSectionContrast(doc, paperPage, fromFake)
+    expect(chip.style.getPropertyValue('background-color')).toBe('#f0eee6')
+    expect(chip.style.getPropertyPriority('background-color')).toBe('')
+  })
+
+  it('reads every color before it writes any, chips included', () => {
+    const chip = el('span', 'code', chipStyle)
+    const p = el('p', 'Body')
+    const log: string[] = []
+    const computed: ComputedSource = (e) => {
+      log.push('read')
+      return fromFake(e)
+    }
+    const set = chip.style.setProperty
+    chip.style.setProperty = (n: string, v: string, pr?: string) => {
+      log.push('write')
+      set(n, v, pr)
+    }
+    guardSectionContrast(fakeDoc([chip, p]), inkPage, computed)
+    expect(log.lastIndexOf('read')).toBeLessThan(log.indexOf('write'))
+  })
+
+  it('ignores font information it was not given (an older stub, an unreadable style)', () => {
+    const chip = el('span', 'code', { backgroundColor: 'rgb(240, 238, 230)' })
+    guardSectionContrast(fakeDoc([chip]), inkPage, fromFake)
+    expect(chip.attrs.has(CHIP_ATTR)).toBe(false)
+  })
+})
+
+describe('chipTextColor', () => {
+  const ink = INK_PALETTE
+  const tint = hex('#25221d')
+  const purple = hex('#7a51d9')
+
+  it('is null when the text already reads comfortably', () => {
+    expect(chipTextColor(hex(ink.fg), tint, ink)).toBeNull()
+  })
+
+  it('lightens a dim text toward the foreground until it clears the chip floor', () => {
+    const next = chipTextColor(purple, tint, ink)
+    expect(next).toMatch(/^#[0-9a-f]{6}$/)
+    const out = hex(next ?? '')
+    expect(contrastRatio(out, tint)).toBeGreaterThanOrEqual(CHIP_TEXT_FLOOR)
+    expect(contrastRatio(out, tint)).toBeLessThan(CHIP_TEXT_FLOOR + 0.5)
+  })
+
+  it('does not go past what it needs: the original hue survives', () => {
+    const out = hex(chipTextColor(purple, tint, ink) ?? '')
+    expect(out.b).toBeGreaterThan(out.g)
+  })
+
+  it('leaves the book alone when the palette is not a hex pair', () => {
+    expect(chipTextColor(purple, tint, { fg: 'var(--x)', bg: ink.bg })).toBeNull()
+  })
+
+  it('keeps the chip floor above the ordinary one', () => {
+    expect(CHIP_TEXT_FLOOR).toBeGreaterThan(CONTRAST_FLOOR)
   })
 })
