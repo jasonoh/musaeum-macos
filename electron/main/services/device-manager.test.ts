@@ -738,6 +738,84 @@ describe('on-device presence', () => {
     })
 
     /**
+     * Two library books can share a title and differ in format — a PDF and an
+     * EPUB/MOBI of the same volume. The filename rule is extension-agnostic and
+     * author-blind, so before it was guarded one file named for the title made
+     * BOTH read "On {device}" (the PDF's badge lit for a copy never sent), and
+     * removing either deleted the other's file. The title-and-author inside the
+     * file is what tells them apart.
+     */
+    describe('two books that share a title', () => {
+      const SENT = 'The Fixture Codex.azw3'
+
+      it('credits only the book the file’s own author agrees with', async () => {
+        await putOnDevice(
+          'Kindle',
+          SENT,
+          mobiFile({ title: 'The Fixture Codex', author: 'Iain M. Banks & Another Hand' })
+        )
+        insertBook({
+          ...makeBook('epub', 'The Fixture Codex'),
+          author: 'Iain M. Banks & Another Hand'
+        })
+        insertBook({ ...makeBook('pdf', 'The Fixture Codex'), author: 'Iain M. Banks' })
+
+        await poll()
+
+        expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['epub'])
+      })
+
+      it('does not let the filename alone credit either of them', async () => {
+        // A deliberate cost: a file whose header cannot be read, and that no send
+        // receipt names, is unattributable — a false positive costs more than a re-send
+        await putOnDevice('Kindle', SENT, 'not a mobi at all')
+        insertBook({
+          ...makeBook('epub', 'The Fixture Codex'),
+          author: 'Iain M. Banks & Another Hand'
+        })
+        insertBook({ ...makeBook('pdf', 'The Fixture Codex'), author: 'Iain M. Banks' })
+
+        await poll()
+
+        expect(getOnDeviceBookIds('kindle:Kindle')).toEqual([])
+      })
+
+      it('still credits the book a send receipt names, and only that one', async () => {
+        await putOnDevice('Kindle', SENT, 'not a mobi at all')
+        insertBook({
+          ...makeBook('epub', 'The Fixture Codex'),
+          author: 'Iain M. Banks & Another Hand'
+        })
+        insertBook({ ...makeBook('pdf', 'The Fixture Codex'), author: 'Iain M. Banks' })
+        noteSentFile('kindle:Kindle', 'epub', SENT)
+
+        await poll()
+
+        expect(getOnDeviceBookIds('kindle:Kindle')).toEqual(['epub'])
+      })
+
+      it('removing the book that was not sent touches nothing, and removing the sent one does', async () => {
+        await putOnDevice(
+          'Kindle',
+          SENT,
+          mobiFile({ title: 'The Fixture Codex', author: 'Iain M. Banks & Another Hand' })
+        )
+        insertBook({
+          ...makeBook('epub', 'The Fixture Codex'),
+          author: 'Iain M. Banks & Another Hand'
+        })
+        insertBook({ ...makeBook('pdf', 'The Fixture Codex'), author: 'Iain M. Banks' })
+        await poll()
+
+        await expect(removeBookFromDevice('pdf', 'kindle:Kindle')).rejects.toThrow(/is not on/)
+        expect(await existsOnDevice(SENT)).toBe(true)
+
+        expect(await removeBookFromDevice('epub', 'kindle:Kindle')).toEqual({ removed: 1 })
+        expect(await existsOnDevice(SENT)).toBe(false)
+      })
+    })
+
+    /**
      * Removal is the inverse of presence, and has to be: a book the app shows
      * as "On {device}" that refuses to come off is the same inconsistency the
      * send receipt had to fix, in the other direction.

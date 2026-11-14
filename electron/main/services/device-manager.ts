@@ -133,7 +133,10 @@ export async function scanDocuments(mountPath: string): Promise<Map<string, stri
  * the library holds them precomposed, so unnormalized the same name is two keys.
  */
 function fileStem(name: string): string {
-  return name.replace(/\.[^.]+$/, '').normalize('NFC').toLowerCase()
+  return name
+    .replace(/\.[^.]+$/, '')
+    .normalize('NFC')
+    .toLowerCase()
 }
 
 function isSidecarDir(name: string): boolean {
@@ -534,6 +537,19 @@ function deviceLibrary(deviceId: string, books: Book[], present: Set<string>): D
 }
 
 /**
+ * Whether this book is the only one in the library with its normalized title.
+ *
+ * The filename rule is extension-agnostic and author-blind, so it can only speak
+ * for a title one book owns. A PDF and an EPUB of the same volume share one — and
+ * the file sent for either is named for the title, so the name alone would credit
+ * (and, on removal, delete) both. Where the title is shared the file has to say
+ * which book it is, through its own title and author or a send receipt.
+ */
+function titleIsUnique(book: Book, device: DeviceLibrary): boolean {
+  return device.titleCounts.get(titleKey(book.title)) === 1
+}
+
+/**
  * The device files that carry this book — **the match rule, in one place**.
  *
  * Three arms, and the order they are gathered in is not a priority: a file is
@@ -552,7 +568,9 @@ function pathsCarryingBook(
   device: DeviceLibrary
 ): string[] {
   const paths = new Set<string>()
-  for (const path of stems.get(titleKey(book.title)) ?? []) paths.add(path)
+  if (titleIsUnique(book, device)) {
+    for (const path of stems.get(titleKey(book.title)) ?? []) paths.add(path)
+  }
   for (const path of filesCarryingBook(book, device)) paths.add(path)
   for (const path of pathsWeSent(deviceId, book.id, stems)) paths.add(path)
   return [...paths]
@@ -623,18 +641,6 @@ export function deviceFileOwners(deviceId: string): DeviceCoverOwner[] {
     }
   }
   return owners
-}
-
-/**
- * The stems a book answers to on the device: its sanitized title, plus the
- * stems of any file we sent it under an older one. Removal matches what made the
- * book read as present, so it has to cover both — otherwise a book the app says
- * is on the device refuses to come off it.
- */
-function stemsForBook(deviceId: string, bookId: string, title: string): string[] {
-  const stems = new Set([titleKey(title)])
-  for (const name of sentFiles.get(deviceId)?.get(bookId) ?? []) stems.add(fileStem(name))
-  return [...stems]
 }
 
 /**
@@ -718,9 +724,10 @@ export async function removeBookFromDevice(
 
 /**
  * The one match rule for removal: the files that made `book` read as on the
- * device — stems by title and by names we sent, plus files whose own header
- * names it. The identity cache can name a file the device no longer has; the
- * library half only ever holds what the scan found.
+ * device, which is `pathsCarryingBook` run over a fresh scan — never a second
+ * implementation, so removal cannot take a file presence did not credit. The
+ * identity cache can name a file the device no longer has; the library half
+ * only ever holds what the scan found.
  */
 function targetsForBook(
   deviceId: string,
@@ -728,12 +735,7 @@ function targetsForBook(
   scanned: Map<string, string[]>,
   library: ReturnType<typeof deviceLibrary>
 ): string[] {
-  const targets = new Set<string>()
-  for (const stem of stemsForBook(deviceId, book.id, book.title)) {
-    for (const path of scanned.get(stem) ?? []) targets.add(path)
-  }
-  for (const path of filesCarryingBook(book, library)) targets.add(path)
-  return [...targets]
+  return pathsCarryingBook(deviceId, book, scanned, library)
 }
 
 /**
