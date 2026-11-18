@@ -148,12 +148,15 @@ export const persistedLibraryState = (s: LibraryState): Pick<LibraryState, 'sort
  * A restored sort, or null when storage holds nothing this build may use.
  *
  * `isBookSort` alone is no longer enough — it accepts `shelf_added` since slice
- * 1, so a build that persisted one would restore a library sorted by a shelf's
- * membership. Exported for the same reason `persistedUIState` is: the rule gets
+ * 1 and `shelf_position` since the reading queue, so a build that persisted
+ * either would restore a library sorted by a shelf's membership, which it has
+ * none of. Exported for the same reason `persistedUIState` is: the rule gets
  * a decider instead of a case that reaches into the storage backend.
  */
 export function restoredSort(value: unknown): BookSort | null {
-  return isBookSort(value) && value.field !== 'shelf_added' ? value : null
+  return isBookSort(value) && value.field !== 'shelf_added' && value.field !== 'shelf_position'
+    ? value
+    : null
 }
 
 export const useLibraryStore = create<LibraryState>()(

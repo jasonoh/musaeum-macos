@@ -177,6 +177,7 @@ describe('what outlives the session (note 1)', () => {
     // A build that persisted one would otherwise open the library sorted by a
     // shelf's membership, which it has none of
     expect(restoredSort(SHELF_DESC)).toBeNull()
+    expect(restoredSort({ field: 'shelf_position', direction: 'asc' })).toBeNull()
     expect(restoredSort({ field: 'title', direction: 'asc' })).toEqual(TITLE_ASC)
     expect(restoredSort({ field: 'nonsense', direction: 'asc' })).toBeNull()
     expect(restoredSort(null)).toBeNull()

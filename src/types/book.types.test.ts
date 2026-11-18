@@ -218,6 +218,16 @@ describe('shelf_added — the sort that only exists inside a shelf (bookshelves 
   })
 })
 
+describe("shelf_position — the queue's own order, ascending only", () => {
+  it('is a sort the guard accepts, ascending on first click, labelled Queue Order either way', () => {
+    expect(isBookSort({ field: 'shelf_position', direction: 'asc' })).toBe(true)
+    expect(defaultSortDirection('shelf_position')).toBe('asc')
+    expect(sortLabel({ field: 'shelf_position', direction: 'asc' })).toBe('Queue Order')
+    // The direction is normalized in SQL, so a stray 'desc' must not mislead
+    expect(sortLabel({ field: 'shelf_position', direction: 'desc' })).toBe('Queue Order')
+  })
+})
+
 describe('readerTarget', () => {
   const book = (formats: BookFormat[]): Book => ({ ...makeBook('b1'), formats })
 
@@ -250,7 +260,10 @@ describe('readerTarget', () => {
 
 describe('splitAuthors', () => {
   it('splits on &, "and" and ;', () => {
-    expect(splitAuthors('Neil Gaiman & Terry Pratchett')).toEqual(['Neil Gaiman', 'Terry Pratchett'])
+    expect(splitAuthors('Neil Gaiman & Terry Pratchett')).toEqual([
+      'Neil Gaiman',
+      'Terry Pratchett'
+    ])
     expect(splitAuthors('Brad Feld and Jason Mendelson')).toEqual(['Brad Feld', 'Jason Mendelson'])
     expect(splitAuthors('A One; B Two')).toEqual(['A One', 'B Two'])
   })

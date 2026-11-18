@@ -298,6 +298,13 @@ export type SortField =
    * field `SORT_SQL` has no expression for.
    */
   | 'shelf_added'
+  /**
+   * A queue's own order — the position the user gave each book. Ascending only:
+   * main normalizes the direction, so `desc` reaching it still reads front to
+   * back. Offered only inside a queue; without a `shelfId` it falls back to
+   * title, like `shelf_added`.
+   */
+  | 'shelf_position'
 
 export interface BookSort {
   field: SortField
@@ -315,7 +322,10 @@ const SORT_LABELS: Record<SortField, { asc: string; desc: string }> = {
   shelf_added: {
     asc: 'Date Added to Shelf, Oldest First',
     desc: 'Date Added to Shelf, Newest First'
-  }
+  },
+  // One label for both directions: the direction is normalized in SQL, so a
+  // reversed label would promise an order the read never produces
+  shelf_position: { asc: 'Queue Order', desc: 'Queue Order' }
 }
 
 export function sortLabel(sort: BookSort): string {

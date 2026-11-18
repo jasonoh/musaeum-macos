@@ -436,7 +436,7 @@ export function facetsPayload(facets: LibraryFacets): FacetsPayload {
 export interface ShelfRowInput {
   id: string
   name: string
-  kind: 'manual'
+  kind: 'manual' | 'queue'
   count: number
   updatedAt: string
 }
@@ -444,7 +444,7 @@ export interface ShelfRowInput {
 export interface WireShelf {
   id: string
   name: string
-  kind: 'manual'
+  kind: 'manual' | 'queue'
   count: number
   updatedAt: string
 }
