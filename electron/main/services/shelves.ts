@@ -157,9 +157,17 @@ function addMembers(shelf: ListShelfEntry, bookIds: unknown, now: string): Shelf
 
 function isMembership(value: unknown): value is ShelfMembership {
   if (typeof value !== 'object' || value === null) return false
-  const { bookId, addedAt } = value as { bookId?: unknown; addedAt?: unknown }
+  const { bookId, addedAt, index } = value as {
+    bookId?: unknown
+    addedAt?: unknown
+    index?: unknown
+  }
   return (
-    typeof bookId === 'string' && bookId !== '' && typeof addedAt === 'string' && addedAt !== ''
+    typeof bookId === 'string' &&
+    bookId !== '' &&
+    typeof addedAt === 'string' &&
+    addedAt !== '' &&
+    (index === undefined || (typeof index === 'number' && Number.isInteger(index) && index >= 0))
   )
 }
 
@@ -214,15 +222,26 @@ export async function addBooks(id: string, bookIds: string[]): Promise<ShelfAddR
   })
 }
 
-/** Take books off a shelf. Returns what was removed, timestamps included, for an Undo. */
+/**
+ * Take books off a shelf. Returns what was removed, timestamps included, for an
+ * Undo. On a queue each membership also carries its `index` — its array index in
+ * the shelf *before* this removal — because the order is the array's (reading
+ * queue D3) and an Undo must put the book back in its place. A manual shelf has
+ * no order to restore, so its memberships carry no `index` key at all.
+ */
 export async function removeBooks(id: string, bookIds: string[]): Promise<ShelfMembership[]> {
   return mutate((file, now) => {
     const shelf = findShelf(file, id)
     const drop = new Set(Array.isArray(bookIds) ? bookIds : [])
     const removed: ShelfMembership[] = []
-    shelf.books = shelf.books.filter((m) => {
+    const queued = shelf.kind === 'queue'
+    shelf.books = shelf.books.filter((m, index) => {
       if (!drop.has(m.id)) return true
-      removed.push({ bookId: m.id, addedAt: m.added_at })
+      removed.push(
+        queued
+          ? { bookId: m.id, addedAt: m.added_at, index }
+          : { bookId: m.id, addedAt: m.added_at }
+      )
       return false
     })
     if (removed.length > 0) shelf.updated_at = now
@@ -235,18 +254,37 @@ export async function removeBooks(id: string, bookIds: string[]): Promise<ShelfM
  * so a book returns to its place under *Date Added to Shelf* (D3). A book
  * already back on the shelf keeps the membership it has; one the library no
  * longer holds is skipped, as an add would skip it.
+ *
+ * On a queue a membership that carries an `index` goes back **at** it, in
+ * ascending index order so each insertion lands against the positions the ones
+ * before it already settled — clamped to the shelf's length, because the queue
+ * may have shrunk since (reading queue D3). A membership with no `index`, and
+ * every membership on a manual shelf, is appended.
  */
 export async function restoreBooks(id: string, memberships: ShelfMembership[]): Promise<void> {
   return mutate((file, now) => {
     const shelf = findShelf(file, id)
     const on = new Set(shelf.books.map((m) => m.id))
-    let restored = 0
+    const valid: ShelfMembership[] = []
     for (const m of Array.isArray(memberships) ? memberships : []) {
       if (!isMembership(m) || on.has(m.bookId) || !db.bookExists(m.bookId)) continue
-      shelf.books.push({ id: m.bookId, added_at: m.addedAt })
+      valid.push(m)
       on.add(m.bookId)
-      restored++
     }
+    if (shelf.kind === 'queue') {
+      // Stable sort: those without an index (Infinity) keep their given order, last
+      const rank = (m: ShelfMembership): number => m.index ?? Infinity
+      valid.sort((x, y) => (rank(x) === rank(y) ? 0 : rank(x) < rank(y) ? -1 : 1))
+    }
+    for (const m of valid) {
+      const entry = { id: m.bookId, added_at: m.addedAt }
+      if (shelf.kind === 'queue' && m.index !== undefined) {
+        shelf.books.splice(Math.min(m.index, shelf.books.length), 0, entry)
+      } else {
+        shelf.books.push(entry)
+      }
+    }
+    const restored = valid.length
     if (restored > 0) shelf.updated_at = now
     return { result: undefined, changed: restored > 0 }
   })

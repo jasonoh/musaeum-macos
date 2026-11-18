@@ -271,6 +271,100 @@ describe('two kinds, one service (reading queue D3)', () => {
   })
 })
 
+describe('Undo restores a queue book to its place (reading queue D3)', () => {
+  const ids = (file: ShelvesFile, id: string): string[] =>
+    listShelfOnDisk(file, id).books.map((m) => m.id)
+
+  beforeEach(() => {
+    for (const id of ['d', 'e']) insertBook(makeBook(id))
+  })
+
+  it('hands back each removed book with its index, and a restore puts the order and added_at back', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-01T00:00:00.000Z'))
+    const queue = await shelves.create('Up Next', ['a'], 'queue')
+    for (const [day, id] of [
+      ['02', 'b'],
+      ['03', 'c'],
+      ['04', 'd']
+    ] as const) {
+      vi.setSystemTime(new Date(`2026-09-${day}T00:00:00.000Z`))
+      await shelves.addBooks(queue.id, [id])
+    }
+    const before = listShelfOnDisk(await onDisk(), queue.id).books
+
+    vi.setSystemTime(new Date('2026-09-10T00:00:00.000Z'))
+    const removed = await shelves.removeBooks(queue.id, ['b', 'd'])
+    expect(removed).toEqual([
+      { bookId: 'b', addedAt: '2026-09-02T00:00:00.000Z', index: 1 },
+      { bookId: 'd', addedAt: '2026-09-04T00:00:00.000Z', index: 3 }
+    ])
+    expect(ids(await onDisk(), queue.id)).toEqual(['a', 'c'])
+
+    await shelves.restoreBooks(queue.id, removed)
+    expect(listShelfOnDisk(await onDisk(), queue.id).books).toEqual(before)
+  })
+
+  it('restores in ascending index order whatever order the memberships arrive in', async () => {
+    const queue = await shelves.create('Up Next', ['a', 'b', 'c', 'd'], 'queue')
+    const removed = await shelves.removeBooks(queue.id, ['b', 'd'])
+    await shelves.restoreBooks(queue.id, [...removed].reverse())
+    expect(ids(await onDisk(), queue.id)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('clamps an index past the end to the end, and never throws', async () => {
+    const queue = await shelves.create('Up Next', ['a', 'b', 'c', 'd'], 'queue')
+    const removed = await shelves.removeBooks(queue.id, ['b', 'c', 'd'])
+    expect(removed.map((m) => m.index)).toEqual([1, 2, 3])
+    await shelves.addBooks(queue.id, ['e'])
+    expect(ids(await onDisk(), queue.id)).toEqual(['a', 'e'])
+
+    // b (index 1) lands at 1; d (index 3) on what is now a three-book shelf lands at the end
+    await shelves.restoreBooks(queue.id, [removed[0]!, removed[2]!])
+    expect(ids(await onDisk(), queue.id)).toEqual(['a', 'b', 'e', 'd'])
+  })
+
+  it('does not duplicate a book already back on the queue, and writes nothing for it', async () => {
+    const queue = await shelves.create('Up Next', ['a', 'b', 'c'], 'queue')
+    const removed = await shelves.removeBooks(queue.id, ['b'])
+    await shelves.addBooks(queue.id, ['b']) // re-added (at the end) before the Undo
+    const writes = countWrites()
+    await shelves.restoreBooks(queue.id, removed)
+    expect(writes()).toBe(0)
+    expect(ids(await onDisk(), queue.id)).toEqual(['a', 'c', 'b'])
+  })
+
+  it('appends a membership that carries no index, after those that do', async () => {
+    const queue = await shelves.create('Up Next', ['a', 'b', 'c'], 'queue')
+    const [b] = await shelves.removeBooks(queue.id, ['b'])
+    await shelves.restoreBooks(queue.id, [{ bookId: 'd', addedAt: AT }, b!])
+    expect(ids(await onDisk(), queue.id)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('skips a malformed index as malformed, and a book the library no longer holds', async () => {
+    const queue = await shelves.create('Up Next', ['a'], 'queue')
+    const bad = (index: unknown) =>
+      ({ bookId: 'b', addedAt: AT, index }) as unknown as { bookId: string; addedAt: string }
+    await shelves.restoreBooks(queue.id, [
+      bad(-1),
+      bad(1.5),
+      bad('1'),
+      { bookId: 'not-a-book', addedAt: AT, index: 0 }
+    ])
+    expect(ids(await onDisk(), queue.id)).toEqual(['a'])
+  })
+
+  it('leaves a manual shelf alone: no index on the removal, and a restore appends', async () => {
+    const shelf = await shelves.create('To Read', ['a', 'b', 'c'])
+    const removed = await shelves.removeBooks(shelf.id, ['a'])
+    expect(removed).toHaveLength(1)
+    expect('index' in removed[0]!).toBe(false)
+    // even a membership that carries an index is appended on a manual shelf
+    await shelves.restoreBooks(shelf.id, [{ ...removed[0]!, index: 0 }])
+    expect(manualOnDisk(await onDisk(), shelf.id).books.map((m) => m.id)).toEqual(['b', 'c', 'a'])
+  })
+})
+
 const AT = '2026-09-01T00:00:00.000Z'
 
 /** Every mutation, pointed at shelf `id` — for the refusals every one of them shares. */
