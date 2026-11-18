@@ -122,6 +122,8 @@ const APP_VERSION = JSON.parse(readFileSync(join(process.cwd(), 'package.json'),
  */
 const SHELF_ID = 'b2c3d4e5-6f70-4182-93a4-b5c6d7e8f901'
 const SHELVES = [SHELF_ID]
+/** The queue in the shelf list's golden — the second kind D6 puts on the wire. */
+const QUEUE_ID = 'c3d4e5f6-7081-4293-a4b5-c6d7e8f90123'
 
 /**
  * The Mac's AI state, as `healthPayload` takes it (phone-ask D3): a local model
@@ -154,10 +156,19 @@ const PAYLOADS: Record<string, unknown> = {
     formats: [{ value: 'epub', count: 5324 }],
     readStatus: [{ value: 'reading', count: 1 }]
   }),
-  // Slice 5's payload: the shelf list. Its `count` and the book member's
-  // membership tell one story, so the example is self-consistent.
+  // Slice 5's payload: the shelf list, and the reading queue's second kind. The
+  // manual row's `count` and the book member's membership tell one story; the
+  // queue row is the shape D6 adds, so a client written against the document
+  // sees both kinds in the one golden.
   shelves: shelvesPayload([
-    { id: SHELF_ID, name: 'To Read', kind: 'manual', count: 3, updatedAt: TOUCHED }
+    { id: SHELF_ID, name: 'To Read', kind: 'manual', count: 3, updatedAt: TOUCHED },
+    {
+      id: QUEUE_ID,
+      name: 'Up Next',
+      kind: 'queue',
+      count: 7,
+      updatedAt: '2026-11-18T14:36:03.570Z'
+    }
   ]),
   // The membership write's answer — the book, wrapped like every other write's
   membership: membershipPayload({ book: GOLDEN, shelves: SHELVES }),
@@ -254,6 +265,10 @@ describe('the contract document and the goldens (AC19)', () => {
     // Slice 5's membership writes, asserted in the method+path form for the same
     // reason: the read route's own path is a prefix of it
     expect(DOC).toContain('/api/shelves/{id}/books/{bookId}')
+    // The reading queue's write (slice 3): a book's place in a queue. Asserted
+    // separately for the same prefix reason — the membership path is a prefix of
+    // this one, so `toContain` would find it inside the older route's name.
+    expect(DOC).toContain('/api/shelves/{id}/books/{bookId}/position')
   })
 
   it('names every refusal word, every media type and the page bounds', () => {
