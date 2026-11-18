@@ -5,7 +5,7 @@ import { connect, type AddressInfo } from 'node:net'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { BookSort } from '@shared/book.types'
-import type { ManualShelfEntry } from '@shared/shelf.types'
+import type { ManualShelfEntry, QueueShelfEntry } from '@shared/shelf.types'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeBook } from '../../../test/helpers/book'
@@ -1330,6 +1330,353 @@ describe('the shelf membership writes', () => {
     } finally {
       unsubscribe()
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The queue position write (reading queue D6, AC13)
+// ---------------------------------------------------------------------------
+
+/**
+ * `PUT /api/shelves/{shelfId}/books/{bookId}/position` over a real socket.
+ *
+ * What is *not* here: the grammar (`services/api/position.test.ts` decides it)
+ * and the order the service produces (`services/shelves.test.ts` owns
+ * `moveBooks`). What only a wire can decide is what a client gets — a status, a
+ * body, and **which refusal wins when two of them are true at once**, which is
+ * the one property D6 pins and neither neighbour's route keeps: a body that is
+ * bad *and* a shelf that is a manual one answers the manual shelf's 400, and a
+ * bad body on an unknown shelf answers 404. A builder copying
+ * `handleReadingReport`'s body-first order would keep every single-status case
+ * green and fail exactly those two rows.
+ */
+describe('the queue position write (reading queue D6, AC13)', () => {
+  let server: Server
+  let base: string
+  let root: string
+  let queueId: string
+  let manualId: string
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'musaeum-rest-position-'))
+    await nas.setLibraryRoot(root)
+    vi.mocked(nas.isOnline).mockReturnValue(true)
+
+    seedLibrary()
+    // The queue in the order it was filled: lib-1, lib-2, lib-3. The manual
+    // shelf holds a different book on purpose, so a queue book's `shelves` is
+    // exactly `[queueId]` and a refusal is never about a second membership.
+    queueId = (await shelves.create('Up Next', ['lib-1', 'lib-2', 'lib-3'], 'queue')).id
+    manualId = (await shelves.create('Plain Shelf', ['lib-5'])).id
+
+    server = createRestApiServer(config({ port: 0, bind: '127.0.0.1' }))
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  const auth = { authorization: `Bearer ${TOKEN}` }
+
+  const path = (shelfId: string, bookId: string) =>
+    `/api/shelves/${shelfId}/books/${bookId}/position`
+
+  function put(shelfId: string, bookId: string, body: unknown) {
+    return fetch(`${base}${path(shelfId, bookId)}`, {
+      method: 'PUT',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: typeof body === 'string' ? body : JSON.stringify(body)
+    })
+  }
+
+  function get(query: string) {
+    return fetch(`${base}${query}`, { headers: auth })
+  }
+
+  interface PositionAnswer {
+    book: { id: string; shelves: string[] }
+  }
+
+  interface PageAnswer {
+    books: { id: string }[]
+    total: number
+  }
+
+  /** The queue as the canonical file holds it now. */
+  async function queueOnDisk(): Promise<QueueShelfEntry | undefined> {
+    const read = await readShelvesFile(root)
+    if (read.state !== 'ok') return undefined
+    return read.file.shelves.find((s): s is QueueShelfEntry => s.kind === 'queue')
+  }
+
+  async function orderOnDisk(): Promise<string[] | undefined> {
+    return (await queueOnDisk())?.books.map((m) => m.id)
+  }
+
+  /** The file's bytes, for the cases whose claim is that nothing was written. */
+  const fileText = (): string => readFileSync(join(root, 'shelves.json'), 'utf8')
+
+  async function libraryIds(query: string): Promise<string[]> {
+    const res = await get(query)
+    expect(res.status).toBe(200)
+    return ((await res.json()) as PageAnswer).books.map((b) => b.id)
+  }
+
+  it('puts the book first for {to:"top"} and last for {to:"bottom"} (AC13)', async () => {
+    const top = await put(queueId, 'lib-3', { to: 'top' })
+
+    expect(top.status).toBe(200)
+    const topAnswer = (await top.json()) as PositionAnswer
+    expect(topAnswer.book.id).toBe('lib-3')
+    expect(topAnswer.book.shelves).toContain(queueId)
+    expect(await orderOnDisk()).toEqual(['lib-3', 'lib-1', 'lib-2'])
+    // The cache agrees with the file: the Mac reads the cache, the wire the file
+    expect(await libraryIds(`/api/library?shelf=${queueId}&limit=10`)).toEqual([
+      'lib-3',
+      'lib-1',
+      'lib-2'
+    ])
+
+    const bottom = await put(queueId, 'lib-3', { to: 'bottom' })
+
+    expect(bottom.status).toBe(200)
+    const bottomAnswer = (await bottom.json()) as PositionAnswer
+    expect(bottomAnswer.book.id).toBe('lib-3')
+    expect(bottomAnswer.book.shelves).toContain(queueId)
+    expect(await orderOnDisk()).toEqual(['lib-1', 'lib-2', 'lib-3'])
+  })
+
+  it('is idempotent: a second {to:"top"} for a book already at the top writes nothing (AC13)', async () => {
+    expect((await put(queueId, 'lib-3', { to: 'top' })).status).toBe(200)
+    const text = fileText()
+    const stamped = (await queueOnDisk())?.updated_at
+
+    const again = await put(queueId, 'lib-3', { to: 'top' })
+
+    expect(again.status).toBe(200)
+    const answer = (await again.json()) as PositionAnswer
+    expect(answer.book.id).toBe('lib-3')
+    expect(answer.book.shelves).toContain(queueId)
+    // `Applied.changed` is the gate: the second move applies the order it found,
+    // so the file is neither rewritten nor re-stamped
+    expect(fileText()).toBe(text)
+    expect((await queueOnDisk())?.updated_at).toBe(stamped)
+  })
+
+  /**
+   * D6's five refusals, each with the fact that makes its *position* in the order
+   * decidable: three of these rows answer differently only because their checks
+   * run where D6 puts them, and each of the three names what it proves. The
+   * manual shelf's row cannot do that — its 400 is the body refusal's own 400 —
+   * so the case after the table pins that step over a raw socket instead.
+   */
+  const REFUSALS: {
+    claim: string
+    shelf: 'queue' | 'manual' | 'unknown'
+    book: string
+    body: unknown
+    offline?: boolean
+    status: number
+    error: string
+  }[] = [
+    {
+      claim: 'answers 503 with Retry-After, before the body is read, while the share is offline',
+      shelf: 'queue',
+      book: 'lib-3',
+      body: 'this is not json',
+      offline: true,
+      status: 503,
+      error: 'library offline'
+    },
+    {
+      claim:
+        'answers 404 for an unknown shelf even with a malformed body (resources before the body)',
+      shelf: 'unknown',
+      book: 'lib-3',
+      body: 'this is not json',
+      status: 404,
+      error: 'not found'
+    },
+    {
+      claim:
+        'answers 404 for an unknown book even with a malformed body (resources before the body)',
+      shelf: 'queue',
+      book: 'no-such-book',
+      body: 'this is not json',
+      status: 404,
+      error: 'not found'
+    },
+    {
+      claim:
+        'answers 400 for a manual shelf, whatever its body — the step order is pinned by the case below',
+      shelf: 'manual',
+      book: 'lib-1',
+      body: 'this is not json',
+      status: 400,
+      error: 'bad request'
+    },
+    {
+      claim: 'answers 400 for a malformed body on a queue',
+      shelf: 'queue',
+      book: 'lib-3',
+      body: 'this is not json',
+      status: 400,
+      error: 'bad request'
+    },
+    {
+      claim: 'answers 400 for a drag anchor, which is the Mac’s grammar and not the wire’s',
+      shelf: 'queue',
+      book: 'lib-3',
+      body: { before: 'lib-1' },
+      status: 400,
+      error: 'bad request'
+    },
+    {
+      claim: 'answers 404 for a book on no shelf at all, with a valid body (membership last)',
+      shelf: 'queue',
+      book: 'lib-4',
+      body: { to: 'top' },
+      status: 404,
+      error: 'not found'
+    }
+  ]
+
+  it.each(REFUSALS)('$claim', async ({ shelf, book, body, offline, status, error }) => {
+    if (offline) vi.mocked(nas.isOnline).mockReturnValue(false)
+    const shelfId = shelf === 'queue' ? queueId : shelf === 'manual' ? manualId : 'no-such-shelf'
+    const before = fileText()
+
+    const res = await put(shelfId, book, body)
+
+    expect(res.status).toBe(status)
+    expect(await res.json()).toEqual({ error })
+    if (status === 503) {
+      // The 503's own header, and the status itself is the proof the body was
+      // never read: a body-first route would have answered 400 here
+      expect(res.headers.get('retry-after')).toBe('5')
+    }
+    // Every refusal leaves the queue exactly as it was
+    expect(fileText()).toBe(before)
+  })
+
+  it('refuses a manual shelf without reading its body — the only proof the two 400s differ', async () => {
+    // **Both refusals are `400 { error: 'bad request' }`**, so no status can tell
+    // D6's step 3 from its step 4: a table row asserting 400 passes whichever
+    // check runs first, and the mutation that swaps them survives (measured
+    // while building this task). What *is* observable is that the kind is
+    // settled before the body is consumed, so this case sends a body that
+    // declares more bytes than it ever delivers: a route that reads first cannot
+    // answer until `BODY_TIMEOUT_MS` (10 s), while one that checks the kind
+    // first answers at once. `fetch` cannot lie about `Content-Length`, hence the
+    // raw socket — the idiom the reading route's own never-finishing-body case
+    // already uses.
+    const port = (server.address() as AddressInfo).port
+    const socket = connect(port, '127.0.0.1')
+    await new Promise<void>((resolve) => socket.on('connect', () => resolve()))
+    socket.write(
+      `PUT ${path(manualId, 'lib-1')} HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
+        `Authorization: Bearer ${TOKEN}\r\nContent-Type: application/json\r\n` +
+        'Content-Length: 40\r\n\r\n{"to":"to'
+    )
+
+    const answer = await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('no answer within 2s — the body was read before the shelf kind')),
+        2_000
+      )
+      let text = ''
+      socket.on('data', (chunk: Buffer) => {
+        text += chunk.toString()
+        if (text.includes('\r\n\r\n')) {
+          clearTimeout(timer)
+          resolve(text)
+        }
+      })
+      socket.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+    })
+
+    expect(answer).toContain('400 Bad Request')
+    expect(await orderOnDisk()).toEqual(['lib-1', 'lib-2', 'lib-3'])
+
+    socket.destroy()
+  })
+
+  it('answers 404 to GET, POST and DELETE of the path (D11)', async () => {
+    for (const method of ['GET', 'POST', 'DELETE']) {
+      const res = await fetch(`${base}${path(queueId, 'lib-3')}`, { method, headers: auth })
+      expect(res.status).toBe(404)
+      expect(await res.json()).toEqual({ error: 'not found' })
+    }
+    expect(await orderOnDisk()).toEqual(['lib-1', 'lib-2', 'lib-3'])
+  })
+
+  it('reads a queue in its own order across a page walk, and shelf_position needs a shelf (AC12)', async () => {
+    // A move first, so the order the walk must honour is neither the order the
+    // queue was filled in nor any library sort of these three titles
+    expect((await put(queueId, 'lib-3', { to: 'top' })).status).toBe(200)
+
+    const pages: string[][] = []
+    const totals: number[] = []
+    for (const offset of [0, 1, 2]) {
+      const res = await get(`/api/library?shelf=${queueId}&limit=1&offset=${offset}`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as PageAnswer
+      pages.push(body.books.map((b) => b.id))
+      totals.push(body.total)
+    }
+
+    // Three pages, one book each, in the queue's order — no repeat, no skip
+    expect(pages).toEqual([['lib-3'], ['lib-1'], ['lib-2']])
+    expect(totals).toEqual([3, 3, 3])
+    expect(new Set(pages.flat()).size).toBe(3)
+
+    // The sort is refused without a shelf, and answers in queue order with one
+    const noShelf = await get('/api/library?sort=shelf_position')
+    expect(noShelf.status).toBe(400)
+    expect(await noShelf.json()).toEqual({ error: 'bad request' })
+
+    expect(await libraryIds(`/api/library?shelf=${queueId}&sort=shelf_position`)).toEqual([
+      'lib-3',
+      'lib-1',
+      'lib-2'
+    ])
+  })
+
+  it('bumps the queue and broadcasts, so the Mac follows without a reload (AC13)', async () => {
+    const heard: string[] = []
+    const unsubscribe = subscribe((event) => {
+      if (event === 'shelvesChanged') heard.push(event)
+    })
+    const queueClock = () => db.listShelvesWithUpdatedAt().find((s) => s.id === queueId)?.updatedAt
+
+    // The clock is the observable the cache publishes, so the move is staged a
+    // few seconds after the shelf was made — the file's clock has one
+    // millisecond of resolution and two writes in the same one are the same
+    // instant, not a later one
+    const before = queueClock()
+    expect(before).toBeTruthy()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date(Date.parse(before ?? '') + 5_000))
+
+      expect((await put(queueId, 'lib-3', { to: 'top' })).status).toBe(200)
+
+      const after = queueClock()
+      expect(Date.parse(after ?? '')).toBeGreaterThan(Date.parse(before ?? ''))
+    } finally {
+      vi.useRealTimers()
+      unsubscribe()
+    }
+
+    // The signal the renderer's shelf store listens to, fired by the same
+    // `mutate` every shelf write goes through
+    expect(heard).toContain('shelvesChanged')
   })
 })
 

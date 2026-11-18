@@ -8,6 +8,7 @@ import * as ai from '../services/ai'
 import { ASK_BODY_MAX_BYTES, frame, healthAi, parseAskRequest, runAsk } from '../services/api/ask'
 import { checkBearer, logRejectedAttempt } from '../services/api/auth'
 import { resolveBindAddress, type InterfaceMap } from '../services/api/bind'
+import { parsePositionBody } from '../services/api/position'
 import { parseLibraryQuery, parseShelfParam } from '../services/api/query'
 import { applyReadingReport, parseReadingReport } from '../services/api/reading'
 import {
@@ -15,8 +16,10 @@ import {
   isBooksCollection,
   matchBookPath,
   matchShelfMembershipPath,
+  matchShelfPositionPath,
   refusalError,
-  type ShelfBookPath
+  type ShelfBookPath,
+  type ShelfPositionPath
 } from '../services/api/routes'
 import {
   aiUnavailablePayload,
@@ -52,11 +55,12 @@ import {
   searchBooksPage,
   shelfExists,
   shelfIdsForBooks,
-  shelfKind
+  shelfKind,
+  shelfMemberExists
 } from '../services/db'
 import * as nas from '../services/nas-manager'
 import * as reflow from '../services/reflow'
-import { addBooks, isShelfGone, removeBooks } from '../services/shelves'
+import { addBooks, isShelfGone, moveBooks, removeBooks } from '../services/shelves'
 import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/settings'
 
 /**
@@ -106,7 +110,9 @@ import { resolveRestApiConfig, type ResolvedRestApiConfig } from '../services/se
  * reads a JSON body — `POST /api/books`, which takes a book's bytes as its body
  * (the phone-upload design, D1), the bookshelves slice's membership pair,
  * `PUT`/`DELETE /api/shelves/{id}/books/{bookId}`, which send no body at all,
- * and the phone-ask slice's `POST /api/ai/ask`, which sends no JSON back: it
+ * the reading queue's `PUT /api/shelves/{id}/books/{bookId}/position`, which
+ * reads a body to set one book's place in a queue, and the phone-ask slice's
+ * `POST /api/ai/ask`, which sends no JSON back: it
  * streams (`docs/superpowers/specs/2026-10-13-phone-ask-design.md`, D3).
  *
  * **Never fatal (invariant 12, D11).** A bind failure is logged, recorded and
@@ -881,6 +887,139 @@ async function handleShelfMembership(
 }
 
 // ---------------------------------------------------------------------------
+// The queue's second write: one book's place in a reading queue (D6, AC13)
+// ---------------------------------------------------------------------------
+
+/**
+ * `PUT /api/shelves/{shelfId}/books/{bookId}/position` — move one book to the
+ * top or the bottom of a reading queue (reading-queue D6).
+ *
+ * **A `PUT`, because the body sets a state and repeating it is a no-op:** an add
+ * of a book already at the top, or a move of one already at the bottom, applies
+ * the same order it found and writes nothing (`Applied.changed`), so a retried
+ * move is safe and the answer is still 200.
+ *
+ * **The answer is the book read back after the write**, in the membership pair's
+ * detail shape — `{ book }`, `shelves` ids only — exactly as that route answers
+ * (S8). The Mac follows because the write goes through `services/shelves.ts`,
+ * whose `mutate` adopts the file into the cache and broadcasts `shelvesChanged`,
+ * the same signal the renderer already listens to for every shelf write.
+ *
+ * **The order below is D6's, and it is deliberately *not* the reading route's.**
+ * `handleReadingReport` above validates its body *first* and looks the book up
+ * afterwards, and its docblock says why: an unparseable request is refused
+ * before it is anything else. D6 pins the other order for this route — the share
+ * before everything, because nothing may be written while it is gone; then the
+ * resources the path names; then the request this route cannot honour; then the
+ * body; then the membership, the one fact that needs the write's subject to be
+ * true. Copying the neighbour's order would invert three of the five steps while
+ * every single-status case stayed green, which is why the suite pins the
+ * combinations (a bad body *and* a manual shelf, a bad body *and* an unknown
+ * shelf) rather than the statuses alone (R4).
+ *
+ * | # | Check                                                    | Answer                                         |
+ * |---|----------------------------------------------------------|------------------------------------------------|
+ * | 1 | `!nas.isOnline()`                                        | 503 `library offline`, `Retry-After: 5`, **before the body is read** |
+ * | 2 | `!shelfExists(shelfId) \|\| !bookExists(bookId)`         | 404 `not found`                                |
+ * | 3 | `shelfKind(shelfId) !== 'queue'`                         | 400 `bad request`                              |
+ * | 4 | `parsePositionBody(await readJsonBody(...))` failing     | 400 `bad request`                              |
+ * | 5 | `!shelfMemberExists(shelfId, bookId)`                    | 404 `not found`                                |
+ * | — | `moveBooks(shelfId, [bookId], { to })`                   | 200 `{ book }`                                 |
+ *
+ * **Steps 3 and 5 are pre-checks here on purpose, not delegated** (R5). The
+ * service skips an id the queue does not hold — correct for the Mac's own drag,
+ * and the reason a non-member would otherwise answer 200 — so step 5 has to read
+ * the cache itself. Step 3 has to be answered **before the body is read**, which
+ * delegation cannot do either: `moveBooks` reaches its `SHELF_NOT_QUEUE` only
+ * inside `mutate`'s `apply`, after `assertOnline` and after this route would have
+ * read and parsed the body, so a manual shelf *and* a malformed body would answer
+ * the body's 400 where D6 puts the shelf's. Both facts are read from the cache,
+ * beside the existence read at step 2 the membership route already makes.
+ * (Only a *malformed placement* precedes `assertOnline` in the service — it is
+ * refused before the queue — and this route never hands it one.)
+ *
+ * The write's own catch is the membership route's, unchanged: a shelf deleted
+ * between the checks and the re-read file is the same 404 from the writer's own
+ * answer; a share that dropped in that window is 503 with `Retry-After` (nothing
+ * was written); anything else — an unreadable `shelves.json`, refused and never
+ * overwritten — is 500 with the service's sentence in the log and the fixed word
+ * on the wire. A `QUEUE_BOOK_GONE` cannot arise from a `{ to }` placement: it
+ * belongs to an anchor the wire cannot name.
+ */
+async function handleShelfPosition(
+  req: IncomingMessage,
+  res: ServerResponse,
+  path: ShelfPositionPath,
+  timeoutMs: number
+): Promise<void> {
+  if (!nas.isOnline()) {
+    // Before the body is read: a request that cannot be served costs the client
+    // no upload, and a malformed body cannot turn this 503 into a 400
+    sendUnavailable(res, 'offline')
+    return
+  }
+
+  if (!shelfExists(path.shelfId) || !bookExists(path.bookId)) {
+    sendJson(res, 404, errorPayload('notFound'))
+    return
+  }
+
+  if (shelfKind(path.shelfId) !== 'queue') {
+    // A real shelf and a well-formed request, which this route cannot honour:
+    // D6 keeps that distinguishable from a path that is nothing at all
+    sendJson(res, 400, errorPayload('badRequest'))
+    return
+  }
+
+  const raw = await readJsonBody(req, timeoutMs)
+  const parsed = raw.ok ? parsePositionBody(raw.body) : ({ ok: false } as const)
+  if (!parsed.ok) {
+    sendJson(res, 400, errorPayload('badRequest'))
+    return
+  }
+
+  if (!shelfMemberExists(path.shelfId, path.bookId)) {
+    // Last, because it is the only step that needs the body's subject to be a
+    // member: `moveBooks` would skip it and answer success (R5)
+    sendJson(res, 404, errorPayload('notFound'))
+    return
+  }
+
+  try {
+    await moveBooks(path.shelfId, [path.bookId], { to: parsed.to })
+  } catch (err) {
+    if (isShelfGone(err)) {
+      // Deleted between the check above and the mutation's own re-read of the
+      // file — the same 404, from the writer's own answer
+      sendJson(res, 404, errorPayload('notFound'))
+      return
+    }
+    if (!nas.isOnline()) {
+      // The share dropped between the check above and the service's own
+      // `assertOnline`: nothing was written, and the contract's answer is the
+      // pre-check's own 503 rather than this module's 500
+      sendUnavailable(res, 'offline')
+      return
+    }
+    console.warn(`[rest] ${req.method} ${req.url} — shelf write failed: ${describeError(err)}`)
+    sendJson(res, 500, errorPayload('internal'))
+    return
+  }
+
+  const book = getBook(path.bookId)
+  if (!book) {
+    // Unreachable by construction — the id was checked above and nothing in this
+    // path deletes a book — so it is answered as this module's own failure
+    // rather than asserted away (invariant 12), as the membership route does
+    console.warn('[rest] shelf write answered for a book the cache does not hold')
+    sendJson(res, 500, errorPayload('internal'))
+    return
+  }
+
+  sendJson(res, 200, membershipPayload({ book, shelves: shelfIdsFor(book.id) }))
+}
+
+// ---------------------------------------------------------------------------
 // The second write: a book arriving as bytes (D1, D5, D6)
 // ---------------------------------------------------------------------------
 
@@ -1183,6 +1322,16 @@ async function handleRequest(
     const membership = matchShelfMembershipPath(url.pathname)
     if (membership && (req.method === 'PUT' || req.method === 'DELETE')) {
       await handleShelfMembership(req, res, membership, req.method === 'PUT')
+      return
+    }
+
+    // **The reading queue's write** (D6): one book's place in a queue, PUT-only
+    // and matched on its own five-segment path. A `GET`, `POST`, `DELETE` or
+    // `HEAD` of it falls through to the uniform 404 below, as a `GET` of the
+    // membership path does (D11).
+    const position = matchShelfPositionPath(url.pathname)
+    if (position && req.method === 'PUT') {
+      await handleShelfPosition(req, res, position, deps.bodyTimeoutMs)
       return
     }
 
