@@ -1,0 +1,14 @@
+-- Reading queue (docs/superpowers/specs/2026-11-18-reading-queue-design.md, D2).
+--
+-- `position` mirrors a member's index in its shelf's `books` array in
+-- shelves.json, which is canonical and is where a queue's order lives. Like the
+-- rest of `shelf_books` it is a cache: every shelf write and every adoption
+-- replaces the rows wholesale from the file, so the value is rewritten with the
+-- first of those, never maintained here. A member whose book this catalog lacks
+-- is skipped, so positions may have gaps — they order, they do not count.
+--
+-- DEFAULT 0 only lets the column be added NOT NULL to rows that already exist.
+-- Every such row is a manual shelf's, whose order is not its position (manual
+-- shelves sort by name, title or added_at), so 0 is never read as an order
+-- before the next adoption rewrites it.
+ALTER TABLE shelf_books ADD COLUMN position INTEGER NOT NULL DEFAULT 0;

@@ -12,8 +12,8 @@ import type {
 } from '@shared/book.types'
 import { sortableAuthor, sortableTitle, splitAuthors } from '@shared/book.types'
 import type { ConflictCandidate, MetadataConflict, OwnedFields } from '@shared/metadata.types'
-import type { ShelfScope, ShelfSummary, ShelvesFile } from '@shared/shelf.types'
-import { isManualShelf } from '@shared/shelf.types'
+import type { ShelfKind, ShelfScope, ShelfSummary, ShelvesFile } from '@shared/shelf.types'
+import { isListShelf } from '@shared/shelf.types'
 import migration001 from '../schema/migrations/001_initial.sql?raw'
 import migration002 from '../schema/migrations/002_sort_keys.sql?raw'
 import migration003 from '../schema/migrations/003_reading_state.sql?raw'
@@ -22,6 +22,7 @@ import migration005 from '../schema/migrations/005_device_history_outlives_book.
 import migration006 from '../schema/migrations/006_shelves.sql?raw'
 import migration007 from '../schema/migrations/007_owned_fields.sql?raw'
 import migration008 from '../schema/migrations/008_read_status_at.sql?raw'
+import migration009 from '../schema/migrations/009_shelf_position.sql?raw'
 import { BUCKETS, initialBucket, type Bucket } from './initials'
 import { parseOwnedFields } from './owned-fields'
 
@@ -33,7 +34,8 @@ const MIGRATIONS: string[] = [
   migration005,
   migration006,
   migration007,
-  migration008
+  migration008,
+  migration009
 ]
 
 let db: Database.Database | null = null
@@ -936,8 +938,11 @@ export function getFacets(scope?: ShelfScope): LibraryFacets {
  * D2, D4). Called by every shelf write with the file it just wrote, and by
  * adoption with the file it just read — one path, so the two cannot drift.
  *
- * - Only manual shelves: a kind this build does not know stays in the file and
- *   out of the cache (D1).
+ * - Only list shelves (manual and queue), each with its `kind`: a kind this
+ *   build does not know stays in the file and out of the cache (D1).
+ * - A member's `position` is its index in the shelf's `books` array — the
+ *   index in the file, not a count of rows inserted, so a member skipped below
+ *   leaves a gap rather than closing it up (reading queue D2).
  * - A member whose book this cache does not hold is left out and **kept in the
  *   file** — the catalog may simply be behind (a book imported on another Mac).
  * - A repeated shelf id or member in a hand-edited file is ignored, first
@@ -946,22 +951,22 @@ export function getFacets(scope?: ShelfScope): LibraryFacets {
 export function replaceAllShelves(file: ShelvesFile): void {
   const d = getDb()
   const insertShelf = d.prepare(
-    "INSERT INTO shelves (id, name, kind, created_at, updated_at) VALUES (?, ?, 'manual', ?, ?)"
+    'INSERT INTO shelves (id, name, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
   )
   const insertMember = d.prepare(
-    `INSERT OR IGNORE INTO shelf_books (shelf_id, book_id, added_at)
-     SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM books WHERE id = ?)`
+    `INSERT OR IGNORE INTO shelf_books (shelf_id, book_id, added_at, position)
+     SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM books WHERE id = ?)`
   )
   d.transaction(() => {
     d.prepare('DELETE FROM shelf_books').run()
     d.prepare('DELETE FROM shelves').run()
     const seen = new Set<string>()
     for (const shelf of file.shelves) {
-      if (!isManualShelf(shelf) || seen.has(shelf.id)) continue
+      if (!isListShelf(shelf) || seen.has(shelf.id)) continue
       seen.add(shelf.id)
-      insertShelf.run(shelf.id, shelf.name, shelf.created_at, shelf.updated_at)
-      for (const member of shelf.books) {
-        insertMember.run(shelf.id, member.id, member.added_at, member.id)
+      insertShelf.run(shelf.id, shelf.name, shelf.kind, shelf.created_at, shelf.updated_at)
+      for (const [position, member] of shelf.books.entries()) {
+        insertMember.run(shelf.id, member.id, member.added_at, position, member.id)
       }
     }
   })()
@@ -970,11 +975,12 @@ export function replaceAllShelves(file: ShelvesFile): void {
 interface ShelfSummaryRow {
   id: string
   name: string
+  kind: ShelfKind
   count: number
 }
 
 function toShelfSummary(r: ShelfSummaryRow): ShelfSummary {
-  return { id: r.id, name: r.name, kind: 'manual', count: r.count }
+  return { id: r.id, name: r.name, kind: r.kind, count: r.count }
 }
 
 /**
@@ -988,12 +994,12 @@ function toShelfSummary(r: ShelfSummaryRow): ShelfSummary {
 export function listShelvesWithUpdatedAt(): (ShelfSummary & { updatedAt: string })[] {
   const rows = getDb()
     .prepare(
-      `SELECT s.id, s.name, s.updated_at AS updatedAt, COUNT(sb.book_id) AS count
+      `SELECT s.id, s.name, s.kind, s.updated_at AS updatedAt, COUNT(sb.book_id) AS count
          FROM shelves s LEFT JOIN shelf_books sb ON sb.shelf_id = s.id
         GROUP BY s.id
         ORDER BY s.name COLLATE NOCASE, s.id`
     )
-    .all() as { id: string; name: string; updatedAt: string; count: number }[]
+    .all() as (ShelfSummaryRow & { updatedAt: string })[]
   return rows.map((row) => ({ ...toShelfSummary(row), updatedAt: row.updatedAt }))
 }
 
@@ -1003,10 +1009,10 @@ export function listShelvesWithUpdatedAt(): (ShelfSummary & { updatedAt: string 
  * `replaceAllShelves`, `deleteBook` and `replaceAllBooks` all keep it that way.
  */
 export function listShelves(): ShelfSummary[] {
-  return listShelvesWithUpdatedAt().map(({ id, name, count }) => ({
+  return listShelvesWithUpdatedAt().map(({ id, name, kind, count }) => ({
     id,
     name,
-    kind: 'manual',
+    kind,
     count
   }))
 }
@@ -1049,7 +1055,7 @@ export function shelfIdsForBooks(bookIds: string[]): Map<string, string[]> {
 export function shelvesForBook(bookId: string): ShelfSummary[] {
   const rows = getDb()
     .prepare(
-      `SELECT s.id, s.name,
+      `SELECT s.id, s.name, s.kind,
               (SELECT COUNT(*) FROM shelf_books c WHERE c.shelf_id = s.id) AS count
          FROM shelves s JOIN shelf_books m ON m.shelf_id = s.id AND m.book_id = ?
         ORDER BY s.name COLLATE NOCASE, s.id`

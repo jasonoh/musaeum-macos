@@ -237,7 +237,7 @@ describe('the upgrade seed', () => {
     expect(getBook('b')!.ownedFields).toEqual({}) // unknown field name dropped
     expect(getBook('ghost')).toBeNull() // no row: nothing created, nothing thrown
     expect(getConfig('field_overrides')).not.toBeNull() // read once, never rewritten, never deleted
-    expect(getDb().pragma('user_version', { simple: true })).toBe(8)
+    expect(getDb().pragma('user_version', { simple: true })).toBe(9)
   })
 
   it('stamps every book of one upgrade with the same instant', () => {
@@ -272,7 +272,7 @@ describe('the upgrade seed', () => {
           value
         )
         expect(() => getDb()).not.toThrow()
-        expect(getDb().pragma('user_version', { simple: true })).toBe(8)
+        expect(getDb().pragma('user_version', { simple: true })).toBe(9)
         expect(getBook('a')!.ownedFields).toEqual({}) // never a usable entry
         const b = getBook('b')!
         if (value.includes('"b":["title"]')) expect(Object.keys(b.ownedFields)).toEqual(['title'])

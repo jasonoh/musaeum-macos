@@ -3,7 +3,12 @@ import { rmSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { ManualShelfEntry, ShelfEntry, ShelvesFile } from '@shared/shelf.types'
+import type {
+  ManualShelfEntry,
+  QueueShelfEntry,
+  ShelfEntry,
+  ShelvesFile
+} from '@shared/shelf.types'
 import { makeBook } from '../../../test/helpers/book'
 import {
   closeDb,
@@ -76,7 +81,7 @@ describe('migration 006 (bookshelves D2)', () => {
     closeDb()
 
     const d = getDb()
-    expect(d.pragma('user_version', { simple: true })).toBe(8)
+    expect(d.pragma('user_version', { simple: true })).toBe(9)
     const names = schemaNames(d)
     expect(names).toEqual(
       expect.arrayContaining(['shelves', 'shelf_books', 'idx_shelf_books_book'])
@@ -120,6 +125,17 @@ function manualShelf(id: string, name: string, members: [string, string][]): Man
     created_at: T(1),
     updated_at: T(1),
     books: members.map(([bookId, at]) => ({ id: bookId, added_at: at }))
+  }
+}
+
+function queueShelf(id: string, name: string, members: [string][]): QueueShelfEntry {
+  return {
+    id,
+    name,
+    kind: 'queue',
+    created_at: T(1),
+    updated_at: T(1),
+    books: members.map(([bookId], i) => ({ id: bookId, added_at: T(i + 1) }))
   }
 }
 
@@ -346,5 +362,83 @@ describe('the reads the REST surface answers from (slice 5)', () => {
     // One SQL statement, two readers: the summary is a projection of this one,
     // so the two cannot order or count differently
     expect(listShelves()).toEqual([{ id: 's1', name: 'To Read', kind: 'manual', count: 1 }])
+  })
+})
+
+describe('the cache keeps a shelf kind and a member position (reading queue D2)', () => {
+  const positions = (shelfId: string): { book_id: string; position: number }[] =>
+    getDb()
+      .prepare('SELECT book_id, position FROM shelf_books WHERE shelf_id = ? ORDER BY position')
+      .all(shelfId) as { book_id: string; position: number }[]
+
+  it("stores each member's index in the file's books array as its position", () => {
+    insertBook(makeBook('a'))
+    insertBook(makeBook('b'))
+    insertBook(makeBook('c'))
+    replaceAllShelves(file([queueShelf('q1', 'Next', [['a'], ['b'], ['c']])]))
+    expect(positions('q1')).toEqual([
+      { book_id: 'a', position: 0 },
+      { book_id: 'b', position: 1 },
+      { book_id: 'c', position: 2 }
+    ])
+  })
+
+  it('leaves a gap for a member whose book the cache lacks — the index is the file position, not a row counter', () => {
+    insertBook(makeBook('a'))
+    insertBook(makeBook('c'))
+    replaceAllShelves(file([queueShelf('q1', 'Next', [['a'], ['b'], ['c']])]))
+    expect(positions('q1')).toEqual([
+      { book_id: 'a', position: 0 },
+      { book_id: 'c', position: 2 }
+    ])
+  })
+
+  it('keeps the first occurrence of a repeated member, and its position', () => {
+    insertBook(makeBook('a'))
+    insertBook(makeBook('b'))
+    replaceAllShelves(file([queueShelf('q1', 'Next', [['a'], ['b'], ['a']])]))
+    expect(positions('q1')).toEqual([
+      { book_id: 'a', position: 0 },
+      { book_id: 'b', position: 1 }
+    ])
+  })
+
+  it('reads kind from the row in listShelves, listShelvesWithUpdatedAt and shelvesForBook', () => {
+    insertBook(makeBook('a'))
+    insertBook(makeBook('b'))
+    replaceAllShelves(
+      file([
+        queueShelf('q1', 'Next', [['a']]),
+        manualShelf('s1', 'Shelf', [['a', T(1)]]),
+        { id: 's3', kind: 'smart', name: 'Smart', rule: {} }
+      ])
+    )
+    expect(listShelves()).toEqual([
+      { id: 'q1', name: 'Next', kind: 'queue', count: 1 },
+      { id: 's1', name: 'Shelf', kind: 'manual', count: 1 }
+    ])
+    expect(listShelvesWithUpdatedAt().map((s) => [s.id, s.kind])).toEqual([
+      ['q1', 'queue'],
+      ['s1', 'manual']
+    ])
+    expect(shelvesForBook('a')).toEqual([
+      { id: 'q1', name: 'Next', kind: 'queue', count: 1 },
+      { id: 's1', name: 'Shelf', kind: 'manual', count: 1 }
+    ])
+    expect(shelfExists('s3')).toBe(false)
+  })
+
+  it('migration 009 adds position to an existing shelf_books row, defaulting it to 0', () => {
+    insertBook(makeBook('a'))
+    replaceAllShelves(file([manualShelf('s1', 'Shelf', [['a', T(1)]])]))
+    getDb().exec('ALTER TABLE shelf_books DROP COLUMN position')
+    getDb().pragma('user_version = 8')
+    closeDb()
+
+    const d = getDb()
+    expect(d.pragma('user_version', { simple: true })).toBe(9)
+    expect(d.prepare('SELECT shelf_id, book_id, position FROM shelf_books').all()).toEqual([
+      { shelf_id: 's1', book_id: 'a', position: 0 }
+    ])
   })
 })
