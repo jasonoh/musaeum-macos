@@ -23,7 +23,8 @@ Import once, let the metadata fill itself in, read the books, and send them to a
 
 <br />
 
-<img width="1438" height="898" alt="Musaeum — the library grid" src="https://github.com/user-attachments/assets/62d8c12d-0fb4-4c6c-9274-90da079f438e" />
+<img width="1443" height="902" alt="Musaeum — the library grid" src="https://github.com/user-attachments/assets/dd7d11ec-9c2f-4c0a-94fe-1959792623b4" />
+
 
 </div>
 
