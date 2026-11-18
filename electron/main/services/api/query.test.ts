@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import type { ShelfKind } from '@shared/shelf.types'
 import { describe, expect, it } from 'vitest'
 import { API_ERRORS, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from './shape'
 import { intParam, listParam, parseLibraryQuery, parseShelfParam, parseSort } from './query'
@@ -27,9 +28,20 @@ function url(pathAndQuery: string): URL {
   return new URL(pathAndQuery, 'http://musaeum.invalid')
 }
 
+/**
+ * The kind lookup these cases pass: "no shelf id is a queue", which is the
+ * manual-shelf default they were written against before queues existed.
+ *
+ * The lookup is **required** rather than optional (R2): one caller exists today,
+ * and an optional parameter is how the next one supplies nothing and silently
+ * re-opens a queue on Date Added. A required argument makes each call site say
+ * which answer it means, even when the answer is "none of them".
+ */
+const manualOnly = (): ShelfKind | null => null
+
 describe('parseLibraryQuery — the parameters every client types', () => {
   it('answers the contract defaults for a bare request', () => {
-    const parsed = parseLibraryQuery(url('/api/library'))
+    const parsed = parseLibraryQuery(url('/api/library'), manualOnly)
 
     expect(parsed).toEqual({
       ok: true,
@@ -38,7 +50,7 @@ describe('parseLibraryQuery — the parameters every client types', () => {
   })
 
   it('reads limit and offset, and passes the page on unchanged', () => {
-    const parsed = parseLibraryQuery(url('/api/library?limit=10&offset=250'))
+    const parsed = parseLibraryQuery(url('/api/library?limit=10&offset=250'), manualOnly)
 
     expect(parsed.ok && parsed.query.limit).toBe(10)
     expect(parsed.ok && parsed.query.offset).toBe(250)
@@ -48,14 +60,20 @@ describe('parseLibraryQuery — the parameters every client types', () => {
     // The one value that is repaired instead of refused: asking for everything
     // is a request this surface can satisfy, at 500 rows — and the response
     // echoes what was actually served
-    const parsed = parseLibraryQuery(url(`/api/library?limit=${MAX_PAGE_LIMIT + 400}`))
+    const parsed = parseLibraryQuery(url(`/api/library?limit=${MAX_PAGE_LIMIT + 400}`), manualOnly)
 
     expect(parsed.ok && parsed.query.limit).toBe(MAX_PAGE_LIMIT)
   })
 
   it('takes the filter lists in both spellings, comma and repeated', () => {
-    const repeated = parseLibraryQuery(url('/api/library?tags=a&tags=b&authors=Ursula K. Le Guin'))
-    const commas = parseLibraryQuery(url('/api/library?tags=a,b&authors=Ursula K. Le Guin'))
+    const repeated = parseLibraryQuery(
+      url('/api/library?tags=a&tags=b&authors=Ursula K. Le Guin'),
+      manualOnly
+    )
+    const commas = parseLibraryQuery(
+      url('/api/library?tags=a,b&authors=Ursula K. Le Guin'),
+      manualOnly
+    )
 
     expect(repeated.ok && repeated.query.filters).toEqual(commas.ok && commas.query.filters)
     expect(commas.ok && commas.query.filters).toEqual({
@@ -67,11 +85,11 @@ describe('parseLibraryQuery — the parameters every client types', () => {
   it('trims a blank q to no search at all', () => {
     // A `q` of spaces is not a search for spaces: the app's own FTS path would
     // find nothing, where a plain list is what the client meant
-    const blank = parseLibraryQuery(url('/api/library?q=%20%20'))
-    const missing = parseLibraryQuery(url('/api/library'))
+    const blank = parseLibraryQuery(url('/api/library?q=%20%20'), manualOnly)
+    const missing = parseLibraryQuery(url('/api/library'), manualOnly)
 
     expect(blank).toEqual(missing)
-    expect(parseLibraryQuery(url('/api/library?q=  Ursula  '))).toMatchObject({
+    expect(parseLibraryQuery(url('/api/library?q=  Ursula  '), manualOnly)).toMatchObject({
       ok: true,
       query: { query: 'Ursula' }
     })
@@ -80,7 +98,10 @@ describe('parseLibraryQuery — the parameters every client types', () => {
   it('accepts only the formats and statuses the payload can report', () => {
     // Both lists come from the shaper (`BOOK_FILE_EXTENSIONS`, `READ_STATUSES`),
     // so a filter can never name a value the wire has no word for
-    const good = parseLibraryQuery(url('/api/library?formats=epub,pdf&readStatus=reading,read'))
+    const good = parseLibraryQuery(
+      url('/api/library?formats=epub,pdf&readStatus=reading,read'),
+      manualOnly
+    )
     expect(good.ok && good.query.filters).toEqual({
       formats: ['epub', 'pdf'],
       readStatus: ['reading', 'read']
@@ -88,15 +109,15 @@ describe('parseLibraryQuery — the parameters every client types', () => {
   })
 
   it('carries minRating as a whole number only when it is there', () => {
-    expect(parseLibraryQuery(url('/api/library?minRating=5'))).toMatchObject({
+    expect(parseLibraryQuery(url('/api/library?minRating=5'), manualOnly)).toMatchObject({
       ok: true,
       query: { filters: { minRating: 5 } }
     })
     // Absent is absent — the key is not invented — while present and empty is
     // wrong, which is the read routes' own rule for an optional parameter
-    const absent = parseLibraryQuery(url('/api/library'))
+    const absent = parseLibraryQuery(url('/api/library'), manualOnly)
     expect(absent.ok && 'minRating' in absent.query.filters).toBe(false)
-    expect(parseLibraryQuery(url('/api/library?minRating=')).ok).toBe(false)
+    expect(parseLibraryQuery(url('/api/library?minRating='), manualOnly).ok).toBe(false)
   })
 
   it.each([
@@ -114,7 +135,7 @@ describe('parseLibraryQuery — the parameters every client types', () => {
     // A client that asked for `sort=athor` and received title order could never
     // learn it had a typo, which is why every one of these is a 400 — and the
     // decision is made here, without a socket
-    expect(parseLibraryQuery(url(`/api/library?${query}`))).toEqual({ ok: false })
+    expect(parseLibraryQuery(url(`/api/library?${query}`), manualOnly)).toEqual({ ok: false })
   })
 
   it('reads an empty limit or offset as absent, which is what it already did', () => {
@@ -123,7 +144,7 @@ describe('parseLibraryQuery — the parameters every client types', () => {
     // moved this function and a silent change of meaning here would be a
     // different route. `?minRating=` is the case that *is* refused, and the
     // reason is its own guard rather than this one (see above).
-    const empty = parseLibraryQuery(url('/api/library?limit=&offset='))
+    const empty = parseLibraryQuery(url('/api/library?limit=&offset='), manualOnly)
 
     expect(empty).toMatchObject({ ok: true, query: { limit: DEFAULT_PAGE_LIMIT, offset: 0 } })
   })
@@ -192,15 +213,39 @@ describe('parseSort — the field/direction rule', () => {
       sort: { field: 'shelf_added', direction: 'asc' }
     })
   })
+
+  it('gives shelf_position the same rule, because it is shelf-bound the same way (D6)', () => {
+    // One predicate covers both sorts: each reads a book's entry in a shelf, so
+    // neither means anything without the `shelf` the request never named. With a
+    // shelf it is legal on a **manual** shelf too — the cache holds a position
+    // for every shelf and nothing offers the sort there — and `dir=desc` is
+    // accepted by the parser even though the SQL normalizes the read to
+    // ascending: refusing it here would be a rule about the order SQL produces,
+    // not about the parameter's spelling.
+    expect(parseSort(url('/api/library?sort=shelf_position').searchParams, false)).toEqual({
+      ok: false
+    })
+    expect(parseSort(url('/api/library?sort=shelf_position&dir=asc').searchParams, false)).toEqual({
+      ok: false
+    })
+    expect(parseSort(url('/api/library?sort=shelf_position').searchParams, true)).toEqual({
+      ok: true,
+      sort: { field: 'shelf_position', direction: 'asc' }
+    })
+    expect(parseSort(url('/api/library?sort=shelf_position&dir=desc').searchParams, true)).toEqual({
+      ok: true,
+      sort: { field: 'shelf_position', direction: 'desc' }
+    })
+  })
 })
 
 describe('the shelf parameter (bookshelves D10)', () => {
   it('reads shelf into the filters, trimmed', () => {
-    expect(parseLibraryQuery(url('/api/library?shelf=to-read'))).toMatchObject({
+    expect(parseLibraryQuery(url('/api/library?shelf=to-read'), manualOnly)).toMatchObject({
       ok: true,
       query: { filters: { shelfId: 'to-read' } }
     })
-    expect(parseLibraryQuery(url('/api/library?shelf=%20to-read%20'))).toMatchObject({
+    expect(parseLibraryQuery(url('/api/library?shelf=%20to-read%20'), manualOnly)).toMatchObject({
       ok: true,
       query: { filters: { shelfId: 'to-read' } }
     })
@@ -208,39 +253,102 @@ describe('the shelf parameter (bookshelves D10)', () => {
 
   it('refuses a present-but-empty shelf rather than defaulting it (S4)', () => {
     // Present and wrong is refused, absent is absent — the `?minRating=` rule
-    expect(parseLibraryQuery(url('/api/library?shelf='))).toEqual({ ok: false })
-    expect(parseLibraryQuery(url('/api/library?shelf=%20'))).toEqual({ ok: false })
-    const absent = parseLibraryQuery(url('/api/library'))
+    expect(parseLibraryQuery(url('/api/library?shelf='), manualOnly)).toEqual({ ok: false })
+    expect(parseLibraryQuery(url('/api/library?shelf=%20'), manualOnly)).toEqual({ ok: false })
+    const absent = parseLibraryQuery(url('/api/library'), manualOnly)
     expect(absent.ok && 'shelfId' in absent.query.filters).toBe(false)
   })
 
   it('takes Date Added to Shelf as the default order inside a shelf, and only there (S5)', () => {
-    expect(parseLibraryQuery(url('/api/library?shelf=to-read'))).toMatchObject({
+    expect(parseLibraryQuery(url('/api/library?shelf=to-read'), manualOnly)).toMatchObject({
       ok: true,
       query: {
         filters: { shelfId: 'to-read', sort: { field: 'shelf_added', direction: 'desc' } }
       }
     })
     // An explicit sort wins over the default…
-    expect(parseLibraryQuery(url('/api/library?shelf=x&sort=title'))).toMatchObject({
+    expect(parseLibraryQuery(url('/api/library?shelf=x&sort=title'), manualOnly)).toMatchObject({
       ok: true,
       query: { filters: { sort: { field: 'title', direction: 'asc' } } }
     })
     // …and a search keeps FTS relevance: no sort key at all, so `searchRows`
     // falls back to `rank`, exactly as a Mac search inside a shelf behaves
-    const search = parseLibraryQuery(url('/api/library?shelf=x&q=ursula'))
+    const search = parseLibraryQuery(url('/api/library?shelf=x&q=ursula'), manualOnly)
     expect(search.ok && 'sort' in search.query.filters).toBe(false)
     // The library without a shelf invents no sort either
-    const plain = parseLibraryQuery(url('/api/library'))
+    const plain = parseLibraryQuery(url('/api/library'), manualOnly)
     expect(plain.ok && 'sort' in plain.query.filters).toBe(false)
   })
 
   it('lets shelf_added through only when a shelf scoped the query', () => {
-    expect(parseLibraryQuery(url('/api/library?shelf=x&sort=shelf_added'))).toMatchObject({
+    expect(
+      parseLibraryQuery(url('/api/library?shelf=x&sort=shelf_added'), manualOnly)
+    ).toMatchObject({
       ok: true,
       query: { filters: { sort: { field: 'shelf_added', direction: 'desc' } } }
     })
-    expect(parseLibraryQuery(url('/api/library?sort=shelf_added'))).toEqual({ ok: false })
+    expect(parseLibraryQuery(url('/api/library?sort=shelf_added'), manualOnly)).toEqual({
+      ok: false
+    })
+  })
+})
+
+describe("a queue's default order (queue D6, R2)", () => {
+  /** The caller's fact: which of these ids is a queue, as the cache would say. */
+  function kindOf(kinds: Record<string, ShelfKind>): (shelfId: string) => ShelfKind | null {
+    return (shelfId) => kinds[shelfId] ?? null
+  }
+
+  it('opens a queue on its own order, top first', () => {
+    // A queue's array order *is* its content (D1), so a client that asks for
+    // nothing must not be shown it in Date Added to Shelf order
+    expect(parseLibraryQuery(url('/api/library?shelf=q1'), kindOf({ q1: 'queue' }))).toMatchObject({
+      ok: true,
+      query: {
+        filters: { shelfId: 'q1', sort: { field: 'shelf_position', direction: 'asc' } }
+      }
+    })
+  })
+
+  it('keeps Date Added to Shelf for a manual shelf, and for an id the lookup does not know', () => {
+    // The manual shelf does not move: this is the order it has always had
+    expect(parseLibraryQuery(url('/api/library?shelf=s1'), kindOf({ s1: 'manual' }))).toMatchObject(
+      {
+        ok: true,
+        query: { filters: { shelfId: 's1', sort: { field: 'shelf_added', direction: 'desc' } } }
+      }
+    )
+    // An unknown id is answered 404 by the caller before any query runs, so this
+    // default never shows — the case pins that the parser invents nothing when
+    // the lookup has no answer, rather than guessing a kind
+    expect(parseLibraryQuery(url('/api/library?shelf=nope'), kindOf({}))).toMatchObject({
+      ok: true,
+      query: { filters: { sort: { field: 'shelf_added', direction: 'desc' } } }
+    })
+  })
+
+  it('lets an explicit sort, a search and a lone dir each beat the queue default', () => {
+    const kinds = kindOf({ q1: 'queue' })
+    expect(parseLibraryQuery(url('/api/library?shelf=q1&sort=title'), kinds)).toMatchObject({
+      ok: true,
+      query: { filters: { sort: { field: 'title', direction: 'asc' } } }
+    })
+    // A search keeps FTS relevance: no sort key at all, so `searchRows` falls
+    // back to `rank` — the queue's positions have nothing to do with what matched
+    const search = parseLibraryQuery(url('/api/library?shelf=q1&q=x'), kinds)
+    expect(search.ok && 'sort' in search.query.filters).toBe(false)
+    // `dir` alone is a sort of titles (the `parseSort` rule), not a request for
+    // either default — a queue is not reopened on position by a direction
+    expect(parseLibraryQuery(url('/api/library?shelf=q1&dir=asc'), kinds)).toMatchObject({
+      ok: true,
+      query: { filters: { sort: { field: 'title', direction: 'asc' } } }
+    })
+  })
+
+  it('refuses shelf_position with no shelf at the query level too, before any default', () => {
+    expect(parseLibraryQuery(url('/api/library?sort=shelf_position'), manualOnly)).toEqual({
+      ok: false
+    })
   })
 })
 

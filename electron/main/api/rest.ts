@@ -51,7 +51,8 @@ import {
   listShelvesWithUpdatedAt,
   searchBooksPage,
   shelfExists,
-  shelfIdsForBooks
+  shelfIdsForBooks,
+  shelfKind
 } from '../services/db'
 import * as nas from '../services/nas-manager'
 import * as reflow from '../services/reflow'
@@ -1092,7 +1093,7 @@ async function handleRequest(
     }
 
     if (json && url.pathname === LIBRARY_ROUTE) {
-      const parsed = parseLibraryQuery(url)
+      const parsed = parseLibraryQuery(url, shelfKind)
       if (!parsed.ok) {
         sendJson(res, 400, errorPayload('badRequest'))
         return

@@ -1,5 +1,6 @@
 import type { BookFilters, BookFormat, BookSort, ReadStatus } from '@shared/book.types'
 import { BOOK_FILE_EXTENSIONS, defaultSortDirection, isBookSort } from '@shared/book.types'
+import type { ShelfKind } from '@shared/shelf.types'
 import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, READ_STATUSES } from './shape'
 
 /**
@@ -43,7 +44,37 @@ const INVALID_QUERY: { ok: false } = { ok: false }
 
 export type ParsedLibraryQuery = { ok: true; query: LibraryQuery } | { ok: false }
 
-export function parseLibraryQuery(url: URL): ParsedLibraryQuery {
+/**
+ * The library route's whole parameter set, and the one **default order** this
+ * surface decides.
+ *
+ * **A queue opens on its own order (D6).** Inside a shelf, with neither a `sort`
+ * nor a `q`, the order has a default because neither the Mac nor the phone
+ * should have to name Date Added to Shelf to get a shelf's own order. For a
+ * manual shelf that default has always been `shelf_added` descending; a **queue**
+ * defaults to `shelf_position` ascending instead, because a queue's array order
+ * *is* its content (D1) and Date Added to Shelf would show it in the wrong order
+ * to every client that asked for nothing. Everything else is unchanged: an
+ * explicit `sort`/`dir` still wins, a `q` still leaves the sort unset so the
+ * read keeps FTS relevance, and an id the lookup does not know keeps the manual
+ * default (the caller answers that id 404 before any query runs, so its default
+ * never shows).
+ *
+ * **Why the kind arrives as an argument rather than a read.** This module is
+ * pure — no database, no filesystem, no Electron (D2) — and it stays that way:
+ * `shelfKindOf` is a *fact the caller supplies*, exactly as `parseSort` takes
+ * `hasShelf` as one, so the decision remains a function of a URL and a fact
+ * rather than a function of a URL and a live cache. The two alternatives were
+ * considered and rejected. Post-processing the parsed query in `api/rest.ts`
+ * would give the default order two homes, and the second one is what a later
+ * sort change forgets. An **optional** parameter would let the next caller
+ * supply nothing and silently re-open a queue on Date Added — the required
+ * parameter is what makes that a compile error instead of a wrong page.
+ */
+export function parseLibraryQuery(
+  url: URL,
+  shelfKindOf: (shelfId: string) => ShelfKind | null
+): ParsedLibraryQuery {
   const params = url.searchParams
 
   const limit = intParam(params.get('limit'), DEFAULT_PAGE_LIMIT)
@@ -85,10 +116,15 @@ export function parseLibraryQuery(url: URL): ParsedLibraryQuery {
   if (!sort.ok) return INVALID_QUERY
   if (sort.sort) filters.sort = sort.sort
   else if (filters.shelfId && !query) {
-    // With a shelf and neither a sort nor a search, the order is the Mac's own
-    // default inside a shelf: Date Added to Shelf, newest first (D8, D10). A
-    // search keeps FTS relevance, an ordering no field name can express.
-    filters.sort = { field: 'shelf_added', direction: 'desc' }
+    // With a shelf and neither a sort nor a search, the order is the shelf's
+    // own: a queue's array order, top first (D6, D1) — or, on a manual shelf
+    // (and on an id the cache does not know), the Mac's default inside a
+    // shelf, Date Added to Shelf newest first (D8, D10). A search keeps FTS
+    // relevance, an ordering no field name can express.
+    filters.sort =
+      shelfKindOf(filters.shelfId) === 'queue'
+        ? { field: 'shelf_position', direction: 'asc' }
+        : { field: 'shelf_added', direction: 'desc' }
   }
 
   return {
@@ -162,10 +198,15 @@ export function parseShelfParam(params: URLSearchParams): ParsedShelf {
  * first click — so a client asking for `sort=date_added` gets newest-first
  * rather than 1900-first.
  *
- * `hasShelf` is the caller's scope flag (bookshelves D10): `shelf_added` is a
- * real sort on the Mac (D8) and on the wire only next to a `shelf` to order by,
- * so without one it stays the unknown field it was before the type grew it — a
- * 400, rather than a silent fallback to title order.
+ * `hasShelf` is the caller's scope flag (bookshelves D10, queue D6): the two
+ * shelf-bound sorts — `shelf_added` and `shelf_position` — are real sorts on the
+ * Mac and on the wire only next to a `shelf` to read them against, so without
+ * one each stays the unknown field it was before the type grew it: a 400, rather
+ * than a silent fallback to title order. One predicate covers both, because the
+ * reason is the same one — a sort scoped to a shelf that the request never named.
+ * With a shelf, `shelf_position` is accepted on a **manual** shelf too: the cache
+ * holds a position for every shelf, and nothing offers the sort there, but a
+ * parser that refused it would be refusing a read the store can answer.
  */
 export function parseSort(
   params: URLSearchParams,
@@ -176,7 +217,8 @@ export function parseSort(
   if (field === null && direction === null) return { ok: true, sort: null }
 
   const candidate = { field: field ?? 'title', direction: direction ?? 'asc' }
-  if (!isBookSort(candidate) || (candidate.field === 'shelf_added' && !hasShelf)) {
+  const shelfBound = candidate.field === 'shelf_added' || candidate.field === 'shelf_position'
+  if (!isBookSort(candidate) || (shelfBound && !hasShelf)) {
     return { ok: false }
   }
 
