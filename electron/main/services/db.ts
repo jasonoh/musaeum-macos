@@ -1036,6 +1036,43 @@ export function shelfExists(id: string): boolean {
 }
 
 /**
+ * One shelf's cached kind, or `null` for a shelf the cache does not hold (see
+ * `shelfExists`).
+ *
+ * The HTTP position route has to answer "not a queue" as D6's **third** refusal
+ * — after the share's 503 and the resources' 404, before it reads the body — and
+ * neither of the cheaper answers will do. `moveBooks` decides it only inside its
+ * mutation, behind a file read the route has already parsed a body for, and its
+ * own refusals come in the service's order (a malformed placement is refused
+ * before `mutate`'s `assertOnline`), not the wire's. A `listShelves()` scan would
+ * answer the same fact by reading every shelf to serve one id.
+ */
+export function shelfKind(id: string): ShelfKind | null {
+  const row = getDb().prepare('SELECT kind FROM shelves WHERE id = ?').get(id) as
+    { kind: ShelfKind } | undefined
+  return row?.kind ?? null
+}
+
+/**
+ * Whether the cache has this book on this shelf — the membership the HTTP
+ * position route must check itself, because `moveBooks` **deliberately** ignores
+ * an id the queue does not hold (that is the Mac's own rule for a drag) and still
+ * succeeds. Trusting it would answer 200 for a book that never moved, where D6
+ * promises 404.
+ *
+ * A member whose book the cache does not hold is absent from `shelf_books` by
+ * construction (`replaceAllShelves` inserts with `WHERE EXISTS`), which is
+ * consistent: `bookExists` refuses that book first.
+ */
+export function shelfMemberExists(shelfId: string, bookId: string): boolean {
+  return (
+    getDb()
+      .prepare('SELECT 1 FROM shelf_books WHERE shelf_id = ? AND book_id = ?')
+      .get(shelfId, bookId) !== undefined
+  )
+}
+
+/**
  * Shelf ids per book id — **one query whatever the count** (bookshelves D10: the
  * page read fills the wire's `shelves` member from a single batched `IN`). A book
  * on nothing is absent from the map rather than mapped to `[]`; the reader pads.

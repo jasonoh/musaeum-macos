@@ -27,6 +27,8 @@ import {
   searchBooksPage,
   shelfExists,
   shelfIdsForBooks,
+  shelfKind,
+  shelfMemberExists,
   shelvesForBook
 } from './db'
 
@@ -362,6 +364,44 @@ describe('the reads the REST surface answers from (slice 5)', () => {
     // One SQL statement, two readers: the summary is a projection of this one,
     // so the two cannot order or count differently
     expect(listShelves()).toEqual([{ id: 's1', name: 'To Read', kind: 'manual', count: 1 }])
+  })
+})
+
+describe("the position route's own facts (reading queue D6)", () => {
+  /** A queue holding a, a manual shelf holding b, and a smart shelf the cache skips. */
+  function seedKinds(): void {
+    insertBook(makeBook('a'))
+    insertBook(makeBook('b'))
+    insertBook(makeBook('c'))
+    replaceAllShelves(
+      file([
+        queueShelf('q1', 'Next', [['a']]),
+        manualShelf('s1', 'Shelf', [['b', T(1)]]),
+        { id: 's3', kind: 'smart', name: 'Smart', rule: {} }
+      ])
+    )
+  }
+
+  it('shelfKind answers the cached kind, and null for a shelf the cache does not hold', () => {
+    seedKinds()
+    expect(shelfKind('q1')).toBe('queue')
+    expect(shelfKind('s1')).toBe('manual')
+    // A kind this build does not know stays in the file and out of the cache
+    // (D1), so it reads as no shelf at all — as `shelfExists` already answers
+    expect(shelfKind('s3')).toBeNull()
+    expect(shelfKind('gone')).toBeNull()
+  })
+
+  it('shelfMemberExists is true only for that shelf, and false for a book on none', () => {
+    seedKinds()
+    expect(shelfMemberExists('q1', 'a')).toBe(true)
+    // `b` is on `s1` and `c` is on nothing: `moveBooks` would ignore both and
+    // still succeed, so the route's 404 depends on this read, not on the write
+    expect(shelfMemberExists('q1', 'b')).toBe(false)
+    expect(shelfMemberExists('s1', 'a')).toBe(false)
+    for (const shelfId of ['q1', 's1', 'gone']) {
+      expect(shelfMemberExists(shelfId, 'c')).toBe(false)
+    }
   })
 })
 
