@@ -472,19 +472,18 @@ describe('the shelf_position sort — a queue reads in its file order (reading q
   })
 
   it('breaks a shared position by id ascending', () => {
-    seedQueue()
-    // b and a now share position 1; c stays first
+    // Books inserted c, b, a, so their natural scan order is the reverse of id
+    // order: a missing `id ASC` tiebreak would answer c before a, not a before c
+    insertBook(makeBook('c', 'Charlie Voyage'))
+    insertBook(makeBook('b', 'Bravo Voyage'))
+    insertBook(makeBook('a', 'Alpha Voyage'))
+    replaceAllShelves(file([queueShelf('q1', 'Next', [['c'], ['a'], ['b']])]))
+    // c and a now share position 0; b stays behind them at 2
     getDb()
-      .prepare("UPDATE shelf_books SET position = 1 WHERE shelf_id = 'q1' AND book_id = 'b'")
-      .run()
-    getDb()
-      .prepare("UPDATE shelf_books SET position = 1 WHERE shelf_id = 'q1' AND book_id = 'a'")
-      .run()
-    getDb()
-      .prepare("UPDATE shelf_books SET position = 0 WHERE shelf_id = 'q1' AND book_id = 'c'")
+      .prepare("UPDATE shelf_books SET position = 0 WHERE shelf_id = 'q1'  AND book_id = 'a'")
       .run()
     for (const direction of ['asc', 'desc'] as const) {
-      expect(ids(getBooks({ shelfId: 'q1', sort: byPosition(direction) }))).toEqual(['c', 'a', 'b'])
+      expect(ids(getBooks({ shelfId: 'q1', sort: byPosition(direction) }))).toEqual(['a', 'c', 'b'])
     }
   })
 
