@@ -140,6 +140,47 @@ export function matchShelfMembershipPath(pathname: string): ShelfBookPath | null
   return shelfId && bookId ? { shelfId, bookId } : null
 }
 
+export interface ShelfPositionPath {
+  shelfId: string
+  bookId: string
+}
+
+/**
+ * `/api/shelves/{shelfId}/books/{bookId}/position` — the queue write
+ * (reading-queue D6), the shelf surface's second book-level route.
+ *
+ * **A second matcher rather than a widened membership one, because both keep
+ * the same property: extra segments are not a match.** `matchShelfMembershipPath`
+ * refuses anything after the book segment (`rest.length`), which is what makes
+ * `…/books/{bookId}/junk` a uniform 404 rather than a half-matched path; teaching
+ * it to also return a "position" resource would mean dropping that check and
+ * putting a nullable resource in every reader of `ShelfBookPath` to serve one
+ * path — the same argument the collection matcher above makes against a nullable
+ * `id`. With two matchers, one path can never have two meanings: this one
+ * answers only the five-segment shape and the membership one only the four.
+ *
+ * Nothing before, between or after: a missing or empty segment, a trailing
+ * slash, a sixth segment, or the membership path without its trailing segment
+ * are all `null`. Both ids decode through `decodeSegment`, so an id with a space
+ * or a slash is still an id and a malformed escape is not this route's path.
+ * Matched on the **pathname only**, and deliberately not on the method — the
+ * router answers a known path behind a method it does not take with the same
+ * uniform 404 as a path that is nothing at all (D11).
+ */
+export function matchShelfPositionPath(pathname: string): ShelfPositionPath | null {
+  if (!pathname.startsWith(SHELVES_PREFIX)) return null
+
+  const [shelfSegment, books, bookSegment, resource, ...rest] = pathname
+    .slice(SHELVES_PREFIX.length)
+    .split('/')
+  if (rest.length || books !== 'books' || resource !== 'position') return null
+  if (!shelfSegment || !bookSegment) return null
+
+  const shelfId = decodeSegment(shelfSegment)
+  const bookId = decodeSegment(bookSegment)
+  return shelfId && bookId ? { shelfId, bookId } : null
+}
+
 /**
  * The statuses `resolveCoverFile` can refuse with, read off its own result
  * rather than re-typed — see the note above.
