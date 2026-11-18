@@ -79,7 +79,14 @@ interface LibraryState {
    * flight across a reorder cannot snap the rows back.
    */
   reorderGen: number
-  /** Show `ids` as the order of the open list, ahead of main's answer. Bumps `reorderGen`. */
+  /**
+   * Show `ids` as the order of the open list, ahead of main's answer. Bumps `reorderGen`.
+   *
+   * **An authoritative `load()` must follow every call.** A read this bump
+   * invalidates returns *before* it clears `loading`, so a caller that sets a
+   * pending order and walks away strands the list on a spinner. `reorderInQueue`
+   * is the only caller, and its `finally` is where that is kept.
+   */
   setBookOrder(ids: readonly string[]): void
   /** The pending order is over: reads started from here on are authoritative again. Bumps `reorderGen`. */
   settleReorder(): void

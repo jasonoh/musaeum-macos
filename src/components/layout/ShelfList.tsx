@@ -318,6 +318,7 @@ export function ShelfList() {
           <button
             onClick={() => startCreate(null, 'queue')}
             onDragOver={(e) => onCreateDragOver(e, 'queue')}
+            onDragLeave={() => setDropTarget((t) => (t === 'create-queue' ? null : t))}
             onDrop={(e) => onCreateDrop(e, 'queue')}
             disabled={!online}
             title={online ? 'New reading queue' : label}
@@ -341,6 +342,7 @@ export function ShelfList() {
         <button
           onClick={() => startCreate(null, 'manual')}
           onDragOver={(e) => onCreateDragOver(e, 'manual')}
+          onDragLeave={() => setDropTarget((t) => (t === 'create' ? null : t))}
           onDrop={(e) => onCreateDrop(e, 'manual')}
           disabled={!online}
           title={online ? 'New shelf' : label}
@@ -362,6 +364,7 @@ export function ShelfList() {
         <button
           onClick={() => startCreate(null, 'manual')}
           onDragOver={(e) => onCreateDragOver(e, 'manual')}
+          onDragLeave={() => setDropTarget((t) => (t === 'create' ? null : t))}
           onDrop={(e) => onCreateDrop(e, 'manual')}
           disabled={!online}
           title={online ? 'New shelf' : label}

@@ -36,11 +36,13 @@ describe('the drag sources (AC25, invariant 7)', () => {
     // meta lines (S1)
     expect(bare(CARD)).toMatch(/^\s+draggable$/m) // a bare `draggable` on the card's root div
     expect(bare(LIST)).toMatch(/^\s+draggable$/m)
-    // Not the buttons: `[\s\S]{0,600}` rather than `[^>]*`, because a button's
-    // props are one per line and `[^>]*` would sail past its opening tag and
-    // match nothing whatever the file said
-    expect(bare(CARD)).not.toMatch(/<button[\s\S]{0,600}?draggable/)
-    expect(bare(LIST)).not.toMatch(/<button[\s\S]{0,600}?draggable/)
+    // Not the buttons — counted, not windowed: a `<button[\s\S]{0,600}?draggable`
+    // window ends before the card's delete control four thousand characters
+    // later, so it could not see a `draggable` button there whatever the file
+    // said. Exactly one bare `draggable` per view is the property that is meant.
+    const draggables = (source: string): number => (source.match(/^\s+draggable$/gm) ?? []).length
+    expect(draggables(bare(CARD))).toBe(1)
+    expect(draggables(bare(LIST))).toBe(1)
   })
 
   it('starts the drag through the one module, and ends it by clearing the payload', () => {

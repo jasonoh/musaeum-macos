@@ -73,9 +73,18 @@ export function dragReorderShelfId(): string | null {
   return slotShelfId
 }
 
+/**
+ * The drag is over: forget the payload, the queue it began in, and where it was
+ * pointing. Every end of a drag comes through here — the source's `dragend`, the
+ * window's `drop` / `dragend` (`useBookDrag`) — so the drop mark is cleared in the
+ * one place all of them share. A drag that ends with no drop (Escape, a release
+ * over another app) fires no `dragleave` on the row it was over, and a mark left
+ * behind there repaints as a gold line on that book in any later view.
+ */
 export function clearDragPayload(): void {
   payload = null
   slotShelfId = null
+  useLibraryStore.getState().setDropMark(null)
 }
 
 /** The least a drag handler has to carry: keep the module free of a React import. */

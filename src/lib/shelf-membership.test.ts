@@ -253,6 +253,98 @@ describe('reorderInQueue (reading queue)', () => {
     expect(useLibraryStore.getState().loading).toBe(false)
   })
 
+  it('does not resolve until the authoritative read has landed', async () => {
+    // The docblock promises the closing read is awaited whatever the outcome. A
+    // `void load()` there resolves the caller first and leaves the `loading` flag
+    // a dropped read set, and this is the only case that can see it: holding the
+    // read is what makes "not resolved yet" distinguishable from "resolved".
+    open(['a', 'b', 'c'])
+    let release!: () => void
+    const gate = { reads: 0, released: new Promise<void>((resolve) => (release = resolve)) }
+    stubWithLibrary(
+      () => Promise.resolve(),
+      () => ['c', 'a', 'b'],
+      gate
+    )
+    const pending = reorderInQueue('q', ['c'], { before: 'a' })
+    await vi.waitFor(() => expect(gate.reads).toBe(1))
+    let settled = false
+    void pending.then(() => {
+      settled = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(settled).toBe(false)
+    release()
+    await expect(pending).resolves.toBe(true)
+    expect(ids()).toEqual(['c', 'a', 'b'])
+    expect(useLibraryStore.getState().loading).toBe(false)
+  })
+
+  it('drops a read that began during the pending order, so it cannot land after the settling one', async () => {
+    // `settleReorder`'s bump is what makes this a drop: the stray read and the
+    // closing read would otherwise share a generation, and the stray — whose
+    // answer predates the move — could land last and snap the rows back.
+    open(['a', 'b', 'c'])
+    let releaseMove!: () => void
+    let releaseEarly!: () => void
+    let reads = 0
+    const early = new Promise<void>((resolve) => (releaseEarly = resolve))
+    let served = ['a', 'b', 'c']
+    stubShelves({ move: () => new Promise<void>((resolve) => (releaseMove = resolve)) })
+    const win = (globalThis as unknown as { window: { Musaeum: Record<string, unknown> } }).window
+    win.Musaeum.library = {
+      getBooks: async () => {
+        reads += 1
+        if (reads === 1) await early // the read that starts inside the pending window
+        return served.map(book)
+      },
+      searchBooks: () => Promise.resolve(served.map(book)),
+      getFacets: () => Promise.resolve({})
+    }
+
+    const pending = reorderInQueue('q', ['c'], { before: 'a' })
+    // a read begins while the order is pending — a facet refresh, a hydration event
+    const stray = useLibraryStore.getState().load()
+    await vi.waitFor(() => expect(reads).toBe(1))
+    served = ['c', 'a', 'b'] // main's answer
+    releaseMove()
+    await expect(pending).resolves.toBe(true)
+    expect(ids()).toEqual(['c', 'a', 'b'])
+
+    served = ['a', 'b', 'c'] // the stray read answers with the order from before the move
+    releaseEarly()
+    await stray
+    expect(ids()).toEqual(['c', 'a', 'b'])
+  })
+
+  it('does not repaint another queue the reader opened meanwhile with this one’s order', async () => {
+    // The refusal path's rollback runs after an IPC round trip, and the reader can
+    // open another queue in that window. Unguarded it reorders *that* queue's rows
+    // by this one's ids until the closing read lands — visible only when the two
+    // queues share books, because `orderBooksBy` leaves ids it does not hold alone
+    open(['a', 'b', 'c'])
+    let reject!: (e: Error) => void
+    let releaseTheRead!: () => void
+    const gate = { reads: 0, released: new Promise<void>((resolve) => (releaseTheRead = resolve)) }
+    stubWithLibrary(
+      () => new Promise<void>((_, r) => (reject = r)),
+      () => ['b', 'c', 'a'],
+      gate
+    )
+    const pending = reorderInQueue('q', ['c'], { before: 'a' })
+    expect(ids()).toEqual(['c', 'a', 'b'])
+    const other = ['b', 'c', 'a'].map(book)
+    useLibraryStore.setState({ activeShelfId: 'q2', books: other, loadedBooks: other })
+
+    reject(new Error('That book is no longer in the queue'))
+    await vi.waitFor(() => expect(gate.reads).toBe(1))
+    // the closing read is still held, so this can only be the rollback's doing
+    expect(ids()).toEqual(['b', 'c', 'a'])
+    releaseTheRead()
+    await expect(pending).resolves.toBe(false)
+    expect(ids()).toEqual(['b', 'c', 'a'])
+  })
+
   it('makes no call and resolves false for a drop that changes nothing', async () => {
     open(['a', 'b', 'c'])
     const calls = stubWithLibrary(

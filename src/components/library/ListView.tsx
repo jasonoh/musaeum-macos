@@ -88,7 +88,14 @@ function Row({ book }: { book: Book }) {
         const rect = e.currentTarget.getBoundingClientRect()
         reorderDragOver(e, book.id, e.clientY - rect.top, rect.height)
       }}
-      onDragLeave={() => reorderDragLeave(book.id)}
+      onDragLeave={(e) => {
+        // Crossing onto a <td> inside the row fires `dragleave` on the row too,
+        // and the next bubbling `dragover` sets the mark straight back — an
+        // unguarded handler blinks the indicator at every internal boundary. Only
+        // a leave that ends outside the row counts (`contains(null)` is false, so
+        // leaving the window still clears).
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) reorderDragLeave(book.id)
+      }}
       onDrop={(e) => {
         const rect = e.currentTarget.getBoundingClientRect()
         reorderDrop(e, book.id, e.clientY - rect.top, rect.height)

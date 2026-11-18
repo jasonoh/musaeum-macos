@@ -148,7 +148,13 @@ export async function reorderInQueue(
   let ok: boolean
   try {
     ok = await sendMove(shelfId, moved, placement)
-    if (!ok) useLibraryStore.getState().setBookOrder(previous)
+    // Only while the queue it was for is still the open one: the reader can open
+    // another shelf while the move is in flight, and putting this queue's order
+    // onto that shelf's rows would paint one shelf's books in another's order
+    // until the closing read lands
+    if (!ok && useLibraryStore.getState().activeShelfId === shelfId) {
+      useLibraryStore.getState().setBookOrder(previous)
+    }
   } finally {
     useLibraryStore.getState().settleReorder()
     await useLibraryStore.getState().load()

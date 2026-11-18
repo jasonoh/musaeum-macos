@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EMPTY_SELECTION, type Selection } from '@/lib/selection'
+import { useLibraryStore } from '@/stores/library.store'
 import {
   BOOK_DRAG_MIME,
   clearDragPayload,
@@ -112,8 +113,12 @@ describe('the queue a drag started in (reading queue)', () => {
     startBookDrag(handle, 'b', sel('a', 'b'))
     expect(dt.effectAllowed).toBe('copy')
     expect(dragReorderShelfId()).toBeNull()
-    startBookDrag(handle, 'b', sel('a', 'b'), null)
-    expect(dt.effectAllowed).toBe('copy')
+    // A fresh handle for the explicit-null case: reusing `dt` would still read
+    // `'copy'` from the call above, so a `startBookDrag` that skipped
+    // `effectAllowed` entirely for a null queue would pass this assertion too
+    const plain = fakeHandle()
+    startBookDrag(plain.handle, 'b', sel('a', 'b'), null)
+    expect(plain.dt.effectAllowed).toBe('copy')
     expect(dragReorderShelfId()).toBeNull()
     clearDragPayload()
   })
@@ -125,11 +130,16 @@ describe('the queue a drag started in (reading queue)', () => {
     clearDragPayload()
   })
 
-  it('clears the queue with the payload', () => {
+  it('clears the queue with the payload, and the drop mark too', () => {
     startBookDrag(fakeHandle().handle, 'a', EMPTY_SELECTION, 'queue-1')
+    useLibraryStore.getState().setDropMark({ bookId: 'c', side: 'before' })
     clearDragPayload()
     expect(dragPayload()).toBeNull()
     expect(dragReorderShelfId()).toBeNull()
+    // A drag that ends with no drop — Escape, a release over another app — fires no
+    // `dragleave` on the row it was over, so this is the only thing that clears
+    // the indicator there; left behind, it repaints on that book in a later view
+    expect(useLibraryStore.getState().dropMark).toBeNull()
   })
 
   it('recognizes a book drag by its types', () => {

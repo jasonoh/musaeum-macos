@@ -180,6 +180,13 @@ describe('Move to Top and Move to Bottom (reading queue, slice 2 — AC3)', () =
   const callOf = (edge: 'top' | 'bottom', ids = String.raw`\[[^\]]*\]`): RegExp =>
     new RegExp(String.raw`void moveToEdge\(\s*activeShelfId,\s*${ids},\s*'${edge}',?\s*\)`)
 
+  /** The arrow is the item's own meaning: up for the top, down for the bottom.
+   *  Asserting only that *a* `SortArrowIcon` is there lets the two swap unnoticed. */
+  const expectArrow = (item: string, edge: 'top' | 'bottom'): void => {
+    if (edge === 'top') expect(item).toMatch(/<SortArrowIcon up\b/)
+    else expect(item).not.toMatch(/<SortArrowIcon up\b/)
+  }
+
   const EDGES: [string, string, 'top' | 'bottom'][] = [
     ['Move to Top', 'up', 'top'],
     ['Move to Bottom', 'down', 'bottom']
@@ -242,7 +249,7 @@ describe('Move to Top and Move to Bottom (reading queue, slice 2 — AC3)', () =
         expect(item).toMatch(callOf(edge))
         expect(item.indexOf('closeContextMenu()')).toBeGreaterThan(-1)
         expect(item.indexOf('closeContextMenu()')).toBeLessThan(item.indexOf('moveToEdge('))
-        expect(item).toMatch(/<SortArrowIcon /)
+        expectArrow(item, edge)
       }
       // The single-book branch moves the clicked book; the multi-book branch the selection
       expect(items.filter((i) => i.includes('[book.id]')).length).toBe(1)
@@ -254,7 +261,7 @@ describe('Move to Top and Move to Bottom (reading queue, slice 2 — AC3)', () =
       expect(at, `${label} is in the panel`).toBeGreaterThan(-1)
       const item = itemAround(PANEL, at, 'button')
       expect(item).toMatch(callOf(edge, String.raw`selected\.map\(\(b\) => b\.id\)`))
-      expect(item).toMatch(/<SortArrowIcon /)
+      expectArrow(item, edge)
     })
   })
 

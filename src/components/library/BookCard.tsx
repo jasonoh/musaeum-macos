@@ -132,7 +132,13 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
         const rect = e.currentTarget.getBoundingClientRect()
         reorderDragOver(e, book.id, e.clientX - rect.left, rect.width)
       }}
-      onDragLeave={() => reorderDragLeave(book.id)}
+      onDragLeave={(e) => {
+        // The cover image and the meta lines are inside the card, so moving
+        // between them fires `dragleave` on the card and the next `dragover` sets
+        // the mark again — the indicator blinks over the card's own children.
+        // Only a leave that ends outside the card counts.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) reorderDragLeave(book.id)
+      }}
       onDrop={(e) => {
         const rect = e.currentTarget.getBoundingClientRect()
         reorderDrop(e, book.id, e.clientX - rect.left, rect.width)

@@ -319,6 +319,17 @@ describe('Undo restores a queue book to its place (reading queue D3)', () => {
     expect(listShelfOnDisk(await onDisk(), queue.id).books).toEqual(before)
   })
 
+  it('restores a queue’s first book to the top, not the bottom', async () => {
+    // index 0 is the case a truthiness test loses: every other Undo case here
+    // removes a book from the middle or the end, so `m.index !== undefined`
+    // could be `m.index` and nothing would notice
+    const queue = await shelves.create('Up Next', ['a', 'b', 'c'], 'queue')
+    const removed = await shelves.removeBooks(queue.id, ['a'])
+    expect(removed.map((m) => m.index)).toEqual([0])
+    await shelves.restoreBooks(queue.id, removed)
+    expect(ids(await onDisk(), queue.id)).toEqual(['a', 'b', 'c'])
+  })
+
   it('restores in ascending index order whatever order the memberships arrive in', async () => {
     const queue = await shelves.create('Up Next', ['a', 'b', 'c', 'd'], 'queue')
     const removed = await shelves.removeBooks(queue.id, ['b', 'd'])
@@ -550,6 +561,8 @@ function everyMutation(id: string): [string, () => Promise<unknown>][] {
     ['addBooks', () => shelves.addBooks(id, ['c'])],
     ['removeBooks', () => shelves.removeBooks(id, ['a'])],
     ['restoreBooks', () => shelves.restoreBooks(id, [{ bookId: 'b', addedAt: AT }])],
+    // The one write this workstream added, so a new refusal rule is decided for it too
+    ['move', () => shelves.moveBooks(id, ['a'], { to: 'top' })],
     ['pruneBooks', () => shelves.pruneBooks(['a'])]
   ]
 }

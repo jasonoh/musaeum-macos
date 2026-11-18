@@ -51,9 +51,15 @@ function gate(e: React.DragEvent): string | null {
 
 /**
  * The open queue's id while a drag from a row or card may reorder it, else null: the
- * value a source hands `startBookDrag` as its fourth argument. A primitive per
- * subscription, so a card re-renders when the answer flips and not on every change
- * of the stores it is read from.
+ * value a source hands `startBookDrag` as its fourth argument.
+ *
+ * Each store field is its own subscription, so the *answer* is a primitive and a row
+ * re-renders only when it flips — with one honest exception: the query subscription
+ * re-runs on each keystroke (the gate reads the query string, so the value genuinely
+ * changes), and it is the search box's own re-read that the rows are about to be
+ * handed anyway. Collapsing the gate into one selector would mean restating
+ * `queueReorderable`'s clauses here, and two authorities for one rule is the worse
+ * trade.
  */
 export function useReorderableShelfId(): string | null {
   const activeShelfId = useLibraryStore((s) => s.activeShelfId)
