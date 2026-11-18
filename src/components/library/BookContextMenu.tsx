@@ -6,7 +6,7 @@ import { useReaderStore } from '@/stores/reader.store'
 import { shelfById, useShelvesStore } from '@/stores/shelves.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
 import { contextMenuScope } from '@/lib/selection'
-import { removeFromShelf } from '@/lib/shelf-membership'
+import { moveToEdge, removeFromShelf } from '@/lib/shelf-membership'
 import { refreshBookMetadata } from '@/lib/metadata-refresh'
 import { notifyError } from '@/lib/notify'
 import {
@@ -20,6 +20,7 @@ import {
   ReaderIcon,
   RefreshIcon,
   SendIcon,
+  SortArrowIcon,
   TrashIcon
 } from '@/components/shared/icons'
 import { orderedFormats } from '@shared/book.types'
@@ -62,6 +63,9 @@ export function BookContextMenu() {
   // `Remove from “undefined”` is worse than no item at all.
   const activeShelfId = useLibraryStore((s) => s.activeShelfId)
   const shelfName = useShelvesStore((s) => shelfById(s, activeShelfId)?.name ?? null)
+  // The open shelf's kind, as the primitive: *Move to Top* / *Move to Bottom* are a
+  // queue's own items, absent (not disabled) anywhere else
+  const kind = useShelvesStore((s) => shelfById(s, activeShelfId)?.kind)
   const online = useNASStore((s) => s.status?.state === 'connected')
   const label = useNASStore((s) => s.status?.copy.label ?? undefined)
   // Selected as stable slices rather than a derived array, so the menu doesn't
@@ -139,6 +143,32 @@ export function BookContextMenu() {
             title={online ? undefined : label}
             onClick={() => requestShelfPicker({ bookIds: [...selection.ids] })}
           />
+          {/* Positions in the whole queue, so offered in any sort of it and with
+              any query or filter on: the books named here are the ones moved */}
+          {kind === 'queue' && activeShelfId && (
+            <>
+              <MenuItem
+                icon={<SortArrowIcon up className="h-3.5 w-3.5" />}
+                label="Move to Top"
+                disabled={!online}
+                title={online ? undefined : label}
+                onClick={() => {
+                  closeContextMenu()
+                  void moveToEdge(activeShelfId, [...selection.ids], 'top')
+                }}
+              />
+              <MenuItem
+                icon={<SortArrowIcon className="h-3.5 w-3.5" />}
+                label="Move to Bottom"
+                disabled={!online}
+                title={online ? undefined : label}
+                onClick={() => {
+                  closeContextMenu()
+                  void moveToEdge(activeShelfId, [...selection.ids], 'bottom')
+                }}
+              />
+            </>
+          )}
           {scopedDevice && (
             <MenuItem
               icon={<DeviceIcon className="h-3.5 w-3.5" />}
@@ -266,6 +296,30 @@ export function BookContextMenu() {
               if (shelf) void removeFromShelf(shelf, [book.id])
             }}
           />
+        )}
+        {kind === 'queue' && activeShelfId && (
+          <>
+            <MenuItem
+              icon={<SortArrowIcon up className="h-3.5 w-3.5" />}
+              label="Move to Top"
+              disabled={!online}
+              title={online ? undefined : label}
+              onClick={() => {
+                closeContextMenu()
+                void moveToEdge(activeShelfId, [book.id], 'top')
+              }}
+            />
+            <MenuItem
+              icon={<SortArrowIcon className="h-3.5 w-3.5" />}
+              label="Move to Bottom"
+              disabled={!online}
+              title={online ? undefined : label}
+              onClick={() => {
+                closeContextMenu()
+                void moveToEdge(activeShelfId, [book.id], 'bottom')
+              }}
+            />
+          </>
         )}
         <div className="my-1 h-px bg-ink-700" />
         {/* The companion of *Remove from*: offered for each connected device that

@@ -132,3 +132,135 @@ describe('the detail panel\u2019s shelves row (AC20)', () => {
     expect(DETAIL).toContain('Not on any shelf')
   })
 })
+
+describe('Move to Top and Move to Bottom (reading queue, slice 2 — AC3)', () => {
+  // Comments are dropped first: a comment explaining the guard must not satisfy a
+  // walk that is asking whether the guard is there
+  const strip = (source: string): string =>
+    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  const MENU = strip(read('BookContextMenu.tsx'))
+  const PANEL = strip(read('SelectionPanel.tsx'))
+
+  const GUARD = "{kind === 'queue'"
+
+  const occurrences = (source: string, needle: string): number[] => {
+    const found: number[] = []
+    for (let at = source.indexOf(needle); at !== -1; at = source.indexOf(needle, at + 1)) {
+      found.push(at)
+    }
+    return found
+  }
+
+  /** The JSX expression opened by the nearest queue guard before `at`, up to `at`
+   *  — or null when `at` is not still inside it (the guard closed first, or there
+   *  is none), which is how a removed guard shows up. */
+  const guardedBy = (source: string, at: number): string | null => {
+    const start = source.lastIndexOf(GUARD, at)
+    if (start === -1) return null
+    let depth = 0
+    for (let i = start; i < at; i++) {
+      if (source[i] === '{') depth++
+      else if (source[i] === '}') depth--
+      if (depth <= 0) return null
+    }
+    return source.slice(start, at)
+  }
+
+  /** One menu item: the `<MenuItem …/>` or `<button …>…</button>` around `at`. */
+  const itemAround = (source: string, at: number, tag: 'MenuItem' | 'button'): string => {
+    const start = source.lastIndexOf(`<${tag}`, at)
+    const end = tag === 'MenuItem' ? source.indexOf('/>', at) : source.indexOf('</button>', at)
+    expect(start, 'the label sits inside an item').toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(at)
+    return source.slice(start, end)
+  }
+
+  /** `void moveToEdge(activeShelfId, <ids>, '<edge>')`, however Prettier wraps it;
+   *  `ids` is a regex source, and the default is any array literal */
+  const callOf = (edge: 'top' | 'bottom', ids = String.raw`\[[^\]]*\]`): RegExp =>
+    new RegExp(String.raw`void moveToEdge\(\s*activeShelfId,\s*${ids},\s*'${edge}',?\s*\)`)
+
+  const EDGES: [string, string, 'top' | 'bottom'][] = [
+    ['Move to Top', 'up', 'top'],
+    ['Move to Bottom', 'down', 'bottom']
+  ]
+
+  it('both files import moveToEdge and read the open shelf’s kind as a primitive', () => {
+    for (const source of [MENU, PANEL]) {
+      expect(source).toMatch(/import \{[^}]*\bmoveToEdge\b[^}]*\} from '@\/lib\/shelf-membership'/)
+      expect(source).toMatch(/shelfById\(s, activeShelfId\)\?\.kind/)
+    }
+  })
+
+  describe.each(EDGES)('%s', (label, _arrow, edge) => {
+    it('is offered once in each menu branch and once in the panel', () => {
+      expect(occurrences(MENU, `label="${label}"`).length).toBe(2)
+      expect(occurrences(PANEL, label).length).toBe(1)
+    })
+
+    it('is absent, not disabled, outside a queue — every occurrence sits in the queue guard', () => {
+      expect(occurrences(MENU, `label="${label}"`).length).toBe(2)
+      expect(occurrences(PANEL, label).length).toBe(1)
+      for (const at of occurrences(MENU, `label="${label}"`)) {
+        expect(guardedBy(MENU, at), `${label} in the menu`).not.toBeNull()
+      }
+      for (const at of occurrences(PANEL, label)) {
+        expect(guardedBy(PANEL, at), `${label} in the panel`).not.toBeNull()
+      }
+    })
+
+    it('is not gated by the sort, the query or the filters — it is a position in the whole queue', () => {
+      const guards = [
+        ...occurrences(MENU, `label="${label}"`).map((at) => guardedBy(MENU, at)),
+        ...occurrences(PANEL, label).map((at) => guardedBy(PANEL, at))
+      ]
+      expect(guards.length).toBe(3)
+      for (const guard of guards) {
+        expect(guard).not.toBeNull()
+        // The icon is *named* for a sort; what is asked is whether anything reads one
+        expect(guard?.replace(/SortArrowIcon/g, '')).not.toMatch(/sort|query|filters/i)
+      }
+    })
+
+    it('is disabled with the share, like its neighbours, and says why', () => {
+      const items = [
+        ...occurrences(MENU, `label="${label}"`).map((at) => itemAround(MENU, at, 'MenuItem')),
+        ...occurrences(PANEL, label).map((at) => itemAround(PANEL, at, 'button'))
+      ]
+      expect(items.length).toBe(3)
+      for (const item of items) {
+        expect(item).toMatch(/disabled=\{!online\}/)
+        expect(item).toMatch(/title=\{online \? undefined : label\}/)
+      }
+    })
+
+    it('moves to the edge, closing the menu first, with the scope the click was read for', () => {
+      const items = occurrences(MENU, `label="${label}"`).map((at) =>
+        itemAround(MENU, at, 'MenuItem')
+      )
+      for (const item of items) {
+        expect(item).toMatch(callOf(edge))
+        expect(item.indexOf('closeContextMenu()')).toBeGreaterThan(-1)
+        expect(item.indexOf('closeContextMenu()')).toBeLessThan(item.indexOf('moveToEdge('))
+        expect(item).toMatch(/<SortArrowIcon /)
+      }
+      // The single-book branch moves the clicked book; the multi-book branch the selection
+      expect(items.filter((i) => i.includes('[book.id]')).length).toBe(1)
+      expect(items.filter((i) => i.includes('[...selection.ids]')).length).toBe(1)
+    })
+
+    it('moves the selection from the panel', () => {
+      const at = occurrences(PANEL, label)[0] ?? -1
+      expect(at, `${label} is in the panel`).toBeGreaterThan(-1)
+      const item = itemAround(PANEL, at, 'button')
+      expect(item).toMatch(callOf(edge, String.raw`selected\.map\(\(b\) => b\.id\)`))
+      expect(item).toMatch(/<SortArrowIcon /)
+    })
+  })
+
+  it('reads no sort, query or filters at all, so nothing can gate them by accident', () => {
+    for (const source of [MENU, PANEL]) {
+      expect(source.replace(/SortArrowIcon/g, '')).not.toMatch(/\b(sort\w*|query|filters)\b/i)
+    }
+  })
+})

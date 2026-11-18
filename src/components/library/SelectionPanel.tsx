@@ -2,13 +2,16 @@ import { useMemo } from 'react'
 import { failedSendCount, liveSendCount, useDeviceStore } from '@/stores/device.store'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
+import { shelfById, useShelvesStore } from '@/stores/shelves.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
+import { moveToEdge } from '@/lib/shelf-membership'
 import {
   BookIcon,
   CloseIcon,
   DeviceIcon,
   RefreshIcon,
   SendIcon,
+  SortArrowIcon,
   SpinnerIcon,
   TrashIcon,
   WarningIcon
@@ -31,6 +34,9 @@ export function SelectionPanel() {
   const online = useNASStore((s) => s.status?.state === 'connected')
   const label = useNASStore((s) => s.status?.copy.label ?? undefined)
   const requestShelfPicker = useUIStore((s) => s.requestShelfPicker)
+  // A queue's own actions: absent, not disabled, anywhere else
+  const activeShelfId = useLibraryStore((s) => s.activeShelfId)
+  const kind = useShelvesStore((s) => shelfById(s, activeShelfId)?.kind)
   const devices = useDeviceStore((s) => s.devices)
   const onDevice = useDeviceStore((s) => s.onDevice)
   const transfers = useDeviceStore((s) => s.transfers)
@@ -138,6 +144,42 @@ export function SelectionPanel() {
           <BookIcon className="h-4 w-4" />
           Add to Shelf…
         </button>
+        {/* Positions in the whole queue: not gated by the sort, the query or the
+            filters, and the selection is the scope */}
+        {kind === 'queue' && activeShelfId && (
+          <>
+            <button
+              disabled={!online}
+              title={online ? undefined : label}
+              onClick={() =>
+                void moveToEdge(
+                  activeShelfId,
+                  selected.map((b) => b.id),
+                  'top'
+                )
+              }
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-ink-600 px-3 py-2 text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
+            >
+              <SortArrowIcon up className="h-4 w-4" />
+              Move to Top
+            </button>
+            <button
+              disabled={!online}
+              title={online ? undefined : label}
+              onClick={() =>
+                void moveToEdge(
+                  activeShelfId,
+                  selected.map((b) => b.id),
+                  'bottom'
+                )
+              }
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-ink-600 px-3 py-2 text-[13px] text-parchment-dim hover:bg-ink-800 hover:text-parchment disabled:opacity-40"
+            >
+              <SortArrowIcon className="h-4 w-4" />
+              Move to Bottom
+            </button>
+          </>
+        )}
         {/* Offered only inside a device view, where the selection *is* a set of
             that device's books. Needs no NAS: it never touches the library. */}
         {activeDevice && (
