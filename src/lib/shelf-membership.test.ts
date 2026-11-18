@@ -177,12 +177,20 @@ describe('reorderInQueue (reading queue)', () => {
   /** `window.Musaeum` with the shelves stub plus the reads the final `load()` makes. */
   function stubWithLibrary(
     move: (id: string, ids: string[], p: ShelfPlacement) => Promise<void>,
-    served: () => string[]
+    served: () => string[],
+    /** Holds `getBooks` until it settles, so a case can look at the view between the move and the read. */
+    gate?: { reads: number; released: Promise<void> }
   ) {
     const calls = stubShelves({ move })
     const win = (globalThis as unknown as { window: { Musaeum: Record<string, unknown> } }).window
     win.Musaeum.library = {
-      getBooks: () => Promise.resolve(served().map(book)),
+      getBooks: async () => {
+        if (gate) {
+          gate.reads += 1
+          await gate.released
+        }
+        return served().map(book)
+      },
       searchBooks: () => Promise.resolve(served().map(book)),
       getFacets: () => Promise.resolve({})
     }
@@ -222,17 +230,26 @@ describe('reorderInQueue (reading queue)', () => {
     open(['a', 'b', 'c'])
     const refusal = new Error('That book is no longer in the queue')
     let reject!: (e: Error) => void
+    let release!: () => void
+    const gate = { reads: 0, released: new Promise<void>((resolve) => (release = resolve)) }
+    // The closing read serves an order the rollback cannot produce, and is held, so
+    // `a,b,c` below can only be the rollback's own work and not the read's answer
     stubWithLibrary(
       () => new Promise<void>((_, r) => (reject = r)),
-      () => ['a', 'b', 'c']
+      () => ['b', 'a', 'c'],
+      gate
     )
     const pending = reorderInQueue('q', ['c'], { before: 'a' })
     expect(ids()).toEqual(['c', 'a', 'b'])
     reject(refusal)
-    await expect(pending).resolves.toBe(false)
+    await vi.waitFor(() => expect(gate.reads).toBe(1))
     expect(ids()).toEqual(['a', 'b', 'c'])
     expect(reportShelfFailure).toHaveBeenCalledTimes(1)
     expect(reportShelfFailure).toHaveBeenCalledWith(refusal)
+    release()
+    await expect(pending).resolves.toBe(false)
+    // and main's answer then wins, as the authoritative read always does
+    expect(ids()).toEqual(['b', 'a', 'c'])
     expect(useLibraryStore.getState().loading).toBe(false)
   })
 
