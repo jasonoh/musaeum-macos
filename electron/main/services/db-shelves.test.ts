@@ -442,3 +442,72 @@ describe('the cache keeps a shelf kind and a member position (reading queue D2)'
     ])
   })
 })
+
+describe('the shelf_position sort — a queue reads in its file order (reading queue D4)', () => {
+  /** Three books, titled so that title order (a, b, c) differs from queue order (c, a, b). */
+  function seedQueue(): void {
+    insertBook(makeBook('a', 'Alpha Voyage'))
+    insertBook(makeBook('b', 'Bravo Voyage'))
+    insertBook(makeBook('c', 'Charlie Voyage'))
+    replaceAllShelves(file([queueShelf('q1', 'Next', [['c'], ['a'], ['b']])]))
+  }
+  const byPosition = (direction: 'asc' | 'desc') => ({
+    field: 'shelf_position' as const,
+    direction
+  })
+
+  it('orders a queue by the position of each member', () => {
+    seedQueue()
+    expect(ids(getBooks({ shelfId: 'q1', sort: byPosition('asc') }))).toEqual(['c', 'a', 'b'])
+  })
+
+  it('is ascending whatever the direction says', () => {
+    seedQueue()
+    expect(ids(getBooks({ shelfId: 'q1', sort: byPosition('desc') }))).toEqual(['c', 'a', 'b'])
+  })
+
+  it('falls back to title without a shelf, and never throws', () => {
+    seedQueue()
+    expect(ids(getBooks({ sort: byPosition('asc') }))).toEqual(['a', 'b', 'c'])
+  })
+
+  it('breaks a shared position by id ascending', () => {
+    seedQueue()
+    // b and a now share position 1; c stays first
+    getDb()
+      .prepare("UPDATE shelf_books SET position = 1 WHERE shelf_id = 'q1' AND book_id = 'b'")
+      .run()
+    getDb()
+      .prepare("UPDATE shelf_books SET position = 1 WHERE shelf_id = 'q1' AND book_id = 'a'")
+      .run()
+    getDb()
+      .prepare("UPDATE shelf_books SET position = 0 WHERE shelf_id = 'q1' AND book_id = 'c'")
+      .run()
+    for (const direction of ['asc', 'desc'] as const) {
+      expect(ids(getBooks({ shelfId: 'q1', sort: byPosition(direction) }))).toEqual(['c', 'a', 'b'])
+    }
+  })
+
+  it('binds ahead of the page, so a paged read is the right slice', () => {
+    seedQueue()
+    const page = getBooksPage({ shelfId: 'q1', sort: byPosition('desc') }, { limit: 2, offset: 1 })
+    expect(ids(page.books)).toEqual(['a', 'b'])
+    expect(page.total).toBe(3)
+  })
+
+  it('orders a search inside the queue, and a paged one', () => {
+    seedQueue()
+    expect(ids(searchBooks('Voyage', byPosition('desc'), { shelfId: 'q1' }))).toEqual([
+      'c',
+      'a',
+      'b'
+    ])
+    const page = searchBooksPage(
+      'Voyage',
+      { limit: 2, offset: 1 },
+      { shelfId: 'q1', sort: byPosition('asc') }
+    )
+    expect(ids(page.books)).toEqual(['a', 'b'])
+    expect(page.total).toBe(3)
+  })
+})

@@ -514,7 +514,7 @@ export function listNamesByInitial(
   return { names: rows, total: totalRow.total }
 }
 
-/** An ORDER BY body and what it binds — only `shelf_added` binds anything. */
+/** An ORDER BY body and what it binds — only the two shelf sorts bind anything. */
 interface OrderBy {
   sql: string
   params: unknown[]
@@ -542,6 +542,13 @@ interface OrderBy {
  * the open shelf's `added_at`, a correlated read bound to `shelfId`. Without a
  * shelf it has nothing to order by and takes the unknown-field fallback to
  * title, like any field `SORT_SQL` has no expression for — never a throw.
+ *
+ * `shelf_position` is the second (reading queue D4): the open shelf's `position`
+ * — a queue member's index in the file's `books` array — read the same way.
+ * It is **ascending whatever `direction` says**: a queue has one order, the
+ * person's, and a reversed queue is not a thing it offers. The `id` tiebreak
+ * covers members that share a position. With no shelf it takes the same
+ * unknown-field fallback `shelf_added` does.
  */
 function orderClause(
   sort: BookSort = { field: 'title', direction: 'asc' },
@@ -553,6 +560,12 @@ function orderClause(
   if (sort.field === 'shelf_added' && shelfId) {
     return {
       sql: `(SELECT shelf_books.added_at FROM shelf_books WHERE shelf_books.book_id = books.id AND shelf_books.shelf_id = ?) ${dir}, ${tiebreak}`,
+      params: [shelfId]
+    }
+  }
+  if (sort.field === 'shelf_position' && shelfId) {
+    return {
+      sql: `(SELECT shelf_books.position FROM shelf_books WHERE shelf_books.book_id = books.id AND shelf_books.shelf_id = ?) ASC, ${tiebreak}`,
       params: [shelfId]
     }
   }
