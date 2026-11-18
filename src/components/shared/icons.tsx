@@ -275,3 +275,13 @@ export const SkipForwardIcon = ({ className }: IconProps) => (
     <path d="M6 5.5v13l9-6.5z" fill="currentColor" />
   </svg>
 )
+
+/** A reading queue — stacked bars with a marker leading the top one: "next up", as against BookIcon's single volume. */
+export const QueueIcon = ({ className }: IconProps) => (
+  <svg {...base(className)}>
+    <circle cx="5" cy="7" r="1.4" fill="currentColor" stroke="none" />
+    <line x1="9.5" y1="7" x2="20" y2="7" />
+    <line x1="4" y1="12" x2="20" y2="12" />
+    <line x1="4" y1="17" x2="20" y2="17" />
+  </svg>
+)
