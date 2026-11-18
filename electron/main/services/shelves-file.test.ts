@@ -3,7 +3,12 @@ import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ForeignShelfEntry, ManualShelfEntry, ShelvesFile } from '@shared/shelf.types'
+import type {
+  ForeignShelfEntry,
+  ManualShelfEntry,
+  QueueShelfEntry,
+  ShelvesFile
+} from '@shared/shelf.types'
 import {
   emptyShelvesFile,
   parseShelvesFile,
@@ -20,6 +25,18 @@ const manual: ManualShelfEntry = {
   updated_at: '2026-09-27T10:05:00.000Z',
   books: [{ id: 'b1', added_at: '2026-09-27T10:05:00.000Z' }]
 }
+const queue: QueueShelfEntry = {
+  id: 's3',
+  name: 'Reading Queue',
+  kind: 'queue',
+  created_at: '2026-11-18T10:00:00.000Z',
+  updated_at: '2026-11-18T10:05:00.000Z',
+  books: [
+    { id: 'b9', added_at: '2026-11-18T10:03:00.000Z' },
+    { id: 'b2', added_at: '2026-11-18T10:01:00.000Z' },
+    { id: 'b5', added_at: '2026-11-18T10:05:00.000Z' }
+  ]
+}
 const smart: ForeignShelfEntry = {
   id: 's2',
   kind: 'smart',
@@ -33,6 +50,22 @@ describe('parseShelvesFile (bookshelves D1)', () => {
   it('reads a version-1 file, keeping unknown kinds and unknown keys exactly as they were', () => {
     const file = parseShelvesFile(text({ version: 1, shelves: [manual, smart], note: 'kept' }))
     expect(file).toEqual({ version: 1, shelves: [manual, smart], note: 'kept' })
+  })
+
+  it('reads a queue entry as an editable shelf, its books in the order the file holds them', () => {
+    const file = parseShelvesFile(text({ version: 1, shelves: [queue] }))
+    expect(file?.shelves[0]).toEqual(queue)
+    expect((file?.shelves[0] as QueueShelfEntry).books.map((b) => b.id)).toEqual(['b9', 'b2', 'b5'])
+  })
+
+  it('refuses a malformed queue as it does a malformed manual shelf, and still carries smart through', () => {
+    expect(parseShelvesFile(text({ version: 1, shelves: [{ ...queue, books: {} }] }))).toBeNull()
+    expect(
+      parseShelvesFile(text({ version: 1, shelves: [{ ...queue, books: [{ id: 'b1' }] }] }))
+    ).toBeNull()
+    expect(parseShelvesFile(text({ version: 1, shelves: [queue, smart] }))?.shelves[1]).toEqual(
+      smart
+    )
   })
 
   it('reads an empty file of shelves', () => {

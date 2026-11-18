@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import type {
   ForeignShelfEntry,
-  ManualShelfEntry,
+  ListShelfEntry,
   ShelfBookEntry,
   ShelfEntry,
   ShelvesFile
@@ -54,14 +54,14 @@ function isBookEntry(value: unknown): value is ShelfBookEntry {
  *
  * A kind this build does not know needs only an id and a kind: it is carried
  * through untouched, so its other fields are its own business (D1). A manual
- * shelf is checked field by field, because this build will edit it — and a
+ * shelf or a queue is checked field by field, because this build will edit it — and a
  * malformed one makes the **whole file** unreadable rather than being dropped,
  * since dropping it on the next write would destroy it.
  */
 function parseEntry(raw: unknown): ShelfEntry | null {
   if (!isRecord(raw) || typeof raw.id !== 'string' || raw.id === '') return null
   if (typeof raw.kind !== 'string') return null
-  if (raw.kind !== 'manual') return raw as unknown as ForeignShelfEntry
+  if (raw.kind !== 'manual' && raw.kind !== 'queue') return raw as unknown as ForeignShelfEntry
   if (
     typeof raw.name !== 'string' ||
     typeof raw.created_at !== 'string' ||
@@ -71,7 +71,7 @@ function parseEntry(raw: unknown): ShelfEntry | null {
   ) {
     return null
   }
-  return raw as unknown as ManualShelfEntry
+  return raw as unknown as ListShelfEntry
 }
 
 /**
