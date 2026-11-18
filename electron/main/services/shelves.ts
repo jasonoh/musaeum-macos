@@ -1,12 +1,13 @@
 import { randomUUID } from 'crypto'
 import type {
-  ManualShelfEntry,
+  ListShelfEntry,
   ShelfAddResult,
+  ShelfKind,
   ShelfMembership,
   ShelfSummary,
   ShelvesFile
 } from '@shared/shelf.types'
-import { isManualShelf } from '@shared/shelf.types'
+import { isListShelf } from '@shared/shelf.types'
 import * as db from './db'
 import { broadcast } from './events'
 import * as nas from './nas-manager'
@@ -98,8 +99,8 @@ async function mutate<T>(apply: (file: ShelvesFile, now: string) => Applied<T>):
   })
 }
 
-function findShelf(file: ShelvesFile, id: string): ManualShelfEntry {
-  const shelf = file.shelves.find((s): s is ManualShelfEntry => isManualShelf(s) && s.id === id)
+function findShelf(file: ShelvesFile, id: string): ListShelfEntry {
+  const shelf = file.shelves.find((s): s is ListShelfEntry => isListShelf(s) && s.id === id)
   if (!shelf) throw new ShelfGoneError()
   return shelf
 }
@@ -120,14 +121,14 @@ function cleanName(raw: unknown): string {
 const foldName = (name: string): string => name.normalize('NFC').toLowerCase()
 
 /**
- * Unique case-insensitively among manual shelves, checked against the re-read
- * file. A clash is refused, never auto-suffixed (D3). `selfId` lets a shelf be
+ * Unique case-insensitively across manual shelves and queues — one namespace —
+ * checked against the re-read file. A clash is refused, never auto-suffixed (D3). `selfId` lets a shelf be
  * renamed to its own name in another case.
  */
 function assertNameFree(file: ShelvesFile, name: string, selfId: string | null): void {
   const key = foldName(name)
   const clash = file.shelves.find(
-    (s): s is ManualShelfEntry => isManualShelf(s) && s.id !== selfId && foldName(s.name) === key
+    (s): s is ListShelfEntry => isListShelf(s) && s.id !== selfId && foldName(s.name) === key
   )
   if (clash) throw new Error(`There is already a shelf named “${clash.name}”.`)
 }
@@ -136,7 +137,7 @@ function assertNameFree(file: ShelvesFile, name: string, selfId: string | null):
  * Put books on a shelf. An existing member keeps its `added_at` (idempotent);
  * an id the library does not hold is skipped and counted nowhere (D3).
  */
-function addMembers(shelf: ManualShelfEntry, bookIds: unknown, now: string): ShelfAddResult {
+function addMembers(shelf: ListShelfEntry, bookIds: unknown, now: string): ShelfAddResult {
   const on = new Set(shelf.books.map((m) => m.id))
   let added = 0
   let alreadyOn = 0
@@ -174,14 +175,21 @@ export function forBook(bookId: string): ShelfSummary[] {
 
 // --- Mutations ---
 
-export async function create(name: string, bookIds: string[] = []): Promise<ShelfSummary> {
+export async function create(
+  name: string,
+  bookIds: string[] = [],
+  kind: ShelfKind = 'manual'
+): Promise<ShelfSummary> {
+  // Before the queue: a kind this build does not know writes nothing (it would
+  // otherwise land in the file as an entry this build then treats as foreign)
+  if (kind !== 'manual' && kind !== 'queue') throw new Error('Unknown shelf kind.')
   const clean = cleanName(name)
   return mutate((file, now) => {
     assertNameFree(file, clean, null)
-    const shelf: ManualShelfEntry = {
+    const shelf: ListShelfEntry = {
       id: randomUUID(),
       name: clean,
-      kind: 'manual',
+      kind,
       created_at: now,
       updated_at: now,
       books: []
@@ -191,7 +199,7 @@ export async function create(name: string, bookIds: string[] = []): Promise<Shel
     // Answered from what was written, not read back from the cache afterwards —
     // by then the queue may have run another change
     return {
-      result: { id: shelf.id, name: shelf.name, kind: 'manual', count: shelf.books.length },
+      result: { id: shelf.id, name: shelf.name, kind: shelf.kind, count: shelf.books.length },
       changed: true
     }
   })
@@ -260,7 +268,7 @@ export async function rename(id: string, name: string): Promise<void> {
 export async function deleteShelf(id: string): Promise<void> {
   return mutate((file) => {
     findShelf(file, id)
-    file.shelves = file.shelves.filter((s) => !(isManualShelf(s) && s.id === id))
+    file.shelves = file.shelves.filter((s) => !(isListShelf(s) && s.id === id))
     return { result: undefined, changed: true }
   })
 }
@@ -278,7 +286,7 @@ export async function pruneBooks(bookIds: string[]): Promise<void> {
     const gone = new Set(bookIds)
     let changed = false
     for (const shelf of file.shelves) {
-      if (!isManualShelf(shelf)) continue
+      if (!isListShelf(shelf)) continue
       const kept = shelf.books.filter((m) => !gone.has(m.id))
       if (kept.length === shelf.books.length) continue
       shelf.books = kept

@@ -4,7 +4,7 @@ import { tmpdir } from 'os'
 import { basename, join } from 'path'
 import { app } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ManualShelfEntry, ShelvesFile } from '@shared/shelf.types'
+import type { ListShelfEntry, ManualShelfEntry, ShelvesFile } from '@shared/shelf.types'
 import { makeBook } from '../../../test/helpers/book'
 import { closeDb, getBooks, insertBook } from './db'
 import { subscribe } from './events'
@@ -43,6 +43,15 @@ function manualOnDisk(file: ShelvesFile, id: string): ManualShelfEntry {
   const shelf = file.shelves.find((s) => s.id === id)
   if (!shelf || shelf.kind !== 'manual') throw new Error(`no manual shelf ${id} on disk`)
   return shelf as ManualShelfEntry
+}
+
+/** A manual or queue entry on disk — the shelves this build edits. */
+function listShelfOnDisk(file: ShelvesFile, id: string): ListShelfEntry {
+  const shelf = file.shelves.find((s) => s.id === id)
+  if (!shelf || (shelf.kind !== 'manual' && shelf.kind !== 'queue')) {
+    throw new Error(`no list shelf ${id} on disk`)
+  }
+  return shelf as ListShelfEntry
 }
 
 /** A shelves.json scratch file: `shelves.json.<uuid>.part`, one per write (F2). */
@@ -200,6 +209,65 @@ describe('names (bookshelves D3, AC10)', () => {
       'There is already a shelf named “To Read”.'
     )
     expect(shelves.list().map((s) => s.name)).toEqual(['To Read'])
+  })
+})
+
+describe('two kinds, one service (reading queue D3)', () => {
+  it('creates a queue with its books in the given order, first occurrence only', async () => {
+    const queue = await shelves.create('Up Next', ['b', 'a', 'b'], 'queue')
+    expect(queue).toEqual({ id: queue.id, name: 'Up Next', kind: 'queue', count: 2 })
+    const entry = listShelfOnDisk(await onDisk(), queue.id)
+    expect(entry.kind).toBe('queue')
+    expect(entry.books.map((m) => m.id)).toEqual(['b', 'a'])
+    expect(shelves.list()).toEqual([{ id: queue.id, name: 'Up Next', kind: 'queue', count: 2 }])
+  })
+
+  it('refuses a kind it does not know before anything is written', async () => {
+    const writes = countWrites()
+    await expect(shelves.create('X', [], 'smart' as never)).rejects.toThrow('Unknown shelf kind.')
+    expect(writes()).toBe(0)
+    await expect(fs.access(shelvesPath(root))).rejects.toThrow()
+  })
+
+  it('keeps one name namespace across both kinds, in either order', async () => {
+    await shelves.create('To Read')
+    await expect(shelves.create('to read', [], 'queue')).rejects.toThrow(
+      'There is already a shelf named “To Read”.'
+    )
+    await shelves.create('Up Next', [], 'queue')
+    await expect(shelves.create('UP NEXT')).rejects.toThrow(
+      'There is already a shelf named “Up Next”.'
+    )
+  })
+
+  it('appends to a queue, and writes nothing when the book is already there', async () => {
+    const queue = await shelves.create('Up Next', ['a', 'b'], 'queue')
+    expect(await shelves.addBooks(queue.id, ['c'])).toEqual({ added: 1, alreadyOn: 0 })
+    expect(listShelfOnDisk(await onDisk(), queue.id).books.map((m) => m.id)).toEqual([
+      'a',
+      'b',
+      'c'
+    ])
+    const writes = countWrites()
+    expect(await shelves.addBooks(queue.id, ['c'])).toEqual({ added: 0, alreadyOn: 1 })
+    expect(writes()).toBe(0)
+  })
+
+  it('renames and deletes a queue', async () => {
+    const queue = await shelves.create('Up Next', ['a'], 'queue')
+    await shelves.rename(queue.id, 'Soon')
+    expect(shelves.list()).toEqual([{ id: queue.id, name: 'Soon', kind: 'queue', count: 1 }])
+    await shelves.deleteShelf(queue.id)
+    expect(shelves.list()).toEqual([])
+    expect((await onDisk()).shelves).toEqual([])
+  })
+
+  it('prunes a deleted book off a queue in one write', async () => {
+    const queue = await shelves.create('Up Next', ['a', 'b'], 'queue')
+    const writes = countWrites()
+    await shelves.pruneBooks(['a'])
+    expect(writes()).toBe(1)
+    expect(listShelfOnDisk(await onDisk(), queue.id).books.map((m) => m.id)).toEqual(['b'])
   })
 })
 
