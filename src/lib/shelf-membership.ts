@@ -1,4 +1,9 @@
-import type { ShelfAddResult, ShelfMembership, ShelfSummary } from '@shared/shelf.types'
+import type {
+  ShelfAddResult,
+  ShelfMembership,
+  ShelfPlacement,
+  ShelfSummary
+} from '@shared/shelf.types'
 import { useUIStore } from '@/stores/ui.store'
 import { reportShelfFailure } from '@/lib/shelf-feedback'
 
@@ -19,6 +24,10 @@ import { reportShelfFailure } from '@/lib/shelf-feedback'
  * rebuilds, reorders, filters or renames them — including a membership main will
  * itself skip, because a partial restore is by design and silent, and a second
  * silent filter here would hide a book with nothing on screen saying so.
+ *
+ * **Moves live here too** (a queue's reorder: `sendMove`, `moveToEdge`). A move has
+ * no Undo, so there is nothing to hand back; the placement goes to main exactly as
+ * built — main refuses any extra key, even an undefined one.
  *
  * Every function reports its own failure once (through the session reporter) and
  * answers null rather than throwing, so a caller cannot forget — the picker's
@@ -79,4 +88,32 @@ export async function removeFromShelf(
     reportShelfFailure(err)
     return null
   }
+}
+
+/**
+ * One `shelves.move`, reported once on refusal. True when main took it, false when
+ * it refused (the sentence has already been said); never throws. The placement is
+ * passed through untouched.
+ */
+export async function sendMove(
+  shelfId: string,
+  bookIds: readonly string[],
+  placement: ShelfPlacement
+): Promise<boolean> {
+  try {
+    await window.Musaeum.shelves.move(shelfId, [...bookIds], placement)
+    return true
+  } catch (err) {
+    reportShelfFailure(err)
+    return false
+  }
+}
+
+/** Move the books to the top or bottom of a queue. */
+export function moveToEdge(
+  shelfId: string,
+  bookIds: readonly string[],
+  edge: 'top' | 'bottom'
+): Promise<boolean> {
+  return sendMove(shelfId, bookIds, { to: edge })
 }

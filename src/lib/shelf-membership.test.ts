@@ -1,19 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ShelfMembership, ShelfSummary } from '@shared/shelf.types'
-import { addToShelf, describeAdd, removeFromShelf, undoRemove } from './shelf-membership'
+import type { ShelfMembership, ShelfPlacement, ShelfSummary } from '@shared/shelf.types'
+import { reportShelfFailure } from '@/lib/shelf-feedback'
+import {
+  addToShelf,
+  describeAdd,
+  moveToEdge,
+  removeFromShelf,
+  undoRemove
+} from './shelf-membership'
+
+// The reporter is the session's one memory of what it has said; a case that asks
+// "was it reported, and once" wants a spy, not the real set
+vi.mock('@/lib/shelf-feedback', () => ({ reportShelfFailure: vi.fn() }))
 
 const SHELF: ShelfSummary = { id: 's1', name: 'To Read', kind: 'manual', count: 9 }
 
-/** `window.Musaeum.shelves`, reduced to the three members this module touches. */
+/** `window.Musaeum.shelves`, reduced to the four members this module touches. */
 function stubShelves(handlers: {
   addBooks?(id: string, ids: string[]): Promise<{ added: number; alreadyOn: number }>
   removeBooks?(id: string, ids: string[]): Promise<ShelfMembership[]>
   restoreBooks?(id: string, memberships: ShelfMembership[]): Promise<void>
+  move?(id: string, ids: string[], placement: ShelfPlacement): Promise<void>
 }) {
   const calls = {
     add: [] as unknown[],
     remove: [] as unknown[],
-    restore: [] as unknown[]
+    restore: [] as unknown[],
+    move: [] as unknown[]
   }
   vi.stubGlobal('window', {
     Musaeum: {
@@ -29,6 +42,10 @@ function stubShelves(handlers: {
         restoreBooks: (id: string, memberships: ShelfMembership[]) => {
           calls.restore.push([id, memberships])
           return handlers.restoreBooks?.(id, memberships) ?? Promise.resolve()
+        },
+        move: (id: string, ids: string[], placement: ShelfPlacement) => {
+          calls.move.push([id, ids, placement])
+          return handlers.move?.(id, ids, placement) ?? Promise.resolve()
         }
       }
     }
@@ -37,6 +54,7 @@ function stubShelves(handlers: {
 }
 
 afterEach(() => {
+  vi.mocked(reportShelfFailure).mockClear()
   vi.unstubAllGlobals()
   vi.useRealTimers()
 })
@@ -88,6 +106,55 @@ describe('the Undo hands back exactly what main gave it (note 2, AC22)', () => {
     expect(() => undoRemove(SHELF.id, REMOVED)()).not.toThrow()
     await Promise.resolve()
     expect(calls.restore).toHaveLength(1)
+  })
+})
+
+describe('the Undo hands a queue membership back with its index', () => {
+  it('passes the very objects removeBooks returned, `index` and all', async () => {
+    // A queue's membership carries `index` (its position at removal) and main
+    // re-inserts at it. Nothing here may rebuild, filter or strip an element, so
+    // the array handed to restoreBooks is the array main handed over (this pins a
+    // rule the module already carries; it passes before any move helper exists)
+    const removed: ShelfMembership[] = [
+      { bookId: 'a', addedAt: '2026-09-01T10:00:00.000Z', index: 3 },
+      { bookId: 'b', addedAt: '2026-09-02T11:30:00.000Z', index: 0 }
+    ]
+    const calls = stubShelves({})
+    undoRemove('q', removed)()
+    const [id, handed] = calls.restore[0] as [string, ShelfMembership[]]
+    expect(id).toBe('q')
+    expect(handed).toBe(removed)
+    expect(handed[0]).toEqual({ bookId: 'a', addedAt: '2026-09-01T10:00:00.000Z', index: 3 })
+  })
+})
+
+describe('moveToEdge (reading queue)', () => {
+  it.each(['top', 'bottom'] as const)(
+    'sends one move to the %s, and nothing else',
+    async (edge) => {
+      const calls = stubShelves({})
+      await expect(moveToEdge('q', ['a', 'b'], edge)).resolves.toBe(true)
+      expect(calls.move).toEqual([['q', ['a', 'b'], { to: edge }]])
+      // Main refuses a placement with any extra key — an undefined one included
+      const [, , placement] = calls.move[0] as [string, string[], ShelfPlacement]
+      expect(Object.keys(placement)).toEqual(['to'])
+      expect(reportShelfFailure).not.toHaveBeenCalled()
+    }
+  )
+
+  it("hands main a copy of the ids, not the caller's own array", async () => {
+    const ids: readonly string[] = ['a']
+    const calls = stubShelves({})
+    await moveToEdge('q', ids, 'top')
+    expect((calls.move[0] as [string, string[]])[1]).not.toBe(ids)
+  })
+
+  it('answers false and reports once when main refuses, rather than throwing', async () => {
+    const refusal = new Error('That book is no longer in the queue')
+    stubShelves({ move: async () => Promise.reject(refusal) })
+    await expect(moveToEdge('q', ['a'], 'top')).resolves.toBe(false)
+    expect(reportShelfFailure).toHaveBeenCalledTimes(1)
+    expect(reportShelfFailure).toHaveBeenCalledWith(refusal)
   })
 })
 
