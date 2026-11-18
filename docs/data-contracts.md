@@ -97,8 +97,8 @@ One file per library, not one per book — `{library_root}/shelves.json`, canoni
 
 - `version` — the file format's own version, independent of the REST `apiVersion`. A file whose `version` this build does not recognize is treated as unreadable and never rewritten in this build's shape.
 - `shelves[].id` — a UUID, stable for the shelf's life.
-- `shelves[].kind` — `"manual"` for every shelf this build creates or edits. A kind this build does not know (a future smart shelf) is preserved on every write exactly as read, never edited or dropped.
-- `shelves[].name` — trimmed, non-empty, at most 80 characters, unique case-insensitively among manual shelves.
+- `shelves[].kind` — `"manual"` or `"queue"`, the two kinds this build creates and edits. A queue has a manual shelf's exact shape, and **its `books` array order is its order — index 0 is the top**, the book to read next (reading queue, `docs/invariants/shelves.md` → *Queues*); a move reorders the array and never touches `added_at`. A kind this build does not know (a future smart shelf) is preserved on every write exactly as read, never edited or dropped.
+- `shelves[].name` — trimmed, non-empty, at most 80 characters, unique case-insensitively across manual shelves and queues (one namespace).
 - `shelves[].created_at` / `updated_at` — ISO 8601; `updated_at` moves on a rename or a membership change, never on a no-op.
 - `shelves[].books[].id` / `added_at` — one row per member, `added_at` set when the book joined and preserved by an Undo (`restoreBooks`) so the book returns to its place under *Date Added to Shelf*.
 
@@ -164,7 +164,7 @@ Deleting a book removes its folder, and the notes go with it. See `docs/superpow
 
 ## SQLite Schema
 
-Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the original spec plus: FTS5 sync triggers (insert/update/delete), indices on `isbn_13` / series / author, `device_history.error` column, and a partial index on unresolved conflicts. Schema versioning via `PRAGMA user_version`; new migrations are appended to the `MIGRATIONS` array in `services/db.ts`. `device_history.book_id` lost its `REFERENCES books(id)` in migration 005 — history outlives the book it was sent for, and the constraint made a sent book undeletable (`docs/invariants/files-and-deletion.md`). Migration 006 dropped the never-used `collections` / `book_collections` tables — guarded to fail the migration rather than discard rows if either ever held any — and added `shelves` / `shelf_books` as a cache of `shelves.json`, with no foreign keys, because a member may name a book this machine's catalog does not hold yet and the rows are replaced wholesale on every write and on adoption (`docs/invariants/shelves.md`).
+Canonical DDL: `electron/main/schema/migrations/001_initial.sql`. Matches the original spec plus: FTS5 sync triggers (insert/update/delete), indices on `isbn_13` / series / author, `device_history.error` column, and a partial index on unresolved conflicts. Schema versioning via `PRAGMA user_version`; new migrations are appended to the `MIGRATIONS` array in `services/db.ts`. `device_history.book_id` lost its `REFERENCES books(id)` in migration 005 — history outlives the book it was sent for, and the constraint made a sent book undeletable (`docs/invariants/files-and-deletion.md`). Migration 006 dropped the never-used `collections` / `book_collections` tables — guarded to fail the migration rather than discard rows if either ever held any — and added `shelves` / `shelf_books` as a cache of `shelves.json`, with no foreign keys, because a member may name a book this machine's catalog does not hold yet and the rows are replaced wholesale on every write and on adoption (`docs/invariants/shelves.md`). Migration 009 added `shelf_books.position`, the member's index in its shelf's `books` array, written for every shelf by the same wholesale replace; a queue's order lives in the file and `position` is only its cached rendering, so positions may have gaps (a member whose book this catalog lacks is skipped) and order without counting (`shelf_position` sort, `docs/invariants/shelves.md` → *Queues*).
 
 ```sql
 CREATE TABLE books (
@@ -220,6 +220,7 @@ CREATE TABLE shelf_books (
   shelf_id  TEXT NOT NULL,
   book_id   TEXT NOT NULL,
   added_at  TEXT NOT NULL,
+  position  INTEGER NOT NULL DEFAULT 0,   -- migration 009: the member's index in its shelf's `books` array
   PRIMARY KEY (shelf_id, book_id)
 );
 

@@ -34,12 +34,13 @@ const api: MusaeumAPI = {
   shelves: {
     list: () => invoke('shelves:list'),
     forBook: (bookId) => invoke('shelves:forBook', bookId),
-    create: (name, bookIds) => invoke('shelves:create', name, bookIds),
+    create: (name, bookIds, kind) => invoke('shelves:create', name, bookIds, kind),
     rename: (id, name) => invoke('shelves:rename', id, name),
     delete: (id) => invoke('shelves:delete', id),
     addBooks: (id, bookIds) => invoke('shelves:addBooks', id, bookIds),
     removeBooks: (id, bookIds) => invoke('shelves:removeBooks', id, bookIds),
     restoreBooks: (id, memberships) => invoke('shelves:restoreBooks', id, memberships),
+    move: (id, bookIds, placement) => invoke('shelves:move', id, bookIds, placement),
     onChanged: (cb) => listen(EVENT_CHANNELS.shelvesChanged, () => cb())
   },
   import: {

@@ -49,7 +49,14 @@ import type {
   PythonEnvProgress,
   SettingsView
 } from './settings.types'
-import type { ShelfAddResult, ShelfMembership, ShelfScope, ShelfSummary } from './shelf.types'
+import type {
+  ShelfAddResult,
+  ShelfKind,
+  ShelfMembership,
+  ShelfPlacement,
+  ShelfScope,
+  ShelfSummary
+} from './shelf.types'
 import type {
   LexiconEntryView,
   LexiconPreviewRequest,
@@ -173,8 +180,11 @@ export interface MusaeumAPI {
     /** Alphabetical, case-insensitive. `count` counts only books the library holds. */
     list(): Promise<ShelfSummary[]>
     forBook(bookId: string): Promise<ShelfSummary[]>
-    /** Names are trimmed, non-empty, ≤ 80 characters and unique case-insensitively. */
-    create(name: string, bookIds?: string[]): Promise<ShelfSummary>
+    /**
+     * Names are trimmed, non-empty, ≤ 80 characters and unique case-insensitively
+     * across manual shelves and queues alike. `kind` defaults to `'manual'`.
+     */
+    create(name: string, bookIds?: string[], kind?: ShelfKind): Promise<ShelfSummary>
     rename(id: string, name: string): Promise<void>
     /** Removes the shelf; its books stay in the library. */
     delete(id: string): Promise<void>
@@ -183,6 +193,14 @@ export interface MusaeumAPI {
     /** Resolves to what was removed, timestamps included — hand it to `restoreBooks` to Undo. */
     removeBooks(id: string, bookIds: string[]): Promise<ShelfMembership[]>
     restoreBooks(id: string, memberships: ShelfMembership[]): Promise<void>
+    /**
+     * Reorder a reading queue: the named members, in their current relative
+     * order, go to the top, the bottom, or beside another member. A queue only —
+     * a manual shelf rejects — and, like every shelf write, it rejects while the
+     * library is unreachable or shelves.json is unreadable, with main's sentence.
+     * A move that changes nothing writes nothing.
+     */
+    move(id: string, bookIds: string[], placement: ShelfPlacement): Promise<void>
     /** Shelves or membership changed — here, over REST, or by adoption. */
     onChanged(cb: () => void): Unsubscribe
   }
