@@ -365,6 +365,166 @@ describe('Undo restores a queue book to its place (reading queue D3)', () => {
   })
 })
 
+describe('moveBooks reorders a queue in one write (reading queue D3)', () => {
+  const ids = (file: ShelvesFile, id: string): string[] =>
+    listShelfOnDisk(file, id).books.map((m) => m.id)
+
+  let queueId: string
+
+  beforeEach(async () => {
+    for (const id of ['d', 'e']) insertBook(makeBook(id))
+    queueId = (await shelves.create('Up Next', ['a', 'b', 'c', 'd', 'e'], 'queue')).id
+  })
+
+  const order = async (): Promise<string[]> => ids(await onDisk(), queueId)
+
+  it.each([
+    ['one book to the top', ['d'], { to: 'top' }, ['d', 'a', 'b', 'c', 'e']],
+    ['one book to the bottom', ['b'], { to: 'bottom' }, ['a', 'c', 'd', 'e', 'b']],
+    [
+      'a block given out of order, kept in the shelf’s own order',
+      ['d', 'b'],
+      { to: 'top' },
+      ['b', 'd', 'a', 'c', 'e']
+    ],
+    ['before an anchor', ['c'], { before: 'a' }, ['c', 'a', 'b', 'd', 'e']],
+    ['after the last anchor', ['a'], { after: 'e' }, ['b', 'c', 'd', 'e', 'a']],
+    ['a block after a middle anchor', ['a', 'e'], { after: 'c' }, ['b', 'c', 'a', 'e', 'd']]
+  ] as const)('moves %s', async (_label, bookIds, placement, expected) => {
+    const writes = countWrites()
+    await shelves.moveBooks(queueId, [...bookIds], placement)
+    expect(writes()).toBe(1)
+    expect(await order()).toEqual(expected)
+  })
+
+  it.each([
+    ['the first book to the top', ['a'], { to: 'top' }],
+    ['a block already together before the next book', ['a', 'b'], { before: 'c' }],
+    ['an id that is not on the queue', ['zzz'], { to: 'top' }],
+    ['no ids at all', [], { to: 'top' }],
+    ['an entry that is not an id', [null, 1], { to: 'top' }],
+    ['a repeated id already first', ['a', 'a'], { to: 'top' }],
+    ['a block before one of its own members', ['a', 'b'], { before: 'b' }],
+    ['a block after one of its own members', ['a', 'b'], { after: 'a' }]
+  ] as const)('writes nothing for %s', async (_label, bookIds, placement) => {
+    const before = await fs.readFile(shelvesPath(root), 'utf8')
+    const stamp = listShelfOnDisk(await onDisk(), queueId).updated_at
+    const writes = countWrites()
+    const events: string[] = []
+    const unsubscribe = subscribe((event) => {
+      events.push(event)
+    })
+    await shelves.moveBooks(queueId, [...bookIds] as never, placement)
+    unsubscribe()
+    expect(writes()).toBe(0)
+    expect(events).not.toContain('shelvesChanged')
+    expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe(before)
+    expect(listShelfOnDisk(await onDisk(), queueId).updated_at).toBe(stamp)
+  })
+
+  it('refuses an anchor that is not on the queue, and changes nothing', async () => {
+    const before = await fs.readFile(shelvesPath(root), 'utf8')
+    const writes = countWrites()
+    await expect(shelves.moveBooks(queueId, ['a'], { before: 'zzz' })).rejects.toThrow(
+      shelves.QUEUE_BOOK_GONE
+    )
+    await expect(shelves.moveBooks(queueId, ['a'], { after: 'zzz' })).rejects.toThrow(
+      'That book is no longer in the queue'
+    )
+    expect(writes()).toBe(0)
+    expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe(before)
+  })
+
+  it('refuses a manual shelf, an unknown shelf and a placement it cannot read', async () => {
+    const manual = await shelves.create('To Read', ['a', 'b'])
+    await expect(shelves.moveBooks(manual.id, ['a'], { to: 'bottom' })).rejects.toThrow(
+      shelves.SHELF_NOT_QUEUE
+    )
+    expect(shelves.SHELF_NOT_QUEUE).toBe('Only a reading queue can be reordered')
+    expect(manualOnDisk(await onDisk(), manual.id).books.map((m) => m.id)).toEqual(['a', 'b'])
+
+    await expect(shelves.moveBooks('no-such-shelf', ['a'], { to: 'top' })).rejects.toThrow(
+      shelves.SHELF_GONE
+    )
+
+    const before = await fs.readFile(shelvesPath(root), 'utf8')
+    const writes = countWrites()
+    const unreadable = 'That move could not be read.'
+    for (const placement of [
+      { to: 'middle' },
+      { to: 'top', before: 'a' },
+      { before: 3 },
+      { after: '' },
+      {},
+      null,
+      'top',
+      undefined
+    ]) {
+      await expect(shelves.moveBooks(queueId, ['a'], placement as never)).rejects.toThrow(
+        unreadable
+      )
+    }
+    for (const bookIds of ['a', null, undefined, { 0: 'a' }]) {
+      await expect(shelves.moveBooks(queueId, bookIds as never, { to: 'top' })).rejects.toThrow(
+        unreadable
+      )
+    }
+    expect(writes()).toBe(0)
+    expect(await fs.readFile(shelvesPath(root), 'utf8')).toBe(before)
+  })
+
+  it('refuses a queue deleted on another Mac, and drops it from the cache', async () => {
+    await writeShelvesFile(root, { version: 1, shelves: [] })
+    await expect(shelves.moveBooks(queueId, ['a'], { to: 'bottom' })).rejects.toThrow(
+      shelves.SHELF_GONE
+    )
+    expect(shelves.list()).toEqual([])
+  })
+
+  it('broadcasts shelvesChanged once, and the cache reads in the new order', async () => {
+    const events: string[] = []
+    const unsubscribe = subscribe((event) => {
+      events.push(event)
+    })
+    await shelves.moveBooks(queueId, ['d', 'e'], { before: 'b' })
+    unsubscribe()
+    expect(events.filter((e) => e === 'shelvesChanged')).toHaveLength(1)
+    expect(
+      getBooks({
+        shelfId: queueId,
+        sort: { field: 'shelf_position', direction: 'asc' }
+      }).map((b) => b.id)
+    ).toEqual(['a', 'd', 'e', 'b', 'c'])
+  })
+
+  it('bumps the queue’s updated_at but never any member’s added_at', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-01T00:00:00.000Z'))
+    const before = listShelfOnDisk(await onDisk(), queueId)
+    vi.setSystemTime(new Date('2026-10-02T00:00:00.000Z'))
+    await shelves.moveBooks(queueId, ['e'], { to: 'top' })
+    const after = listShelfOnDisk(await onDisk(), queueId)
+    expect(after.updated_at).toBe('2026-10-02T00:00:00.000Z')
+    for (const m of after.books) {
+      expect(m.added_at).toBe(before.books.find((b) => b.id === m.id)!.added_at)
+    }
+  })
+
+  it('neither loses nor doubles a member on a hand-edited queue that repeats an id', async () => {
+    const file = await onDisk()
+    const entry = listShelfOnDisk(file, queueId)
+    entry.books = ['a', 'b', 'a', 'c'].map((id, i) => ({
+      id,
+      added_at: `2026-09-0${i + 1}T00:00:00.000Z`
+    }))
+    await writeShelvesFile(root, file)
+    await shelves.moveBooks(queueId, ['c'], { to: 'top' })
+    expect(await order()).toEqual(['c', 'a', 'b', 'a'])
+    await shelves.moveBooks(queueId, ['a'], { to: 'bottom' })
+    expect(await order()).toEqual(['c', 'b', 'a', 'a'])
+  })
+})
+
 const AT = '2026-09-01T00:00:00.000Z'
 
 /** Every mutation, pointed at shelf `id` — for the refusals every one of them shares. */

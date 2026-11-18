@@ -4,10 +4,11 @@ import type {
   ShelfAddResult,
   ShelfKind,
   ShelfMembership,
+  ShelfPlacement,
   ShelfSummary,
   ShelvesFile
 } from '@shared/shelf.types'
-import { isListShelf } from '@shared/shelf.types'
+import { isListShelf, isQueueShelf } from '@shared/shelf.types'
 import * as db from './db'
 import { broadcast } from './events'
 import * as nas from './nas-manager'
@@ -37,6 +38,8 @@ export const SHELF_NAME_MAX = 80
 export const SHELVES_UNREADABLE =
   'shelves.json could not be read — shelf changes are paused so nothing is lost'
 export const SHELF_GONE = 'That shelf no longer exists'
+export const SHELF_NOT_QUEUE = 'Only a reading queue can be reordered'
+export const QUEUE_BOOK_GONE = 'That book is no longer in the queue'
 
 /** A mutation that found its shelf absent from the re-read file — deleted on another Mac. */
 class ShelfGoneError extends Error {
@@ -287,6 +290,61 @@ export async function restoreBooks(id: string, memberships: ShelfMembership[]): 
     const restored = valid.length
     if (restored > 0) shelf.updated_at = now
     return { result: undefined, changed: restored > 0 }
+  })
+}
+
+const MOVE_UNREADABLE = 'That move could not be read.'
+
+/** One of the three shapes `ShelfPlacement` allows, and nothing beside them. */
+function isPlacement(value: unknown): value is ShelfPlacement {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const keys = Object.keys(value)
+  if (keys.length !== 1) return false
+  const { to, before, after } = value as { to?: unknown; before?: unknown; after?: unknown }
+  if (keys[0] === 'to') return to === 'top' || to === 'bottom'
+  const anchor = keys[0] === 'before' ? before : keys[0] === 'after' ? after : undefined
+  return typeof anchor === 'string' && anchor !== ''
+}
+
+/**
+ * Move books within a queue — the one write that reorders (reading queue D3).
+ * The moved books are the members named in `bookIds`, taken **in their current
+ * relative order** and placed as a block; an id the queue does not hold, and a
+ * repeated id, is ignored. An anchor that is itself one of the moved books, or a
+ * result equal to the current order, changes nothing and writes nothing. An
+ * anchor missing from the re-read file refuses with `QUEUE_BOOK_GONE`.
+ *
+ * `moving` and `rest` are built by filtering, which keeps a hand-edited queue's
+ * repeated member whole — nothing is lost or doubled. `added_at` is untouched.
+ */
+export async function moveBooks(
+  id: string,
+  bookIds: string[],
+  placement: ShelfPlacement
+): Promise<void> {
+  // Before the queue: a malformed call never enters it
+  if (!Array.isArray(bookIds) || !isPlacement(placement)) throw new Error(MOVE_UNREADABLE)
+  const named = new Set(bookIds)
+  return mutate((file, now) => {
+    const shelf = findShelf(file, id)
+    if (!isQueueShelf(shelf)) throw new Error(SHELF_NOT_QUEUE)
+    const moving = shelf.books.filter((m) => named.has(m.id))
+    const rest = shelf.books.filter((m) => !named.has(m.id))
+    let next: typeof shelf.books
+    if ('to' in placement) {
+      next = placement.to === 'top' ? [...moving, ...rest] : [...rest, ...moving]
+    } else {
+      const anchor = 'before' in placement ? placement.before : placement.after
+      if (moving.some((m) => m.id === anchor)) return { result: undefined, changed: false }
+      const at = rest.findIndex((m) => m.id === anchor)
+      if (at < 0) throw new Error(QUEUE_BOOK_GONE)
+      next = [...rest]
+      next.splice('before' in placement ? at : at + 1, 0, ...moving)
+    }
+    if (next.every((m, i) => m === shelf.books[i])) return { result: undefined, changed: false }
+    shelf.books = next
+    shelf.updated_at = now
+    return { result: undefined, changed: true }
   })
 }
 
