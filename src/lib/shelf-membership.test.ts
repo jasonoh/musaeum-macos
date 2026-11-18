@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ShelfMembership, ShelfPlacement, ShelfSummary } from '@shared/shelf.types'
+import type { Book } from '@shared/book.types'
 import { reportShelfFailure } from '@/lib/shelf-feedback'
+import { useLibraryStore } from '@/stores/library.store'
 import {
   addToShelf,
   describeAdd,
   moveToEdge,
   removeFromShelf,
+  reorderInQueue,
   undoRemove
 } from './shelf-membership'
 
@@ -155,6 +158,105 @@ describe('moveToEdge (reading queue)', () => {
     await expect(moveToEdge('q', ['a'], 'top')).resolves.toBe(false)
     expect(reportShelfFailure).toHaveBeenCalledTimes(1)
     expect(reportShelfFailure).toHaveBeenCalledWith(refusal)
+  })
+})
+
+describe('reorderInQueue (reading queue)', () => {
+  const book = (id: string) => ({ id, title: id }) as Book
+  const open = (ids: string[]) => {
+    const books = ids.map(book)
+    useLibraryStore.setState({
+      activeShelfId: 'q',
+      books,
+      loadedBooks: books,
+      reorderGen: 0
+    })
+  }
+  const ids = () => useLibraryStore.getState().books.map((b) => b.id)
+
+  /** `window.Musaeum` with the shelves stub plus the reads the final `load()` makes. */
+  function stubWithLibrary(
+    move: (id: string, ids: string[], p: ShelfPlacement) => Promise<void>,
+    served: () => string[]
+  ) {
+    const calls = stubShelves({ move })
+    const win = (globalThis as unknown as { window: { Musaeum: Record<string, unknown> } }).window
+    win.Musaeum.library = {
+      getBooks: () => Promise.resolve(served().map(book)),
+      searchBooks: () => Promise.resolve(served().map(book)),
+      getFacets: () => Promise.resolve({})
+    }
+    return calls
+  }
+
+  afterEach(() => {
+    useLibraryStore.setState({ activeShelfId: null, books: [], loadedBooks: [], loading: false })
+  })
+
+  it("shows the new order while the move is pending, then settles on main's answer", async () => {
+    open(['a', 'b', 'c'])
+    let release!: () => void
+    let served = ['a', 'b', 'c']
+    const calls = stubWithLibrary(
+      () =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            served = ['c', 'a', 'b']
+            resolve()
+          }
+        }),
+      () => served
+    )
+    const pending = reorderInQueue('q', ['c'], { before: 'a' })
+    expect(calls.move).toEqual([['q', ['c'], { before: 'a' }]])
+    expect(ids()).toEqual(['c', 'a', 'b'])
+    expect(useLibraryStore.getState().loadedBooks.map((b) => b.id)).toEqual(['c', 'a', 'b'])
+    release()
+    await expect(pending).resolves.toBe(true)
+    expect(ids()).toEqual(['c', 'a', 'b'])
+    expect(useLibraryStore.getState().loading).toBe(false)
+    expect(reportShelfFailure).not.toHaveBeenCalled()
+  })
+
+  it('rolls back, reports once and resolves false when main refuses', async () => {
+    open(['a', 'b', 'c'])
+    const refusal = new Error('That book is no longer in the queue')
+    let reject!: (e: Error) => void
+    stubWithLibrary(
+      () => new Promise<void>((_, r) => (reject = r)),
+      () => ['a', 'b', 'c']
+    )
+    const pending = reorderInQueue('q', ['c'], { before: 'a' })
+    expect(ids()).toEqual(['c', 'a', 'b'])
+    reject(refusal)
+    await expect(pending).resolves.toBe(false)
+    expect(ids()).toEqual(['a', 'b', 'c'])
+    expect(reportShelfFailure).toHaveBeenCalledTimes(1)
+    expect(reportShelfFailure).toHaveBeenCalledWith(refusal)
+    expect(useLibraryStore.getState().loading).toBe(false)
+  })
+
+  it('makes no call and resolves false for a drop that changes nothing', async () => {
+    open(['a', 'b', 'c'])
+    const calls = stubWithLibrary(
+      () => Promise.resolve(),
+      () => ['a', 'b', 'c']
+    )
+    const gen = useLibraryStore.getState().reorderGen
+    await expect(reorderInQueue('q', ['a'], { before: 'b' })).resolves.toBe(false)
+    expect(calls.move).toEqual([])
+    expect(useLibraryStore.getState().reorderGen).toBe(gen)
+  })
+
+  it('makes no call for a shelf that is not the open one', async () => {
+    open(['a', 'b', 'c'])
+    const calls = stubWithLibrary(
+      () => Promise.resolve(),
+      () => ['a', 'b', 'c']
+    )
+    await expect(reorderInQueue('other', ['c'], { to: 'top' })).resolves.toBe(false)
+    expect(calls.move).toEqual([])
+    expect(ids()).toEqual(['a', 'b', 'c'])
   })
 })
 

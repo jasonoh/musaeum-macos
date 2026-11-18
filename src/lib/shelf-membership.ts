@@ -5,7 +5,9 @@ import type {
   ShelfSummary
 } from '@shared/shelf.types'
 import { useUIStore } from '@/stores/ui.store'
+import { useLibraryStore } from '@/stores/library.store'
 import { reportShelfFailure } from '@/lib/shelf-feedback'
+import { applyPlacement } from '@/lib/queue-order'
 
 /**
  * Putting books on a shelf and taking them off, and the two reports that go with
@@ -25,12 +27,13 @@ import { reportShelfFailure } from '@/lib/shelf-feedback'
  * itself skip, because a partial restore is by design and silent, and a second
  * silent filter here would hide a book with nothing on screen saying so.
  *
- * **Moves live here too** (a queue's reorder: `sendMove`, `moveToEdge`). A move has
+ * **Moves live here too** (a queue's reorder: `sendMove`, `moveToEdge`, `reorderInQueue`). A move has
  * no Undo, so there is nothing to hand back; the placement goes to main exactly as
  * built — main refuses any extra key, even an undefined one.
  *
  * Every function reports its own failure once (through the session reporter) and
- * answers null rather than throwing, so a caller cannot forget — the picker's
+ * answers null (the add and remove helpers) or false (the move helpers) rather than
+ * throwing, so a caller cannot forget — the picker's
  * rows are buttons, and an unhandled rejection behind one is a click that looks
  * like it did nothing.
  */
@@ -116,4 +119,39 @@ export function moveToEdge(
   edge: 'top' | 'bottom'
 ): Promise<boolean> {
   return sendMove(shelfId, bookIds, { to: edge })
+}
+
+/**
+ * Reorder the open queue by a drag: show the result at once, ask main, and take it
+ * back if main refuses. Resolves true when main took the move; false when the drop
+ * changes nothing or the shelf is not the open one (no IPC call either way), or
+ * when main refused (reported once, and the rows go back).
+ *
+ * The view holds the pending order until the authoritative read lands:
+ * `setBookOrder` and `settleReorder` each bump `reorderGen`, which makes any
+ * `load()` that was already in flight discard its answer instead of snapping the
+ * rows back. The closing `load()` is awaited whatever the outcome, which is also
+ * what resets a `loading` flag a discarded read left set.
+ */
+export async function reorderInQueue(
+  shelfId: string,
+  moved: readonly string[],
+  placement: ShelfPlacement
+): Promise<boolean> {
+  const library = useLibraryStore.getState()
+  if (library.activeShelfId !== shelfId) return false
+  const previous = library.books.map((b) => b.id)
+  const next = applyPlacement(previous, moved, placement)
+  if (next.length === previous.length && next.every((id, i) => id === previous[i])) return false
+
+  library.setBookOrder(next)
+  let ok: boolean
+  try {
+    ok = await sendMove(shelfId, moved, placement)
+    if (!ok) useLibraryStore.getState().setBookOrder(previous)
+  } finally {
+    useLibraryStore.getState().settleReorder()
+    await useLibraryStore.getState().load()
+  }
+  return ok
 }

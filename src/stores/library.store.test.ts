@@ -337,3 +337,78 @@ describe('filterByAuthor', () => {
     expect(calls.getBooks).toEqual([{ coAuthor: 'Terry Pratchett', sort: AUTHOR_DESC }])
   })
 })
+
+describe('the pending order of a queue', () => {
+  const book = (id: string) => ({ id, title: id }) as Book
+  const ids = () => useLibraryStore.getState().books.map((b) => b.id)
+
+  function stubDeferred(): Array<(books: Book[]) => void> {
+    const resolvers: Array<(books: Book[]) => void> = []
+    vi.stubGlobal('window', {
+      Musaeum: {
+        library: {
+          getBooks: () => new Promise<Book[]>((resolve) => resolvers.push(resolve)),
+          searchBooks: () => Promise.resolve([] as Book[]),
+          getFacets: () => Promise.resolve(NO_FACETS)
+        }
+      }
+    })
+    return resolvers
+  }
+
+  const seed = () => {
+    const books = ['a', 'b', 'c'].map(book)
+    useLibraryStore.setState({ books, loadedBooks: books, activeShelfId: 'q', loading: false })
+  }
+
+  it('re-orders both lists and bumps the generation', () => {
+    seed()
+    const gen = useLibraryStore.getState().reorderGen
+    useLibraryStore.getState().setBookOrder(['c', 'a', 'b'])
+    expect(ids()).toEqual(['c', 'a', 'b'])
+    expect(useLibraryStore.getState().loadedBooks.map((b) => b.id)).toEqual(['c', 'a', 'b'])
+    expect(useLibraryStore.getState().reorderGen).toBe(gen + 1)
+  })
+
+  it('does not let a read that started before the reorder overwrite it', async () => {
+    seed()
+    const resolvers = stubDeferred()
+    const stale = useLibraryStore.getState().load()
+    useLibraryStore.getState().setBookOrder(['c', 'a', 'b'])
+    resolvers[0]!([book('a'), book('b'), book('c')])
+    await stale
+    expect(ids()).toEqual(['c', 'a', 'b'])
+  })
+
+  it('applies a read that started after the reorder settled', async () => {
+    seed()
+    const resolvers = stubDeferred()
+    useLibraryStore.getState().setBookOrder(['c', 'a', 'b'])
+    useLibraryStore.getState().settleReorder()
+    const fresh = useLibraryStore.getState().load()
+    resolvers[0]!([book('b'), book('c'), book('a')])
+    await fresh
+    expect(ids()).toEqual(['b', 'c', 'a'])
+    expect(useLibraryStore.getState().loading).toBe(false)
+  })
+
+  it('settleReorder bumps the generation so an earlier read is dropped', async () => {
+    seed()
+    const resolvers = stubDeferred()
+    const earlier = useLibraryStore.getState().load()
+    const gen = useLibraryStore.getState().reorderGen
+    useLibraryStore.getState().settleReorder()
+    expect(useLibraryStore.getState().reorderGen).toBe(gen + 1)
+    resolvers[0]!([book('z')])
+    await earlier
+    expect(ids()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('round-trips the drop mark', () => {
+    expect(useLibraryStore.getState().dropMark).toBeNull()
+    useLibraryStore.getState().setDropMark({ bookId: 'b', side: 'after' })
+    expect(useLibraryStore.getState().dropMark).toEqual({ bookId: 'b', side: 'after' })
+    useLibraryStore.getState().setDropMark(null)
+    expect(useLibraryStore.getState().dropMark).toBeNull()
+  })
+})

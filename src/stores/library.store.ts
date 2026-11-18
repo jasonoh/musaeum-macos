@@ -14,7 +14,7 @@ import type {
 import { isBookSort } from '@shared/book.types'
 import type { ShelfKind } from '@shared/shelf.types'
 import { applyRebuildProgress, settleCatalogSync, startCatalogSync } from '@/lib/catalog-sync'
-import { defaultShelfSort } from '@/lib/queue-order'
+import { defaultShelfSort, orderBooksBy } from '@/lib/queue-order'
 import { resultSetKey } from '@/lib/resultSetIdentity'
 import { scopeToDevice } from '@/lib/device-scope'
 import { useDeviceStore } from '@/stores/device.store'
@@ -66,6 +66,23 @@ interface LibraryState {
   /** Live bulk re-hydration progress, or null when no job is running. */
   bulkHydrate: BulkHydrateProgress | null
   setBulkHydrate(p: BulkHydrateProgress | null): void
+
+  /**
+   * Where a queue drag would land, painted by the open row or card. Session-only
+   * view state; nothing reads it but the indicator.
+   */
+  dropMark: { bookId: string; side: 'before' | 'after' } | null
+  setDropMark(mark: { bookId: string; side: 'before' | 'after' } | null): void
+  /**
+   * Counts the pending-order changes of the open queue. A `load()` remembers the
+   * value it started at and drops its answer if it moved, so a read that was in
+   * flight across a reorder cannot snap the rows back.
+   */
+  reorderGen: number
+  /** Show `ids` as the order of the open list, ahead of main's answer. Bumps `reorderGen`. */
+  setBookOrder(ids: readonly string[]): void
+  /** The pending order is over: reads started from here on are authoritative again. Bumps `reorderGen`. */
+  settleReorder(): void
 
   load(): Promise<void>
   setQuery(query: string): void
@@ -218,9 +235,11 @@ export const useLibraryStore = create<LibraryState>()(
         importJobs: {},
         catalogSync: null,
         bulkHydrate: null,
+        dropMark: null,
+        reorderGen: 0,
 
         async load() {
-          const { query, filters, sort, activeShelfId } = get()
+          const { query, filters, sort, activeShelfId, reorderGen } = get()
           // The identity of *this* read, so a slower earlier one cannot land on
           // top of a later one. Two shelf switches in quick succession issue two
           // scoped reads and the SQL they run is not the same cost, so the older
@@ -246,6 +265,10 @@ export const useLibraryStore = create<LibraryState>()(
             // flight has issued a read of its own; that one owns the result set
             // and the loading flag, and this answer is stale
             if (readIdentity(get()) !== at) return
+            // A reorder that began (or settled) while this read was in flight owns
+            // the rows: this answer predates it, and applying it would snap the
+            // pending order back. The authoritative read that follows resets `loading`
+            if (get().reorderGen !== reorderGen) return
             // The device scope is read now, not at the start: moving between the
             // library and a device changes no read, only what is shown of it
             set({
@@ -256,7 +279,9 @@ export const useLibraryStore = create<LibraryState>()(
             })
           } catch (err) {
             console.error('library load failed:', err)
-            if (readIdentity(get()) === at) set({ loading: false })
+            if (readIdentity(get()) === at && get().reorderGen === reorderGen) {
+              set({ loading: false })
+            }
           }
         },
 
@@ -418,6 +443,22 @@ export const useLibraryStore = create<LibraryState>()(
 
         setBulkHydrate(p) {
           set({ bulkHydrate: p })
+        },
+
+        setDropMark(mark) {
+          set({ dropMark: mark })
+        },
+
+        setBookOrder(ids) {
+          set((s) => ({
+            loadedBooks: orderBooksBy(s.loadedBooks, ids),
+            books: orderBooksBy(s.books, ids),
+            reorderGen: s.reorderGen + 1
+          }))
+        },
+
+        settleReorder() {
+          set((s) => ({ reorderGen: s.reorderGen + 1 }))
         }
       }
     },
