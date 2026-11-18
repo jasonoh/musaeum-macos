@@ -39,8 +39,9 @@ const showFolderDialog: ShowFolderDialog = (options) => dialog.showOpenDialog(op
  * **The dialog is a parameter rather than a call to `dialog` directly**, because
  * this flow is what AC6 names ("picking a root writes both `library_root` and
  * `library_kind` in one flow") and a stubbed dialog is its only instrument: no
- * case in this repo has ever driven an `ipcMain` handler, and the vitest
- * Electron mock's `ipcMain` is deliberately inert. Everything *decided* here is
+ * case in this repo drives an `ipcMain` handler except `ipc/shelves.test.ts`,
+ * which swaps `ipcMain` per file, and the vitest Electron mock's `ipcMain` is
+ * deliberately inert. Everything *decided* here is
  * therefore decided through this entry point — which keys are written, in what
  * order, and whether the catalog is peeked at before the root is wired in. The
  * writes themselves stay in `nas-manager` (invariant 8): this function decides

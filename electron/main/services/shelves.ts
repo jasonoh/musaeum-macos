@@ -341,7 +341,8 @@ export async function moveBooks(
       next = [...rest]
       next.splice('before' in placement ? at : at + 1, 0, ...moving)
     }
-    if (next.every((m, i) => m === shelf.books[i])) return { result: undefined, changed: false }
+    if (next.every((m, i) => m.id === shelf.books[i]!.id))
+      return { result: undefined, changed: false }
     shelf.books = next
     shelf.updated_at = now
     return { result: undefined, changed: true }

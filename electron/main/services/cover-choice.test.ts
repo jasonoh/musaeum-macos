@@ -31,8 +31,9 @@ import * as sidecar from './sidecar'
  *
  * It also carries the upload *dialog*'s two cases (`chooseCoverFromFile`), for
  * `ipc/nas.test.ts`'s reason: that flow's decisions are a cancellation and a
- * one-way path, and the dialog is injected so they can be decided at all — this
- * repo has never driven an `ipcMain` handler.
+ * one-way path, and the dialog is injected so they can be decided at all — only
+ * `ipc/shelves.test.ts` drives an `ipcMain` handler, by swapping `ipcMain` per
+ * file.
  */
 vi.mock('./sidecar', () => ({ call: vi.fn(), assertAvailable: vi.fn() }))
 
@@ -547,8 +548,8 @@ describe('D6-c — both gestures settle a cover through one tail', () => {
  * D6-a — the dialog is the main process's, and the path travels one way.
  *
  * `ipc/nas.test.ts`'s arrangement, on this flow: the dialog is injected, because
- * no case in this repo has ever driven an `ipcMain` handler and
- * `test/mocks/electron.ts` keeps `dialog` and `ipcMain` inert on purpose. What
+ * only `ipc/shelves.test.ts` drives an `ipcMain` handler (by swapping `ipcMain`
+ * per file) and `test/mocks/electron.ts` keeps `dialog` and `ipcMain` inert on purpose. What
  * the seam decides is what the flow is about — that a cancellation is reported as
  * a cancellation and writes nothing, and that the absolute path reaches the
  * sidecar without becoming a value the renderer could name. What it does **not**

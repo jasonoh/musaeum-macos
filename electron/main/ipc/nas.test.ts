@@ -15,9 +15,9 @@ import { pickLibraryRoot, type ShowFolderDialog } from './nas'
  * This is the one criterion in slice 1 whose named decider is a handler, and it
  * is decided here through `pickLibraryRoot` — the flow `registerNASHandlers`
  * registers, with the dialog injected. Driving the *registered closure* is not
- * possible in this suite and not because of a shortcut: no case in this repo has
- * ever driven an `ipcMain` handler, and `test/mocks/electron.ts` keeps `ipcMain`
- * inert on purpose. What the seam buys is everything the criterion is about —
+ * possible in this suite and not because of a shortcut: only `ipc/shelves.test.ts`
+ * drives an `ipcMain` handler, by swapping `ipcMain` per file, and
+ * `test/mocks/electron.ts` keeps `ipcMain` inert on purpose. What the seam buys is everything the criterion is about —
  * which keys are written, in what order, and whether the folder is peeked at
  * before the root is wired in. What it does **not** decide is the two lines
  * `registerNASHandlers` contributes (that the channel is registered and the

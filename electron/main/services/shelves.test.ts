@@ -240,6 +240,20 @@ describe('two kinds, one service (reading queue D3)', () => {
     )
   })
 
+  it('refuses a rename into the other kind’s name, case-insensitively, and leaves the name alone (AC9)', async () => {
+    const manual = await shelves.create('To Read')
+    const queue = await shelves.create('Up Next', [], 'queue')
+    await expect(shelves.rename(queue.id, 'to READ')).rejects.toThrow(
+      'There is already a shelf named “To Read”.'
+    )
+    await expect(shelves.rename(manual.id, '  up next ')).rejects.toThrow(
+      'There is already a shelf named “Up Next”.'
+    )
+    const file = await onDisk()
+    expect(listShelfOnDisk(file, queue.id).name).toBe('Up Next')
+    expect(listShelfOnDisk(file, manual.id).name).toBe('To Read')
+  })
+
   it('appends to a queue, and writes nothing when the book is already there', async () => {
     const queue = await shelves.create('Up Next', ['a', 'b'], 'queue')
     expect(await shelves.addBooks(queue.id, ['c'])).toEqual({ added: 1, alreadyOn: 0 })

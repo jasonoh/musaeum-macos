@@ -75,8 +75,8 @@ const showImageDialog: ShowImageDialog = (options) => dialog.showOpenDialog(opti
  * `pickLibraryRoot`'s reason: the cancel path is a decision this flow makes
  * (a cancellation writes nothing and is *not* a failure), and this is the only
  * seam a test can drive it through — `test/mocks/electron.ts` keeps `dialog` and
- * `ipcMain` inert on purpose, and no case in this repo has ever driven an
- * `ipcMain` handler. Everything *decided* here is therefore decided through this
+ * `ipcMain` inert on purpose, and only `ipc/shelves.test.ts` drives an
+ * `ipcMain` handler, by swapping `ipcMain` per file. Everything *decided* here is therefore decided through this
  * entry point; the writes themselves stay in `cover-choice.ts` (invariant 8).
  */
 export async function chooseCoverFromFile(
