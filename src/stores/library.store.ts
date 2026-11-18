@@ -12,7 +12,9 @@ import type {
   ReadStatus
 } from '@shared/book.types'
 import { isBookSort } from '@shared/book.types'
+import type { ShelfKind } from '@shared/shelf.types'
 import { applyRebuildProgress, settleCatalogSync, startCatalogSync } from '@/lib/catalog-sync'
+import { defaultShelfSort } from '@/lib/queue-order'
 import { resultSetKey } from '@/lib/resultSetIdentity'
 import { scopeToDevice } from '@/lib/device-scope'
 import { useDeviceStore } from '@/stores/device.store'
@@ -75,8 +77,12 @@ interface LibraryState {
    */
   filterByAuthor(name: string): void
   setSort(sort: BookSort): void
-  /** Open a shelf, or leave it with null. Remembers and restores the library sort. */
-  setActiveShelf(shelfId: string | null): void
+  /**
+   * Open a shelf, or leave it with null. Remembers and restores the library sort.
+   * `kind` picks the shelf's default order (a queue opens on Queue Order) and is
+   * passed by the caller: this store cannot import the shelves store (a cycle).
+   */
+  setActiveShelf(shelfId: string | null, kind?: ShelfKind): void
   /** Drop a scope the shelf list no longer holds. See the docblock. */
   reconcileScope(existingShelfIds: string[]): void
   /** Open a device's books, or leave with null. Leaves any shelf; the library sort carries through. */
@@ -107,9 +113,6 @@ const EMPTY_FILTERS: BookFilters = {}
 const SETTLED_DONE_MS = 8_000
 
 let settledTimer: ReturnType<typeof setTimeout> | null = null
-
-/** D8's default inside a shelf; also what its sort control offers first. */
-const SHELF_ADDED_DESC: BookSort = { field: 'shelf_added', direction: 'desc' }
 
 /**
  * The identity of a read, in `resultSetKey`'s own terms.
@@ -298,7 +301,7 @@ export const useLibraryStore = create<LibraryState>()(
          * overwrite it with a shelf sort, and a sort chosen inside a shelf is
          * that visit's own (R1).
          */
-        setActiveShelf(shelfId) {
+        setActiveShelf(shelfId, kind = 'manual') {
           const { activeShelfId, activeDeviceId, sort, librarySort } = get()
           // "Library" leaves a device as well as a shelf
           if (shelfId === null && activeDeviceId) {
@@ -313,7 +316,7 @@ export const useLibraryStore = create<LibraryState>()(
               activeShelfId: shelfId,
               activeDeviceId: null,
               librarySort: activeShelfId ? librarySort : sort,
-              sort: SHELF_ADDED_DESC
+              sort: defaultShelfSort(kind)
             })
           }
           void get().load()

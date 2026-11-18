@@ -291,7 +291,7 @@ export function ShelfList() {
               />
             ) : (
               <button
-                onClick={() => setActiveShelf(shelf.id)}
+                onClick={() => setActiveShelf(shelf.id, shelf.kind)}
                 onDragOver={(e) => onRowDragOver(e, shelf)}
                 onDragLeave={() => setDropTarget((t) => (t === shelf.id ? null : t))}
                 onDrop={(e) => void onRowDrop(e, shelf.id)}

@@ -134,6 +134,62 @@ describe('entering and leaving (AC17, AC18)', () => {
     expect(useLibraryStore.getState().librarySort).toEqual(TITLE_ASC)
   })
 
+  it('a queue opens on Queue Order and remembers the library sort', () => {
+    useLibraryStore.setState({ sort: TITLE_ASC, librarySort: TITLE_ASC })
+    useLibraryStore.getState().setActiveShelf('q', 'queue')
+    const s = useLibraryStore.getState()
+    expect(s.activeShelfId).toBe('q')
+    expect(s.sort).toEqual({ field: 'shelf_position', direction: 'asc' })
+    expect(s.librarySort).toEqual(TITLE_ASC)
+  })
+
+  it('a shelf opened with no kind is a manual shelf', () => {
+    useLibraryStore.setState({ sort: TITLE_ASC, librarySort: TITLE_ASC })
+    useLibraryStore.getState().setActiveShelf('m')
+    expect(useLibraryStore.getState().sort).toEqual(SHELF_DESC)
+  })
+
+  it('moving straight from a queue to a manual shelf takes the manual default and keeps the library sort', () => {
+    useLibraryStore.setState({ sort: TITLE_ASC, librarySort: TITLE_ASC })
+    useLibraryStore.getState().setActiveShelf('q', 'queue')
+    useLibraryStore.getState().setActiveShelf('m', 'manual')
+    const s = useLibraryStore.getState()
+    expect(s.sort).toEqual(SHELF_DESC)
+    expect(s.librarySort).toEqual(TITLE_ASC)
+  })
+
+  it('a sort chosen inside a queue is that visit\u2019s own, not the library\u2019s', () => {
+    useLibraryStore.setState({ sort: TITLE_ASC, librarySort: TITLE_ASC })
+    useLibraryStore.getState().setActiveShelf('q', 'queue')
+    useLibraryStore.getState().setSort({ field: 'title', direction: 'asc' })
+    const s = useLibraryStore.getState()
+    expect(s.sort).toEqual({ field: 'title', direction: 'asc' })
+    expect(s.librarySort).toEqual(TITLE_ASC)
+    useLibraryStore.getState().setSort({ field: 'author', direction: 'desc' })
+    expect(useLibraryStore.getState().librarySort).toEqual(TITLE_ASC)
+  })
+
+  it('persists the library sort, never Queue Order, while a queue is open (AC11)', () => {
+    useLibraryStore.setState({ sort: TITLE_ASC, librarySort: TITLE_ASC })
+    useLibraryStore.getState().setActiveShelf('q', 'queue')
+    const s = useLibraryStore.getState()
+    expect(s.sort.field).toBe('shelf_position')
+    expect(persistedLibraryState(s).sort).toEqual(s.librarySort)
+    expect(persistedLibraryState(s).sort).toEqual(TITLE_ASC)
+  })
+
+  it('leaving a queue restores the library sort', () => {
+    useLibraryStore.setState({
+      sort: { field: 'series', direction: 'asc' },
+      librarySort: { field: 'series', direction: 'asc' }
+    })
+    useLibraryStore.getState().setActiveShelf('q', 'queue')
+    useLibraryStore.getState().setActiveShelf(null)
+    const s = useLibraryStore.getState()
+    expect(s.activeShelfId).toBeNull()
+    expect(s.sort).toEqual({ field: 'series', direction: 'asc' })
+  })
+
   it('a sort chosen in the library is remembered', () => {
     useLibraryStore.getState().setSort({ field: 'rating', direction: 'desc' })
     expect(useLibraryStore.getState().librarySort).toEqual({ field: 'rating', direction: 'desc' })

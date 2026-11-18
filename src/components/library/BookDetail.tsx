@@ -253,7 +253,7 @@ export function BookDetail() {
                 className="flex items-center gap-1 rounded-full bg-ink-800 px-2 py-0.5 text-[11px] text-parchment-faint"
               >
                 <button
-                  onClick={() => setActiveShelf(shelf.id)}
+                  onClick={() => setActiveShelf(shelf.id, shelf.kind)}
                   className="max-w-[10rem] truncate transition-colors hover:text-gold-300"
                 >
                   {shelf.name}
