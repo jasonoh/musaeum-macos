@@ -16,8 +16,9 @@
 # `zip -0` is how it stores `mimetype` the way the EPUB spec requires). Exit
 # status is non-zero if any check failed.
 #
-# **Three sections write — slice 1c's reading report, slice 2's upload, and the
-# shelf membership pair — and they are the only ones that do.** The reading
+# **Four sections write — slice 1c's reading report, slice 2's upload, the
+# shelf membership pair, and the reading queue's place move — and they are the
+# only ones that do.** The reading
 # report sends the fraction the book already holds (0.42 for a book that has
 # none), so re-running it reports the same thing again rather than walking the
 # book forward, and it never sends a position. The upload **adds a book**, and it
@@ -555,6 +556,72 @@ else
 fi
 
 note 'the offline 503 on a shelf write is not exercised here — it needs the share taken down; its rules are decided over a socket in electron/main/api/rest.test.ts'
+
+# ---------------------------------------------------------------------------
+# The reading queue (reading queue slice 3): a queue's order, one book's place
+# ---------------------------------------------------------------------------
+
+printf '\n--- reading queue (reading queue slice 3)\n'
+
+code=$(request /api/shelves)
+QUEUE_ID="$(jq -r '[.shelves[] | select(.kind == "queue")][0].id // empty' "$BODY")"
+# Read the kinds HERE, while $BODY holds the list, for the reason SHELF_COUNT is
+# read there: the next request overwrites it.
+note "the profile's shelf kinds: $(jq -r '[.shelves[].kind] | unique | join(",")' "$BODY" | sed 's/^$/none/')"
+
+code=$(request '/api/library?sort=shelf_position')
+check 'sort=shelf_position without a shelf answers 400' 400 "$code"
+
+if [ -z "$QUEUE_ID" ]; then
+  note 'the profile holds no reading queue — the place pair was not exercised'
+  # The same route's other refusal, on a profile that has a manual shelf: any
+  # book the library holds gets the shelf's 400 at step 3, before membership is
+  # ever asked about — which is why the run's upload serves as the subject here.
+  if [ -n "${SHELF_ID:-}" ] && [ -n "${UPLOAD_ID:-}" ]; then
+    code=$(request "/api/shelves/$SHELF_ID/books/$UPLOAD_ID/position" -X PUT \
+      -H 'Content-Type: application/json' --data '{"to":"top"}')
+    check 'a place move on a shelf that is not a queue answers 400' 400 "$code"
+  fi
+elif [ -z "${UPLOAD_ID:-}" ]; then
+  note 'the run imported no book — the place pair was not exercised'
+else
+  code=$(request "/api/shelves/$QUEUE_ID/books/$UPLOAD_ID" -X PUT)
+  check 'the upload joins the queue on PUT' 200 "$code"
+
+  code=$(request "/api/shelves/$QUEUE_ID/books/$UPLOAD_ID/position" -X PUT \
+    -H 'Content-Type: application/json' --data '{"to":"top"}')
+  check 'PUT …/position {to:"top"} answers 200' 200 "$code"
+  check 'the answer carries the book, with the queue on it' 'yes' \
+    "$(jq -r --arg id "$QUEUE_ID" --arg bid "$UPLOAD_ID" \
+      'if .book.id == $bid and ((.book.shelves | index($id)) != null) then "yes" else "no" end' "$BODY")"
+
+  request "/api/library?shelf=$QUEUE_ID&limit=1" >/dev/null
+  check 'the queue opens on its own order — the moved book is first, with no sort asked' "$UPLOAD_ID" \
+    "$(jq -r '.books[0].id // "none"' "$BODY")"
+  QUEUE_TOTAL="$(as_number "$(jq -r '.total // 0' "$BODY")")"
+
+  code=$(request "/api/shelves/$QUEUE_ID/books/$UPLOAD_ID/position" -X PUT \
+    -H 'Content-Type: application/json' --data '{"to":"bottom"}')
+  check 'PUT …/position {to:"bottom"} answers 200' 200 "$code"
+
+  if [ "$QUEUE_TOTAL" -ge 2 ]; then
+    # The page that discriminates: Date Added to Shelf would put this book first,
+    # because it joined a moment ago — only the queue's own order puts it last.
+    request "/api/library?shelf=$QUEUE_ID&limit=1&offset=$((QUEUE_TOTAL - 1))" >/dev/null
+    check 'the book is last when the queue is read in its own order' "$UPLOAD_ID" \
+      "$(jq -r '.books[0].id // "none"' "$BODY")"
+  else
+    note 'the queue held one book — the last-page check cannot tell queue order from Date Added to Shelf, so it was not asserted'
+  fi
+
+  # Put the queue back: the membership goes, and with it every trace of the run
+  code=$(request "/api/shelves/$QUEUE_ID/books/$UPLOAD_ID" -X DELETE)
+  check 'the upload leaves the queue again' 200 "$code"
+
+  code=$(request "/api/shelves/$QUEUE_ID/books/$UPLOAD_ID/position" -X PUT \
+    -H 'Content-Type: application/json' --data '{"to":"top"}')
+  check 'a place move for a book that has left the queue answers 404' 404 "$code"
+fi
 
 printf '\n--- cover bytes\n'
 
