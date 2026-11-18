@@ -4,6 +4,13 @@ import { orderedFormats, primaryFormat, seriesDisplay } from '@shared/book.types
 import { modifiersFrom } from '@/lib/selection'
 import { coverUrl } from '@/lib/cover-url'
 import { clearDragPayload, startBookDrag } from '@/lib/book-drag'
+import {
+  reorderDragLeave,
+  reorderDragOver,
+  reorderDrop,
+  useDropSide,
+  useReorderableShelfId
+} from '@/hooks/useQueueReorder'
 import { bookOnDevices, useDeviceStore } from '@/stores/device.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { useUIStore } from '@/stores/ui.store'
@@ -86,12 +93,24 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
   // Boolean selector again: only the card being refreshed re-renders
   const refreshing = useUIStore((s) => Boolean(s.refreshingBooks[book.id]))
   const onDevice = useDeviceStore((s) => bookOnDevices(s, book.id).length > 0)
+  // The open queue's id while this view may be reordered, else null: it tells the
+  // drag where it began, and the target handlers re-ask the gate themselves
+  const reorderShelfId = useReorderableShelfId()
+  const side = useDropSide(book.id)
   const format = primaryFormat(book)
   const extraFormats = book.formats.length - 1
 
   return (
     <div
-      className="group relative"
+      className={`group relative ${
+        // Painted in the column gap, outside the box: a shadow takes no space, so
+        // the card keeps its exact height and width (invariant 7)
+        side === 'before'
+          ? 'shadow-[-6px_0_0_-2px_rgb(var(--gold-400))]'
+          : side === 'after'
+            ? 'shadow-[6px_0_0_-2px_rgb(var(--gold-400))]'
+            : ''
+      }`}
       // How `useGridFlip` finds this card to glide it when the panel opens
       data-book-id={book.id}
       // The drag lives on this box rather than on the button inside it: the
@@ -100,11 +119,24 @@ export const BookCard = memo(function BookCard({ book }: { book: Book }) {
       // covers the same artwork plus the meta lines (S1). Measured by Task 1's
       // spike, not assumed.
       draggable
-      onDragStart={(e) => startBookDrag(e, book.id, useUIStore.getState().selection)}
+      onDragStart={(e) =>
+        startBookDrag(e, book.id, useUIStore.getState().selection, reorderShelfId)
+      }
       // Clearing on the source is not enough — a virtualized card can unmount
       // mid-drag — but this is where a *canceled* drag ends, and the payload
       // must not outlive it (Review Focus 1)
       onDragEnd={clearDragPayload}
+      // Before is the card's left half. No `stopPropagation`: the window's `drop`
+      // is what clears the payload
+      onDragOver={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect()
+        reorderDragOver(e, book.id, e.clientX - rect.left, rect.width)
+      }}
+      onDragLeave={() => reorderDragLeave(book.id)}
+      onDrop={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect()
+        reorderDrop(e, book.id, e.clientX - rect.left, rect.width)
+      }}
       onContextMenu={(e) => {
         e.preventDefault()
         // The menu only: a right-click never selects, or it would open the

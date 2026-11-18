@@ -8,6 +8,13 @@ import { useNASStore } from '@/stores/nas.store'
 import { useReaderStore } from '@/stores/reader.store'
 import { selectionCount, useUIStore } from '@/stores/ui.store'
 import { useBookNavigation } from '@/hooks/useBookNavigation'
+import {
+  reorderDragLeave,
+  reorderDragOver,
+  reorderDrop,
+  useDropSide,
+  useReorderableShelfId
+} from '@/hooks/useQueueReorder'
 import { rowWindow, useResetScrollOnResultChange, useScrollMetrics } from '@/hooks/useVirtualRows'
 import { resultSetKey } from '@/lib/resultSetIdentity'
 import { clearDragPayload, startBookDrag } from '@/lib/book-drag'
@@ -61,12 +68,31 @@ function Row({ book }: { book: Book }) {
   const toggleBookSelection = useUIStore((s) => s.toggleBookSelection)
   const selected = useUIStore((s) => s.selection.ids.has(book.id))
   const openContextMenu = useUIStore((s) => s.openContextMenu)
+  // The open queue's id while this view may be reordered, else null: it tells the
+  // drag where it began, and the target handlers re-ask the gate themselves
+  const reorderShelfId = useReorderableShelfId()
+  const side = useDropSide(book.id)
 
   return (
     <tr
+      // On in every state: a drag out of a queue onto another shelf's sidebar row
+      // is the add gesture, and it must work when nothing here can be reordered
       draggable
-      onDragStart={(e) => startBookDrag(e, book.id, useUIStore.getState().selection)}
+      onDragStart={(e) =>
+        startBookDrag(e, book.id, useUIStore.getState().selection, reorderShelfId)
+      }
       onDragEnd={clearDragPayload}
+      // The drop point is the row's top or bottom half. No `stopPropagation`: the
+      // window's `drop` is what clears the payload
+      onDragOver={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect()
+        reorderDragOver(e, book.id, e.clientY - rect.top, rect.height)
+      }}
+      onDragLeave={() => reorderDragLeave(book.id)}
+      onDrop={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect()
+        reorderDrop(e, book.id, e.clientY - rect.top, rect.height)
+      }}
       onClick={(e) => select(book.id, modifiersFrom(e))}
       // Same gesture as the grid: single click selects, double click reads
       onDoubleClick={() => useReaderStore.getState().openBook(book)}
@@ -81,6 +107,14 @@ function Row({ book }: { book: Book }) {
       // highlight behind the reader overlay
       className={`cursor-default select-none border-b border-ink-800/60 transition-colors ${
         selected ? 'bg-gold-500/10' : 'hover:bg-ink-850'
+      } ${
+        // Painted, never laid out: an inset shadow on the cells, so the row keeps
+        // its height and its border (invariant 7)
+        side === 'before'
+          ? '[&>td]:shadow-[inset_0_2px_0_0_rgb(var(--gold-400))]'
+          : side === 'after'
+            ? '[&>td]:shadow-[inset_0_-2px_0_0_rgb(var(--gold-400))]'
+            : ''
       }`}
     >
       {/* The 20px line and block-level child keep this cell inside ROW_HEIGHT.

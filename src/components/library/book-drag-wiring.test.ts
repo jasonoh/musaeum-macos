@@ -58,4 +58,71 @@ describe('the drag sources (AC25, invariant 7)', () => {
       expect(source).not.toMatch(/setDragImage|dragImage/)
     }
   })
+
+  it('reorders through the one hook module, on the box that is draggable (slice 2)', () => {
+    for (const source of [bare(CARD), bare(LIST)]) {
+      expect(source).toMatch(
+        /import \{[^}]*useReorderableShelfId[^}]*\} from '@\/hooks\/useQueueReorder'/
+      )
+      // the open queue's id is the drag's fourth argument, so the slot knows where it began
+      expect(source).toMatch(/const reorderShelfId = useReorderableShelfId\(\)/)
+      expect(source).toMatch(
+        /startBookDrag\(\s*e,\s*book\.id,\s*useUIStore\.getState\(\)\.selection,\s*reorderShelfId\s*\)/
+      )
+      // the three handlers sit between `draggable` and the end of that one opening tag
+      const box = source.match(/^\s+draggable$[\s\S]*?^\s+>$/m)?.[0] ?? ''
+      expect(box).toMatch(/onDragOver=\{[^}]*reorderDragOver\(/)
+      expect(box).toMatch(/onDragLeave=\{[^}]*reorderDragLeave\(/)
+      expect(box).toMatch(/onDrop=\{[^}]*reorderDrop\(/)
+    }
+  })
+
+  it('measures the drop point on the box itself: rows by height, cards by width', () => {
+    expect(bare(LIST)).toMatch(/e\.clientY - rect\.top/)
+    expect(bare(LIST)).toMatch(/rect\.height/)
+    expect(bare(CARD)).toMatch(/e\.clientX - rect\.left/)
+    expect(bare(CARD)).toMatch(/rect\.width/)
+    for (const source of [bare(CARD), bare(LIST)]) {
+      expect(source).toMatch(/e\.currentTarget\.getBoundingClientRect\(\)/)
+    }
+  })
+
+  it('never stops a drag event from reaching the window, which clears the payload', () => {
+    for (const source of [bare(CARD), bare(LIST)]) {
+      // the row's checkbox cell stops a *click*; no drag handler may stop anything
+      expect(source).not.toMatch(/onDrag\w+=\{[^}]*stopPropagation/)
+      expect(source).not.toMatch(/onDrop=\{[^}]*stopPropagation/)
+    }
+  })
+
+  it('paints the drop point from useDropSide with a shadow, never a border or padding (invariant 7)', () => {
+    for (const source of [bare(CARD), bare(LIST)]) {
+      expect(source).toMatch(/const side = useDropSide\(book\.id\)/)
+      // every class the mark selects is a shadow: take the ternary from its first
+      // `side ===` to its empty fallback and read the quoted classes inside it
+      const span = source.match(/side === 'before'[\s\S]*?: ''/)?.[0] ?? ''
+      const classes = [...span.matchAll(/'([^']+)'/g)]
+        .map((m) => m[1])
+        .filter((c) => c !== 'before' && c !== 'after')
+      expect(classes.length).toBeGreaterThanOrEqual(2)
+      for (const cls of classes) {
+        expect(cls).toMatch(/shadow-\[/)
+        expect(cls).not.toMatch(/(?:^|[\s:])-?(?:border|outline|[pm][xytblr]?|gap|space-[xy])-/)
+      }
+    }
+  })
+})
+
+describe('the reorder hook module (slice 2)', () => {
+  const HOOK = bare(readFileSync(join(process.cwd(), 'src', 'hooks', 'useQueueReorder.ts'), 'utf8'))
+
+  it('stops nothing and never answers a drag with a copy', () => {
+    expect(HOOK).not.toMatch(/stopPropagation/)
+    expect(HOOK).not.toMatch(/dropEffect = 'copy'/)
+  })
+
+  it('goes through reorderInQueue and never writes the order itself', () => {
+    expect(HOOK).toMatch(/reorderInQueue\(/)
+    expect(HOOK).not.toMatch(/setBookOrder/)
+  })
 })
