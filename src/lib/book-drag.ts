@@ -22,6 +22,11 @@ export function isImportDrag(types: readonly string[]): boolean {
   return types.includes('Files')
 }
 
+/** Whether a drag in flight is a book drag, by the types its event carries. */
+export function isBookDragTypes(types: readonly string[]): boolean {
+  return types.includes(BOOK_DRAG_MIME)
+}
+
 /**
  * What a drag of `bookId` carries: the whole selection when the dragged book is
  * part of one, that book alone otherwise.
@@ -47,8 +52,13 @@ export function dragScope(bookId: string, sel: Selection): string[] {
  * The ids are written to `dataTransfer` too, at `dragstart` — a drag with no
  * data is refused as a drop on some paths — but the slot is what the targets
  * read.
+ *
+ * The slot also holds the id of the queue the drag started in, when it started
+ * in an open, reorderable one: only that queue's own list reads it, to tell a
+ * reorder from a drag arriving from elsewhere. It clears with the payload.
  */
 let payload: string[] | null = null
+let slotShelfId: string | null = null
 
 export function setDragPayload(ids: readonly string[]): void {
   payload = [...ids]
@@ -58,8 +68,14 @@ export function dragPayload(): readonly string[] | null {
   return payload
 }
 
+/** The queue this drag started in, or `null` when it started anywhere else. */
+export function dragReorderShelfId(): string | null {
+  return slotShelfId
+}
+
 export function clearDragPayload(): void {
   payload = null
+  slotShelfId = null
 }
 
 /** The least a drag handler has to carry: keep the module free of a React import. */
@@ -75,13 +91,25 @@ export interface DragHandle {
  * The `text/plain` fallback is not decoration: a drop somewhere that is not this
  * app reads it, and it must not find raw JSON. The MIME type is what our own
  * targets could read in `drop` if the slot ever disagreed with it.
+ *
+ * A drag that starts in an open queue passes its id as `reorderShelfId` and
+ * allows `copyMove`: the sidebar answers with `dropEffect = 'copy'` (add to
+ * another shelf) and the queue's own list with `'move'` (reorder), and a source
+ * that allowed only `copy` would make Chromium refuse the `move` drop. Anywhere
+ * else the drag stays a plain `'copy'`.
  */
-export function startBookDrag(e: DragHandle, bookId: string, sel: Selection): void {
+export function startBookDrag(
+  e: DragHandle,
+  bookId: string,
+  sel: Selection,
+  reorderShelfId?: string | null
+): void {
   const ids = dragScope(bookId, sel)
   setDragPayload(ids)
+  slotShelfId = reorderShelfId ?? null
   const dt = e.dataTransfer
   if (!dt) return
-  dt.effectAllowed = 'copy'
+  dt.effectAllowed = typeof reorderShelfId === 'string' ? 'copyMove' : 'copy'
   dt.setData(BOOK_DRAG_MIME, JSON.stringify(ids))
   dt.setData('text/plain', ids.join('\n'))
   setDragImage(dt, ids, e.currentTarget)

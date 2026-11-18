@@ -4,9 +4,12 @@ import {
   BOOK_DRAG_MIME,
   clearDragPayload,
   dragPayload,
+  dragReorderShelfId,
   dragScope,
+  isBookDragTypes,
   isImportDrag,
-  setDragPayload
+  setDragPayload,
+  startBookDrag
 } from '@/lib/book-drag'
 
 const sel = (...ids: string[]): Selection => ({
@@ -71,5 +74,66 @@ describe('the import overlay stays down (AC25)', () => {
   it('still recognizes a real file drop', () => {
     expect(isImportDrag(['Files'])).toBe(true)
     expect(isImportDrag(['text/plain', 'Files'])).toBe(true)
+  })
+})
+
+describe('the queue a drag started in (reading queue)', () => {
+  // The least `startBookDrag` touches: a `dataTransfer` that records, and no
+  // `currentTarget`, so the drag image (which needs a DOM) is skipped.
+  const fakeHandle = () => {
+    const data: Record<string, string> = {}
+    const dt = {
+      effectAllowed: 'uninitialized',
+      setData: (type: string, value: string) => {
+        data[type] = value
+      },
+      setDragImage: () => {}
+    }
+    return {
+      handle: { dataTransfer: dt as unknown as DataTransfer, currentTarget: null },
+      dt,
+      data
+    }
+  }
+
+  it('records the queue and allows copy or move, with the payload unchanged', () => {
+    const { handle, dt, data } = fakeHandle()
+    startBookDrag(handle, 'b', sel('a', 'b'), 'queue-1')
+    expect(dt.effectAllowed).toBe('copyMove')
+    expect(dragReorderShelfId()).toBe('queue-1')
+    expect(dragPayload()).toEqual(['a', 'b'])
+    expect(data[BOOK_DRAG_MIME]).toBe(JSON.stringify(['a', 'b']))
+    expect(data['text/plain']).toBe('a\nb')
+    clearDragPayload()
+  })
+
+  it('without a queue it is a plain copy and records none', () => {
+    const { handle, dt } = fakeHandle()
+    startBookDrag(handle, 'b', sel('a', 'b'))
+    expect(dt.effectAllowed).toBe('copy')
+    expect(dragReorderShelfId()).toBeNull()
+    startBookDrag(handle, 'b', sel('a', 'b'), null)
+    expect(dt.effectAllowed).toBe('copy')
+    expect(dragReorderShelfId()).toBeNull()
+    clearDragPayload()
+  })
+
+  it('a drag that follows one from a queue does not inherit its queue', () => {
+    startBookDrag(fakeHandle().handle, 'a', EMPTY_SELECTION, 'queue-1')
+    startBookDrag(fakeHandle().handle, 'a', EMPTY_SELECTION)
+    expect(dragReorderShelfId()).toBeNull()
+    clearDragPayload()
+  })
+
+  it('clears the queue with the payload', () => {
+    startBookDrag(fakeHandle().handle, 'a', EMPTY_SELECTION, 'queue-1')
+    clearDragPayload()
+    expect(dragPayload()).toBeNull()
+    expect(dragReorderShelfId()).toBeNull()
+  })
+
+  it('recognizes a book drag by its types', () => {
+    expect(isBookDragTypes([BOOK_DRAG_MIME, 'text/plain'])).toBe(true)
+    expect(isBookDragTypes(['Files'])).toBe(false)
   })
 })
