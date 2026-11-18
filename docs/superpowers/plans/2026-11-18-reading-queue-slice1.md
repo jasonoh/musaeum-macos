@@ -121,7 +121,7 @@
 
 **Interfaces:**
 - Consumes: the `position` column (Task 3), `SortField` (Task 1).
-- Produces: `getBooks`, `searchBooks` and `getBookPage` (whichever of them take a `shelfId`) ordered by the open shelf's `position` when `sort.field === 'shelf_position'` — always ascending whatever `direction` says, ties broken by `id ASC`; without a `shelfId` the unknown-field fallback (title ascending, never a throw).
+- Produces: `getBooks`, `searchBooks` and `getBookPage` (whichever of them take a `shelfId`) ordered by the open shelf's `position` when `sort.field === 'shelf_position'` — always ascending whatever `direction` says, ties broken by `id ASC`; without a `shelfId` the unknown-field fallback (title in whatever direction was asked for, never a throw).
 
 - [ ] **Step 1: Write the failing tests** (cache seeded through `replaceAllShelves` with a queue whose file order is `c, a, b`):
   - `getBooks({}, { field: 'shelf_position', direction: 'asc' }, { shelfId })` returns ids `c, a, b`;

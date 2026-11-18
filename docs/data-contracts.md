@@ -99,7 +99,7 @@ One file per library, not one per book — `{library_root}/shelves.json`, canoni
 - `shelves[].id` — a UUID, stable for the shelf's life.
 - `shelves[].kind` — `"manual"` or `"queue"`, the two kinds this build creates and edits. A queue has a manual shelf's exact shape, and **its `books` array order is its order — index 0 is the top**, the book to read next (reading queue, `docs/invariants/shelves.md` → *Queues*); a move reorders the array and never touches `added_at`. A kind this build does not know (a future smart shelf) is preserved on every write exactly as read, never edited or dropped.
 - `shelves[].name` — trimmed, non-empty, at most 80 characters, unique case-insensitively across manual shelves and queues (one namespace).
-- `shelves[].created_at` / `updated_at` — ISO 8601; `updated_at` moves on a rename or a membership change, never on a no-op.
+- `shelves[].created_at` / `updated_at` — ISO 8601; `updated_at` moves on a rename, a membership change or a queue reorder, never on a no-op.
 - `shelves[].books[].id` / `added_at` — one row per member, `added_at` set when the book joined and preserved by an Undo (`restoreBooks`) so the book returns to its place under *Date Added to Shelf*.
 
 A hand-edited or corrupted file — invalid JSON, or a manual shelf missing a required field — makes the **whole file** unreadable rather than dropping the one bad entry: every mutation refuses with a named sentence until it is repaired by hand, because silently discarding an entry on the next write would destroy it. See `docs/invariants/shelves.md` for the full reasoning (storage choice, the write queue, adoption, and deletion's residue).
@@ -331,12 +331,13 @@ interface MusaeumAPI {
   shelves: {                                     // user-made shelves; see docs/invariants/shelves.md
     list(): Promise<ShelfSummary[]>              // alphabetical, case-insensitive
     forBook(bookId: string): Promise<ShelfSummary[]>
-    create(name: string, bookIds?: string[]): Promise<ShelfSummary>  // names: trimmed, ≤80 chars, unique
+    create(name: string, bookIds?: string[], kind?: ShelfKind): Promise<ShelfSummary> // names: trimmed, ≤80 chars, unique across both kinds; manual when absent
     rename(id: string, name: string): Promise<void>
     delete(id: string): Promise<void>            // books stay in the library
     addBooks(id: string, bookIds: string[]): Promise<ShelfAddResult>  // { added, alreadyOn }
-    removeBooks(id: string, bookIds: string[]): Promise<ShelfMembership[]>  // for an Undo
-    restoreBooks(id: string, memberships: ShelfMembership[]): Promise<void>
+    removeBooks(id: string, bookIds: string[]): Promise<ShelfMembership[]>  // for an Undo; a queue's carry `index`
+    restoreBooks(id: string, memberships: ShelfMembership[]): Promise<void>  // a queue's `index` puts the book back in place
+    move(id: string, bookIds: string[], placement: ShelfPlacement): Promise<void> // reorder a queue; no Undo
     onChanged(cb): Unsubscribe                   // shelf or membership changed
   }
   import: {
