@@ -1,19 +1,36 @@
 import { useEffect, useState } from 'react'
-import type { ShelfSummary } from '@shared/shelf.types'
+import type { ShelfKind, ShelfSummary } from '@shared/shelf.types'
 import { useLibraryStore } from '@/stores/library.store'
 import { useNASStore } from '@/stores/nas.store'
 import { useShelvesStore } from '@/stores/shelves.store'
-import { PencilIcon, PlusIcon, TrashIcon } from '@/components/shared/icons'
+import { PencilIcon, PlusIcon, QueueIcon, TrashIcon } from '@/components/shared/icons'
 import { BOOK_DRAG_MIME, dragPayload } from '@/lib/book-drag'
 import { reportShelfFailure } from '@/lib/shelf-feedback'
 import { addToShelf } from '@/lib/shelf-membership'
+import { groupShelves } from '@/lib/queue-order'
 import { useDialogFocus } from '@/hooks/useDialogFocus'
 
-/** Which row's name is being typed. Local: it is about this column, not the app. */
-type Editing = { mode: 'create' } | { mode: 'rename'; id: string } | null
+/**
+ * Which row's name is being typed. Local: it is about this column, not the app.
+ * A create carries the kind of the control that opened it: the field opens in
+ * that group and the write is made with that kind.
+ */
+type Editing = { mode: 'create'; kind: ShelfKind } | { mode: 'rename'; id: string } | null
+
+/** The noun a kind goes by in this column's copy. */
+const NOUN: Record<ShelfKind, string> = { manual: 'shelf', queue: 'queue' }
+
+/** The drop-target key a create control rings under: one per group, so only the one under the pointer lights. */
+const createKey = (kind: ShelfKind): string => (kind === 'queue' ? 'create-queue' : 'create')
 
 /**
- * The Shelves section of the sidebar (D9).
+ * The shelf section of the sidebar (D9): a Reading Queues group above the
+ * Shelves group, the same rows and handlers in each.
+ *
+ * There are two **+** controls, not one with a menu, because a menu item cannot
+ * take a drop and a book dropped on the queue's **+** starts a queue. The queue
+ * group's header shows with no queues for the same reason: its **+** is always
+ * reachable.
  *
  * Three things about its shape are deliberate:
  *
@@ -55,7 +72,7 @@ export function ShelfList() {
   const [name, setName] = useState('')
   const [menu, setMenu] = useState<{ shelf: ShelfSummary; x: number; y: number } | null>(null)
   const [confirming, setConfirming] = useState<ShelfSummary | null>(null)
-  /** The row (or `'create'`) the pointer is over mid-drag; set by dragover, cleared by drop/leave. */
+  /** The row (or a create control's key) the pointer is over mid-drag; set by dragover, cleared by drop/leave. */
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   /** The books a create control was dropped with: outlives the drag, dies with the field (S4). */
   const [pending, setPending] = useState<string[] | null>(null)
@@ -74,10 +91,10 @@ export function ShelfList() {
     }
   }, [menu])
 
-  const startCreate = (ids: string[] | null = null) => {
+  const startCreate = (ids: string[] | null, kind: ShelfKind) => {
     setName('')
     setPending(ids)
-    setEditing({ mode: 'create' })
+    setEditing({ mode: 'create', kind })
     setMenu(null)
   }
 
@@ -165,27 +182,28 @@ export function ShelfList() {
    * ours-but-refused one — nothing carried, or the share down — takes
    * `dropEffect = 'none'`, which (as measured) means no `drop` is delivered.
    */
-  const onCreateDragOver = (e: React.DragEvent) => {
+  const onCreateDragOver = (e: React.DragEvent, kind: ShelfKind) => {
     if (!e.dataTransfer) return
     if (!isBookDrag(e)) return
+    const key = createKey(kind)
     if (!dragPayload()?.length || !online) {
       e.dataTransfer.dropEffect = 'none'
-      setDropTarget((t) => (t === 'create' ? null : t))
+      setDropTarget((t) => (t === key ? null : t))
       return
     }
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy'
-    setDropTarget('create')
+    setDropTarget(key)
   }
 
   /** An abandoned field takes the pending books with it — nothing was created (S4). */
-  const onCreateDrop = (e: React.DragEvent) => {
+  const onCreateDrop = (e: React.DragEvent, kind: ShelfKind) => {
     e.preventDefault()
     setDropTarget(null)
     if (!isBookDrag(e)) return
     const ids = dragPayload()
     if (!ids?.length || !online) return
-    startCreate([...ids])
+    startCreate([...ids], kind)
   }
 
   /**
@@ -202,7 +220,7 @@ export function ShelfList() {
     }
     try {
       if (editing.mode === 'create')
-        await window.Musaeum.shelves.create(trimmed, pending ?? undefined)
+        await window.Musaeum.shelves.create(trimmed, pending ?? undefined, editing.kind)
       else await window.Musaeum.shelves.rename(editing.id, trimmed)
       setEditing(null)
       setPending(null)
@@ -222,16 +240,108 @@ export function ShelfList() {
     }
   }
 
+  const { queues, manual } = groupShelves(shelves)
+
+  /** The inline name field for a create, in the group of the kind being created. */
+  const renderCreateField = (kind: ShelfKind) =>
+    editing?.mode === 'create' &&
+    editing.kind === kind && (
+      <NameField
+        kind={kind}
+        value={name}
+        onChange={setName}
+        onCommit={commit}
+        onCancel={() => {
+          setEditing(null)
+          setPending(null)
+        }}
+      />
+    )
+
+  /** One row, either kind: drag-over, drop, rename, context menu and double-click are shared. */
+  const renderRow = (shelf: ShelfSummary) => {
+    const active = shelf.id === activeShelfId
+    return (
+      <div key={shelf.id}>
+        {editing?.mode === 'rename' && editing.id === shelf.id ? (
+          <NameField
+            kind={shelf.kind}
+            value={name}
+            onChange={setName}
+            onCommit={commit}
+            onCancel={() => {
+              setEditing(null)
+              setPending(null)
+            }}
+          />
+        ) : (
+          <button
+            onClick={() => setActiveShelf(shelf.id, shelf.kind)}
+            onDragOver={(e) => onRowDragOver(e, shelf)}
+            onDragLeave={() => setDropTarget((t) => (t === shelf.id ? null : t))}
+            onDrop={(e) => void onRowDrop(e, shelf.id)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setMenu({ shelf, x: e.clientX, y: e.clientY })
+            }}
+            onDoubleClick={() => startRename(shelf)}
+            className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ring-inset ${
+              dropTarget === shelf.id ? 'ring-1 ring-gold-400' : ''
+            } ${
+              active
+                ? 'bg-ink-800 font-medium text-parchment'
+                : 'text-parchment-dim hover:bg-ink-800 hover:text-parchment'
+            }`}
+          >
+            {shelf.kind === 'queue' && (
+              <QueueIcon className="h-3.5 w-3.5 shrink-0 text-parchment-faint" />
+            )}
+            <span className="truncate">{shelf.name}</span>
+            <span className="ml-auto text-[11px] tabular-nums text-parchment-faint">
+              {shelf.count}
+            </span>
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const noun = confirming ? NOUN[confirming.kind] : ''
+
   return (
     <div className="mb-4 px-2">
+      <div className="mb-2">
+        <div className="flex items-center gap-1 px-2 pb-1">
+          <span className="font-display text-[11px] uppercase tracking-wider text-parchment-faint">
+            Reading Queues
+          </span>
+          <button
+            onClick={() => startCreate(null, 'queue')}
+            onDragOver={(e) => onCreateDragOver(e, 'queue')}
+            onDrop={(e) => onCreateDrop(e, 'queue')}
+            disabled={!online}
+            title={online ? 'New reading queue' : label}
+            aria-label="New reading queue"
+            className={`ml-auto rounded p-0.5 text-parchment-faint transition-colors hover:text-gold-400 disabled:pointer-events-none disabled:opacity-40 ${
+              dropTarget === 'create-queue' ? 'ring-1 ring-gold-400 ring-inset' : ''
+            }`}
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {renderCreateField('queue')}
+        {queues.map(renderRow)}
+      </div>
+
       <div className="flex items-center gap-1 px-2 pb-1">
         <span className="font-display text-[11px] uppercase tracking-wider text-parchment-faint">
           Shelves
         </span>
         <button
-          onClick={() => startCreate()}
-          onDragOver={onCreateDragOver}
-          onDrop={(e) => onCreateDrop(e)}
+          onClick={() => startCreate(null, 'manual')}
+          onDragOver={(e) => onCreateDragOver(e, 'manual')}
+          onDrop={(e) => onCreateDrop(e, 'manual')}
           disabled={!online}
           title={online ? 'New shelf' : label}
           aria-label="New shelf"
@@ -246,12 +356,13 @@ export function ShelfList() {
       {/* The empty state is a *control*, not an instruction. The spec's line here
           was "Drag books here to start a shelf" — and it is a drop target now
           (slice 3), so dropping books on it starts the shelf with them; the
-          sentence stays out because the control teaches the rest. */}
-      {shelves.length === 0 && !editing && (
+          sentence stays out because the control teaches the rest. It is the
+          Shelves group's alone: queues have their header's **+**, always shown. */}
+      {manual.length === 0 && !editing && (
         <button
-          onClick={() => startCreate()}
-          onDragOver={onCreateDragOver}
-          onDrop={(e) => onCreateDrop(e)}
+          onClick={() => startCreate(null, 'manual')}
+          onDragOver={(e) => onCreateDragOver(e, 'manual')}
+          onDrop={(e) => onCreateDrop(e, 'manual')}
           disabled={!online}
           title={online ? 'New shelf' : label}
           className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-parchment-faint transition-colors hover:bg-ink-800 hover:text-parchment disabled:pointer-events-none disabled:opacity-40 ${
@@ -263,60 +374,8 @@ export function ShelfList() {
         </button>
       )}
 
-      {editing?.mode === 'create' && (
-        <NameField
-          value={name}
-          onChange={setName}
-          onCommit={commit}
-          onCancel={() => {
-            setEditing(null)
-            setPending(null)
-          }}
-        />
-      )}
-
-      {shelves.map((shelf) => {
-        const active = shelf.id === activeShelfId
-        return (
-          <div key={shelf.id}>
-            {editing?.mode === 'rename' && editing.id === shelf.id ? (
-              <NameField
-                value={name}
-                onChange={setName}
-                onCommit={commit}
-                onCancel={() => {
-                  setEditing(null)
-                  setPending(null)
-                }}
-              />
-            ) : (
-              <button
-                onClick={() => setActiveShelf(shelf.id, shelf.kind)}
-                onDragOver={(e) => onRowDragOver(e, shelf)}
-                onDragLeave={() => setDropTarget((t) => (t === shelf.id ? null : t))}
-                onDrop={(e) => void onRowDrop(e, shelf.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  setMenu({ shelf, x: e.clientX, y: e.clientY })
-                }}
-                onDoubleClick={() => startRename(shelf)}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ring-inset ${
-                  dropTarget === shelf.id ? 'ring-1 ring-gold-400' : ''
-                } ${
-                  active
-                    ? 'bg-ink-800 font-medium text-parchment'
-                    : 'text-parchment-dim hover:bg-ink-800 hover:text-parchment'
-                }`}
-              >
-                <span className="truncate">{shelf.name}</span>
-                <span className="ml-auto text-[11px] tabular-nums text-parchment-faint">
-                  {shelf.count}
-                </span>
-              </button>
-            )}
-          </div>
-        )
-      })}
+      {renderCreateField('manual')}
+      {manual.map(renderRow)}
 
       {menu && (
         <div
@@ -352,7 +411,7 @@ export function ShelfList() {
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-parchment-dim hover:bg-danger-500/15 hover:text-danger-400 disabled:pointer-events-none disabled:opacity-40"
             >
               <TrashIcon className="h-3.5 w-3.5" />
-              Delete Shelf…
+              {menu.shelf.kind === 'queue' ? 'Delete Queue…' : 'Delete Shelf…'}
             </button>
           </div>
         </div>
@@ -368,12 +427,12 @@ export function ShelfList() {
             tabIndex={-1}
             role="dialog"
             aria-modal="true"
-            aria-label={`Delete the shelf ${confirming.name}`}
+            aria-label={`Delete the ${noun} ${confirming.name}`}
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md rounded-xl border border-ink-700 bg-ink-900 p-5 shadow-cover-lift"
           >
             <h2 className="font-display text-lg leading-snug text-parchment">
-              Delete the shelf “{confirming.name}”?
+              Delete the {noun} “{confirming.name}”?
             </h2>
             <p className="mt-2 text-[12px] leading-relaxed text-parchment-dim">
               Its {confirming.count} books stay in your library.
@@ -391,7 +450,7 @@ export function ShelfList() {
                 className="flex items-center gap-2 rounded-md bg-danger-500 px-3 py-1.5 text-[13px] font-semibold text-on-danger hover:bg-danger-500/90"
               >
                 <TrashIcon className="h-4 w-4" />
-                Delete shelf
+                Delete {noun}
               </button>
             </div>
           </div>
@@ -407,11 +466,13 @@ export function ShelfList() {
  * Enter is one uninterrupted gesture.
  */
 function NameField({
+  kind,
   value,
   onChange,
   onCommit,
   onCancel
 }: {
+  kind: ShelfKind
   value: string
   onChange(next: string): void
   onCommit(): void
@@ -428,8 +489,8 @@ function NameField({
       }}
       onBlur={onCancel}
       maxLength={80}
-      placeholder="Shelf name"
-      aria-label="Shelf name"
+      placeholder={kind === 'queue' ? 'Queue name' : 'Shelf name'}
+      aria-label={kind === 'queue' ? 'Queue name' : 'Shelf name'}
       className="mb-0.5 w-full rounded-md border border-gold-500/60 bg-ink-850 px-2 py-1 text-[13px] text-parchment placeholder:text-parchment-faint focus:border-gold-500"
     />
   )

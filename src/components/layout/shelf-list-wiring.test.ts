@@ -43,13 +43,17 @@ describe('the shelf section (AC16)', () => {
     // are different lines, and asserting only the first passes with the field
     // itself removed from the tree
     expect(SOURCE).toMatch(/if \(editing\.mode === 'create'\)/)
-    expect(SOURCE).toMatch(/\{editing\?\.mode === 'create' && \(/)
+    // The render check is per group now: the field opens in the group of the
+    // kind being created, so a queue's name is typed under Reading Queues
+    expect(SOURCE).toMatch(/editing\?\.mode === 'create' &&\s*editing\.kind === kind &&/)
   })
 
   it('names the shelf and its count before it is deleted (D9, AC16)', () => {
     // The confirmation's job is that a person cannot delete a shelf believing
     // they are deleting books
-    expect(SOURCE).toContain('Delete the shelf \u201c')
+    // ...and a queue's names itself a queue: the noun follows the kind
+    expect(SOURCE).toContain('Delete the {noun} \u201c')
+    expect(SOURCE).toContain('aria-label={`Delete the ${noun} ${confirming.name}`}')
     expect(SOURCE).toContain('books stay in your library')
   })
 
@@ -120,15 +124,20 @@ describe('the shelf section (AC16)', () => {
   it('creates a shelf from a drop on + and on the empty-state row (AC26)', () => {
     // Both create controls take a drop, and both go through the same
     // `startCreate`, which is where the pending books are handed over
-    expect(bare(SOURCE)).toMatch(/onDrop=\{\(e\) => onCreateDrop\(e\)\}/)
-    expect(bare(SOURCE).match(/onCreateDrop\(e\)/g)).toHaveLength(2)
-    expect(bare(SOURCE)).toMatch(/startCreate\(\[\.\.\.ids\]\)/)
+    // Three now: the Shelves `+`, the Reading Queues `+`, and the empty-state row
+    expect(bare(SOURCE)).toMatch(/onDrop=\{\(e\) => onCreateDrop\(e, 'manual'\)\}/)
+    expect(bare(SOURCE)).toMatch(/onDrop=\{\(e\) => onCreateDrop\(e, 'queue'\)\}/)
+    expect(bare(SOURCE).match(/onCreateDrop\(e, '(?:manual|queue)'\)/g)).toHaveLength(3)
+    expect(bare(SOURCE)).toMatch(/startCreate\(\[\.\.\.ids\], kind\)/)
   })
 
   it('creates with the books the drag carried, and with none on a click', () => {
     // `create(name, bookIds?)`: the second argument is slice 1's and this is its
     // first caller (handoff 6)
-    expect(bare(SOURCE)).toMatch(/shelves\.create\(trimmed, pending \?\? undefined\)/)
+    // ...and the third is the kind the control that opened the field stood for
+    expect(bare(SOURCE)).toMatch(
+      /shelves\.create\(trimmed, pending \?\? undefined, editing\.kind\)/
+    )
     // A plain click must not inherit the last drop's books
     expect(bare(SOURCE)).toMatch(/setPending\(null\)/)
   })
@@ -158,6 +167,61 @@ describe('the shelf section (AC16)', () => {
     // The empty state is a control, not an instruction: with no shelves the
     // first thing a reader does is press the action rather than be told of one
     expect(bare(SOURCE)).toMatch(/>\s*New shelf\s*</)
+  })
+})
+
+describe('the Reading Queues group (slice 2)', () => {
+  const src = bare(SOURCE)
+
+  it('splits the list through the queue-order module and glyphs a queue row', () => {
+    expect(src).toMatch(/import \{ groupShelves \} from '@\/lib\/queue-order'/)
+    expect(src).toMatch(/groupShelves\(shelves\)/)
+    expect(src).toMatch(/import \{[^}]*\bQueueIcon\b[^}]*\} from '@\/components\/shared\/icons'/)
+    expect(src).toMatch(/shelf\.kind === 'queue' && \(?\s*<QueueIcon/)
+  })
+
+  it('sits above the Shelves group, header and all, and shows with no queues', () => {
+    expect(src.indexOf('Reading Queues')).toBeGreaterThan(-1)
+    expect(src.indexOf('Reading Queues')).toBeLessThan(src.indexOf('Shelves\n'))
+    // Not conditional on there being a queue: the `+` has to be reachable (D5)
+    expect(src).not.toMatch(/queues\.length > 0 &&/)
+  })
+
+  it('has one + per group, each labelled, each a drop target', () => {
+    expect(src).toMatch(/aria-label="New shelf"/)
+    expect(src).toMatch(/aria-label="New reading queue"/)
+    expect(src).toMatch(/onDragOver=\{\(e\) => onCreateDragOver\(e, 'manual'\)\}/)
+    expect(src).toMatch(/onDragOver=\{\(e\) => onCreateDragOver\(e, 'queue'\)\}/)
+    // Three: the two `+` and the Shelves empty-state row
+    expect(src.match(/onCreateDragOver\(e, '(?:manual|queue)'\)/g)).toHaveLength(3)
+  })
+
+  it('rings only the control under the pointer, by a key per group', () => {
+    expect(src).toMatch(/'create-queue'/)
+    expect(src).toMatch(/dropTarget === 'create-queue'/)
+    expect(src).toMatch(/dropTarget === 'create'/)
+  })
+
+  it('opens the field for the kind it was started from', () => {
+    expect(src).toMatch(/type Editing = \{ mode: 'create'; kind: ShelfKind \}/)
+    expect(src).toMatch(/setEditing\(\{ mode: 'create', kind \}\)/)
+    expect(src).toMatch(/startCreate\(null, 'queue'\)/)
+    expect(src).toMatch(/startCreate\(null, 'manual'\)/)
+  })
+
+  it('names the inline field and the delete item for the kind', () => {
+    expect(src).toMatch(/'Queue name'/)
+    expect(src).toMatch(/'Shelf name'/)
+    expect(src).toContain('Delete Queue\u2026')
+    expect(src).toContain('Delete Shelf\u2026')
+  })
+
+  it('keeps one set of row handlers for both kinds', () => {
+    // The row's drag-over, drop, context menu and double-click are written once
+    expect(src.match(/onContextMenu=\{\(e\) => \{/g)).toHaveLength(1)
+    expect(src.match(/onDoubleClick=\{\(\) => startRename\(shelf\)\}/g)).toHaveLength(1)
+    expect(src.match(/onDrop=\{\(e\) => void onRowDrop\(e, shelf\.id\)\}/g)).toHaveLength(1)
+    expect(src).toMatch(/setActiveShelf\(shelf\.id, shelf\.kind\)/)
   })
 })
 
