@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { TITLEBAR_STRIP_HEIGHT } from '@shared/window-chrome'
 import { useLibraryStore } from '@/stores/library.store'
 import { useUIStore } from '@/stores/ui.store'
+import { shelfById, useShelvesStore } from '@/stores/shelves.store'
 import { SearchBar } from '@/components/shared/SearchBar'
 import {
   BookIcon,
@@ -12,6 +13,7 @@ import {
   PlusIcon
 } from '@/components/shared/icons'
 import { importBooksFromDialog } from '@/lib/add-books'
+import { shelfSortOptions } from '@/lib/queue-order'
 import type { BookSort, SortField } from '@shared/book.types'
 import { sortLabel } from '@shared/book.types'
 
@@ -28,16 +30,6 @@ const SORT_OPTIONS: BookSort[] = [
 ]
 
 const key = (s: BookSort) => `${s.field}:${s.direction}`
-
-/**
- * *Date Added to Shelf* — D8's default inside a shelf, and meaningless outside
- * one: at library level there is no shelf to have been added to. So it is
- * offered only while a shelf is open, where it is also first.
- */
-const SHELF_SORT_OPTIONS: BookSort[] = [
-  { field: 'shelf_added', direction: 'desc' },
-  { field: 'shelf_added', direction: 'asc' }
-]
 
 /**
  * Add Books — the app's on-ramp. It offers both ways in: the native picker, and
@@ -137,9 +129,15 @@ export function Toolbar() {
   const sort = useLibraryStore((s) => s.sort)
   const setSort = useLibraryStore((s) => s.setSort)
   const activeShelfId = useLibraryStore((s) => s.activeShelfId)
+  // Read from the list, as the search placeholder reads the name: a queue offers
+  // Queue Order first, a manual shelf only its two added-order sorts. The list is
+  // empty for the first render after a cold start (R3), hence the `manual` fallback
+  const kind = useShelvesStore((s) => shelfById(s, activeShelfId)?.kind)
 
   const sortValue = key(sort)
-  const offered = activeShelfId ? [...SHELF_SORT_OPTIONS, ...SORT_OPTIONS] : SORT_OPTIONS
+  const offered = activeShelfId
+    ? [...shelfSortOptions(kind ?? 'manual'), ...SORT_OPTIONS]
+    : SORT_OPTIONS
   // A list-view header can select a combination this list doesn't carry (e.g.
   // Author Z–A); append it so the select never falls back to a wrong option
   const options = offered.some((o) => key(o) === sortValue) ? offered : [...offered, sort]

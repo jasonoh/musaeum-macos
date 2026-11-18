@@ -219,14 +219,33 @@ const SEARCH = readFileSync(
 )
 
 describe('the sort control (AC18)', () => {
-  it('offers Date Added to Shelf only while a shelf is open', () => {
-    expect(TOOLBAR).toMatch(/SHELF_SORT_OPTIONS/)
-    expect(TOOLBAR).toMatch(/activeShelfId \? \[\.\.\.SHELF_SORT_OPTIONS, \.\.\.SORT_OPTIONS\]/)
+  it('offers the shelf’s own options only while a shelf is open', () => {
+    const src = bare(TOOLBAR)
+    expect(src).toMatch(/shelfSortOptions\(/)
+    expect(src).toMatch(
+      /activeShelfId\s*\?\s*\[\.\.\.shelfSortOptions\(kind \?\? 'manual'\), \.\.\.SORT_OPTIONS\]\s*:\s*SORT_OPTIONS/
+    )
   })
 
-  it('offers both directions of it, and nothing else new', () => {
-    expect(TOOLBAR).toMatch(/\{ field: 'shelf_added', direction: 'desc' \}/)
-    expect(TOOLBAR).toMatch(/\{ field: 'shelf_added', direction: 'asc' \}/)
+  it('takes them from the queue-order module, not a local list', () => {
+    const src = bare(TOOLBAR)
+    expect(src).toMatch(/import \{ shelfSortOptions \} from '@\/lib\/queue-order'/)
+    expect(src).not.toMatch(/SHELF_SORT_OPTIONS/)
+    // Nor does it spell the shelf-scoped sort itself: the list is the module's
+    expect(src).not.toMatch(/shelf_added/)
+    expect(src).not.toMatch(/queue_order/)
+  })
+
+  it('reads the open shelf’s kind from the list, as the placeholder reads its name', () => {
+    const src = bare(TOOLBAR)
+    expect(src).toMatch(/shelfById\(s, activeShelfId\)\?\.kind/)
+    expect(src).toMatch(/import \{[^}]*shelfById[^}]*\} from '@\/stores\/shelves\.store'/)
+  })
+
+  it('still appends a sort the list does not carry, so a header’s Author Z–A selects', () => {
+    expect(bare(TOOLBAR)).toMatch(
+      /offered\.some\(\(o\) => key\(o\) === sortValue\) \? offered : \[\.\.\.offered, sort\]/
+    )
   })
 })
 
